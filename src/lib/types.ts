@@ -53,6 +53,15 @@ export interface Workflow {
   updated_at: string;
 }
 
+export type WorkflowFieldType = "single_choice" | "multi_select" | "combobox" | "text";
+
+export const WORKFLOW_FIELD_TYPES: { value: WorkflowFieldType; label: string }[] = [
+  { value: "single_choice", label: "Opción única (botones)" },
+  { value: "combobox", label: "Lista desplegable" },
+  { value: "multi_select", label: "Selección múltiple" },
+  { value: "text", label: "Texto libre" },
+];
+
 export interface WorkflowStep {
   id: string;
   workflow_id: string;
@@ -61,6 +70,20 @@ export interface WorkflowStep {
   description: string | null;
   is_mandatory: boolean;
   allowed_results: string[] | null;
+  field_type: WorkflowFieldType;
+  options: string[];
+  pos_x: number;
+  pos_y: number;
+  is_start: boolean;
+  created_at: string;
+}
+
+export interface WorkflowStepBranch {
+  id: string;
+  workflow_id: string;
+  from_step_id: string;
+  from_option: string | null;
+  to_step_id: string | null;
   created_at: string;
 }
 
@@ -72,6 +95,8 @@ export interface LeadWorkflowProgress {
   next_step_id: string | null;
   next_step_name: string | null;
   next_step_order: number | null;
+  next_step_field_type: WorkflowFieldType | null;
+  next_step_options: string[] | null;
   next_step_mandatory: boolean | null;
   next_step_allowed_results: string[] | null;
   is_compliant: boolean;

@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 
 export async function registerInteraction(formData: FormData) {
   const leadId = formData.get("lead_id") as string;
-  const result = formData.get("result") as string;
+  const resultValues = formData.getAll("result").map(String).filter(Boolean);
+  const result = resultValues.join(", ");
   const notes = (formData.get("notes") as string) || null;
   const newStatus = formData.get("new_status") as string | null;
   const workflowStepId = (formData.get("workflow_step_id") as string) || null;

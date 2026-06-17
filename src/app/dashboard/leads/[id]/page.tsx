@@ -35,10 +35,14 @@ export default async function LeadDetailPage({
     .eq("is_active", true)
     .order("name");
 
-  const resultOptions: string[] =
-    progress?.next_step_allowed_results && progress.next_step_allowed_results.length > 0
-      ? progress.next_step_allowed_results
-      : [...INTERACTION_RESULTS];
+  const hasActiveStep = Boolean(progress?.next_step_id) && !progress?.is_compliant;
+  const activeFieldType = hasActiveStep ? progress?.next_step_field_type : null;
+  const activeOptions: string[] =
+    progress?.next_step_options && progress.next_step_options.length > 0
+      ? progress.next_step_options
+      : progress?.next_step_allowed_results && progress.next_step_allowed_results.length > 0
+        ? progress.next_step_allowed_results
+        : [...INTERACTION_RESULTS];
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -144,17 +148,59 @@ export default async function LeadDetailPage({
           <div className="space-y-3">
             <div>
               <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Resultado</label>
-              <select
-                name="result"
-                required
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                {resultOptions.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
+
+              {activeFieldType === "single_choice" && (
+                <div className="space-y-2 rounded-lg border border-border bg-background p-3">
+                  {activeOptions.map((opt, i) => (
+                    <label key={opt} className="flex items-center gap-2 text-sm text-foreground">
+                      <input
+                        type="radio"
+                        name="result"
+                        value={opt}
+                        required
+                        defaultChecked={i === 0}
+                        className="border-border"
+                      />
+                      {opt}
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {activeFieldType === "multi_select" && (
+                <div className="space-y-2 rounded-lg border border-border bg-background p-3">
+                  {activeOptions.map((opt) => (
+                    <label key={opt} className="flex items-center gap-2 text-sm text-foreground">
+                      <input type="checkbox" name="result" value={opt} className="rounded border-border" />
+                      {opt}
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {activeFieldType === "text" && (
+                <input
+                  type="text"
+                  name="result"
+                  required
+                  placeholder="Escribe la respuesta del cliente..."
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              )}
+
+              {(activeFieldType === "combobox" || !activeFieldType) && (
+                <select
+                  name="result"
+                  required
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {activeOptions.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
             <div>
