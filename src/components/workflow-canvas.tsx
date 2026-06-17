@@ -7,6 +7,7 @@ import ReactFlow, {
   Handle,
   MiniMap,
   Position,
+  ReactFlowProvider,
   type Connection,
   type Edge,
   type EdgeChange,
@@ -15,6 +16,7 @@ import ReactFlow, {
   applyEdgeChanges,
   applyNodeChanges,
   type NodeChange,
+  useReactFlow,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import type { WorkflowFieldType, WorkflowStep, WorkflowStepBranch } from "@/lib/types";
@@ -141,7 +143,19 @@ function branchToEdge(b: WorkflowStepBranch): Edge | null {
   };
 }
 
-export function WorkflowCanvas({
+export function WorkflowCanvas(props: {
+  workflowId: string;
+  initialSteps: WorkflowStep[];
+  initialBranches: WorkflowStepBranch[];
+}) {
+  return (
+    <ReactFlowProvider>
+      <WorkflowCanvasInner {...props} />
+    </ReactFlowProvider>
+  );
+}
+
+function WorkflowCanvasInner({
   workflowId,
   initialSteps,
   initialBranches,
@@ -156,6 +170,8 @@ export function WorkflowCanvas({
     initialBranches.map(branchToEdge).filter((e): e is Edge => e !== null)
   );
   const [saving, setSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const { setCenter } = useReactFlow();
 
   const onSelect = useCallback((id: string) => setSelectedId(id), []);
 
@@ -222,15 +238,23 @@ export function WorkflowCanvas({
     const count = steps.length;
     const posX = 60 + (count % 3) * 300;
     const posY = 40 + Math.floor(count / 3) * 220;
-    const newStep = await createWorkflowStepNode({
-      workflowId,
-      posX,
-      posY,
-      makeStart: count === 0,
-    });
-    setSteps((prev) => [...prev, newStep]);
-    setSelectedId(newStep.id);
-  }, [workflowId, steps.length]);
+    try {
+      const newStep = await createWorkflowStepNode({
+        workflowId,
+        posX,
+        posY,
+        makeStart: count === 0,
+      });
+      setSteps((prev) => [...prev, newStep]);
+      setSelectedId(newStep.id);
+      setErrorMsg(null);
+      requestAnimationFrame(() => {
+        setCenter(newStep.pos_x + 130, newStep.pos_y + 60, { zoom: 1, duration: 400 });
+      });
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "No se pudo crear el paso.");
+    }
+  }, [workflowId, steps.length, setCenter]);
 
   const selectedStep = steps.find((s) => s.id === selectedId) ?? null;
 
@@ -270,6 +294,15 @@ export function WorkflowCanvas({
         </span>
       </div>
 
+      {errorMsg && (
+        <div className="absolute left-3 top-16 z-10 max-w-md rounded-lg bg-danger-bg px-3 py-2 text-xs font-medium text-danger shadow">
+          {errorMsg}
+          <button onClick={() => setErrorMsg(null)} className="ml-2 underline">
+            cerrar
+          </button>
+        </div>
+      )}
+
       {selectedStep && (
         <StepEditorPanel
           key={selectedStep.id}
@@ -278,29 +311,42 @@ export function WorkflowCanvas({
           saving={saving}
           onClose={() => setSelectedId(null)}
           onSetStart={async () => {
-            await setStartStep({ workflowId, stepId: selectedStep.id });
-            setSteps((prev) => prev.map((s) => ({ ...s, is_start: s.id === selectedStep.id })));
+            try {
+              await setStartStep({ workflowId, stepId: selectedStep.id });
+              setSteps((prev) => prev.map((s) => ({ ...s, is_start: s.id === selectedStep.id })));
+            } catch (err) {
+              setErrorMsg(err instanceof Error ? err.message : "No se pudo marcar el inicio.");
+            }
           }}
           onDelete={async () => {
-            await deleteWorkflowStepNode({ stepId: selectedStep.id, workflowId });
-            setSteps((prev) => prev.filter((s) => s.id !== selectedStep.id));
-            setEdges((prev) => prev.filter((e) => e.source !== selectedStep.id && e.target !== selectedStep.id));
-            setSelectedId(null);
+            try {
+              await deleteWorkflowStepNode({ stepId: selectedStep.id, workflowId });
+              setSteps((prev) => prev.filter((s) => s.id !== selectedStep.id));
+              setEdges((prev) => prev.filter((e) => e.source !== selectedStep.id && e.target !== selectedStep.id));
+              setSelectedId(null);
+            } catch (err) {
+              setErrorMsg(err instanceof Error ? err.message : "No se pudo eliminar el paso.");
+            }
           }}
           onSave={async (patch) => {
             setSaving(true);
-            await updateWorkflowStepNode({
-              stepId: selectedStep.id,
-              workflowId,
-              name: patch.name,
-              description: patch.description,
-              fieldType: patch.field_type,
-              options: patch.options,
-              isMandatory: patch.is_mandatory,
-            });
-            setSteps((prev) =>
-              prev.map((s) => (s.id === selectedStep.id ? { ...s, ...patch } : s))
-            );
+            try {
+              await updateWorkflowStepNode({
+                stepId: selectedStep.id,
+                workflowId,
+                name: patch.name,
+                description: patch.description,
+                fieldType: patch.field_type,
+                options: patch.options,
+                isMandatory: patch.is_mandatory,
+              });
+              setSteps((prev) =>
+                prev.map((s) => (s.id === selectedStep.id ? { ...s, ...patch } : s))
+              );
+              setErrorMsg(null);
+            } catch (err) {
+              setErrorMsg(err instanceof Error ? err.message : "No se pudo guardar el paso.");
+            }
             setSaving(false);
           }}
         />

@@ -1,6 +1,7 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { createWorkflow, toggleWorkflowActive } from "@/app/actions/workflows";
+import { createWorkflow, createWorkflowFromTemplate, toggleWorkflowActive } from "@/app/actions/workflows";
+import { WORKFLOW_TEMPLATES } from "@/lib/workflow-templates";
 import Link from "next/link";
 
 export default async function WorkflowsPage() {
@@ -19,6 +20,33 @@ export default async function WorkflowsPage() {
         <p className="text-sm text-muted-foreground">
           Define los pasos obligatorios que los agentes deben completar al gestionar un lead.
         </p>
+      </div>
+
+      <div className="rounded-xl border border-border bg-surface p-5">
+        <h2 className="text-sm font-semibold text-foreground">Plantillas de campañas frecuentes</h2>
+        <p className="mb-4 mt-1 text-xs text-muted-foreground">
+          Empieza desde un script ya armado y ajústalo en el editor visual. Cada plantilla crea un flujo
+          nuevo y listo para editar.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {WORKFLOW_TEMPLATES.map((t) => (
+            <div key={t.id} className="flex flex-col rounded-xl border border-border bg-background p-4">
+              <span className="text-2xl">{t.icon}</span>
+              <h3 className="mt-2 text-sm font-semibold text-foreground">{t.name}</h3>
+              <p className="mt-1 flex-1 text-xs text-muted-foreground">{t.description}</p>
+              <p className="mt-2 text-[11px] text-muted-foreground">{t.steps.length} pasos</p>
+              <form action={createWorkflowFromTemplate} className="mt-3">
+                <input type="hidden" name="template_id" value={t.id} />
+                <button
+                  type="submit"
+                  className="w-full rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary-hover"
+                >
+                  Usar esta plantilla
+                </button>
+              </form>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-border bg-surface">

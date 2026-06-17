@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { WorkflowFieldType, WorkflowStep, WorkflowStepBranch } from "@/lib/types";
+import { WORKFLOW_TEMPLATES } from "@/lib/workflow-templates";
 
 export async function createWorkflow(formData: FormData) {
   const name = formData.get("name") as string;
@@ -19,6 +20,75 @@ export async function createWorkflow(formData: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/admin/flujos");
   redirect(`/dashboard/admin/flujos/${data.id}`);
+}
+
+export async function createWorkflowFromTemplate(formData: FormData) {
+  const templateId = formData.get("template_id") as string;
+  const template = WORKFLOW_TEMPLATES.find((t) => t.id === templateId);
+  if (!template) throw new Error("Plantilla no encontrada");
+
+  const supabase = await createClient();
+
+  const { data: workflow, error: workflowError } = await supabase
+    .from("workflows")
+    .insert({ name: template.name, description: template.description })
+    .select("id")
+    .single();
+
+  if (workflowError) throw new Error(workflowError.message);
+  const workflowId = workflow.id as string;
+
+  const stepRows = template.steps.map((s, index) => ({
+    workflow_id: workflowId,
+    step_order: index + 1,
+    name: s.name,
+    description: s.description,
+    is_mandatory: s.isMandatory,
+    field_type: s.fieldType,
+    options: s.options,
+    allowed_results: s.fieldType === "text" ? null : s.options,
+    pos_x: s.posX,
+    pos_y: s.posY,
+    is_start: s.isStart,
+  }));
+
+  const { data: insertedSteps, error: stepsError } = await supabase
+    .from("workflow_steps")
+    .insert(stepRows)
+    .select("id, step_order");
+
+  if (stepsError) {
+    await supabase.from("workflows").delete().eq("id", workflowId);
+    throw new Error(stepsError.message);
+  }
+
+  // step_order es 1-based y coincide con templateIndex + 1
+  const idByIndex = new Map<number, string>();
+  (insertedSteps ?? []).forEach((row) => {
+    idByIndex.set(row.step_order - 1, row.id as string);
+  });
+
+  const branchRows = template.branches
+    .map((b) => {
+      const fromStepId = idByIndex.get(b.fromIndex);
+      if (!fromStepId) return null;
+      const toStepId = b.toIndex !== null ? idByIndex.get(b.toIndex) ?? null : null;
+      return {
+        workflow_id: workflowId,
+        from_step_id: fromStepId,
+        from_option: b.fromOption,
+        to_step_id: toStepId,
+      };
+    })
+    .filter((b): b is NonNullable<typeof b> => b !== null);
+
+  if (branchRows.length > 0) {
+    const { error: branchesError } = await supabase.from("workflow_step_branches").insert(branchRows);
+    if (branchesError) throw new Error(branchesError.message);
+  }
+
+  revalidatePath("/dashboard/admin/flujos");
+  redirect(`/dashboard/admin/flujos/${workflowId}`);
 }
 
 export async function toggleWorkflowActive(formData: FormData) {
@@ -127,7 +197,6 @@ export async function createWorkflowStepNode(input: {
     .single();
 
   if (error) throw new Error(error.message);
-  revalidatePath(`/dashboard/admin/flujos/${input.workflowId}`);
   return data as WorkflowStep;
 }
 
@@ -154,7 +223,6 @@ export async function updateWorkflowStepNode(input: {
     .eq("id", input.stepId);
 
   if (error) throw new Error(error.message);
-  revalidatePath(`/dashboard/admin/flujos/${input.workflowId}`);
 }
 
 export async function updateWorkflowStepPosition(input: {
@@ -184,7 +252,6 @@ export async function setStartStep(input: {
     .update({ is_start: true })
     .eq("id", input.stepId);
   if (error) throw new Error(error.message);
-  revalidatePath(`/dashboard/admin/flujos/${input.workflowId}`);
 }
 
 export async function deleteWorkflowStepNode(input: {
@@ -194,7 +261,6 @@ export async function deleteWorkflowStepNode(input: {
   const supabase = await createClient();
   const { error } = await supabase.from("workflow_steps").delete().eq("id", input.stepId);
   if (error) throw new Error(error.message);
-  revalidatePath(`/dashboard/admin/flujos/${input.workflowId}`);
 }
 
 export async function upsertBranch(input: {
@@ -219,7 +285,6 @@ export async function upsertBranch(input: {
     .single();
 
   if (error) throw new Error(error.message);
-  revalidatePath(`/dashboard/admin/flujos/${input.workflowId}`);
   return data as WorkflowStepBranch;
 }
 
@@ -230,7 +295,6 @@ export async function deleteBranch(input: {
   const supabase = await createClient();
   const { error } = await supabase.from("workflow_step_branches").delete().eq("id", input.branchId);
   if (error) throw new Error(error.message);
-  revalidatePath(`/dashboard/admin/flujos/${input.workflowId}`);
 }
 
 export async function assignLeadWorkflow(formData: FormData) {
