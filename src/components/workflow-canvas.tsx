@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import ReactFlow, {
+import {
+  ReactFlow,
   Background,
   Controls,
   Handle,
@@ -17,8 +18,8 @@ import ReactFlow, {
   applyNodeChanges,
   type NodeChange,
   useReactFlow,
-} from "reactflow";
-import "reactflow/dist/style.css";
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 import type { WorkflowFieldType, WorkflowStep, WorkflowStepBranch } from "@/lib/types";
 import { WORKFLOW_FIELD_TYPES } from "@/lib/types";
 import {
@@ -35,17 +36,19 @@ const ROW_HEIGHT = 30;
 const HEADER_HEIGHT = 56;
 const DEFAULT_OPTION_ID = "__default__";
 
-interface StepNodeData {
+interface StepNodeData extends Record<string, unknown> {
   step: WorkflowStep;
   onSelect: (id: string) => void;
   selected: boolean;
 }
 
+type StepFlowNode = Node<StepNodeData, "stepNode">;
+
 function fieldTypeLabel(t: WorkflowFieldType) {
   return WORKFLOW_FIELD_TYPES.find((f) => f.value === t)?.label ?? t;
 }
 
-function StepNode({ data }: NodeProps<StepNodeData>) {
+function StepNode({ data }: NodeProps<StepFlowNode>) {
   const { step } = data;
   const isChoice = step.field_type === "single_choice" || step.field_type === "combobox";
   const rows: { id: string; label: string }[] = isChoice
@@ -116,7 +119,7 @@ function StepNode({ data }: NodeProps<StepNodeData>) {
 
 const nodeTypes = { stepNode: StepNode };
 
-function stepToNode(step: WorkflowStep, onSelect: (id: string) => void, selectedId: string | null): Node<StepNodeData> {
+function stepToNode(step: WorkflowStep, onSelect: (id: string) => void, selectedId: string | null): StepFlowNode {
   return {
     id: step.id,
     type: "stepNode",
