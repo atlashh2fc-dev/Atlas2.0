@@ -35,6 +35,16 @@ import {
 const ROW_HEIGHT = 30;
 const HEADER_HEIGHT = 56;
 const DEFAULT_OPTION_ID = "__default__";
+const NODE_WIDTH = 256;
+
+// Cantidad de filas de "respuesta" que dibuja cada tarjeta de paso, segun su
+// tipo de campo. Se usa tanto para pintar las filas como para calcular el
+// alto exacto del nodo (ver comentario en stepToNode mas abajo).
+function stepRowCount(step: WorkflowStep) {
+  const isChoice = step.field_type === "single_choice" || step.field_type === "combobox";
+  if (isChoice) return step.options.length + 1;
+  return 1;
+}
 
 interface StepNodeData extends Record<string, unknown> {
   step: WorkflowStep;
@@ -120,12 +130,27 @@ function StepNode({ data }: NodeProps<StepFlowNode>) {
 const nodeTypes = { stepNode: StepNode };
 
 function stepToNode(step: WorkflowStep, onSelect: (id: string) => void, selectedId: string | null): StepFlowNode {
+  // @xyflow/react solo deja de poner `visibility: hidden` en un nodo cuando
+  // sabe sus dimensiones (node.measured / node.width / node.initialWidth).
+  // Normalmente las averigua con un ResizeObserver despues del primer
+  // render, pero en este entorno (Next 16 + Turbopack + React 19) ese
+  // ResizeObserver nunca llega a disparar su callback, asi que los nodos
+  // quedaban invisibles para siempre aunque el DOM ya tuviera el tamano
+  // correcto. Como conocemos el tamano exacto de cada tarjeta de antemano
+  // (ancho fijo w-64 + alto = header + filas), lo declaramos explicitamente
+  // para que React Flow nunca dependa de esa medicion en tiempo de
+  // ejecucion.
+  const height = HEADER_HEIGHT + stepRowCount(step) * ROW_HEIGHT;
   return {
     id: step.id,
     type: "stepNode",
     position: { x: step.pos_x, y: step.pos_y },
     data: { step, onSelect, selected: step.id === selectedId },
     draggable: true,
+    width: NODE_WIDTH,
+    height,
+    initialWidth: NODE_WIDTH,
+    initialHeight: height,
   };
 }
 
