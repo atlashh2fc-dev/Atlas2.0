@@ -17,8 +17,8 @@ import {
   applyEdgeChanges,
   applyNodeChanges,
   type NodeChange,
+  type NodeHandle,
   useReactFlow,
-  useUpdateNodeInternals,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import type { WorkflowFieldType, WorkflowStep, WorkflowStepBranch } from "@/lib/types";
@@ -37,14 +37,25 @@ const ROW_HEIGHT = 30;
 const HEADER_HEIGHT = 56;
 const DEFAULT_OPTION_ID = "__default__";
 const NODE_WIDTH = 256;
+const HANDLE_SIZE = 12;
 
-// Cantidad de filas de "respuesta" que dibuja cada tarjeta de paso, segun su
-// tipo de campo. Se usa tanto para pintar las filas como para calcular el
-// alto exacto del nodo (ver comentario en stepToNode mas abajo).
-function stepRowCount(step: WorkflowStep) {
+// Filas de "respuesta" que dibuja cada tarjeta de paso, segun su tipo de
+// campo. Es la unica fuente de verdad para las filas: tanto StepNode (para
+// pintarlas) como buildHandles/stepToNode (para calcular alto y la posicion
+// exacta de cada Handle) parten de esta misma lista, para que nunca queden
+// desincronizadas.
+function stepRows(step: WorkflowStep): { id: string; label: string }[] {
   const isChoice = step.field_type === "single_choice" || step.field_type === "combobox";
-  if (isChoice) return step.options.length + 1;
-  return 1;
+  if (isChoice) {
+    return [
+      ...step.options.map((o) => ({ id: `opt::${o}`, label: o })),
+      { id: DEFAULT_OPTION_ID, label: "Cualquier otra respuesta" },
+    ];
+  }
+  if (step.field_type === "multi_select") {
+    return [{ id: DEFAULT_OPTION_ID, label: "Continuar (selección múltiple)" }];
+  }
+  return [{ id: DEFAULT_OPTION_ID, label: "Continuar" }];
 }
 
 interface StepNodeData extends Record<string, unknown> {
@@ -61,15 +72,7 @@ function fieldTypeLabel(t: WorkflowFieldType) {
 
 function StepNode({ data }: NodeProps<StepFlowNode>) {
   const { step } = data;
-  const isChoice = step.field_type === "single_choice" || step.field_type === "combobox";
-  const rows: { id: string; label: string }[] = isChoice
-    ? [
-        ...step.options.map((o) => ({ id: `opt::${o}`, label: o })),
-        { id: DEFAULT_OPTION_ID, label: "Cualquier otra respuesta" },
-      ]
-    : step.field_type === "multi_select"
-      ? [{ id: DEFAULT_OPTION_ID, label: "Continuar (selección múltiple)" }]
-      : [{ id: DEFAULT_OPTION_ID, label: "Continuar" }];
+  const rows = stepRows(step);
 
   return (
     <div
@@ -130,18 +133,45 @@ function StepNode({ data }: NodeProps<StepFlowNode>) {
 
 const nodeTypes = { stepNode: StepNode };
 
+// Tanto el tamano de cada tarjeta como la posicion exacta de cada Handle
+// los calcula normalmente React Flow despues del primer render, usando un
+// ResizeObserver por nodo y por handle. En este entorno (Next 16 +
+// Turbopack + React 19) ese ResizeObserver nunca llega a disparar su
+// callback, asi que tanto los nodos (antes) como las conexiones/edges
+// (ahora) quedaban invisibles para siempre aunque el DOM tuviera el
+// tamano y la posicion correctos. Como conocemos de antemano la geometria
+// exacta de cada tarjeta (ancho fijo + alto = header + filas, y cada
+// Handle en una posicion fija dentro de esa tarjeta), la declaramos
+// explicitamente en el nodo (`width`/`height` y ahora tambien `handles`)
+// para que React Flow nunca dependa de esa medicion en tiempo de
+// ejecucion, ni para pintar el nodo ni para trazar los edges.
+function buildHandles(step: WorkflowStep): NodeHandle[] {
+  const rows = stepRows(step);
+  const totalHeight = HEADER_HEIGHT + rows.length * ROW_HEIGHT;
+  return [
+    {
+      id: "in",
+      type: "target",
+      position: Position.Left,
+      x: 0,
+      y: totalHeight / 2 - HANDLE_SIZE / 2,
+      width: HANDLE_SIZE,
+      height: HANDLE_SIZE,
+    },
+    ...rows.map((row, i) => ({
+      id: row.id,
+      type: "source" as const,
+      position: Position.Right,
+      x: NODE_WIDTH,
+      y: HEADER_HEIGHT + i * ROW_HEIGHT + ROW_HEIGHT / 2 - HANDLE_SIZE / 2,
+      width: HANDLE_SIZE,
+      height: HANDLE_SIZE,
+    })),
+  ];
+}
+
 function stepToNode(step: WorkflowStep, onSelect: (id: string) => void, selectedId: string | null): StepFlowNode {
-  // @xyflow/react solo deja de poner `visibility: hidden` en un nodo cuando
-  // sabe sus dimensiones (node.measured / node.width / node.initialWidth).
-  // Normalmente las averigua con un ResizeObserver despues del primer
-  // render, pero en este entorno (Next 16 + Turbopack + React 19) ese
-  // ResizeObserver nunca llega a disparar su callback, asi que los nodos
-  // quedaban invisibles para siempre aunque el DOM ya tuviera el tamano
-  // correcto. Como conocemos el tamano exacto de cada tarjeta de antemano
-  // (ancho fijo w-64 + alto = header + filas), lo declaramos explicitamente
-  // para que React Flow nunca dependa de esa medicion en tiempo de
-  // ejecucion.
-  const height = HEADER_HEIGHT + stepRowCount(step) * ROW_HEIGHT;
+  const height = HEADER_HEIGHT + stepRows(step).length * ROW_HEIGHT;
   return {
     id: step.id,
     type: "stepNode",
@@ -152,6 +182,7 @@ function stepToNode(step: WorkflowStep, onSelect: (id: string) => void, selected
     height,
     initialWidth: NODE_WIDTH,
     initialHeight: height,
+    handles: buildHandles(step),
   };
 }
 
@@ -201,7 +232,6 @@ function WorkflowCanvasInner({
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const { setCenter, fitView } = useReactFlow();
-  const updateNodeInternals = useUpdateNodeInternals();
 
   const onSelect = useCallback((id: string) => setSelectedId(id), []);
 
@@ -221,23 +251,6 @@ function WorkflowCanvasInner({
     });
     return () => cancelAnimationFrame(id);
   }, [steps.length, fitView]);
-
-  // Igual que con el alto/ancho del nodo: React Flow normalmente mide la
-  // posicion exacta de cada <Handle> con el mismo ResizeObserver que en
-  // este entorno nunca dispara su callback. Sin esas mediciones
-  // (`handleBounds`) la libreria no puede calcular por donde pasa cada
-  // conexion y descarta los edges en silencio, aunque los datos de la
-  // rama existan en la base. `useUpdateNodeInternals` mide la posicion
-  // real de los handles directamente del DOM (getBoundingClientRect),
-  // sin depender del observer, asi que lo disparamos a mano cada vez que
-  // cambian los pasos para que las conexiones se dibujen.
-  useEffect(() => {
-    if (steps.length === 0) return;
-    const id = requestAnimationFrame(() => {
-      updateNodeInternals(steps.map((s) => s.id));
-    });
-    return () => cancelAnimationFrame(id);
-  }, [steps, updateNodeInternals]);
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
     setSteps((prev) => {
