@@ -18,6 +18,7 @@ import {
   applyNodeChanges,
   type NodeChange,
   useReactFlow,
+  useUpdateNodeInternals,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import type { WorkflowFieldType, WorkflowStep, WorkflowStepBranch } from "@/lib/types";
@@ -200,6 +201,7 @@ function WorkflowCanvasInner({
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const { setCenter, fitView } = useReactFlow();
+  const updateNodeInternals = useUpdateNodeInternals();
 
   const onSelect = useCallback((id: string) => setSelectedId(id), []);
 
@@ -219,6 +221,23 @@ function WorkflowCanvasInner({
     });
     return () => cancelAnimationFrame(id);
   }, [steps.length, fitView]);
+
+  // Igual que con el alto/ancho del nodo: React Flow normalmente mide la
+  // posicion exacta de cada <Handle> con el mismo ResizeObserver que en
+  // este entorno nunca dispara su callback. Sin esas mediciones
+  // (`handleBounds`) la libreria no puede calcular por donde pasa cada
+  // conexion y descarta los edges en silencio, aunque los datos de la
+  // rama existan en la base. `useUpdateNodeInternals` mide la posicion
+  // real de los handles directamente del DOM (getBoundingClientRect),
+  // sin depender del observer, asi que lo disparamos a mano cada vez que
+  // cambian los pasos para que las conexiones se dibujen.
+  useEffect(() => {
+    if (steps.length === 0) return;
+    const id = requestAnimationFrame(() => {
+      updateNodeInternals(steps.map((s) => s.id));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [steps, updateNodeInternals]);
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
     setSteps((prev) => {
