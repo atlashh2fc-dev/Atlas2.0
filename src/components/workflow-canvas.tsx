@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import ReactFlow, {
   Background,
   Controls,
@@ -171,7 +171,7 @@ function WorkflowCanvasInner({
   );
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const { setCenter } = useReactFlow();
+  const { setCenter, fitView } = useReactFlow();
 
   const onSelect = useCallback((id: string) => setSelectedId(id), []);
 
@@ -179,6 +179,18 @@ function WorkflowCanvasInner({
     () => steps.map((s) => stepToNode(s, onSelect, selectedId)),
     [steps, selectedId, onSelect]
   );
+
+  // El prop declarativo `fitView` solo corre una vez al montar y puede
+  // ejecutarse antes de que los nodos terminen de medirse (quedando la
+  // vista vacía o con un zoom inválido). Forzamos el ajuste de forma
+  // imperativa cada vez que cambia la cantidad de pasos.
+  useEffect(() => {
+    if (steps.length === 0) return;
+    const id = requestAnimationFrame(() => {
+      fitView({ padding: 0.2, duration: 300 });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [steps.length, fitView]);
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
     setSteps((prev) => {
@@ -261,6 +273,7 @@ function WorkflowCanvasInner({
   return (
     <div className="relative h-[70vh] overflow-hidden rounded-xl border border-border bg-background">
       <ReactFlow
+        style={{ width: "100%", height: "100%" }}
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
@@ -269,7 +282,8 @@ function WorkflowCanvasInner({
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onPaneClick={() => setSelectedId(null)}
-        fitView
+        minZoom={0.1}
+        maxZoom={2}
         proOptions={{ hideAttribution: true }}
       >
         <Background gap={20} className="!bg-background" />
