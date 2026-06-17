@@ -1,8 +1,46 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 import type { AppRole } from "@/lib/types";
+
+export async function createUserAccount(formData: FormData) {
+  const fullName = (formData.get("full_name") as string)?.trim();
+  const email = (formData.get("email") as string)?.trim().toLowerCase();
+  const password = formData.get("password") as string;
+  const role = formData.get("role") as AppRole;
+  const teamId = (formData.get("team_id") as string) || null;
+
+  if (!fullName || !email || !password) {
+    throw new Error("Nombre, correo y contraseña son obligatorios.");
+  }
+  if (password.length < 6) {
+    throw new Error("La contraseña debe tener al menos 6 caracteres.");
+  }
+
+  const admin = createAdminClient();
+  const { data, error } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: { full_name: fullName, role },
+  });
+
+  if (error) throw new Error(error.message);
+
+  // El trigger on_auth_user_created crea el perfil con full_name/role desde
+  // user_metadata. Si se especificó equipo, lo asignamos aquí.
+  if (teamId && data.user) {
+    const { error: teamError } = await admin
+      .from("profiles")
+      .update({ team_id: teamId })
+      .eq("id", data.user.id);
+    if (teamError) throw new Error(teamError.message);
+  }
+
+  revalidatePath("/dashboard/admin/usuarios");
+}
 
 export async function updateUserRole(formData: FormData) {
   const userId = formData.get("user_id") as string;

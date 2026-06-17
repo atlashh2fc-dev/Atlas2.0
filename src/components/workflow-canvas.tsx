@@ -87,6 +87,12 @@ function StepNode({ data }: NodeProps<StepFlowNode>) {
         id="in"
         className="!h-3 !w-3 !border-2 !border-primary !bg-surface"
       />
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="out"
+        className="!h-3 !w-3 !border-2 !border-primary !bg-surface"
+      />
 
       <div className="border-b border-border px-3 py-2.5" style={{ height: HEADER_HEIGHT }}>
         <div className="flex items-center gap-1.5">
@@ -108,7 +114,7 @@ function StepNode({ data }: NodeProps<StepFlowNode>) {
       </div>
 
       <div className="py-1">
-        {rows.map((row, i) => (
+        {rows.map((row) => (
           <div
             key={row.id}
             className="relative flex items-center px-3 text-xs text-foreground"
@@ -117,13 +123,6 @@ function StepNode({ data }: NodeProps<StepFlowNode>) {
             <span className={`truncate ${row.id === DEFAULT_OPTION_ID ? "italic text-muted-foreground" : ""}`}>
               {row.label}
             </span>
-            <Handle
-              type="source"
-              position={Position.Right}
-              id={row.id}
-              style={{ top: HEADER_HEIGHT + i * ROW_HEIGHT + ROW_HEIGHT / 2 }}
-              className="!h-3 !w-3 !border-2 !border-primary !bg-surface"
-            />
           </div>
         ))}
       </div>
@@ -158,15 +157,15 @@ function buildHandles(step: WorkflowStep): NodeHandle[] {
       width: HANDLE_SIZE,
       height: HANDLE_SIZE,
     },
-    ...rows.map((row, i) => ({
-      id: row.id,
-      type: "source" as const,
+    {
+      id: "out",
+      type: "source",
       position: Position.Right,
       x: NODE_WIDTH,
-      y: HEADER_HEIGHT + i * ROW_HEIGHT + ROW_HEIGHT / 2 - HANDLE_SIZE / 2,
+      y: totalHeight / 2 - HANDLE_SIZE / 2,
       width: HANDLE_SIZE,
       height: HANDLE_SIZE,
-    })),
+    },
   ];
 }
 
@@ -191,7 +190,7 @@ function branchToEdge(b: WorkflowStepBranch): Edge | null {
   return {
     id: b.id,
     source: b.from_step_id,
-    sourceHandle: b.from_option === null ? DEFAULT_OPTION_ID : `opt::${b.from_option}`,
+    sourceHandle: "out",
     target: b.to_step_id,
     targetHandle: "in",
     label: b.from_option ?? "Por defecto",
@@ -199,7 +198,7 @@ function branchToEdge(b: WorkflowStepBranch): Edge | null {
     style: { strokeWidth: 2 },
     labelBgPadding: [4, 2],
     labelBgBorderRadius: 4,
-    data: { branchId: b.id },
+    data: { branchId: b.id, fromOption: b.from_option },
   };
 }
 
@@ -282,28 +281,59 @@ function WorkflowCanvasInner({
     });
   }, [workflowId]);
 
-  const onConnect = useCallback(
-    (connection: Connection) => {
-      if (!connection.source || !connection.target || !connection.sourceHandle) return;
-      const fromOption = connection.sourceHandle === DEFAULT_OPTION_ID
-        ? null
-        : connection.sourceHandle.replace(/^opt::/, "");
+  const [pendingConnection, setPendingConnection] = useState<{
+    source: string;
+    target: string;
+    rows: { id: string; label: string }[];
+  } | null>(null);
 
+  const commitConnection = useCallback(
+    (source: string, target: string, fromOption: string | null) => {
+      // Reemplaza cualquier rama existente que salga de este paso con la
+      // misma opcion (la identidad de la opcion ahora vive en data.fromOption,
+      // ya que el handle visual "out" es compartido por todas las opciones).
       setEdges((prev) =>
-        prev.filter((e) => !(e.source === connection.source && e.sourceHandle === connection.sourceHandle))
+        prev.filter(
+          (e) =>
+            !(
+              e.source === source &&
+              ((e.data as { fromOption?: string | null } | undefined)?.fromOption ?? null) === fromOption
+            )
+        )
       );
 
       upsertBranch({
         workflowId,
-        fromStepId: connection.source,
+        fromStepId: source,
         fromOption,
-        toStepId: connection.target,
+        toStepId: target,
       }).then((branch) => {
         const edge = branchToEdge(branch);
         if (edge) setEdges((prev) => [...prev.filter((e) => e.id !== edge.id), edge]);
       });
     },
     [workflowId]
+  );
+
+  const onConnect = useCallback(
+    (connection: Connection) => {
+      if (!connection.source || !connection.target) return;
+      const sourceStep = steps.find((s) => s.id === connection.source);
+      if (!sourceStep) return;
+      const rows = stepRows(sourceStep);
+
+      if (rows.length <= 1) {
+        const onlyRow = rows[0];
+        const fromOption = !onlyRow || onlyRow.id === DEFAULT_OPTION_ID ? null : onlyRow.id.replace(/^opt::/, "");
+        commitConnection(connection.source, connection.target, fromOption);
+        return;
+      }
+
+      // Paso con varias opciones: pedimos al usuario cual de ellas representa
+      // esta conexion antes de guardar nada.
+      setPendingConnection({ source: connection.source, target: connection.target, rows });
+    },
+    [steps, commitConnection]
   );
 
   const addStep = useCallback(async () => {
@@ -367,6 +397,39 @@ function WorkflowCanvasInner({
           Arrastra desde el punto junto a cada respuesta hasta el siguiente paso para armar el camino.
         </span>
       </div>
+
+      {pendingConnection && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/30">
+          <div className="w-72 rounded-xl border border-border bg-surface p-4 shadow-xl">
+            <p className="mb-3 text-sm font-semibold text-foreground">
+              ¿Qué respuesta lleva a este paso?
+            </p>
+            <div className="space-y-1.5">
+              {pendingConnection.rows.map((row) => (
+                <button
+                  key={row.id}
+                  onClick={() => {
+                    const fromOption = row.id === DEFAULT_OPTION_ID ? null : row.id.replace(/^opt::/, "");
+                    commitConnection(pendingConnection.source, pendingConnection.target, fromOption);
+                    setPendingConnection(null);
+                  }}
+                  className={`w-full rounded-lg border border-border px-3 py-2 text-left text-sm hover:bg-surface-muted ${
+                    row.id === DEFAULT_OPTION_ID ? "italic text-muted-foreground" : "text-foreground"
+                  }`}
+                >
+                  {row.label}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setPendingConnection(null)}
+              className="mt-3 w-full rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-surface-muted"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
 
       {errorMsg && (
         <div className="absolute left-3 top-16 z-10 max-w-md rounded-lg bg-danger-bg px-3 py-2 text-xs font-medium text-danger shadow">

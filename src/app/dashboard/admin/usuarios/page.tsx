@@ -1,6 +1,6 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { updateUserRole, toggleUserActive, createTeam } from "@/app/actions/admin";
+import { updateUserRole, toggleUserActive, createTeam, createUserAccount } from "@/app/actions/admin";
 import type { AppRole } from "@/lib/types";
 
 const ROLES: AppRole[] = ["agente", "supervisor", "admin"];
@@ -21,9 +21,80 @@ export default async function UsersAdminPage() {
       <div>
         <h1 className="text-xl font-semibold text-foreground">Usuarios</h1>
         <p className="text-sm text-muted-foreground">
-          Gestiona roles y equipos. Para crear cuentas nuevas, invita al usuario desde
-          Supabase Auth — el perfil se crea automáticamente.
+          Gestiona roles, equipos y crea nuevas cuentas directamente desde aquí.
         </p>
+      </div>
+
+      <div className="rounded-xl border border-border bg-surface p-5">
+        <h2 className="mb-3 text-sm font-semibold text-foreground">Crear usuario</h2>
+        <form action={createUserAccount} className="flex flex-wrap items-end gap-2">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted-foreground">Nombre</label>
+            <input
+              type="text"
+              name="full_name"
+              required
+              placeholder="Nombre completo"
+              className="w-44 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted-foreground">Correo</label>
+            <input
+              type="email"
+              name="email"
+              required
+              placeholder="correo@ejemplo.com"
+              className="w-52 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted-foreground">Contraseña</label>
+            <input
+              type="text"
+              name="password"
+              required
+              minLength={6}
+              placeholder="Mínimo 6 caracteres"
+              className="w-40 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted-foreground">Rol</label>
+            <select
+              name="role"
+              defaultValue="agente"
+              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+            >
+              {ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted-foreground">Equipo</label>
+            <select
+              name="team_id"
+              defaultValue=""
+              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+            >
+              <option value="">Sin equipo</option>
+              {(teams ?? []).map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            type="submit"
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
+          >
+            Crear usuario
+          </button>
+        </form>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-border bg-surface">
