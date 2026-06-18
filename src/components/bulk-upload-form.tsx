@@ -121,6 +121,12 @@ export function BulkUploadForm({
           <code>phone</code>, <code>email</code>, <code>status</code>. Cada fila necesita RUT o
           teléfono.
         </p>
+        <p className="text-xs text-muted-foreground">
+          La carga es segura para archivos grandes (decenas de miles de filas) y evita duplicados
+          automáticamente: si dos filas comparten el mismo RUT (o el mismo teléfono cuando no hay
+          RUT) dentro de la misma campaña o bolsa sin campaña, solo se crea un lead. Esto aplica
+          tanto a duplicados dentro del propio archivo como contra leads ya cargados antes.
+        </p>
 
         <button
           type="submit"
@@ -140,13 +146,16 @@ export function BulkUploadForm({
       {result && (
         <div className="rounded-xl border border-border bg-surface p-5">
           <h3 className="mb-2 text-sm font-semibold text-foreground">Resultado de la carga</h3>
-          <p className="text-sm text-muted-foreground">
-            {result.inserted} de {result.totalRows} filas insertadas correctamente.
-          </p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Stat label="Filas en el archivo" value={result.totalRows} />
+            <Stat label="Insertadas" value={result.inserted} highlight />
+            <Stat label="Duplicadas (archivo)" value={result.duplicatesInFile} />
+            <Stat label="Duplicadas (ya existían)" value={result.duplicatesInDb} />
+          </div>
           {result.errors.length > 0 && (
             <div className="mt-3">
               <p className="mb-1 text-xs font-medium text-warning">
-                {result.errors.length} fila(s) con problemas:
+                {result.errors.length} fila(s) con detalle:
               </p>
               <ul className="max-h-48 space-y-1 overflow-y-auto text-xs text-muted-foreground">
                 {result.errors.map((e, idx) => (
@@ -160,6 +169,15 @@ export function BulkUploadForm({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function Stat({ label, value, highlight }: { label: string; value: number; highlight?: boolean }) {
+  return (
+    <div className={`rounded-lg border p-3 ${highlight ? "border-primary/40 bg-primary/5" : "border-border"}`}>
+      <p className="text-[11px] text-muted-foreground">{label}</p>
+      <p className="mt-0.5 text-lg font-semibold text-foreground">{value.toLocaleString("es-CL")}</p>
     </div>
   );
 }
