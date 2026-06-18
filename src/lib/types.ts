@@ -31,6 +31,14 @@ export interface Lead {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  workflow_id?: string | null;
+  tipificacion_actual: string | null;
+  observacion_actual: string | null;
+  next_action_at: string | null;
+  workflow_status: string | null;
+  assignment_status: string | null;
+  managed_at: string | null;
+  managed_by: string | null;
 }
 
 export interface Interaction {
@@ -119,6 +127,38 @@ export interface WorkflowCompliance {
   total_leads: number;
   compliant_leads: number;
   compliance_rate: number | null;
+}
+
+export interface Call {
+  id: string;
+  lead_id: string;
+  agent_id: string;
+  status: string | null;
+  outcome: string | null;
+  reason: string | null;
+  notes: string | null;
+  next_action_at: string | null;
+  next_action_window: string | null;
+  callback_owner_user_id: string | null;
+  equifax_products: string[] | null;
+  equifax_uf_amount: number | null;
+  equifax_recipient_email: string | null;
+  phone_status: string | null;
+  started_at: string;
+  ended_at: string | null;
+  discarded_reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CallEvent {
+  id: string;
+  call_id: string;
+  lead_id: string;
+  agent_id: string | null;
+  event_type: string;
+  payload: Record<string, unknown>;
+  created_at: string;
 }
 
 export const LEAD_STATUSES = [
