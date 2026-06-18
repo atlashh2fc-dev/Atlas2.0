@@ -1,14 +1,55 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
 import { createClient } from "@/lib/supabase/client";
-import { buildCandidates, chunk, CHUNK_SIZE, type BulkUploadResult } from "@/lib/leads-bulk-shared";
+import { buildCandidates, chunk, CHUNK_SIZE, normalizeHeader, type BulkUploadResult } from "@/lib/leads-bulk-shared";
 
 interface Option {
   id: string;
   name: string;
+}
+
+type FieldKey = "full_name" | "rut" | "phone" | "email" | "status";
+
+const FIELD_LABELS: Record<FieldKey, string> = {
+  full_name: "Nombre completo",
+  rut: "RUT",
+  phone: "Teléfono",
+  email: "Correo",
+  status: "Estado",
+};
+
+// Alias en español/variantes comunes para adivinar el mapeo automáticamente.
+// El usuario siempre puede corregirlo a mano antes de cargar.
+const FIELD_ALIASES: Record<FieldKey, string[]> = {
+  full_name: [
+    "full_name",
+    "nombre",
+    "nombre_completo",
+    "razon_social",
+    "razón_social",
+    "nombre_comercial",
+    "empresa",
+    "cliente",
+    "contacto",
+  ],
+  rut: ["rut", "rut_empresa", "run"],
+  phone: ["phone", "telefono", "teléfono", "telefono_1", "fono", "celular", "movil", "móvil"],
+  email: ["email", "correo", "correo_electronico", "correo_electrónico", "mail", "e-mail", "e_mail"],
+  status: ["status", "estado", "estado_comercial"],
+};
+
+function guessMapping(headers: string[]): Record<FieldKey, string> {
+  const normalized = headers.map((h) => ({ raw: h, norm: normalizeHeader(h) }));
+  const mapping = { full_name: "", rut: "", phone: "", email: "", status: "" } as Record<FieldKey, string>;
+  (Object.keys(FIELD_ALIASES) as FieldKey[]).forEach((field) => {
+    const aliases = FIELD_ALIASES[field];
+    const match = normalized.find((h) => aliases.includes(h.norm));
+    if (match) mapping[field] = match.raw;
+  });
+  return mapping;
 }
 
 export function BulkUploadForm({
@@ -24,30 +65,74 @@ export function BulkUploadForm({
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
+  const [parsing, setParsing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressLabel, setProgressLabel] = useState("");
   const [result, setResult] = useState<BulkUploadResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const formRef = useRef<HTMLFormElement>(null);
+
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [rows, setRows] = useState<Record<string, unknown>[] | null>(null);
+  const [headers, setHeaders] = useState<string[] | null>(null);
+  const [mapping, setMapping] = useState<Record<FieldKey, string>>({
+    full_name: "",
+    rut: "",
+    phone: "",
+    email: "",
+    status: "",
+  });
+
+  const [teamId, setTeamId] = useState("");
+  const [campaignId, setCampaignId] = useState(defaultCampaignId ?? "");
+  const [workflowId, setWorkflowId] = useState("");
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    setResult(null);
+    setError(null);
+    setRows(null);
+    setHeaders(null);
+    setFileName(null);
+    if (!file) return;
+
+    setParsing(true);
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: "array" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const parsedRows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+
+      if (parsedRows.length === 0) {
+        setError("El archivo no tiene filas de datos.");
+        return;
+      }
+
+      const detectedHeaders = Object.keys(parsedRows[0]);
+      setRows(parsedRows);
+      setHeaders(detectedHeaders);
+      setFileName(file.name);
+      setMapping(guessMapping(detectedHeaders));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo leer el archivo.");
+    } finally {
+      setParsing(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = formRef.current;
-    if (!form) return;
-
-    const file = (form.elements.namedItem("file") as HTMLInputElement | null)?.files?.[0];
-    if (!file) {
+    if (!rows || !headers) {
       setError("Selecciona un archivo CSV o Excel.");
       return;
     }
-
-    const teamId = (form.elements.namedItem("team_id") as HTMLSelectElement | null)?.value || null;
-    const campaignId = (form.elements.namedItem("campaign_id") as HTMLSelectElement | null)?.value || null;
-    let workflowId = (form.elements.namedItem("workflow_id") as HTMLSelectElement | null)?.value || null;
+    if (!mapping.full_name) {
+      setError("Indica qué columna corresponde al nombre completo.");
+      return;
+    }
 
     setPending(true);
     setProgress(0);
-    setProgressLabel("Leyendo el archivo...");
+    setProgressLabel("Preparando datos...");
     setError(null);
     setResult(null);
 
@@ -58,6 +143,7 @@ export function BulkUploadForm({
       } = await supabase.auth.getUser();
       if (!user) throw new Error("No autenticado. Vuelve a iniciar sesión.");
 
+      let effectiveWorkflowId = workflowId || null;
       // La campaña, si hay, manda sobre el flujo elegido manualmente.
       if (campaignId) {
         const { data: campaign } = await supabase
@@ -65,21 +151,24 @@ export function BulkUploadForm({
           .select("workflow_id")
           .eq("id", campaignId)
           .single();
-        if (campaign?.workflow_id) workflowId = campaign.workflow_id;
+        if (campaign?.workflow_id) effectiveWorkflowId = campaign.workflow_id;
       }
 
-      // El archivo se parsea en el navegador: nunca se sube como blob a
-      // ninguna función serverless, así que no hay límite de tamaño de body
-      // (Vercel limita esas funciones a ~4.5MB) que pueda chocar acá.
-      const buffer = await file.arrayBuffer();
-      const workbook = XLSX.read(buffer, { type: "array" });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+      // Remapeamos cada fila a las columnas internas (full_name/rut/phone/email/status)
+      // según el mapeo que eligió el usuario, sin importar cómo se llamaban
+      // realmente las columnas en su archivo original.
+      const remappedRows: Record<string, unknown>[] = rows.map((row) => ({
+        full_name: mapping.full_name ? row[mapping.full_name] : "",
+        rut: mapping.rut ? row[mapping.rut] : "",
+        phone: mapping.phone ? row[mapping.phone] : "",
+        email: mapping.email ? row[mapping.email] : "",
+        status: mapping.status ? row[mapping.status] : "",
+      }));
 
-      const { candidates, result: partialResult } = buildCandidates(rows, {
-        teamId,
-        workflowId,
-        campaignId,
+      const { candidates, result: partialResult } = buildCandidates(remappedRows, {
+        teamId: teamId || null,
+        workflowId: effectiveWorkflowId,
+        campaignId: campaignId || null,
         userId: user.id,
       });
 
@@ -122,7 +211,10 @@ export function BulkUploadForm({
       partialResult.inserted = totalInserted;
       setResult(partialResult);
       if (partialResult.errors.length === 0) {
-        form.reset();
+        setRows(null);
+        setHeaders(null);
+        setFileName(null);
+        setMapping({ full_name: "", rut: "", phone: "", email: "", status: "" });
       }
       router.refresh();
     } catch (err) {
@@ -132,9 +224,11 @@ export function BulkUploadForm({
     }
   }
 
+  const busy = pending || parsing;
+
   return (
     <div className="space-y-4">
-      <form ref={formRef} onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-border bg-surface p-5">
+      <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-border bg-surface p-5">
         <div>
           <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
             Archivo (.csv, .xlsx)
@@ -143,20 +237,56 @@ export function BulkUploadForm({
             type="file"
             name="file"
             accept=".csv,.xlsx,.xls"
-            required
-            disabled={pending}
+            disabled={busy}
+            onChange={handleFileChange}
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-60"
           />
+          {parsing && <p className="mt-1 text-xs text-muted-foreground">Leyendo encabezados...</p>}
         </div>
+
+        {headers && rows && (
+          <div className="rounded-lg border border-border bg-background p-4">
+            <p className="mb-3 text-xs font-medium text-foreground">
+              {fileName}: {rows.length.toLocaleString("es-CL")} fila(s), {headers.length} columna(s)
+              detectada(s). Indica qué columna de tu archivo corresponde a cada dato:
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {(Object.keys(FIELD_LABELS) as FieldKey[]).map((field) => (
+                <div key={field}>
+                  <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                    {FIELD_LABELS[field]}
+                    {field === "full_name" ? " (obligatorio)" : " (opcional)"}
+                  </label>
+                  <select
+                    value={mapping[field]}
+                    disabled={busy}
+                    onChange={(e) => setMapping((m) => ({ ...m, [field]: e.target.value }))}
+                    className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground disabled:opacity-60"
+                  >
+                    <option value="">(ninguna columna)</option>
+                    {headers.map((h) => (
+                      <option key={h} value={h}>
+                        {h}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">
+              Cada fila necesita al menos RUT o teléfono para poder detectar duplicados.
+            </p>
+          </div>
+        )}
 
         <div>
           <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
             Campaña (opcional)
           </label>
           <select
-            name="campaign_id"
-            defaultValue={defaultCampaignId ?? ""}
-            disabled={pending}
+            value={campaignId}
+            onChange={(e) => setCampaignId(e.target.value)}
+            disabled={busy}
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-60"
           >
             <option value="">Sin campaña</option>
@@ -178,9 +308,9 @@ export function BulkUploadForm({
               Equipo destino (opcional)
             </label>
             <select
-              name="team_id"
-              defaultValue=""
-              disabled={pending}
+              value={teamId}
+              onChange={(e) => setTeamId(e.target.value)}
+              disabled={busy}
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-60"
             >
               <option value="">Sin equipo</option>
@@ -196,9 +326,9 @@ export function BulkUploadForm({
               Flujo de gestión (opcional)
             </label>
             <select
-              name="workflow_id"
-              defaultValue=""
-              disabled={pending}
+              value={workflowId}
+              onChange={(e) => setWorkflowId(e.target.value)}
+              disabled={busy}
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-60"
             >
               <option value="">Sin flujo</option>
@@ -212,9 +342,8 @@ export function BulkUploadForm({
         </div>
 
         <p className="text-xs text-muted-foreground">
-          Columnas esperadas: <code>full_name</code> (obligatorio), <code>rut</code>,{" "}
-          <code>phone</code>, <code>email</code>, <code>status</code>. Cada fila necesita RUT o
-          teléfono.
+          Funciona con cualquier archivo: elige el Excel/CSV y arriba indicas qué columna de tu
+          archivo corresponde a cada dato, sin tener que renombrar nada.
         </p>
         <p className="text-xs text-muted-foreground">
           La carga es segura para archivos grandes (decenas de miles de filas) y evita duplicados
@@ -239,7 +368,7 @@ export function BulkUploadForm({
 
         <button
           type="submit"
-          disabled={pending}
+          disabled={busy || !rows || !mapping.full_name}
           className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
         >
           {pending ? "Procesando..." : "Cargar leads"}
