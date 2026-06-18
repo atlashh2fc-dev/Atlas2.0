@@ -12,6 +12,7 @@ import {
   Workflow,
   Upload,
   PhoneCall,
+  Megaphone,
 } from "lucide-react";
 
 interface NavItem {
@@ -30,6 +31,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard/reportes", label: "Reportes", icon: BarChart3, roles: ["supervisor", "admin"] },
   { href: "/dashboard/admin/usuarios", label: "Usuarios", icon: ShieldCheck, roles: ["admin"] },
   { href: "/dashboard/admin/flujos", label: "Flujos", icon: Workflow, roles: ["admin"] },
+  { href: "/dashboard/admin/campanas", label: "Campañas", icon: Megaphone, roles: ["admin"] },
 ];
 
 export function Sidebar({ role }: { role: AppRole }) {

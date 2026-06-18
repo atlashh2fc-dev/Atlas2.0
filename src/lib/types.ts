@@ -39,6 +39,7 @@ export interface Lead {
   assignment_status: string | null;
   managed_at: string | null;
   managed_by: string | null;
+  campaign_id: string | null;
 }
 
 export interface Interaction {
@@ -159,6 +160,36 @@ export interface CallEvent {
   event_type: string;
   payload: Record<string, unknown>;
   created_at: string;
+}
+
+export interface Campaign {
+  id: string;
+  name: string;
+  description: string | null;
+  workflow_id: string | null;
+  is_active: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CampaignAgent {
+  id: string;
+  campaign_id: string;
+  profile_id: string;
+  assigned_at: string;
+}
+
+export interface CampaignPerformance {
+  campaign_id: string;
+  campaign_name: string;
+  is_active: boolean;
+  workflow_id: string | null;
+  workflow_name: string | null;
+  total_leads: number;
+  managed_leads: number;
+  conversions: number;
+  managed_rate: number | null;
 }
 
 export const LEAD_STATUSES = [

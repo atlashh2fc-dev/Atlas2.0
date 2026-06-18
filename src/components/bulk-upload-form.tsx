@@ -11,9 +11,13 @@ interface Option {
 export function BulkUploadForm({
   teams,
   workflows,
+  campaigns,
+  defaultCampaignId,
 }: {
   teams: Option[];
   workflows: Option[];
+  campaigns: Option[];
+  defaultCampaignId?: string;
 }) {
   const [pending, setPending] = useState(false);
   const [result, setResult] = useState<BulkUploadResult | null>(null);
@@ -51,6 +55,28 @@ export function BulkUploadForm({
             required
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
           />
+        </div>
+
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+            Campaña (opcional)
+          </label>
+          <select
+            name="campaign_id"
+            defaultValue={defaultCampaignId ?? ""}
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+          >
+            <option value="">Sin campaña</option>
+            {campaigns.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Si eliges una campaña, estos leads quedan en su BBDD y heredan su flujo productivo
+            (anula el flujo elegido abajo).
+          </p>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">

@@ -1,6 +1,6 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import type { AgentPerformance, WorkflowCompliance } from "@/lib/types";
+import type { AgentPerformance, WorkflowCompliance, CampaignPerformance } from "@/lib/types";
 
 function formatDuration(seconds: number | null) {
   if (seconds === null || seconds === undefined) return "—";
@@ -24,8 +24,14 @@ export default async function ReportesPage() {
     .select("*")
     .order("workflow_name");
 
+  const { data: campaignPerf } = await supabase
+    .from("campaign_performance")
+    .select("*")
+    .order("campaign_name");
+
   const agents = (agentPerf ?? []) as AgentPerformance[];
   const workflows = (workflowCompliance ?? []) as WorkflowCompliance[];
+  const campaigns = (campaignPerf ?? []) as CampaignPerformance[];
 
   const totals = agents.reduce(
     (acc, a) => {
@@ -127,6 +133,44 @@ export default async function ReportesPage() {
                   <td className="px-5 py-3 text-muted-foreground">{w.compliant_leads}</td>
                   <td className="px-5 py-3 text-muted-foreground">
                     {w.compliance_rate !== null ? `${w.compliance_rate}%` : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div>
+        <h2 className="mb-3 text-sm font-semibold text-foreground">Rendimiento por campaña</h2>
+        <div className="overflow-hidden rounded-xl border border-border bg-surface">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                <th className="px-5 py-3 font-medium">Campaña</th>
+                <th className="px-5 py-3 font-medium">Flujo productivo</th>
+                <th className="px-5 py-3 font-medium">Leads (BBDD)</th>
+                <th className="px-5 py-3 font-medium">Gestionados</th>
+                <th className="px-5 py-3 font-medium">Conversiones</th>
+                <th className="px-5 py-3 font-medium">% gestión</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {campaigns.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-5 py-6 text-center text-muted-foreground">
+                    No hay campañas configuradas.
+                  </td>
+                </tr>
+              )}
+              {campaigns.map((c) => (
+                <tr key={c.campaign_id}>
+                  <td className="px-5 py-3 font-medium text-foreground">{c.campaign_name}</td>
+                  <td className="px-5 py-3 text-muted-foreground">{c.workflow_name ?? "—"}</td>
+                  <td className="px-5 py-3 text-muted-foreground">{c.total_leads}</td>
+                  <td className="px-5 py-3 text-muted-foreground">{c.managed_leads}</td>
+                  <td className="px-5 py-3 text-muted-foreground">{c.conversions}</td>
+                  <td className="px-5 py-3 text-muted-foreground">
+                    {c.managed_rate !== null ? `${c.managed_rate}%` : "—"}
                   </td>
                 </tr>
               ))}

@@ -20,7 +20,8 @@ function normalizeHeader(h: string) {
 export async function uploadLeadsFile(formData: FormData): Promise<BulkUploadResult> {
   const file = formData.get("file") as File | null;
   const teamId = (formData.get("team_id") as string) || null;
-  const workflowId = (formData.get("workflow_id") as string) || null;
+  const campaignId = (formData.get("campaign_id") as string) || null;
+  let workflowId = (formData.get("workflow_id") as string) || null;
 
   if (!file || file.size === 0) {
     throw new Error("Selecciona un archivo CSV o Excel.");
@@ -34,6 +35,18 @@ export async function uploadLeadsFile(formData: FormData): Promise<BulkUploadRes
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("No autenticado");
+
+  // Si la BBDD se carga dentro de una campaña, el flujo productivo de esa
+  // campaña manda sobre cualquier flujo elegido manualmente: la campaña es
+  // la fuente de verdad de qué guion siguen sus leads.
+  if (campaignId) {
+    const { data: campaign } = await supabase
+      .from("campaigns")
+      .select("workflow_id")
+      .eq("id", campaignId)
+      .single();
+    if (campaign?.workflow_id) workflowId = campaign.workflow_id;
+  }
 
   const result: BulkUploadResult = { totalRows: rows.length, inserted: 0, errors: [] };
 
@@ -89,6 +102,7 @@ export async function uploadLeadsFile(formData: FormData): Promise<BulkUploadRes
       status,
       team_id: teamId,
       workflow_id: workflowId,
+      campaign_id: campaignId,
       created_by: user.id,
     });
   });
@@ -106,5 +120,6 @@ export async function uploadLeadsFile(formData: FormData): Promise<BulkUploadRes
   }
 
   revalidatePath("/dashboard/leads");
+  if (campaignId) revalidatePath(`/dashboard/admin/campanas/${campaignId}`);
   return result;
 }

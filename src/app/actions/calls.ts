@@ -52,9 +52,9 @@ export async function getOrCreateOpenCall(leadId: string): Promise<Call> {
 
 /**
  * Busca llamadas cerradas con la misma fecha/hora de agenda para el mismo
- * lead/contacto (mismo rut o teléfono) dentro de la misma "campaña". No
- * existe una tabla de campañas en el esquema actual, así que se usa
- * leads.team_id como proxy — ajustar si en el futuro se modela campaña.
+ * lead/contacto (mismo rut o teléfono) dentro de la misma campaña
+ * (leads.campaign_id). Si el lead no pertenece a ninguna campaña, se acota
+ * por team_id como respaldo (comportamiento histórico previo a campañas).
  */
 async function findAgendaConflict(params: {
   supabase: Awaited<ReturnType<typeof createClient>>;
@@ -66,14 +66,17 @@ async function findAgendaConflict(params: {
 
   const { data: lead, error: leadError } = await supabase
     .from("leads")
-    .select("id, rut, phone, team_id")
+    .select("id, rut, phone, team_id, campaign_id")
     .eq("id", leadId)
     .single();
   if (leadError) throw new Error(leadError.message);
 
   let relatedLeadIds = [leadId];
   if (lead.rut || lead.phone) {
-    let relatedQuery = supabase.from("leads").select("id").eq("team_id", lead.team_id);
+    let relatedQuery = supabase.from("leads").select("id");
+    relatedQuery = lead.campaign_id
+      ? relatedQuery.eq("campaign_id", lead.campaign_id)
+      : relatedQuery.eq("team_id", lead.team_id);
     const orFilters = [
       lead.rut ? `rut.eq.${lead.rut}` : null,
       lead.phone ? `phone.eq.${lead.phone}` : null,
