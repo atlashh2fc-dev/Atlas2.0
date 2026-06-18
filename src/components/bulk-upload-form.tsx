@@ -1,7 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
-import type { BulkUploadResult } from "@/app/actions/leads-bulk";
+import { useRouter } from "next/navigation";
+import * as XLSX from "xlsx";
+import { createClient } from "@/lib/supabase/client";
+import { buildCandidates, chunk, CHUNK_SIZE, type BulkUploadResult } from "@/lib/leads-bulk-shared";
 
 interface Option {
   id: string;
@@ -19,68 +22,114 @@ export function BulkUploadForm({
   campaigns: Option[];
   defaultCampaignId?: string;
 }) {
+  const router = useRouter();
   const [pending, setPending] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [progressLabel, setProgressLabel] = useState("");
   const [result, setResult] = useState<BulkUploadResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!formRef.current) return;
+    const form = formRef.current;
+    if (!form) return;
 
-    const file = (formRef.current.elements.namedItem("file") as HTMLInputElement | null)?.files?.[0];
+    const file = (form.elements.namedItem("file") as HTMLInputElement | null)?.files?.[0];
     if (!file) {
       setError("Selecciona un archivo CSV o Excel.");
       return;
     }
 
+    const teamId = (form.elements.namedItem("team_id") as HTMLSelectElement | null)?.value || null;
+    const campaignId = (form.elements.namedItem("campaign_id") as HTMLSelectElement | null)?.value || null;
+    let workflowId = (form.elements.namedItem("workflow_id") as HTMLSelectElement | null)?.value || null;
+
     setPending(true);
     setProgress(0);
+    setProgressLabel("Leyendo el archivo...");
     setError(null);
     setResult(null);
 
-    const formData = new FormData(formRef.current);
-    const xhr = new XMLHttpRequest();
+    try {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("No autenticado. Vuelve a iniciar sesión.");
 
-    xhr.upload.addEventListener("progress", (evt) => {
-      if (evt.lengthComputable) {
-        // % real de bytes ya enviados. El último tramo (procesar el archivo
-        // + insertar en la BBDD) puede tardar un poco más tras llegar al
-        // 100% de subida; por eso el texto avisa que sigue procesando.
-        setProgress(Math.round((evt.loaded / evt.total) * 100));
-      }
-    });
-
-    xhr.addEventListener("load", () => {
-      setPending(false);
-      let body: (BulkUploadResult & { error?: string }) | null = null;
-      try {
-        body = JSON.parse(xhr.responseText);
-      } catch {
-        // se maneja abajo como respuesta inesperada
+      // La campaña, si hay, manda sobre el flujo elegido manualmente.
+      if (campaignId) {
+        const { data: campaign } = await supabase
+          .from("campaigns")
+          .select("workflow_id")
+          .eq("id", campaignId)
+          .single();
+        if (campaign?.workflow_id) workflowId = campaign.workflow_id;
       }
 
-      if (xhr.status >= 200 && xhr.status < 300 && body && !body.error) {
-        setResult(body);
-        if (body.errors.length === 0) formRef.current?.reset();
-      } else {
-        setError(body?.error || `Error inesperado del servidor (HTTP ${xhr.status}).`);
+      // El archivo se parsea en el navegador: nunca se sube como blob a
+      // ninguna función serverless, así que no hay límite de tamaño de body
+      // (Vercel limita esas funciones a ~4.5MB) que pueda chocar acá.
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: "array" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+
+      const { candidates, result: partialResult } = buildCandidates(rows, {
+        teamId,
+        workflowId,
+        campaignId,
+        userId: user.id,
+      });
+
+      if (candidates.length === 0) {
+        setResult(partialResult);
+        return;
       }
-    });
 
-    xhr.addEventListener("error", () => {
+      const batches = chunk(candidates, CHUNK_SIZE);
+      let totalInserted = 0;
+
+      for (let i = 0; i < batches.length; i++) {
+        setProgressLabel(
+          batches.length > 1
+            ? `Insertando lote ${i + 1} de ${batches.length}...`
+            : "Insertando leads..."
+        );
+
+        const payload = batches[i].map((row) => {
+          const { full_name, rut, phone, email, status, team_id, workflow_id, campaign_id, created_by } = row;
+          return { full_name, rut, phone, email, status, team_id, workflow_id, campaign_id, created_by };
+        });
+
+        const { data, error: rpcError } = await supabase.rpc("bulk_insert_leads", { payload });
+
+        if (rpcError) {
+          partialResult.errors.push({
+            row: 0,
+            message: `Error al insertar el lote ${i + 1} (${batches[i].length} filas): ${rpcError.message}`,
+          });
+        } else {
+          const insertedInBatch = (data as { inserted: number } | null)?.inserted ?? 0;
+          totalInserted += insertedInBatch;
+          partialResult.duplicatesInDb += batches[i].length - insertedInBatch;
+        }
+
+        setProgress(Math.round(((i + 1) / batches.length) * 100));
+      }
+
+      partialResult.inserted = totalInserted;
+      setResult(partialResult);
+      if (partialResult.errors.length === 0) {
+        form.reset();
+      }
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error inesperado al procesar el archivo.");
+    } finally {
       setPending(false);
-      setError("Error de red al subir el archivo. Verifica tu conexión e intenta de nuevo.");
-    });
-
-    xhr.addEventListener("abort", () => {
-      setPending(false);
-      setError("Carga cancelada.");
-    });
-
-    xhr.open("POST", "/api/leads/bulk-upload");
-    xhr.send(formData);
+    }
   }
 
   return (
@@ -183,9 +232,7 @@ export function BulkUploadForm({
               />
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              {progress < 100
-                ? `Subiendo archivo... ${progress}%`
-                : "Archivo subido, procesando e insertando leads..."}
+              {progressLabel} {progress > 0 ? `(${progress}%)` : ""}
             </p>
           </div>
         )}

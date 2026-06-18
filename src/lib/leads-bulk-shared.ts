@@ -1,5 +1,9 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
-import * as XLSX from "xlsx";
+/**
+ * Lógica pura (sin I/O) de la carga masiva de leads. Se ejecuta en el
+ * navegador: el archivo se parsea client-side y los lotes ya validados se
+ * insertan directo contra Supabase, sin pasar por ninguna función serverless
+ * de Next/Vercel (que tiene un límite duro de ~4.5MB de body).
+ */
 
 export interface BulkUploadResult {
   totalRows: number;
@@ -11,15 +15,14 @@ export interface BulkUploadResult {
   errors: { row: number; message: string }[];
 }
 
-const REQUIRED_HEADERS = ["full_name"];
-const KNOWN_HEADERS = ["full_name", "rut", "phone", "email", "status"];
+export const REQUIRED_HEADERS = ["full_name"];
+export const KNOWN_HEADERS = ["full_name", "rut", "phone", "email", "status"];
 
-// Tamaño de lote enviado por llamada al RPC. Mantiene cada request liviano
-// (evita timeouts y límites de tamaño de payload) incluso con archivos de
-// decenas de miles de filas.
-const CHUNK_SIZE = 2000;
+// Tamaño de lote enviado por llamada RPC. Mantiene cada request liviana
+// (evita timeouts) incluso con archivos de decenas de miles de filas.
+export const CHUNK_SIZE = 2000;
 
-interface CandidateRow {
+export interface CandidateRow {
   rowNum: number;
   full_name: string;
   rut: string | null;
@@ -32,72 +35,47 @@ interface CandidateRow {
   created_by: string;
 }
 
-function normalizeHeader(h: string) {
+export function normalizeHeader(h: string) {
   return h.trim().toLowerCase().replace(/\s+/g, "_");
 }
 
 /** Normaliza un RUT solo para comparar duplicados (no se usa para guardar el valor mostrado). */
-function normalizeRut(rut: string): string {
+export function normalizeRut(rut: string): string {
   return rut.replace(/[^0-9kK]/g, "").toUpperCase();
 }
 
 /** Normaliza un teléfono solo para comparar duplicados (no se usa para guardar el valor mostrado). */
-function normalizePhone(phone: string): string {
+export function normalizePhone(phone: string): string {
   return phone.replace(/\D/g, "");
 }
 
 /** Clave de dedup: prioriza rut (si existe) sobre teléfono, igual que la regla de negocio de leads. */
-function dedupKey(rut: string | null, phone: string | null): string | null {
+export function dedupKey(rut: string | null, phone: string | null): string | null {
   if (rut) return `rut:${normalizeRut(rut)}`;
   if (phone) return `phone:${normalizePhone(phone)}`;
   return null;
 }
 
-function chunk<T>(arr: T[], size: number): T[][] {
+export function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
 }
 
 /**
- * Lógica principal de carga masiva: parsea el archivo, deduplica dentro del
- * propio archivo y delega a la BBDD (vía RPC) la inserción con dedup real
- * contra leads existentes. No depende de Server Actions ni de Route
- * Handlers específicamente, para poder reutilizarse desde ambos.
+ * Valida las filas ya parseadas (de XLSX.utils.sheet_to_json) y devuelve los
+ * candidatos listos para insertar más un resultado parcial (errores de
+ * validación y duplicados detectados dentro del propio archivo).
  */
-export async function parseAndInsertLeads(params: {
-  file: File;
-  teamId: string | null;
-  campaignId: string | null;
-  workflowId: string | null;
-  userId: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: SupabaseClient<any>;
-}): Promise<BulkUploadResult> {
-  const { file, teamId, campaignId, userId, supabase } = params;
-  let workflowId = params.workflowId;
-
-  if (!file || file.size === 0) {
-    throw new Error("Selecciona un archivo CSV o Excel.");
+export function buildCandidates(
+  rows: Record<string, unknown>[],
+  ctx: {
+    teamId: string | null;
+    workflowId: string | null;
+    campaignId: string | null;
+    userId: string;
   }
-
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const workbook = XLSX.read(buffer, { type: "buffer" });
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  const rows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-
-  // Si la BBDD se carga dentro de una campaña, el flujo productivo de esa
-  // campaña manda sobre cualquier flujo elegido manualmente: la campaña es
-  // la fuente de verdad de qué guion siguen sus leads.
-  if (campaignId) {
-    const { data: campaign } = await supabase
-      .from("campaigns")
-      .select("workflow_id")
-      .eq("id", campaignId)
-      .single();
-    if (campaign?.workflow_id) workflowId = campaign.workflow_id;
-  }
-
+): { candidates: CandidateRow[]; result: BulkUploadResult } {
   const result: BulkUploadResult = {
     totalRows: rows.length,
     inserted: 0,
@@ -108,10 +86,9 @@ export async function parseAndInsertLeads(params: {
 
   if (rows.length === 0) {
     result.errors.push({ row: 0, message: "El archivo no tiene filas de datos." });
-    return result;
+    return { candidates: [], result };
   }
 
-  // Validate headers against the first row's keys.
   const firstRowHeaders = Object.keys(rows[0]).map(normalizeHeader);
   const missing = REQUIRED_HEADERS.filter((h) => !firstRowHeaders.includes(h));
   if (missing.length > 0) {
@@ -119,7 +96,7 @@ export async function parseAndInsertLeads(params: {
       row: 0,
       message: `Faltan columnas obligatorias: ${missing.join(", ")}. Columnas esperadas: ${KNOWN_HEADERS.join(", ")}.`,
     });
-    return result;
+    return { candidates: [], result };
   }
 
   const candidates: CandidateRow[] = [];
@@ -172,34 +149,12 @@ export async function parseAndInsertLeads(params: {
       phone,
       email,
       status,
-      team_id: teamId,
-      workflow_id: workflowId,
-      campaign_id: campaignId,
-      created_by: userId,
+      team_id: ctx.teamId,
+      workflow_id: ctx.workflowId,
+      campaign_id: ctx.campaignId,
+      created_by: ctx.userId,
     });
   });
 
-  let totalInserted = 0;
-  for (const batch of chunk(candidates, CHUNK_SIZE)) {
-    const payload = batch.map((row) => {
-      const { full_name, rut, phone, email, status, team_id, workflow_id, campaign_id, created_by } = row;
-      return { full_name, rut, phone, email, status, team_id, workflow_id, campaign_id, created_by };
-    });
-    const { data, error } = await supabase.rpc("bulk_insert_leads", { payload });
-
-    if (error) {
-      result.errors.push({
-        row: 0,
-        message: `Error al insertar un lote de ${batch.length} filas: ${error.message}`,
-      });
-      continue;
-    }
-
-    const insertedInBatch = (data as { inserted: number } | null)?.inserted ?? 0;
-    totalInserted += insertedInBatch;
-    result.duplicatesInDb += batch.length - insertedInBatch;
-  }
-
-  result.inserted = totalInserted;
-  return result;
+  return { candidates, result };
 }
