@@ -29,6 +29,18 @@ export async function createWorkflowFromTemplate(formData: FormData) {
 
   const supabase = await createClient();
 
+  // Evita duplicar el flujo si ya se creó antes desde esta misma plantilla:
+  // basta con abrir el existente para seguir editándolo.
+  const { data: existingWorkflow } = await supabase
+    .from("workflows")
+    .select("id")
+    .eq("name", template.name)
+    .maybeSingle();
+
+  if (existingWorkflow) {
+    redirect(`/dashboard/admin/flujos/${existingWorkflow.id}`);
+  }
+
   const { data: workflow, error: workflowError } = await supabase
     .from("workflows")
     .insert({ name: template.name, description: template.description })
