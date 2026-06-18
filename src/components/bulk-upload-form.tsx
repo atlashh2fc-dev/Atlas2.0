@@ -11,19 +11,33 @@ interface Option {
   name: string;
 }
 
-type FieldKey = "full_name" | "rut" | "phone" | "email" | "status";
+type SingleFieldKey = "full_name" | "rut" | "status";
+type MultiFieldKey = "phone" | "email";
 
-const FIELD_LABELS: Record<FieldKey, string> = {
+const SINGLE_FIELD_LABELS: Record<SingleFieldKey, string> = {
   full_name: "Nombre completo",
   rut: "RUT",
-  phone: "Teléfono",
-  email: "Correo",
   status: "Estado",
 };
 
+const MULTI_FIELD_LABELS: Record<MultiFieldKey, string> = {
+  phone: "Teléfono(s)",
+  email: "Correo(s)",
+};
+
+interface Mapping {
+  full_name: string;
+  rut: string;
+  status: string;
+  phone: string[];
+  email: string[];
+}
+
+const EMPTY_MAPPING: Mapping = { full_name: "", rut: "", status: "", phone: [], email: [] };
+
 // Alias en español/variantes comunes para adivinar el mapeo automáticamente.
 // El usuario siempre puede corregirlo a mano antes de cargar.
-const FIELD_ALIASES: Record<FieldKey, string[]> = {
+const SINGLE_FIELD_ALIASES: Record<SingleFieldKey, string[]> = {
   full_name: [
     "full_name",
     "nombre",
@@ -36,19 +50,36 @@ const FIELD_ALIASES: Record<FieldKey, string[]> = {
     "contacto",
   ],
   rut: ["rut", "rut_empresa", "run"],
-  phone: ["phone", "telefono", "teléfono", "telefono_1", "fono", "celular", "movil", "móvil"],
-  email: ["email", "correo", "correo_electronico", "correo_electrónico", "mail", "e-mail", "e_mail"],
   status: ["status", "estado", "estado_comercial"],
 };
 
-function guessMapping(headers: string[]): Record<FieldKey, string> {
+// Raíces de columnas que pueden venir repetidas (Telefono, Telefono 2, Telefono 3...).
+// Cualquier columna marcada se revisa fila por fila y se usa la primera que tenga valor.
+const MULTI_FIELD_ROOTS: Record<MultiFieldKey, string[]> = {
+  phone: ["phone", "telefono", "teléfono", "fono", "celular", "movil", "móvil"],
+  email: ["email", "correo", "correo_electronico", "correo_electrónico", "mail", "e-mail", "e_mail"],
+};
+
+function matchesRoot(norm: string, root: string): boolean {
+  const escaped = root.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+  return new RegExp(`^${escaped}(_?\\d+)?$`).test(norm);
+}
+
+function guessMapping(headers: string[]): Mapping {
   const normalized = headers.map((h) => ({ raw: h, norm: normalizeHeader(h) }));
-  const mapping = { full_name: "", rut: "", phone: "", email: "", status: "" } as Record<FieldKey, string>;
-  (Object.keys(FIELD_ALIASES) as FieldKey[]).forEach((field) => {
-    const aliases = FIELD_ALIASES[field];
+  const mapping: Mapping = { ...EMPTY_MAPPING, phone: [], email: [] };
+
+  (Object.keys(SINGLE_FIELD_ALIASES) as SingleFieldKey[]).forEach((field) => {
+    const aliases = SINGLE_FIELD_ALIASES[field];
     const match = normalized.find((h) => aliases.includes(h.norm));
     if (match) mapping[field] = match.raw;
   });
+
+  (Object.keys(MULTI_FIELD_ROOTS) as MultiFieldKey[]).forEach((field) => {
+    const roots = MULTI_FIELD_ROOTS[field];
+    mapping[field] = normalized.filter((h) => roots.some((r) => matchesRoot(h.norm, r))).map((h) => h.raw);
+  });
+
   return mapping;
 }
 
@@ -74,13 +105,7 @@ export function BulkUploadForm({
   const [fileName, setFileName] = useState<string | null>(null);
   const [rows, setRows] = useState<Record<string, unknown>[] | null>(null);
   const [headers, setHeaders] = useState<string[] | null>(null);
-  const [mapping, setMapping] = useState<Record<FieldKey, string>>({
-    full_name: "",
-    rut: "",
-    phone: "",
-    email: "",
-    status: "",
-  });
+  const [mapping, setMapping] = useState<Mapping>(EMPTY_MAPPING);
 
   const [teamId, setTeamId] = useState("");
   const [campaignId, setCampaignId] = useState(defaultCampaignId ?? "");
@@ -117,6 +142,24 @@ export function BulkUploadForm({
     } finally {
       setParsing(false);
     }
+  }
+
+  function toggleMultiField(field: MultiFieldKey, header: string) {
+    setMapping((m) => {
+      const current = m[field];
+      const next = current.includes(header)
+        ? current.filter((h) => h !== header)
+        : [...current, header];
+      return { ...m, [field]: next };
+    });
+  }
+
+  function firstNonEmpty(row: Record<string, unknown>, columns: string[]): string {
+    for (const col of columns) {
+      const value = String(row[col] ?? "").trim();
+      if (value) return value;
+    }
+    return "";
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -160,8 +203,8 @@ export function BulkUploadForm({
       const remappedRows: Record<string, unknown>[] = rows.map((row) => ({
         full_name: mapping.full_name ? row[mapping.full_name] : "",
         rut: mapping.rut ? row[mapping.rut] : "",
-        phone: mapping.phone ? row[mapping.phone] : "",
-        email: mapping.email ? row[mapping.email] : "",
+        phone: firstNonEmpty(row, mapping.phone),
+        email: firstNonEmpty(row, mapping.email),
         status: mapping.status ? row[mapping.status] : "",
       }));
 
@@ -214,7 +257,7 @@ export function BulkUploadForm({
         setRows(null);
         setHeaders(null);
         setFileName(null);
-        setMapping({ full_name: "", rut: "", phone: "", email: "", status: "" });
+        setMapping(EMPTY_MAPPING);
       }
       router.refresh();
     } catch (err) {
@@ -251,10 +294,10 @@ export function BulkUploadForm({
               detectada(s). Indica qué columna de tu archivo corresponde a cada dato:
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
-              {(Object.keys(FIELD_LABELS) as FieldKey[]).map((field) => (
+              {(Object.keys(SINGLE_FIELD_LABELS) as SingleFieldKey[]).map((field) => (
                 <div key={field}>
                   <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                    {FIELD_LABELS[field]}
+                    {SINGLE_FIELD_LABELS[field]}
                     {field === "full_name" ? " (obligatorio)" : " (opcional)"}
                   </label>
                   <select
@@ -270,6 +313,34 @@ export function BulkUploadForm({
                       </option>
                     ))}
                   </select>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {(Object.keys(MULTI_FIELD_LABELS) as MultiFieldKey[]).map((field) => (
+                <div key={field}>
+                  <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                    {MULTI_FIELD_LABELS[field]} (opcional, marca todas las que apliquen)
+                  </label>
+                  <div className="max-h-32 overflow-y-auto rounded-lg border border-border bg-surface p-2">
+                    {headers.map((h) => (
+                      <label key={h} className="flex items-center gap-2 px-1 py-0.5 text-sm text-foreground">
+                        <input
+                          type="checkbox"
+                          checked={mapping[field].includes(h)}
+                          disabled={busy}
+                          onChange={() => toggleMultiField(field, h)}
+                        />
+                        {h}
+                      </label>
+                    ))}
+                  </div>
+                  {mapping[field].length > 1 && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Se usará la primera con dato, en este orden: {mapping[field].join(" → ")}.
+                    </p>
+                  )}
                 </div>
               ))}
             </div>
