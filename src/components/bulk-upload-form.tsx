@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { uploadLeadsFile, type BulkUploadResult } from "@/app/actions/leads-bulk";
+import type { BulkUploadResult } from "@/app/actions/leads-bulk";
 
 interface Option {
   id: string;
@@ -20,30 +20,72 @@ export function BulkUploadForm({
   defaultCampaignId?: string;
 }) {
   const [pending, setPending] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<BulkUploadResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
-  async function handleSubmit(formData: FormData) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!formRef.current) return;
+
+    const file = (formRef.current.elements.namedItem("file") as HTMLInputElement | null)?.files?.[0];
+    if (!file) {
+      setError("Selecciona un archivo CSV o Excel.");
+      return;
+    }
+
     setPending(true);
+    setProgress(0);
     setError(null);
     setResult(null);
-    try {
-      const res = await uploadLeadsFile(formData);
-      setResult(res);
-      if (res.errors.length === 0) {
-        formRef.current?.reset();
+
+    const formData = new FormData(formRef.current);
+    const xhr = new XMLHttpRequest();
+
+    xhr.upload.addEventListener("progress", (evt) => {
+      if (evt.lengthComputable) {
+        // % real de bytes ya enviados. El último tramo (procesar el archivo
+        // + insertar en la BBDD) puede tardar un poco más tras llegar al
+        // 100% de subida; por eso el texto avisa que sigue procesando.
+        setProgress(Math.round((evt.loaded / evt.total) * 100));
       }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Error inesperado al procesar el archivo.");
-    } finally {
+    });
+
+    xhr.addEventListener("load", () => {
       setPending(false);
-    }
+      let body: (BulkUploadResult & { error?: string }) | null = null;
+      try {
+        body = JSON.parse(xhr.responseText);
+      } catch {
+        // se maneja abajo como respuesta inesperada
+      }
+
+      if (xhr.status >= 200 && xhr.status < 300 && body && !body.error) {
+        setResult(body);
+        if (body.errors.length === 0) formRef.current?.reset();
+      } else {
+        setError(body?.error || `Error inesperado del servidor (HTTP ${xhr.status}).`);
+      }
+    });
+
+    xhr.addEventListener("error", () => {
+      setPending(false);
+      setError("Error de red al subir el archivo. Verifica tu conexión e intenta de nuevo.");
+    });
+
+    xhr.addEventListener("abort", () => {
+      setPending(false);
+      setError("Carga cancelada.");
+    });
+
+    xhr.open("POST", "/api/leads/bulk-upload");
+    xhr.send(formData);
   }
 
   return (
     <div className="space-y-4">
-      <form ref={formRef} action={handleSubmit} className="space-y-4 rounded-xl border border-border bg-surface p-5">
+      <form ref={formRef} onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-border bg-surface p-5">
         <div>
           <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
             Archivo (.csv, .xlsx)
@@ -53,7 +95,8 @@ export function BulkUploadForm({
             name="file"
             accept=".csv,.xlsx,.xls"
             required
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+            disabled={pending}
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-60"
           />
         </div>
 
@@ -64,7 +107,8 @@ export function BulkUploadForm({
           <select
             name="campaign_id"
             defaultValue={defaultCampaignId ?? ""}
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+            disabled={pending}
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-60"
           >
             <option value="">Sin campaña</option>
             {campaigns.map((c) => (
@@ -87,7 +131,8 @@ export function BulkUploadForm({
             <select
               name="team_id"
               defaultValue=""
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+              disabled={pending}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-60"
             >
               <option value="">Sin equipo</option>
               {teams.map((t) => (
@@ -104,7 +149,8 @@ export function BulkUploadForm({
             <select
               name="workflow_id"
               defaultValue=""
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+              disabled={pending}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-60"
             >
               <option value="">Sin flujo</option>
               {workflows.map((w) => (
@@ -127,6 +173,22 @@ export function BulkUploadForm({
           RUT) dentro de la misma campaña o bolsa sin campaña, solo se crea un lead. Esto aplica
           tanto a duplicados dentro del propio archivo como contra leads ya cargados antes.
         </p>
+
+        {pending && (
+          <div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-surface-muted">
+              <div
+                className="h-full bg-primary transition-[width] duration-150"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {progress < 100
+                ? `Subiendo archivo... ${progress}%`
+                : "Archivo subido, procesando e insertando leads..."}
+            </p>
+          </div>
+        )}
 
         <button
           type="submit"
