@@ -10,7 +10,6 @@ import {
   ShieldCheck,
   BarChart3,
   Workflow,
-  Upload,
   PhoneCall,
   Megaphone,
 } from "lucide-react";
@@ -20,6 +19,10 @@ interface NavItem {
   label: string;
   icon: React.ComponentType<{ size?: number }>;
   roles: AppRole[];
+  /** Etiqueta de sección que se muestra justo antes de este ítem (agrupa visualmente sin sub-menú). */
+  sectionLabel?: string;
+  /** Ítem secundario dentro de un grupo (p. ej. "Flujos" bajo "Campañas"): se muestra indentado y más sutil. */
+  indent?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -27,11 +30,16 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard/llamadas", label: "Llamadas", icon: PhoneCall, roles: ["agente", "supervisor", "admin"] },
   { href: "/dashboard/leads", label: "Leads", icon: Users, roles: ["agente", "supervisor", "admin"] },
   { href: "/dashboard/team", label: "Mi equipo", icon: UsersRound, roles: ["supervisor"] },
-  { href: "/dashboard/leads/cargar", label: "Cargar leads", icon: Upload, roles: ["supervisor", "admin"] },
   { href: "/dashboard/reportes", label: "Reportes", icon: BarChart3, roles: ["supervisor", "admin"] },
   { href: "/dashboard/admin/usuarios", label: "Usuarios", icon: ShieldCheck, roles: ["admin"] },
-  { href: "/dashboard/admin/flujos", label: "Flujos", icon: Workflow, roles: ["admin"] },
-  { href: "/dashboard/admin/campanas", label: "Campañas", icon: Megaphone, roles: ["admin"] },
+  {
+    href: "/dashboard/admin/campanas",
+    label: "Campañas",
+    icon: Megaphone,
+    roles: ["admin"],
+    sectionLabel: "Gestión de campañas",
+  },
+  { href: "/dashboard/admin/flujos", label: "Flujos", icon: Workflow, roles: ["admin"], indent: true },
 ];
 
 export function Sidebar({ role }: { role: AppRole }) {
@@ -52,18 +60,26 @@ export function Sidebar({ role }: { role: AppRole }) {
           const active = pathname === item.href || pathname.startsWith(item.href + "/");
           const Icon = item.icon;
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                active
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"
-              }`}
-            >
-              <Icon size={18} />
-              {item.label}
-            </Link>
+            <div key={item.href}>
+              {item.sectionLabel && (
+                <p className="mb-1 mt-4 px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 first:mt-1">
+                  {item.sectionLabel}
+                </p>
+              )}
+              <Link
+                href={item.href}
+                className={`flex items-center gap-3 rounded-lg text-sm font-medium transition-colors ${
+                  item.indent ? "ml-3 py-1.5 pl-3 pr-3 text-[13px]" : "px-3 py-2"
+                } ${
+                  active
+                    ? "bg-accent text-accent-foreground"
+                    : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"
+                }`}
+              >
+                <Icon size={item.indent ? 16 : 18} />
+                {item.label}
+              </Link>
+            </div>
           );
         })}
       </nav>
