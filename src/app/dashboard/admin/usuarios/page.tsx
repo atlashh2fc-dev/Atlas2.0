@@ -1,6 +1,12 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { updateUserRole, toggleUserActive, createTeam, createUserAccount } from "@/app/actions/admin";
+import {
+  updateUserRole,
+  toggleUserActive,
+  createTeam,
+  createUserAccount,
+  updateTeamSupervisor,
+} from "@/app/actions/admin";
 import type { AppRole } from "@/lib/types";
 
 const ROLES: AppRole[] = ["agente", "supervisor", "admin"];
@@ -15,6 +21,11 @@ export default async function UsersAdminPage() {
     .order("created_at", { ascending: true });
 
   const { data: teams } = await supabase.from("teams").select("*").order("name");
+
+  const supervisors = (users ?? []).filter((u) => u.role === "supervisor");
+  const supervisorName = (id: string | null) =>
+    supervisors.find((s) => s.id === id)?.full_name ?? "Sin supervisor";
+  const teamOf = (teamId: string | null) => (teams ?? []).find((t) => t.id === teamId) ?? null;
 
   return (
     <div className="space-y-6">
@@ -105,6 +116,7 @@ export default async function UsersAdminPage() {
               <th className="px-5 py-3 font-medium">Correo</th>
               <th className="px-5 py-3 font-medium">Rol</th>
               <th className="px-5 py-3 font-medium">Equipo</th>
+              <th className="px-5 py-3 font-medium">Supervisor</th>
               <th className="px-5 py-3 font-medium">Estado</th>
               <th className="px-5 py-3 font-medium"></th>
             </tr>
@@ -149,7 +161,12 @@ export default async function UsersAdminPage() {
                   </form>
                 </td>
                 <td className="px-5 py-3 text-muted-foreground">
-                  {(teams ?? []).find((t) => t.id === u.team_id)?.name ?? "—"}
+                  {teamOf(u.team_id)?.name ?? "—"}
+                </td>
+                <td className="px-5 py-3 text-muted-foreground">
+                  {u.role === "agente"
+                    ? supervisorName(teamOf(u.team_id)?.supervisor_id ?? null)
+                    : "—"}
                 </td>
                 <td className="px-5 py-3">
                   <span
@@ -180,20 +197,70 @@ export default async function UsersAdminPage() {
 
       <div className="rounded-xl border border-border bg-surface p-5">
         <h2 className="mb-3 text-sm font-semibold text-foreground">Equipos</h2>
-        <ul className="mb-4 space-y-1 text-sm text-muted-foreground">
+        <p className="mb-3 text-xs text-muted-foreground">
+          El supervisor de un equipo define de quién dependen sus agentes (según el equipo
+          asignado a cada usuario arriba).
+        </p>
+        <ul className="mb-4 space-y-2 text-sm">
           {(teams ?? []).map((t) => (
-            <li key={t.id}>{t.name}</li>
+            <li
+              key={t.id}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2"
+            >
+              <span className="font-medium text-foreground">{t.name}</span>
+              <form action={updateTeamSupervisor} className="flex items-center gap-2">
+                <input type="hidden" name="team_id" value={t.id} />
+                <select
+                  name="supervisor_id"
+                  defaultValue={t.supervisor_id ?? ""}
+                  className="rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground"
+                >
+                  <option value="">Sin supervisor</option>
+                  {supervisors.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.full_name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="submit"
+                  className="rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary-hover"
+                >
+                  Guardar
+                </button>
+              </form>
+            </li>
           ))}
-          {(teams ?? []).length === 0 && <li>No hay equipos creados.</li>}
+          {(teams ?? []).length === 0 && (
+            <li className="text-muted-foreground">No hay equipos creados.</li>
+          )}
         </ul>
-        <form action={createTeam} className="flex max-w-sm gap-2">
-          <input
-            type="text"
-            name="name"
-            required
-            placeholder="Nombre del equipo"
-            className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
-          />
+        <form action={createTeam} className="flex max-w-lg flex-wrap items-end gap-2">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted-foreground">Nombre del equipo</label>
+            <input
+              type="text"
+              name="name"
+              required
+              placeholder="Nombre del equipo"
+              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted-foreground">Supervisor</label>
+            <select
+              name="supervisor_id"
+              defaultValue=""
+              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+            >
+              <option value="">Sin supervisor</option>
+              {supervisors.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.full_name}
+                </option>
+              ))}
+            </select>
+          </div>
           <button
             type="submit"
             className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"

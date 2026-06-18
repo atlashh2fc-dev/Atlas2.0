@@ -73,8 +73,24 @@ export async function toggleUserActive(formData: FormData) {
 
 export async function createTeam(formData: FormData) {
   const name = formData.get("name") as string;
+  const supervisorId = (formData.get("supervisor_id") as string) || null;
   const supabase = await createClient();
-  const { error } = await supabase.from("teams").insert({ name });
+  const { error } = await supabase.from("teams").insert({ name, supervisor_id: supervisorId });
+  if (error) throw new Error(error.message);
+  revalidatePath("/dashboard/admin/usuarios");
+}
+
+/** Asigna o cambia el supervisor a cargo de un equipo (define de quién dependen sus agentes). */
+export async function updateTeamSupervisor(formData: FormData) {
+  const teamId = formData.get("team_id") as string;
+  const supervisorId = (formData.get("supervisor_id") as string) || null;
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("teams")
+    .update({ supervisor_id: supervisorId })
+    .eq("id", teamId);
+
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/admin/usuarios");
 }
