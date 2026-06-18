@@ -36,10 +36,7 @@ export default async function ReportesPage({
     .select("*")
     .order("total_interactions", { ascending: false });
 
-  const { data: workflowCompliance } = await supabase
-    .from("workflow_compliance")
-    .select("*")
-    .order("workflow_name");
+  const { data: workflowCompliance } = await supabase.rpc("get_workflow_compliance");
 
   const { data: campaignList } = await supabase
     .from("campaigns")
