@@ -44,7 +44,14 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
             <p className="text-sm text-muted-foreground">{campaign.description}</p>
           )}
         </div>
-        <form action={toggleCampaignActive}>
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/dashboard/admin/campanas/${campaign.id}/dashboard`}
+            className="rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary-hover"
+          >
+            Ver dashboard
+          </Link>
+          <form action={toggleCampaignActive}>
           <input type="hidden" name="campaign_id" value={campaign.id} />
           <input type="hidden" name="active" value={String(campaign.is_active)} />
           <button
@@ -57,7 +64,8 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
           >
             {campaign.is_active ? "Desactivar campaña" : "Activar campaña"}
           </button>
-        </form>
+          </form>
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">

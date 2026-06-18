@@ -192,6 +192,23 @@ export interface CampaignPerformance {
   managed_rate: number | null;
 }
 
+/** Registro crudo de una llamada para el dashboard analítico de campaña (join calls+leads+profiles). */
+export interface CampaignDashboardCall {
+  id: string;
+  status: string | null;
+  outcome: string | null;
+  reason: string | null;
+  equifax_products: string[] | null;
+  equifax_uf_amount: number | null;
+  next_action_at: string | null;
+  started_at: string;
+  ended_at: string | null;
+  agent_id: string;
+  agent_name: string;
+  lead_id: string;
+  lead_full_name: string;
+}
+
 export const LEAD_STATUSES = [
   { value: "nuevo", label: "Nuevo" },
   { value: "en_gestion", label: "En gestión" },
