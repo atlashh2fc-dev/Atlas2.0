@@ -33,6 +33,27 @@ export default async function DashboardPage() {
     lead_name: (r as unknown as { leads: { full_name: string } | null }).leads?.full_name ?? "Lead",
   }));
 
+  // Agendas pendientes del propio ejecutivo: vencidas o para hoy.
+  const endOfToday = new Date();
+  endOfToday.setHours(23, 59, 59, 999);
+
+  const { data: agendaLeads } = await supabase
+    .from("leads")
+    .select("id, full_name, rut, phone, next_action_at")
+    .eq("managed_by", profile.id)
+    .not("next_action_at", "is", null)
+    .lte("next_action_at", endOfToday.toISOString())
+    .order("next_action_at", { ascending: true })
+    .limit(20);
+
+  const initialAgenda = (agendaLeads ?? []).map((l) => ({
+    id: l.id,
+    full_name: l.full_name,
+    rut: l.rut,
+    phone: l.phone,
+    next_action_at: l.next_action_at as string,
+  }));
+
   return (
     <div className="space-y-6">
       <div>
@@ -45,12 +66,14 @@ export default async function DashboardPage() {
       </div>
 
       <LiveDashboard
+        userId={profile.id}
         initialStats={{
           total: totalLeads ?? 0,
           enGestion: enGestion ?? 0,
           convertidos: convertidos ?? 0,
         }}
         initialRecent={initialRecent}
+        initialAgenda={initialAgenda}
       />
     </div>
   );
