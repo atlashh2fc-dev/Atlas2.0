@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { AppRole } from "@/lib/types";
+import type { AppRole, Profile } from "@/lib/types";
 import {
   LayoutDashboard,
   Users,
@@ -47,20 +47,36 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard/admin/flujos", label: "Flujos", icon: Workflow, roles: ["admin"], indent: true },
 ];
 
-export function Sidebar({ role }: { role: AppRole }) {
+const ROLE_LABEL: Record<AppRole, string> = {
+  agente: "Agente",
+  supervisor: "Supervisor",
+  admin: "Administrador",
+};
+
+function initials(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+export function Sidebar({ profile }: { profile: Profile }) {
   const pathname = usePathname();
-  const items = NAV_ITEMS.filter((item) => item.roles.includes(role));
+  const items = NAV_ITEMS.filter((item) => item.roles.includes(profile.role));
 
   return (
     <aside className="hidden w-60 flex-shrink-0 flex-col border-r border-border bg-surface md:flex">
       <div className="flex h-16 items-center gap-2 border-b border-border px-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground shadow-sm shadow-primary/30">
           A
         </div>
         <span className="text-base font-semibold text-foreground">Atlas</span>
+        <span className="ml-auto rounded-full bg-surface-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+          2.0
+        </span>
       </div>
 
-      <nav className="flex-1 space-y-1 p-3">
+      <nav className="flex-1 space-y-0.5 overflow-y-auto p-3">
         {items.map((item) => {
           const active =
             pathname === item.href ||
@@ -75,7 +91,7 @@ export function Sidebar({ role }: { role: AppRole }) {
               )}
               <Link
                 href={item.href}
-                className={`flex items-center gap-3 rounded-lg text-sm font-medium transition-colors ${
+                className={`group relative flex items-center gap-3 rounded-lg text-sm font-medium transition-colors ${
                   item.indent ? "ml-3 py-1.5 pl-3 pr-3 text-[13px]" : "px-3 py-2"
                 } ${
                   active
@@ -83,7 +99,18 @@ export function Sidebar({ role }: { role: AppRole }) {
                     : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"
                 }`}
               >
-                <Icon size={item.indent ? 16 : 18} />
+                {active && !item.indent && (
+                  <span className="absolute -left-3 top-1/2 h-4 w-1 -translate-y-1/2 rounded-full bg-primary" />
+                )}
+                <span
+                  className={`flex items-center justify-center rounded-md transition-colors ${
+                    item.indent
+                      ? ""
+                      : `h-7 w-7 ${active ? "bg-primary/15 text-primary" : "text-muted-foreground group-hover:text-foreground"}`
+                  }`}
+                >
+                  <Icon size={item.indent ? 16 : 16} />
+                </span>
                 {item.label}
               </Link>
             </div>
@@ -91,8 +118,14 @@ export function Sidebar({ role }: { role: AppRole }) {
         })}
       </nav>
 
-      <div className="border-t border-border p-3 text-xs text-muted-foreground">
-        Atlas CRM 2.0
+      <div className="flex items-center gap-2.5 border-t border-border p-3">
+        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-foreground">
+          {initials(profile.full_name)}
+        </div>
+        <div className="min-w-0">
+          <p className="truncate text-xs font-medium text-foreground">{profile.full_name}</p>
+          <p className="truncate text-[11px] text-muted-foreground">{ROLE_LABEL[profile.role]}</p>
+        </div>
       </div>
     </aside>
   );
