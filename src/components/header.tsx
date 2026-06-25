@@ -1,6 +1,7 @@
 import type { Profile } from "@/lib/types";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { QuickSearch } from "@/components/quick-search";
+import { AgendaBell } from "@/components/agenda-reminder";
 import { signOut } from "@/app/actions/auth";
 import { LogOut } from "lucide-react";
 
@@ -20,6 +21,7 @@ export function Header({ profile }: { profile: Profile }) {
 
       <div className="flex items-center gap-3">
         <QuickSearch />
+        {(profile.role === "agente" || profile.role === "admin") && <AgendaBell userId={profile.id} />}
         <ThemeToggle />
         <form action={signOut}>
           <button

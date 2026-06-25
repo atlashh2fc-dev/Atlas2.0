@@ -182,3 +182,33 @@ export async function assignLead(formData: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/team");
 }
+
+/**
+ * Reagenda una llamada de un ejecutivo a otro: transfiere la responsabilidad
+ * del lead (assigned_to + managed_by, así desaparece de "Mis agendas" del
+ * ejecutivo original y aparece en las del nuevo) y, si la supervisora indicó
+ * una nueva fecha/hora, también actualiza next_action_at.
+ */
+export async function reassignAgenda(formData: FormData) {
+  const leadId = formData.get("lead_id") as string;
+  const agentId = formData.get("agent_id") as string;
+  const nextActionAtRaw = formData.get("next_action_at") as string;
+
+  if (!leadId || !agentId) {
+    throw new Error("Debes seleccionar el ejecutivo al que reasignar la agenda.");
+  }
+
+  const update: Record<string, unknown> = {
+    managed_by: agentId,
+    assigned_to: agentId,
+  };
+  if (nextActionAtRaw) {
+    update.next_action_at = new Date(nextActionAtRaw).toISOString();
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("leads").update(update).eq("id", leadId);
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/dashboard/team");
+}

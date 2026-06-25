@@ -12,6 +12,7 @@ import {
   Workflow,
   Megaphone,
   History,
+  CalendarClock,
 } from "lucide-react";
 
 interface NavItem {
@@ -28,6 +29,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Inicio", icon: LayoutDashboard, roles: ["agente", "supervisor", "admin"] },
   { href: "/dashboard/leads", label: "Leads", icon: Users, roles: ["agente", "supervisor", "admin"] },
+  { href: "/dashboard/agenda", label: "Mi agenda", icon: CalendarClock, roles: ["agente", "admin"] },
   { href: "/dashboard/team", label: "Mi equipo", icon: UsersRound, roles: ["supervisor"] },
   { href: "/dashboard/reportes", label: "Reportes", icon: BarChart3, roles: ["supervisor", "admin"] },
   { href: "/dashboard/admin/usuarios", label: "Usuarios", icon: ShieldCheck, roles: ["admin"] },
