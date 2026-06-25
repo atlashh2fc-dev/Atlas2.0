@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRM Extractor Pro</title>
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+
+<header>
+  <div class="logo">CRM <span>EXTRACTOR</span></div>
+  <div class="header-btns">
+    <button class="hbtn hbtn-text" id="btnViewHistory" title="Historial">HISTORIAL</button>
+    <button class="hbtn" id="btnViewStats"   title="Estadísticas">📊</button>
+  </div>
+</header>
+
+<!-- ── PANEL PRINCIPAL ───────────────────── -->
+<main id="viewMain">
+
+  <!-- PASO 1: Número del discador -->
+  <div class="step-box" id="stepPhone">
+    <div class="step-label">PASO 1 · Número del discador</div>
+    <!-- Detección automática desde el discador -->
+    <button class="btn-detect" id="btnDetectPhone">
+      <span>📞 Detectar desde discador</span>
+      <span class="detect-hint">Abre Vocalcom/Hermes360 y presiona aquí</span>
+    </button>
+    <!-- O ingresar manualmente -->
+    <div class="phone-input-row">
+      <input type="text" id="phoneInput" placeholder="o pega manualmente..." maxlength="20" autocomplete="off">
+      <button class="btn-set-phone" id="btnSetPhone">📋 Pegar</button>
+    </div>
+    <!-- Número fijado activo -->
+    <div class="phone-saved hidden" id="phoneSaved">
+      <span class="phone-saved-num" id="phoneSavedDisplay">—</span>
+      <button class="btn-search-atlas" id="btnSearchAtlas" title="Buscar en Atlas">🔍</button>
+      <button class="btn-clear-phone" id="btnClearPhone">✖</button>
+    </div>
+    <!-- Alerta de duplicado -->
+    <div class="dupe-alert hidden" id="dupeAlert">
+      ⚡ YA LLAMADO ANTES — ver historial
+    </div>
+  </div>
+
+  <!-- PASO 2: Captura -->
+  <div class="step-box">
+    <div class="step-label">PASO 2 · Capturar datos del CRM</div>
+    <button class="btn-capture" id="btnCapture">
+      <span class="btn-icon">⬇</span>
+      <span>Extraer desde CRM</span>
+    </button>
+    <div class="capture-hint">Abre Atlas con el cliente y presiona aquí</div>
+  </div>
+
+  <div class="toast hidden" id="toastMain"></div>
+
+  <!-- Resultado del parser -->
+  <div id="parseResult" class="parse-result hidden">
+    <div class="result-header">
+      <span class="result-title">✔ DATOS EXTRAÍDOS</span>
+      <button class="btn-sm btn-danger" id="btnDiscardResult">✖</button>
+    </div>
+    <div class="parse-result-body">
+      <div class="field-row phone-row">
+        <div class="field-label">📞 Número</div>
+        <div class="field-value phone-val" id="fPhone">—</div>
+      </div>
+      <div class="field-row">
+        <div class="field-label">Razón social</div>
+        <div class="field-value" id="fRazonSocial">—</div>
+      </div>
+      <div class="field-row">
+        <div class="field-label">RUT empresa</div>
+        <div class="field-value" id="fRut">—</div>
+      </div>
+      <div class="field-row">
+        <div class="field-label">Rubro</div>
+        <div class="field-value" id="fRubro">—</div>
+      </div>
+      <div class="field-row">
+        <div class="field-label">Actividad</div>
+        <div class="field-value" id="fActividad">—</div>
+      </div>
+      <div class="field-row">
+        <div class="field-label">Segmento</div>
+        <div class="field-value" id="fSegmento">—</div>
+      </div>
+      <div class="field-row">
+        <div class="field-label">Tel. CRM</div>
+        <div class="field-value" id="fTelCRM">—</div>
+      </div>
+      <div class="field-row">
+        <div class="field-label">Correo</div>
+        <div class="field-value" id="fCorreo">—</div>
+      </div>
+    </div>
+    <div class="result-actions">
+      <button class="btn-action btn-excel" id="btnCopyExcel">📊 Excel</button>
+      <button class="btn-action btn-text"  id="btnCopyText">📝 Texto</button>
+      <button class="btn-action btn-save"  id="btnSaveRecord">💾 Guardar</button>
+    </div>
+    <div class="result-actions" style="margin-top:6px">
+      <button class="btn-action btn-cotizadora" id="btnSendCotizadora" style="width:100%">🚀 Enviar a Cotizadora</button>
+    </div>
+  </div>
+
+  <!-- Textarea oculto para parseManual (funcionalidad interna preservada) -->
+  <textarea id="manualText" style="display:none"></textarea>
+
+</main>
+
+<!-- ── HISTORIAL ─────────────────────────── -->
+<main id="viewHistory" class="hidden">
+  <div class="view-header">
+    <button class="back-btn" id="btnBackFromHistory">← Volver</button>
+    <span class="view-title">Historial</span>
+    <div class="hdr-actions">
+      <button class="btn-sm btn-primary" id="btnExportCSV" title="Exportar CSV">⬆ CSV</button>
+      <button class="btn-sm btn-primary" id="btnImportCSV" title="Importar CSV">⬇ Importar</button>
+      <input type="file" id="fileImport" accept=".csv" style="display:none">
+      <button class="btn-sm btn-danger"  id="btnClearAll">🗑</button>
+    </div>
+  </div>
+  <div class="search-bar">
+    <input type="text" id="searchInput" placeholder="🔍 Buscar empresa, RUT, teléfono, dirección..." autocomplete="off">
+  </div>
+  <div class="filter-bar">
+    <button class="fbtn active" data-filter="all">Todos</button>
+    <button class="fbtn" data-filter="today">Hoy</button>
+    <button class="fbtn" data-filter="7d">7 días</button>
+    <button class="fbtn" data-filter="30d">30 días</button>
+  </div>
+  <div id="historyList" class="history-list"></div>
+</main>
+
+<!-- ── ESTADÍSTICAS ──────────────────────── -->
+<main id="viewStats" class="hidden">
+  <div class="view-header">
+    <button class="back-btn" id="btnBackFromStats">← Volver</button>
+    <span class="view-title">Estadísticas</span>
+  </div>
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-num" id="statTotal">0</div><div class="stat-lbl">Total registros</div></div>
+    <div class="stat-card"><div class="stat-num" id="statToday">0</div><div class="stat-lbl">Registros hoy</div></div>
+    <div class="stat-card"><div class="stat-num" id="statEmpresas">0</div><div class="stat-lbl">Empresas únicas</div></div>
+    <div class="stat-card"><div class="stat-num" id="statRuts">0</div><div class="stat-lbl">RUT únicos</div></div>
+  </div>
+  <div style="margin-top:10px">
+    <button class="btn-action btn-excel" style="width:100%" id="btnExportCSVStats">⬆ Exportar CSV ahora</button>
+  </div>
+</main>
+
+
+<!-- ── MODAL RECORDATORIO ─────────────────── -->
+<div id="modalRecordatorio" class="modal-overlay hidden">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-icon">⏰</span>
+      <span class="modal-title">RECORDATORIO</span>
+    </div>
+    <div id="modalBody" class="modal-body"></div>
+    <div class="modal-actions">
+      <button class="btn-action btn-search-crm" id="btnModalCRM">🔍 Abrir CRM</button>
+      <button class="btn-sm btn-primary" id="btnModalCerrar">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Audio para alarma -->
+<audio id="audioAlarma" preload="auto">
+  <source src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhS0tdma+3pYpZSEZXjKq5rJFgTEhGVoimuaqTZ1ROSluCn7OslGtcU1FZf5mwrJhzZ2BcWnuTrK6dekxDRlB9mLKoknFaR0RQf5mxqZFxWkVDUICZsaeTfGtlYl2BlaypmnheSEdSg5y0qJR3XUlIU4OdtKiVd15KSFSDnrSnlXdfS0lUhJ+1p5V2XkpIVISftqeWd19LS1WFoLanln" type="audio/wav">
+</audio>
+
+<script src="popup.js"></script>
+</body>
+</html>
