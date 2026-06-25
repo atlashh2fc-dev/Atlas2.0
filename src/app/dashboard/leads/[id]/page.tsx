@@ -7,6 +7,7 @@ import { assignLeadWorkflow } from "@/app/actions/workflows";
 import { getOrCreateOpenCall } from "@/app/actions/calls";
 import { CallTypificationForm } from "@/components/call-typification-form";
 import { CallTimer } from "@/components/call-timer";
+import { getReasonConfig } from "@/lib/call-typification";
 
 type ProfileEmbed = { full_name: string } | { full_name: string }[] | null;
 
@@ -85,15 +86,21 @@ export default async function LeadDetailPage({
         : [...INTERACTION_RESULTS];
 
   // Historial combinado: llamadas cerradas + gestiones registradas, orden cronológico descendente.
+  // Las llamadas migradas del CRM legado no tienen reason/notes propios (el outcome
+  // genérico "other" no aporta nada): la tipificación real de esos casos ya queda
+  // registrada en su interacción correspondiente, así que esas llamadas vacías se
+  // omiten para no duplicar la misma gestión sin información real.
   const history = [
-    ...(previousCalls ?? []).map((c) => ({
-      key: `call-${c.id}`,
-      date: c.ended_at,
-      title: c.outcome ?? c.reason ?? "Llamada",
-      notes: c.notes,
-      agenda: c.next_action_at,
-      agent: agentName(c.profiles as ProfileEmbed, c.historical_agents as ProfileEmbed),
-    })),
+    ...(previousCalls ?? [])
+      .filter((c) => c.reason || c.notes)
+      .map((c) => ({
+        key: `call-${c.id}`,
+        date: c.ended_at,
+        title: getReasonConfig(c.reason)?.label ?? c.reason ?? "Llamada",
+        notes: c.notes,
+        agenda: c.next_action_at,
+        agent: agentName(c.profiles as ProfileEmbed, c.historical_agents as ProfileEmbed),
+      })),
     ...(interactions ?? []).map((i) => ({
       key: `interaction-${i.id}`,
       date: i.created_at,
