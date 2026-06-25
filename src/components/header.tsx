@@ -1,5 +1,6 @@
 import type { Profile } from "@/lib/types";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { QuickSearch } from "@/components/quick-search";
 import { signOut } from "@/app/actions/auth";
 import { LogOut } from "lucide-react";
 
@@ -18,6 +19,7 @@ export function Header({ profile }: { profile: Profile }) {
       </div>
 
       <div className="flex items-center gap-3">
+        <QuickSearch />
         <ThemeToggle />
         <form action={signOut}>
           <button
