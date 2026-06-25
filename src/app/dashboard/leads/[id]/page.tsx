@@ -8,6 +8,13 @@ import { getOrCreateOpenCall } from "@/app/actions/calls";
 import { CallTypificationForm } from "@/components/call-typification-form";
 import { CallTimer } from "@/components/call-timer";
 
+type ProfileEmbed = { full_name: string } | { full_name: string }[] | null;
+
+function agentName(value: ProfileEmbed): string {
+  const profile = Array.isArray(value) ? value[0] : value;
+  return profile?.full_name ?? "—";
+}
+
 export default async function LeadDetailPage({
   params,
 }: {
@@ -28,7 +35,7 @@ export default async function LeadDetailPage({
 
   const { data: previousCalls } = await supabase
     .from("calls")
-    .select("*")
+    .select("*, profiles!calls_agent_id_fkey(full_name)")
     .eq("lead_id", id)
     .not("ended_at", "is", null)
     .order("ended_at", { ascending: false })
@@ -36,7 +43,7 @@ export default async function LeadDetailPage({
 
   const { data: interactions } = await supabase
     .from("interactions")
-    .select("*")
+    .select("*, profiles!interactions_agent_id_fkey(full_name)")
     .eq("lead_id", id)
     .order("created_at", { ascending: false })
     .limit(20);
@@ -67,9 +74,10 @@ export default async function LeadDetailPage({
     ...(previousCalls ?? []).map((c) => ({
       key: `call-${c.id}`,
       date: c.ended_at,
-      title: c.reason ?? "Llamada",
+      title: c.outcome ?? c.reason ?? "Llamada",
       notes: c.notes,
       agenda: c.next_action_at,
+      agent: agentName(c.profiles as ProfileEmbed),
     })),
     ...(interactions ?? []).map((i) => ({
       key: `interaction-${i.id}`,
@@ -77,6 +85,7 @@ export default async function LeadDetailPage({
       title: i.result,
       notes: i.notes,
       agenda: null as string | null,
+      agent: agentName(i.profiles as ProfileEmbed),
     })),
   ].sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime());
 
@@ -183,7 +192,7 @@ export default async function LeadDetailPage({
           </div>
         )}
 
-        {hasActiveStep && (
+        {canManageCall && hasActiveStep && (
           <form action={registerInteraction} className="rounded-xl border border-border bg-surface p-5">
             <input type="hidden" name="lead_id" value={lead.id} />
             <input type="hidden" name="workflow_step_id" value={progress!.next_step_id!} />
@@ -302,6 +311,7 @@ export default async function LeadDetailPage({
                     {h.date ? new Date(h.date).toLocaleString("es-CL") : "—"}
                   </span>
                 </div>
+                <p className="mt-0.5 text-xs text-muted-foreground">Gestionado por: {h.agent}</p>
                 {h.notes && <p className="mt-1 text-sm text-muted-foreground">{h.notes}</p>}
                 {h.agenda && (
                   <p className="mt-1 text-xs text-accent-foreground">
