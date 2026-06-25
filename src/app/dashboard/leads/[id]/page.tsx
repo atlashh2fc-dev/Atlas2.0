@@ -83,7 +83,7 @@ export default async function LeadDetailPage({
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
       {/* Cliente, flujo, paso obligatorio e historial */}
-      <div className="space-y-6 lg:col-span-1">
+      <div className={`space-y-6 ${call ? "lg:col-span-1" : "lg:col-span-3"}`}>
         <div className="rounded-xl border border-border bg-surface p-5">
           <div className="flex items-center justify-between gap-2">
             <h1 className="text-lg font-semibold text-foreground">{lead.full_name}</h1>
@@ -315,16 +315,11 @@ export default async function LeadDetailPage({
       </div>
 
       {/* Tipificación de la llamada */}
-      <div className="lg:col-span-2">
-        {call ? (
+      {call && (
+        <div className="lg:col-span-2">
           <CallTypificationForm lead={lead} call={call} />
-        ) : (
-          <div className="rounded-xl border border-dashed border-border bg-surface p-8 text-center text-sm text-muted-foreground">
-            Vista de supervisor: solo lectura. La tipificación de la llamada la gestiona el ejecutivo asignado;
-            aquí puedes revisar los datos del lead y su historial de gestiones.
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
