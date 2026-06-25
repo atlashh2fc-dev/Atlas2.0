@@ -62,7 +62,9 @@ export function Sidebar({ role }: { role: AppRole }) {
 
       <nav className="flex-1 space-y-1 p-3">
         {items.map((item) => {
-          const active = pathname === item.href || pathname.startsWith(item.href + "/");
+          const active =
+            pathname === item.href ||
+            (item.href !== "/dashboard" && pathname.startsWith(item.href + "/"));
           const Icon = item.icon;
           return (
             <div key={item.href}>
