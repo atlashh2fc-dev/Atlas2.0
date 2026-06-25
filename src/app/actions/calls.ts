@@ -145,7 +145,7 @@ export async function saveCallProgress(input: {
     if (leadError) throw new Error(leadError.message);
   }
 
-  revalidatePath(`/dashboard/llamadas/${leadId}`);
+  revalidatePath(`/dashboard/leads/${leadId}`);
 }
 
 /** Guardar agenda (fecha/hora de próximo contacto) sin cerrar la llamada. */
@@ -188,7 +188,7 @@ export async function saveCallAgenda(input: {
     payload: { next_action_at: nextActionAt, next_action_window: nextActionWindow ?? null },
   });
 
-  revalidatePath(`/dashboard/llamadas/${leadId}`);
+  revalidatePath(`/dashboard/leads/${leadId}`);
 }
 
 /** Cerrar la gestión ("Guardar y terminar"): valida todo y persiste el cierre. */
@@ -295,9 +295,9 @@ export async function closeCall(input: {
     payload: { status, outcome, reason, next_action_at },
   });
 
-  revalidatePath(`/dashboard/llamadas/${leadId}`);
-  revalidatePath("/dashboard/llamadas");
-  redirect("/dashboard/llamadas");
+  revalidatePath(`/dashboard/leads/${leadId}`);
+  revalidatePath("/dashboard/leads");
+  redirect("/dashboard/leads");
 }
 
 /**
@@ -330,7 +330,7 @@ export async function discardCallTechnicalError(input: { callId: string; leadId:
     payload: { reason },
   });
 
-  revalidatePath(`/dashboard/llamadas/${leadId}`);
-  revalidatePath("/dashboard/llamadas");
-  redirect("/dashboard/llamadas");
+  revalidatePath(`/dashboard/leads/${leadId}`);
+  revalidatePath("/dashboard/leads");
+  redirect("/dashboard/leads");
 }

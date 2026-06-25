@@ -10,7 +10,6 @@ import {
   ShieldCheck,
   BarChart3,
   Workflow,
-  PhoneCall,
   Megaphone,
   History,
 } from "lucide-react";
@@ -28,7 +27,6 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Inicio", icon: LayoutDashboard, roles: ["agente", "supervisor", "admin"] },
-  { href: "/dashboard/llamadas", label: "Llamadas", icon: PhoneCall, roles: ["agente", "supervisor", "admin"] },
   { href: "/dashboard/leads", label: "Leads", icon: Users, roles: ["agente", "supervisor", "admin"] },
   { href: "/dashboard/team", label: "Mi equipo", icon: UsersRound, roles: ["supervisor"] },
   { href: "/dashboard/reportes", label: "Reportes", icon: BarChart3, roles: ["supervisor", "admin"] },

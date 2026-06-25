@@ -158,7 +158,7 @@ export function LiveDashboard({
                     {new Date(a.next_action_at).toLocaleString("es-CL")}
                   </span>
                   <Link
-                    href={`/dashboard/llamadas/${a.id}`}
+                    href={`/dashboard/leads/${a.id}`}
                     className="inline-flex items-center rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary-hover"
                   >
                     Llamar ahora

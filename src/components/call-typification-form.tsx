@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Call, Interaction, Lead } from "@/lib/types";
+import { CheckCircle2, AlertCircle } from "lucide-react";
+import type { Call, Lead } from "@/lib/types";
 import {
   CALL_STATUSES,
   CALL_OUTCOMES_BY_STATUS,
@@ -34,14 +35,9 @@ type PendingAction = "progress" | "agenda" | "close" | "discard" | null;
 export function CallTypificationForm({
   lead,
   call,
-  previousCalls,
-  interactions,
 }: {
   lead: Lead;
   call: Call;
-  previousCalls: Call[];
-  interactions: Interaction[];
-  agentId: string;
 }) {
   const [status, setStatus] = useState<CallStatus | "">((call.status as CallStatus) || "");
   const [outcome, setOutcome] = useState<CallOutcome | "">((call.outcome as CallOutcome) || "");
@@ -181,78 +177,9 @@ export function CallTypificationForm({
   }
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-      {/* Datos del cliente + historial */}
-      <div className="space-y-6 lg:col-span-1">
-        <div className="rounded-xl border border-border bg-surface p-5">
-          <h1 className="text-lg font-semibold text-foreground">{lead.full_name}</h1>
-          <dl className="mt-4 space-y-2 text-sm">
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">RUT</dt>
-              <dd className="text-foreground">{lead.rut ?? "—"}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">Teléfono</dt>
-              <dd className="text-foreground">{lead.phone ?? "—"}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">Correo</dt>
-              <dd className="text-foreground">{lead.email ?? "—"}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">Tipificación actual</dt>
-              <dd className="text-foreground">{lead.tipificacion_actual ?? "—"}</dd>
-            </div>
-            {lead.next_action_at && (
-              <div className="flex justify-between">
-                <dt className="text-muted-foreground">Próxima agenda</dt>
-                <dd className="text-foreground">{new Date(lead.next_action_at).toLocaleString("es-CL")}</dd>
-              </div>
-            )}
-          </dl>
-        </div>
-
-        <div className="rounded-xl border border-border bg-surface">
-          <div className="border-b border-border px-5 py-4">
-            <h2 className="text-sm font-semibold text-foreground">Historial previo</h2>
-          </div>
-          <ul className="max-h-96 divide-y divide-border overflow-y-auto">
-            {previousCalls.length === 0 && interactions.length === 0 && (
-              <li className="px-5 py-6 text-center text-sm text-muted-foreground">Sin gestiones previas.</li>
-            )}
-            {previousCalls.map((c) => (
-              <li key={c.id} className="px-5 py-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-foreground">{c.reason ?? "—"}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {c.ended_at ? new Date(c.ended_at).toLocaleString("es-CL") : "—"}
-                  </span>
-                </div>
-                {c.notes && <p className="mt-1 text-sm text-muted-foreground">{c.notes}</p>}
-                {c.next_action_at && (
-                  <p className="mt-1 text-xs text-accent-foreground">
-                    Agenda: {new Date(c.next_action_at).toLocaleString("es-CL")}
-                  </p>
-                )}
-              </li>
-            ))}
-            {interactions.map((i) => (
-              <li key={i.id} className="px-5 py-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-foreground">{i.result}</span>
-                  <span className="text-xs text-muted-foreground">{new Date(i.created_at).toLocaleString("es-CL")}</span>
-                </div>
-                {i.notes && <p className="mt-1 text-sm text-muted-foreground">{i.notes}</p>}
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
-
-      {/* Cascada + agenda + Equifax + resumen */}
-      <div className="space-y-6 lg:col-span-2">
-        <div className="rounded-xl border border-border bg-surface p-5">
-          <h2 className="mb-4 text-sm font-semibold text-foreground">Tipificación de la llamada</h2>
+    <div className="space-y-6">
+      <div className="rounded-xl border border-border bg-surface p-5">
+        <h2 className="mb-4 text-sm font-semibold text-foreground">Tipificación de la llamada</h2>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
@@ -418,46 +345,29 @@ export function CallTypificationForm({
           )}
         </div>
 
-        {/* Resumen previo al cierre */}
-        <div className="rounded-xl border border-border bg-surface p-5">
-          <h2 className="mb-3 text-sm font-semibold text-foreground">Resumen</h2>
-          <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
-            <div className="flex justify-between sm:block">
-              <dt className="text-muted-foreground">Estado</dt>
-              <dd className="text-foreground">{CALL_STATUSES.find((s) => s.value === status)?.label ?? "—"}</dd>
-            </div>
-            <div className="flex justify-between sm:block">
-              <dt className="text-muted-foreground">Resultado</dt>
-              <dd className="text-foreground">{outcomeOptions.find((o) => o.value === outcome)?.label ?? "—"}</dd>
-            </div>
-            <div className="flex justify-between sm:block">
-              <dt className="text-muted-foreground">Motivo</dt>
-              <dd className="text-foreground">{reason || "—"}</dd>
-            </div>
-            <div className="flex justify-between sm:block">
-              <dt className="text-muted-foreground">Agenda</dt>
-              <dd className="text-foreground">
-                {nextActionAt ? new Date(localInputToIso(nextActionAt) ?? "").toLocaleString("es-CL") : "—"}
-              </dd>
-            </div>
-          </dl>
-          {notes && <p className="mt-3 text-sm text-muted-foreground">Notas: {notes}</p>}
+      {/* Acciones de guardado + feedback */}
+      <div className="rounded-xl border border-border bg-surface p-5">
+        {pendingIssues.length > 0 && (
+          <ul className="mb-3 space-y-1 rounded-lg bg-warning-bg p-3 text-xs text-warning">
+            {pendingIssues.map((issue) => (
+              <li key={issue}>• {issue}</li>
+            ))}
+          </ul>
+        )}
 
-          {pendingIssues.length > 0 && (
-            <ul className="mt-3 space-y-1 rounded-lg bg-warning-bg p-3 text-xs text-warning">
-              {pendingIssues.map((issue) => (
-                <li key={issue}>• {issue}</li>
-              ))}
-            </ul>
-          )}
+        {message && (
+          <div
+            className={`mb-3 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium ${
+              message.type === "error" ? "bg-danger-bg text-danger" : "bg-success-bg text-success"
+            }`}
+          >
+            {message.type === "error" ? <AlertCircle size={16} /> : <CheckCircle2 size={16} />}
+            {message.text}
+          </div>
+        )}
 
-          {message && (
-            <p className={`mt-3 text-sm font-medium ${message.type === "error" ? "text-danger" : "text-success"}`}>
-              {message.text}
-            </p>
-          )}
-
-          <div className="mt-4 flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <div>
             <button
               type="button"
               onClick={handleSaveProgress}
@@ -466,6 +376,9 @@ export function CallTypificationForm({
             >
               {pending === "progress" ? "Guardando..." : "Guardar avance"}
             </button>
+            <p className="mt-1 text-xs text-muted-foreground">Guarda lo registrado sin cerrar la gestión.</p>
+          </div>
+          <div>
             <button
               type="button"
               onClick={handleClose}
@@ -474,41 +387,42 @@ export function CallTypificationForm({
             >
               {pending === "close" ? "Cerrando..." : "Guardar y terminar"}
             </button>
-
-            <button
-              type="button"
-              onClick={() => setDiscardOpen((v) => !v)}
-              className="ml-auto rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground hover:text-danger"
-            >
-              Descartar por error técnico
-            </button>
+            <p className="mt-1 text-xs text-muted-foreground">Cierra la llamada actual.</p>
           </div>
 
-          {discardOpen && (
-            <div className="mt-3 rounded-lg border border-border bg-background p-3">
-              <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                Motivo del error técnico (no se escribirá tipificación en el lead)
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={discardReason}
-                  onChange={(e) => setDiscardReason(e.target.value)}
-                  placeholder="Ej: se cortó la llamada por falla de telefonía"
-                  className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                />
-                <button
-                  type="button"
-                  onClick={handleDiscard}
-                  disabled={pending !== null}
-                  className="rounded-lg bg-danger px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
-                >
-                  {pending === "discard" ? "Descartando..." : "Confirmar descarte"}
-                </button>
-              </div>
-            </div>
-          )}
+          <button
+            type="button"
+            onClick={() => setDiscardOpen((v) => !v)}
+            className="ml-auto self-start rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground hover:text-danger"
+          >
+            Descartar por error técnico
+          </button>
         </div>
+
+        {discardOpen && (
+          <div className="mt-3 rounded-lg border border-border bg-background p-3">
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+              Motivo del error técnico (no se escribirá tipificación en el lead)
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={discardReason}
+                onChange={(e) => setDiscardReason(e.target.value)}
+                placeholder="Ej: se cortó la llamada por falla de telefonía"
+                className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+              <button
+                type="button"
+                onClick={handleDiscard}
+                disabled={pending !== null}
+                className="rounded-lg bg-danger px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+              >
+                {pending === "discard" ? "Descartando..." : "Confirmar descarte"}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
