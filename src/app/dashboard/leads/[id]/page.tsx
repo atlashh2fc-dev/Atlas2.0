@@ -20,7 +20,11 @@ export default async function LeadDetailPage({
   const { data: lead } = await supabase.from("leads").select("*").eq("id", id).single();
   if (!lead) notFound();
 
-  const call = await getOrCreateOpenCall(id);
+  // Solo agentes (y admin) pueden abrir/crear una llamada: la política RLS de
+  // `calls` no permite INSERT a supervisores, así que para ellos esta ficha
+  // es de solo lectura y nunca se intenta crear una llamada en su nombre.
+  const canManageCall = profile.role === "agente" || profile.role === "admin";
+  const call = canManageCall ? await getOrCreateOpenCall(id) : null;
 
   const { data: previousCalls } = await supabase
     .from("calls")
@@ -83,7 +87,7 @@ export default async function LeadDetailPage({
         <div className="rounded-xl border border-border bg-surface p-5">
           <div className="flex items-center justify-between gap-2">
             <h1 className="text-lg font-semibold text-foreground">{lead.full_name}</h1>
-            <CallTimer startedAt={call.started_at} endedAt={call.ended_at} />
+            {call && <CallTimer startedAt={call.started_at} endedAt={call.ended_at} />}
           </div>
           <dl className="mt-4 space-y-2 text-sm">
             <div className="flex justify-between">
@@ -312,7 +316,14 @@ export default async function LeadDetailPage({
 
       {/* Tipificación de la llamada */}
       <div className="lg:col-span-2">
-        <CallTypificationForm lead={lead} call={call} />
+        {call ? (
+          <CallTypificationForm lead={lead} call={call} />
+        ) : (
+          <div className="rounded-xl border border-dashed border-border bg-surface p-8 text-center text-sm text-muted-foreground">
+            Vista de supervisor: solo lectura. La tipificación de la llamada la gestiona el ejecutivo asignado;
+            aquí puedes revisar los datos del lead y su historial de gestiones.
+          </div>
+        )}
       </div>
     </div>
   );
