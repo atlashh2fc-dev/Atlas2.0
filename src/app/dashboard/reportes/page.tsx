@@ -2,6 +2,7 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { AgentPerformance, WorkflowCompliance, CampaignDashboardCall } from "@/lib/types";
 import { CampaignDashboard } from "@/components/campaign-dashboard";
+import { AgentPerformanceChart, WorkflowComplianceChart } from "@/components/reportes-charts";
 
 function formatDuration(seconds: number | null) {
   if (seconds === null || seconds === undefined) return "—";
@@ -143,6 +144,9 @@ export default async function ReportesPage({
 
       <div>
         <h2 className="mb-3 text-sm font-semibold text-foreground">Rendimiento por ejecutivo</h2>
+        <div className="mb-4 rounded-xl border border-border bg-surface p-5">
+          <AgentPerformanceChart agents={agents} />
+        </div>
         <div className="overflow-hidden rounded-xl border border-border bg-surface">
           <table className="w-full text-sm">
             <thead>
@@ -182,6 +186,9 @@ export default async function ReportesPage({
 
       <div>
         <h2 className="mb-3 text-sm font-semibold text-foreground">Cumplimiento de flujos</h2>
+        <div className="mb-4 rounded-xl border border-border bg-surface p-5">
+          <WorkflowComplianceChart workflows={workflows} />
+        </div>
         <div className="overflow-hidden rounded-xl border border-border bg-surface">
           <table className="w-full text-sm">
             <thead>
