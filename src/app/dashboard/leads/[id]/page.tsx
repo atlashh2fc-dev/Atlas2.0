@@ -10,8 +10,19 @@ import { CallTimer } from "@/components/call-timer";
 
 type ProfileEmbed = { full_name: string } | { full_name: string }[] | null;
 
-function agentName(value: ProfileEmbed): string {
-  const profile = Array.isArray(value) ? value[0] : value;
+function one<T>(value: T | T[] | null): T | null {
+  return Array.isArray(value) ? value[0] ?? null : value;
+}
+
+/**
+ * El nombre del ejecutivo que gestionó: para registros migrados del CRM legado
+ * (historical_agent_id) usamos el nombre guardado en `historical_agents`, ya que
+ * `agent_id` en esos casos apunta a un perfil placeholder ("Migración Histórica").
+ */
+function agentName(profileEmbed: ProfileEmbed, historicalEmbed: ProfileEmbed): string {
+  const historical = one(historicalEmbed);
+  if (historical) return historical.full_name;
+  const profile = one(profileEmbed);
   return profile?.full_name ?? "—";
 }
 
@@ -35,7 +46,9 @@ export default async function LeadDetailPage({
 
   const { data: previousCalls } = await supabase
     .from("calls")
-    .select("*, profiles!calls_agent_id_fkey(full_name)")
+    .select(
+      "*, profiles!calls_agent_id_fkey(full_name), historical_agents!calls_historical_agent_id_fkey(full_name)"
+    )
     .eq("lead_id", id)
     .not("ended_at", "is", null)
     .order("ended_at", { ascending: false })
@@ -43,7 +56,9 @@ export default async function LeadDetailPage({
 
   const { data: interactions } = await supabase
     .from("interactions")
-    .select("*, profiles!interactions_agent_id_fkey(full_name)")
+    .select(
+      "*, profiles!interactions_agent_id_fkey(full_name), historical_agents!interactions_historical_agent_id_fkey(full_name)"
+    )
     .eq("lead_id", id)
     .order("created_at", { ascending: false })
     .limit(20);
@@ -77,7 +92,7 @@ export default async function LeadDetailPage({
       title: c.outcome ?? c.reason ?? "Llamada",
       notes: c.notes,
       agenda: c.next_action_at,
-      agent: agentName(c.profiles as ProfileEmbed),
+      agent: agentName(c.profiles as ProfileEmbed, c.historical_agents as ProfileEmbed),
     })),
     ...(interactions ?? []).map((i) => ({
       key: `interaction-${i.id}`,
@@ -85,7 +100,7 @@ export default async function LeadDetailPage({
       title: i.result,
       notes: i.notes,
       agenda: null as string | null,
-      agent: agentName(i.profiles as ProfileEmbed),
+      agent: agentName(i.profiles as ProfileEmbed, i.historical_agents as ProfileEmbed),
     })),
   ].sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime());
 
@@ -130,7 +145,7 @@ export default async function LeadDetailPage({
           </dl>
         </div>
 
-        {(profile.role === "admin" || profile.role === "supervisor") && (
+        {profile.role === "admin" && (
           <div className="rounded-xl border border-border bg-surface p-5">
             <h2 className="mb-3 text-sm font-semibold text-foreground">Flujo de gestión</h2>
             <form action={assignLeadWorkflow} className="flex items-center gap-2">
@@ -154,41 +169,6 @@ export default async function LeadDetailPage({
                 Asignar
               </button>
             </form>
-          </div>
-        )}
-
-        {lead.workflow_id && (
-          <div className="rounded-xl border border-border bg-surface p-5">
-            <h2 className="mb-2 text-sm font-semibold text-foreground">Avance del flujo</h2>
-            {progress?.total_mandatory_steps ? (
-              <>
-                <div className="mb-2 h-2 w-full overflow-hidden rounded-full bg-surface-muted">
-                  <div
-                    className="h-full rounded-full bg-primary"
-                    style={{
-                      width: `${Math.min(
-                        100,
-                        Math.round(
-                          (progress.completed_mandatory_steps / progress.total_mandatory_steps) * 100
-                        )
-                      )}%`,
-                    }}
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {progress.completed_mandatory_steps} de {progress.total_mandatory_steps} pasos obligatorios completados
-                </p>
-                {progress.is_compliant ? (
-                  <p className="mt-2 text-xs font-medium text-success">Flujo completado ✓</p>
-                ) : (
-                  <p className="mt-2 text-xs font-medium text-warning">
-                    Pendiente: {progress.next_step_name}
-                  </p>
-                )}
-              </>
-            ) : (
-              <p className="text-xs text-muted-foreground">Este flujo no tiene pasos configurados.</p>
-            )}
           </div>
         )}
 
