@@ -242,7 +242,7 @@ export async function closeCall(input: {
   equifax_uf_amount: number | null;
   equifax_recipient_email: string | null;
 }) {
-  const { supabase, userId } = await requireAgent();
+  const { supabase } = await requireAgent();
   const {
     callId,
     leadId,
@@ -284,57 +284,20 @@ export async function closeCall(input: {
     throw new Error(errors.join(" "));
   }
 
-  if (next_action_at) {
-    const hasConflict = await findAgendaConflict({ supabase, leadId, excludeCallId: callId, nextActionAt: next_action_at });
-    if (hasConflict) {
-      throw new Error(
-        "Ya existe una agenda cerrada para este lead/contacto, en la misma campaña, para esa fecha y hora exacta."
-      );
-    }
-  }
-
-  const now = new Date().toISOString();
-
-  const { error: closeError } = await supabase
-    .from("calls")
-    .update({
-      ended_at: now,
-      status,
-      outcome,
-      reason,
-      notes,
-      next_action_at,
-      next_action_window,
-      callback_owner_user_id: next_action_at ? userId : null,
-      equifax_products: equifax_products.length > 0 ? equifax_products : null,
-      equifax_uf_amount,
-      equifax_recipient_email,
-      updated_at: now,
-    })
-    .eq("id", callId);
-  if (closeError) throw new Error(closeError.message);
-
-  const { error: leadUpdateError } = await supabase
-    .from("leads")
-    .update({
-      tipificacion_actual: reason,
-      observacion_actual: notes,
-      next_action_at: next_action_at ?? null,
-      workflow_status: next_action_at ? "callback" : "managed",
-      assignment_status: "managed",
-      managed_at: now,
-      managed_by: userId,
-    })
-    .eq("id", leadId);
-  if (leadUpdateError) throw new Error(leadUpdateError.message);
-
-  await supabase.from("call_events").insert({
-    call_id: callId,
-    lead_id: leadId,
-    agent_id: userId,
-    event_type: "call.closed",
-    payload: { status, outcome, reason, next_action_at },
+  const { error: closeError } = await supabase.rpc("save_call_management", {
+    p_call_id: callId,
+    p_lead_id: leadId,
+    p_status: status,
+    p_outcome: outcome,
+    p_reason: reason,
+    p_notes: notes,
+    p_next_action_at: next_action_at,
+    p_next_action_window: next_action_window,
+    p_equifax_products: equifax_products,
+    p_equifax_uf_amount: equifax_uf_amount,
+    p_equifax_recipient_email: equifax_recipient_email,
   });
+  if (closeError) throw new Error(closeError.message);
 
   revalidatePath(`/dashboard/leads/${leadId}`);
   revalidatePath("/dashboard/leads");
