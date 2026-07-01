@@ -192,21 +192,46 @@ export interface CampaignPerformance {
   managed_rate: number | null;
 }
 
-/** Registro crudo de una llamada para el dashboard analítico de campaña (join calls+leads+profiles). */
-export interface CampaignDashboardCall {
-  id: string;
-  status: string | null;
-  outcome: string | null;
-  reason: string | null;
-  equifax_products: string[] | null;
-  equifax_uf_amount: number | null;
-  next_action_at: string | null;
-  started_at: string;
-  ended_at: string | null;
-  agent_id: string;
-  agent_name: string;
-  lead_id: string;
-  lead_full_name: string;
+export interface CampaignDashboardSummaryMetric {
+  current: number;
+  previous: number;
+}
+
+export interface CampaignDashboardSummary {
+  total_leads: number;
+  range: {
+    from: string;
+    to: string;
+    previous_from: string;
+    previous_to: string;
+  };
+  kpis: {
+    gestionadas: CampaignDashboardSummaryMetric;
+    contactadas: CampaignDashboardSummaryMetric;
+    ventas: CampaignDashboardSummaryMetric;
+    uf_total: CampaignDashboardSummaryMetric;
+    cotizaciones: number;
+  };
+  funnel: { name: string; value: number }[];
+  reasons: { reason: string; count: number }[];
+  products: { product: string; count: number; uf: number }[];
+  time_series: { date: string; gestiones: number; ventas: number }[];
+  agenda: {
+    id: string;
+    lead_full_name: string;
+    agent_name: string;
+    reason: string | null;
+    next_action_at: string;
+    overdue: boolean;
+  }[];
+  agents: {
+    agent_id: string | null;
+    name: string;
+    gestiones: number;
+    contactos: number;
+    ventas: number;
+    uf: number;
+  }[];
 }
 
 export const LEAD_STATUSES = [

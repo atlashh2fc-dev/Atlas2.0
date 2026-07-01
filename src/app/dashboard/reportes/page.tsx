@@ -1,7 +1,7 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import type { AgentPerformance, WorkflowCompliance, CampaignDashboardCall } from "@/lib/types";
-import { CampaignDashboard } from "@/components/campaign-dashboard";
+import type { AgentPerformance, CampaignDashboardSummary as CampaignDashboardSummaryData, WorkflowCompliance } from "@/lib/types";
+import { CampaignDashboardSummary } from "@/components/campaign-dashboard-summary";
 import { AgentPerformanceChart, WorkflowComplianceChart } from "@/components/reportes-charts";
 
 function formatDuration(seconds: number | null) {
@@ -12,25 +12,7 @@ function formatDuration(seconds: number | null) {
   return `${minutes}m`;
 }
 
-type ProfileEmbed = { full_name: string } | { full_name: string }[] | null;
-type LeadEmbed =
-  | { full_name: string; campaign_id: string | null }
-  | { full_name: string; campaign_id: string | null }[]
-  | null;
-
 const DASHBOARD_WINDOW_DAYS = 30;
-
-function one<T>(value: T | T[] | null): T | null {
-  if (Array.isArray(value)) return value[0] ?? null;
-  return value;
-}
-
-function dateInputValue(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
 
 function startOfDay(date: Date): Date {
   const d = new Date(date);
@@ -80,64 +62,21 @@ export default async function ReportesPage({
   const dashboardTo = endOfDay(new Date());
   const dashboardFrom = startOfDay(addDays(dashboardTo, -(DASHBOARD_WINDOW_DAYS - 1)));
   const loadedFrom = startOfDay(addDays(dashboardFrom, -DASHBOARD_WINDOW_DAYS));
+  const previousTo = new Date(dashboardFrom.getTime() - 1);
 
-  let dashboardCalls: CampaignDashboardCall[] = [];
-  let dashboardLeadCount = 0;
-  let dashboardAgentOptions: { id: string; name: string }[] = [];
+  let dashboardSummary: CampaignDashboardSummaryData | null = null;
 
   if (selectedCampaignId) {
-    const [{ data: rawCalls, error: callsError }, { count: leadCount }, { data: agentMembers }] =
-      await Promise.all([
-        supabase
-          .from("calls")
-          .select(
-            `id, status, outcome, reason, equifax_products, equifax_uf_amount, next_action_at, started_at, ended_at,
-             agent_id, profiles!calls_agent_id_fkey(full_name),
-             lead_id, leads!inner(full_name, campaign_id)`
-          )
-          .eq("leads.campaign_id", selectedCampaignId)
-          .gte("started_at", loadedFrom.toISOString())
-          .lte("started_at", dashboardTo.toISOString())
-          .order("started_at", { ascending: true }),
-        supabase
-          .from("leads")
-          .select("id", { count: "exact", head: true })
-          .eq("campaign_id", selectedCampaignId),
-        supabase
-          .from("campaign_agents")
-          .select("profile_id, profiles(full_name)")
-          .eq("campaign_id", selectedCampaignId),
-      ]);
-
-    if (callsError) throw new Error(callsError.message);
-
-    dashboardCalls = (rawCalls ?? []).map((row) => {
-      const profile = one(row.profiles as ProfileEmbed);
-      const lead = one(row.leads as LeadEmbed);
-      return {
-        id: row.id,
-        status: row.status,
-        outcome: row.outcome,
-        reason: row.reason,
-        equifax_products: row.equifax_products,
-        equifax_uf_amount: row.equifax_uf_amount,
-        next_action_at: row.next_action_at,
-        started_at: row.started_at,
-        ended_at: row.ended_at,
-        agent_id: row.agent_id,
-        agent_name: profile?.full_name ?? "—",
-        lead_id: row.lead_id,
-        lead_full_name: lead?.full_name ?? "—",
-      };
+    const { data, error } = await supabase.rpc("get_campaign_dashboard_summary", {
+      p_campaign_id: selectedCampaignId,
+      p_from: dashboardFrom.toISOString(),
+      p_to: dashboardTo.toISOString(),
+      p_previous_from: loadedFrom.toISOString(),
+      p_previous_to: previousTo.toISOString(),
     });
 
-    dashboardLeadCount = leadCount ?? 0;
-    dashboardAgentOptions = (agentMembers ?? [])
-      .map((m) => {
-        const profile = one(m.profiles as ProfileEmbed);
-        return profile ? { id: m.profile_id as string, name: profile.full_name } : null;
-      })
-      .filter((a): a is { id: string; name: string } => a !== null);
+    if (error) throw new Error(error.message);
+    dashboardSummary = data as CampaignDashboardSummaryData;
   }
 
   const totals = agents.reduce(
@@ -285,18 +224,7 @@ export default async function ReportesPage({
           </div>
         )}
 
-        {selectedCampaign && (
-          <CampaignDashboard
-            key={selectedCampaign.id}
-            calls={dashboardCalls}
-            totalLeads={dashboardLeadCount}
-            agentOptions={dashboardAgentOptions}
-            initialDateFrom={dateInputValue(dashboardFrom)}
-            initialDateTo={dateInputValue(dashboardTo)}
-            loadedDateFrom={dateInputValue(loadedFrom)}
-            loadedDateTo={dateInputValue(dashboardTo)}
-          />
-        )}
+        {selectedCampaign && dashboardSummary && <CampaignDashboardSummary key={selectedCampaign.id} summary={dashboardSummary} />}
       </div>
     </div>
   );
