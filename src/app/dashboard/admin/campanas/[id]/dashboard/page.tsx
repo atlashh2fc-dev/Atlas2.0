@@ -8,9 +8,36 @@ import type { CampaignDashboardCall } from "@/lib/types";
 type ProfileEmbed = { full_name: string } | { full_name: string }[] | null;
 type LeadEmbed = { full_name: string; campaign_id: string | null } | { full_name: string; campaign_id: string | null }[] | null;
 
+const DASHBOARD_WINDOW_DAYS = 30;
+
 function one<T>(value: T | T[] | null): T | null {
   if (Array.isArray(value)) return value[0] ?? null;
   return value;
+}
+
+function dateInputValue(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function startOfDay(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function endOfDay(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+function addDays(date: Date, days: number): Date {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
 }
 
 export default async function CampaignDashboardPage({ params }: { params: Promise<{ id: string }> }) {
@@ -21,6 +48,10 @@ export default async function CampaignDashboardPage({ params }: { params: Promis
   const { data: campaign } = await supabase.from("campaigns").select("*").eq("id", id).single();
   if (!campaign) notFound();
 
+  const dashboardTo = endOfDay(new Date());
+  const dashboardFrom = startOfDay(addDays(dashboardTo, -(DASHBOARD_WINDOW_DAYS - 1)));
+  const loadedFrom = startOfDay(addDays(dashboardFrom, -DASHBOARD_WINDOW_DAYS));
+
   const [{ data: rawCalls, error: callsError }, { count: leadCount }, { data: agentMembers }] = await Promise.all([
     supabase
       .from("calls")
@@ -30,6 +61,8 @@ export default async function CampaignDashboardPage({ params }: { params: Promis
          lead_id, leads!inner(full_name, campaign_id)`
       )
       .eq("leads.campaign_id", id)
+      .gte("started_at", loadedFrom.toISOString())
+      .lte("started_at", dashboardTo.toISOString())
       .order("started_at", { ascending: true }),
     supabase.from("leads").select("id", { count: "exact", head: true }).eq("campaign_id", id),
     supabase
@@ -86,6 +119,10 @@ export default async function CampaignDashboardPage({ params }: { params: Promis
         calls={calls}
         totalLeads={leadCount ?? 0}
         agentOptions={agentOptions}
+        initialDateFrom={dateInputValue(dashboardFrom)}
+        initialDateTo={dateInputValue(dashboardTo)}
+        loadedDateFrom={dateInputValue(loadedFrom)}
+        loadedDateTo={dateInputValue(dashboardTo)}
       />
     </div>
   );

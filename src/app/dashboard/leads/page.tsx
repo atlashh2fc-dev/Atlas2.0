@@ -152,25 +152,40 @@ export default async function LeadsPage({
   const view = parseView(viewParam);
   const supabase = await createClient();
 
-  let query = supabase
-    .from("leads")
-    .select(
-      "id, full_name, rut, phone, status, updated_at, next_action_at, tipificacion_actual, assignment_status, workflow_status, managed_at"
-    )
-    .order("updated_at", { ascending: false })
-    .limit(150);
+  let leads: LeadRow[] = [];
+  let error: { message: string } | null = null;
 
   if (q && q.trim()) {
-    const term = q.trim();
-    query = query.or(`rut.ilike.%${term}%,phone.ilike.%${term}%,full_name.ilike.%${term}%`);
-  }
+    const { data: matches, error: searchError } = await supabase.rpc("search_leads_quick", { p_term: q.trim() });
+    error = searchError;
 
-  const { data: leads, error } = await query;
+    const ids = ((matches ?? []) as { id: string }[]).map((lead) => lead.id);
+    if (!error && ids.length > 0) {
+      const { data: matchedLeads, error: leadsError } = await supabase
+        .from("leads")
+        .select(
+          "id, full_name, rut, phone, status, updated_at, next_action_at, tipificacion_actual, assignment_status, workflow_status, managed_at"
+        )
+        .in("id", ids);
+      leads = (matchedLeads ?? []) as LeadRow[];
+      error = leadsError;
+    }
+  } else {
+    const { data: queueLeads, error: queueError } = await supabase
+      .from("leads")
+      .select(
+        "id, full_name, rut, phone, status, updated_at, next_action_at, tipificacion_actual, assignment_status, workflow_status, managed_at"
+      )
+      .order("updated_at", { ascending: false })
+      .limit(150);
+    leads = (queueLeads ?? []) as LeadRow[];
+    error = queueError;
+  }
   const now = new Date();
   const todayStart = startOfToday();
   const todayEnd = endOfToday();
 
-  const rows = ((leads ?? []) as LeadRow[])
+  const rows = leads
     .map((lead) => ({ lead, state: getQueueState(lead, now) }))
     .filter(({ lead, state }) => {
       if (view === "vencidas") return state.label === "Urgente";
@@ -194,10 +209,10 @@ export default async function LeadsPage({
     })
     .slice(0, 75);
 
-  const states = ((leads ?? []) as LeadRow[]).map((lead) => getQueueState(lead, now));
+  const states = leads.map((lead) => getQueueState(lead, now));
   const counts = {
     vencidas: states.filter((state) => state.label === "Urgente").length,
-    hoy: ((leads ?? []) as LeadRow[]).filter((lead) => {
+    hoy: leads.filter((lead) => {
       if (!lead.next_action_at) return false;
       const date = new Date(lead.next_action_at);
       return !Number.isNaN(date.getTime()) && date >= todayStart && date <= todayEnd;

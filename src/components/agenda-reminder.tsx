@@ -57,7 +57,11 @@ function useAgendaSubscription(userId: string): AgendaContextValue {
     const supabase = createClient();
     const channel = supabase
       .channel(`agenda-reminder-${userId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, () => refresh())
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "leads", filter: `managed_by=eq.${userId}` },
+        () => refresh()
+      )
       .subscribe();
     return () => {
       supabase.removeChannel(channel);

@@ -24,6 +24,10 @@ interface Props {
   calls: CampaignDashboardCall[];
   totalLeads: number;
   agentOptions: { id: string; name: string }[];
+  initialDateFrom?: string;
+  initialDateTo?: string;
+  loadedDateFrom?: string;
+  loadedDateTo?: string;
 }
 
 const REASON_LABEL = new Map(CALL_REASONS.map((r) => [r.value, r.label]));
@@ -87,9 +91,17 @@ function DeltaBadge({ d, invert = false }: { d: Delta; invert?: boolean }) {
   );
 }
 
-export function CampaignDashboard({ calls, totalLeads, agentOptions }: Props) {
-  const [dateFrom, setDateFrom] = useState<string>("");
-  const [dateTo, setDateTo] = useState<string>("");
+export function CampaignDashboard({
+  calls,
+  totalLeads,
+  agentOptions,
+  initialDateFrom = "",
+  initialDateTo = "",
+  loadedDateFrom,
+  loadedDateTo,
+}: Props) {
+  const [dateFrom, setDateFrom] = useState<string>(initialDateFrom);
+  const [dateTo, setDateTo] = useState<string>(initialDateTo);
   const [selectedAgents, setSelectedAgents] = useState<Set<string>>(new Set());
   const [selectedReason, setSelectedReason] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
@@ -300,6 +312,8 @@ export function CampaignDashboard({ calls, totalLeads, agentOptions }: Props) {
           <input
             type="date"
             value={dateFrom}
+            min={loadedDateFrom}
+            max={loadedDateTo}
             onChange={(e) => setDateFrom(e.target.value)}
             className="rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground"
           />
@@ -309,6 +323,8 @@ export function CampaignDashboard({ calls, totalLeads, agentOptions }: Props) {
           <input
             type="date"
             value={dateTo}
+            min={loadedDateFrom}
+            max={loadedDateTo}
             onChange={(e) => setDateTo(e.target.value)}
             className="rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground"
           />

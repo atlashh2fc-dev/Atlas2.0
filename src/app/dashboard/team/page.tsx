@@ -25,11 +25,14 @@ export default async function TeamPage() {
     .eq("team_id", profile.team_id)
     .eq("role", "agente");
 
-  const { data: leads } = await supabase
+  const leadsQuery = supabase
     .from("leads")
     .select("id, full_name, rut, phone, status, assigned_to")
     .order("updated_at", { ascending: false })
     .limit(100);
+  const { data: leads } = profile.team_id
+    ? await leadsQuery.eq("team_id", profile.team_id)
+    : { data: [] };
 
   const { data: agendaLeads } = await supabase
     .from("leads")
