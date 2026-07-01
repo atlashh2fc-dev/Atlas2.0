@@ -4,11 +4,13 @@ import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
+  CALL_REASONS,
+  buildCallReasonCatalogFromWorkflow,
   validateCallClosure,
   type CallStatus,
   type CallOutcome,
 } from "@/lib/call-typification";
-import type { Call } from "@/lib/types";
+import type { Call, WorkflowStep, WorkflowStepBranch } from "@/lib/types";
 
 async function requireAgent() {
   const supabase = await createClient();
@@ -101,6 +103,41 @@ async function findAgendaConflict(params: {
 
   if (conflictError) throw new Error(conflictError.message);
   return (conflicts ?? []).length > 0;
+}
+
+async function getLeadCallReasonCatalog(params: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  lead: { workflow_id?: string | null; campaign_id?: string | null };
+}) {
+  const { supabase, lead } = params;
+  let workflowId = lead.workflow_id ?? null;
+
+  if (!workflowId && lead.campaign_id) {
+    const { data: campaign, error: campaignError } = await supabase
+      .from("campaigns")
+      .select("workflow_id")
+      .eq("id", lead.campaign_id)
+      .maybeSingle();
+    if (campaignError) throw new Error(campaignError.message);
+    workflowId = campaign?.workflow_id ?? null;
+  }
+
+  if (!workflowId) return CALL_REASONS;
+
+  const [{ data: steps, error: stepsError }, { data: branches, error: branchesError }] = await Promise.all([
+    supabase.from("workflow_steps").select("*").eq("workflow_id", workflowId).order("step_order", { ascending: true }),
+    supabase.from("workflow_step_branches").select("*").eq("workflow_id", workflowId),
+  ]);
+
+  if (stepsError) throw new Error(stepsError.message);
+  if (branchesError) throw new Error(branchesError.message);
+
+  const catalog = buildCallReasonCatalogFromWorkflow(
+    (steps ?? []) as WorkflowStep[],
+    (branches ?? []) as WorkflowStepBranch[]
+  );
+
+  return catalog.length > 0 ? catalog : CALL_REASONS;
 }
 
 /** Guardar avance sin cerrar la llamada. */
@@ -222,23 +259,27 @@ export async function closeCall(input: {
 
   const { data: lead, error: leadFetchError } = await supabase
     .from("leads")
-    .select("id, email")
+    .select("id, email, workflow_id, campaign_id")
     .eq("id", leadId)
     .single();
   if (leadFetchError) throw new Error(leadFetchError.message);
+  const reasonCatalog = await getLeadCallReasonCatalog({ supabase, lead });
 
-  const errors = validateCallClosure({
-    status,
-    outcome,
-    reason,
-    notes,
-    next_action_at,
-    equifax_products,
-    equifax_uf_amount,
-    equifax_recipient_email,
-    lead_email: lead.email,
-    contact_email: lead.email,
-  });
+  const errors = validateCallClosure(
+    {
+      status,
+      outcome,
+      reason,
+      notes,
+      next_action_at,
+      equifax_products,
+      equifax_uf_amount,
+      equifax_recipient_email,
+      lead_email: lead.email,
+      contact_email: lead.email,
+    },
+    reasonCatalog
+  );
   if (errors.length > 0) {
     throw new Error(errors.join(" "));
   }

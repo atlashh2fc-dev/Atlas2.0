@@ -1,13 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
 import { notFound } from "next/navigation";
-import { LEAD_STATUSES, INTERACTION_RESULTS } from "@/lib/types";
-import { registerInteraction } from "@/app/actions/leads";
-import { assignLeadWorkflow } from "@/app/actions/workflows";
+import { LEAD_STATUSES } from "@/lib/types";
 import { getOrCreateOpenCall } from "@/app/actions/calls";
 import { CallTypificationForm } from "@/components/call-typification-form";
 import { CallTimer } from "@/components/call-timer";
-import { getReasonConfig } from "@/lib/call-typification";
+import { buildCallReasonCatalogFromWorkflow, getReasonConfig } from "@/lib/call-typification";
+import type { WorkflowStep, WorkflowStepBranch } from "@/lib/types";
 
 type ProfileEmbed = { full_name: string } | { full_name: string }[] | null;
 
@@ -39,6 +38,29 @@ export default async function LeadDetailPage({
   const { data: lead } = await supabase.from("leads").select("*").eq("id", id).single();
   if (!lead) notFound();
 
+  const { data: campaign } = lead.campaign_id
+    ? await supabase.from("campaigns").select("id, name, workflow_id").eq("id", lead.campaign_id).maybeSingle()
+    : { data: null };
+
+  const effectiveWorkflowId = lead.workflow_id ?? campaign?.workflow_id ?? null;
+  const { data: workflow } = effectiveWorkflowId
+    ? await supabase.from("workflows").select("id, name").eq("id", effectiveWorkflowId).maybeSingle()
+    : { data: null };
+  const [{ data: workflowSteps }, { data: workflowBranches }] = effectiveWorkflowId
+    ? await Promise.all([
+        supabase
+          .from("workflow_steps")
+          .select("*")
+          .eq("workflow_id", effectiveWorkflowId)
+          .order("step_order", { ascending: true }),
+        supabase.from("workflow_step_branches").select("*").eq("workflow_id", effectiveWorkflowId),
+      ])
+    : [{ data: null }, { data: null }];
+  const reasonCatalog = buildCallReasonCatalogFromWorkflow(
+    (workflowSteps ?? []) as WorkflowStep[],
+    (workflowBranches ?? []) as WorkflowStepBranch[]
+  );
+
   // Solo agentes (y admin) pueden abrir/crear una llamada: la política RLS de
   // `calls` no permite INSERT a supervisores, así que para ellos esta ficha
   // es de solo lectura y nunca se intenta crear una llamada en su nombre.
@@ -63,27 +85,6 @@ export default async function LeadDetailPage({
     .eq("lead_id", id)
     .order("created_at", { ascending: false })
     .limit(20);
-
-  const { data: progress } = await supabase
-    .from("lead_workflow_progress")
-    .select("*")
-    .eq("lead_id", id)
-    .maybeSingle();
-
-  const { data: workflows } = await supabase
-    .from("workflows")
-    .select("id, name")
-    .eq("is_active", true)
-    .order("name");
-
-  const hasActiveStep = Boolean(progress?.next_step_id) && !progress?.is_compliant;
-  const activeFieldType = hasActiveStep ? progress?.next_step_field_type : null;
-  const activeOptions: string[] =
-    progress?.next_step_options && progress.next_step_options.length > 0
-      ? progress.next_step_options
-      : progress?.next_step_allowed_results && progress.next_step_allowed_results.length > 0
-        ? progress.next_step_allowed_results
-        : [...INTERACTION_RESULTS];
 
   // Historial combinado: llamadas cerradas + gestiones registradas, orden cronológico descendente.
   // Las llamadas migradas del CRM legado no tienen reason/notes propios (el outcome
@@ -113,7 +114,7 @@ export default async function LeadDetailPage({
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-      {/* Cliente, flujo, paso obligatorio e historial */}
+      {/* Cliente, contexto de campana e historial */}
       <div className={`space-y-6 ${call ? "lg:col-span-1" : "lg:col-span-3"}`}>
         <div className="rounded-xl border border-border bg-surface p-5">
           <div className="flex items-center justify-between gap-2">
@@ -152,135 +153,19 @@ export default async function LeadDetailPage({
           </dl>
         </div>
 
-        {profile.role === "admin" && (
-          <div className="rounded-xl border border-border bg-surface p-5">
-            <h2 className="mb-3 text-sm font-semibold text-foreground">Flujo de gestión</h2>
-            <form action={assignLeadWorkflow} className="flex items-center gap-2">
-              <input type="hidden" name="lead_id" value={lead.id} />
-              <select
-                name="workflow_id"
-                defaultValue={lead.workflow_id ?? ""}
-                className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-              >
-                <option value="">Sin flujo asignado</option>
-                {(workflows ?? []).map((w) => (
-                  <option key={w.id} value={w.id}>
-                    {w.name}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="submit"
-                className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
-              >
-                Asignar
-              </button>
-            </form>
-          </div>
-        )}
-
-        {canManageCall && hasActiveStep && (
-          <form action={registerInteraction} className="rounded-xl border border-border bg-surface p-5">
-            <input type="hidden" name="lead_id" value={lead.id} />
-            <input type="hidden" name="workflow_step_id" value={progress!.next_step_id!} />
-            <h2 className="mb-3 text-sm font-semibold text-foreground">Paso obligatorio del flujo</h2>
-            <p className="mb-3 rounded-lg bg-warning-bg px-3 py-2 text-xs font-medium text-warning">
-              Completando: {progress!.next_step_name}
-            </p>
-
-            <div className="space-y-3">
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Resultado</label>
-
-                {activeFieldType === "single_choice" && (
-                  <div className="space-y-2 rounded-lg border border-border bg-background p-3">
-                    {activeOptions.map((opt, i) => (
-                      <label key={opt} className="flex items-center gap-2 text-sm text-foreground">
-                        <input
-                          type="radio"
-                          name="result"
-                          value={opt}
-                          required
-                          defaultChecked={i === 0}
-                          className="border-border"
-                        />
-                        {opt}
-                      </label>
-                    ))}
-                  </div>
-                )}
-
-                {activeFieldType === "multi_select" && (
-                  <div className="space-y-2 rounded-lg border border-border bg-background p-3">
-                    {activeOptions.map((opt) => (
-                      <label key={opt} className="flex items-center gap-2 text-sm text-foreground">
-                        <input type="checkbox" name="result" value={opt} className="rounded border-border" />
-                        {opt}
-                      </label>
-                    ))}
-                  </div>
-                )}
-
-                {activeFieldType === "text" && (
-                  <input
-                    type="text"
-                    name="result"
-                    required
-                    placeholder="Escribe la respuesta del cliente..."
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  />
-                )}
-
-                {(activeFieldType === "combobox" || !activeFieldType) && (
-                  <select
-                    name="result"
-                    required
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    {activeOptions.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Nuevo estado del lead</label>
-                <select
-                  name="new_status"
-                  defaultValue=""
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <option value="">Mantener estado actual</option>
-                  {LEAD_STATUSES.map((s) => (
-                    <option key={s.value} value={s.value}>
-                      {s.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Notas</label>
-                <textarea
-                  name="notes"
-                  rows={2}
-                  placeholder="Detalle de la conversación..."
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full rounded-lg bg-primary px-3 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover"
-              >
-                Guardar gestión del paso
-              </button>
+        <div className="rounded-xl border border-border bg-surface p-5">
+          <h2 className="mb-3 text-sm font-semibold text-foreground">Campaña y flujo</h2>
+          <dl className="space-y-2 text-sm">
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted-foreground">Campaña</dt>
+              <dd className="text-right text-foreground">{campaign?.name ?? "Sin campaña"}</dd>
             </div>
-          </form>
-        )}
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted-foreground">Flujo</dt>
+              <dd className="text-right text-foreground">{workflow?.name ?? "Equifax"}</dd>
+            </div>
+          </dl>
+        </div>
 
         <div className="rounded-xl border border-border bg-surface">
           <div className="border-b border-border px-5 py-4">
@@ -314,7 +199,7 @@ export default async function LeadDetailPage({
       {/* Tipificación de la llamada */}
       {call && (
         <div className="lg:col-span-2">
-          <CallTypificationForm lead={lead} call={call} />
+          <CallTypificationForm lead={lead} call={call} reasonCatalog={reasonCatalog} />
         </div>
       )}
     </div>

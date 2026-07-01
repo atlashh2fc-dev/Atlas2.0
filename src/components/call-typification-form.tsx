@@ -1,17 +1,18 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CheckCircle2, AlertCircle } from "lucide-react";
+import { AlertCircle, CalendarClock, CheckCircle2 } from "lucide-react";
 import type { Call, Lead } from "@/lib/types";
 import {
-  CALL_STATUSES,
-  CALL_OUTCOMES_BY_STATUS,
+  CALL_REASONS,
   EQUIFAX_PRODUCTS,
-  getAutoReasonForStatus,
-  getReasonConfig,
-  getReasonsFor,
+  getCascadeReasonOptionsFrom,
+  getCascadeResultOptionsFrom,
+  getCascadeStateOptionsFrom,
+  getReasonConfigFrom,
   validateCallClosure,
   type CallOutcome,
+  type CallReasonConfig,
   type CallStatus,
 } from "@/lib/call-typification";
 import { closeCall, discardCallTechnicalError, saveCallAgenda, saveCallProgress } from "@/app/actions/calls";
@@ -35,12 +36,18 @@ type PendingAction = "progress" | "agenda" | "close" | "discard" | null;
 export function CallTypificationForm({
   lead,
   call,
+  reasonCatalog,
 }: {
   lead: Lead;
   call: Call;
+  reasonCatalog?: CallReasonConfig[];
 }) {
-  const [status, setStatus] = useState<CallStatus | "">((call.status as CallStatus) || "");
-  const [outcome, setOutcome] = useState<CallOutcome | "">((call.outcome as CallOutcome) || "");
+  const catalog = reasonCatalog && reasonCatalog.length > 0 ? reasonCatalog : CALL_REASONS;
+  const initialReason = getReasonConfigFrom(catalog, call.reason);
+  const [selectedState, setSelectedState] = useState(initialReason?.stateLabel ?? "");
+  const [selectedResult, setSelectedResult] = useState(initialReason?.resultLabel ?? "");
+  const [status, setStatus] = useState<CallStatus | null>((call.status as CallStatus | null) ?? initialReason?.status ?? null);
+  const [outcome, setOutcome] = useState<CallOutcome | null>((call.outcome as CallOutcome | null) ?? initialReason?.outcome ?? null);
   const [reason, setReason] = useState<string>(call.reason ?? "");
   const [notes, setNotes] = useState<string>(call.notes ?? "");
   const [nextActionAt, setNextActionAt] = useState<string>(isoToLocalInput(call.next_action_at));
@@ -50,48 +57,66 @@ export function CallTypificationForm({
   const [equifaxEmail, setEquifaxEmail] = useState<string>(call.equifax_recipient_email ?? "");
   const [discardOpen, setDiscardOpen] = useState(false);
   const [discardReason, setDiscardReason] = useState("");
-
+  const [attemptedClose, setAttemptedClose] = useState(false);
   const [pending, setPending] = useState<PendingAction>(null);
   const [message, setMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
 
-  const reasonConfig = getReasonConfig(reason);
-  const agendaRequirement = reasonConfig?.agenda ?? "none";
-  const showAgendaBlock = agendaRequirement !== "none";
-  const showEquifaxBlock = status === "connected" && (reason === "COTIZACION ENVIADA" || outcome === "sale");
-  const outcomeOptions = status === "connected" ? CALL_OUTCOMES_BY_STATUS.connected : [];
-  const reasonOptions =
-    status === "connected" && outcome ? getReasonsFor(status as CallStatus, outcome as CallOutcome) : [];
+  const stateOptions = useMemo(() => getCascadeStateOptionsFrom(catalog), [catalog]);
+  const resultOptions = useMemo(() => getCascadeResultOptionsFrom(catalog, selectedState), [catalog, selectedState]);
+  const reasonOptions = useMemo(
+    () => getCascadeReasonOptionsFrom(catalog, selectedState, selectedResult),
+    [catalog, selectedState, selectedResult]
+  );
+  const reasonConfig = getReasonConfigFrom(catalog, reason);
+  const showAgendaBlock = reasonConfig?.agenda === "required" || reasonConfig?.agenda === "optional";
+  const showEquifaxBlock = reason === "COTIZACION ENVIADA" || outcome === "sale";
 
   const pendingIssues = useMemo(
     () =>
-      validateCallClosure({
-        status: status || null,
-        outcome: outcome || null,
-        reason: reason || null,
-        notes,
-        next_action_at: localInputToIso(nextActionAt),
-        equifax_products: equifaxProducts,
-        equifax_uf_amount: equifaxUf ? Number(equifaxUf) : null,
-        equifax_recipient_email: equifaxEmail || null,
-        lead_email: lead.email,
-        contact_email: lead.email,
-      }),
-    [status, outcome, reason, notes, nextActionAt, equifaxProducts, equifaxUf, equifaxEmail, lead.email]
+      validateCallClosure(
+        {
+          status,
+          outcome,
+          reason: reason || null,
+          notes,
+          next_action_at: localInputToIso(nextActionAt),
+          equifax_products: equifaxProducts,
+          equifax_uf_amount: equifaxUf ? Number(equifaxUf) : null,
+          equifax_recipient_email: equifaxEmail || null,
+          lead_email: lead.email,
+          contact_email: lead.email,
+        },
+        catalog
+      ),
+    [catalog, status, outcome, reason, notes, nextActionAt, equifaxProducts, equifaxUf, equifaxEmail, lead.email]
   );
 
-  function handleStatusChange(value: CallStatus | "") {
-    setStatus(value);
-    setOutcome("");
-    if (value === "out_of_service" || value === "no_answer") {
-      setReason(getAutoReasonForStatus(value) ?? "");
-    } else {
-      setReason("");
-    }
+  function resetSelection() {
+    setStatus(null);
+    setOutcome(null);
+    setReason("");
+    setMessage(null);
+    setAttemptedClose(false);
   }
 
-  function handleOutcomeChange(value: CallOutcome | "") {
-    setOutcome(value);
-    setReason("");
+  function handleStateSelect(value: string) {
+    setSelectedState(value);
+    const nextResults = getCascadeResultOptionsFrom(catalog, value);
+    setSelectedResult(nextResults.length === 1 ? nextResults[0].label : "");
+    resetSelection();
+  }
+
+  function handleResultSelect(value: string) {
+    setSelectedResult(value);
+    resetSelection();
+  }
+
+  function handleReasonSelect(option: CallReasonConfig) {
+    setReason(option.value);
+    setStatus(option.status);
+    setOutcome(option.outcome);
+    setMessage(null);
+    setAttemptedClose(false);
   }
 
   function toggleEquifaxProduct(product: string) {
@@ -105,8 +130,8 @@ export function CallTypificationForm({
       await saveCallProgress({
         callId: call.id,
         leadId: lead.id,
-        status: status || null,
-        outcome: outcome || null,
+        status,
+        outcome,
         reason: reason || null,
         notes: notes || null,
       });
@@ -137,14 +162,20 @@ export function CallTypificationForm({
   }
 
   async function handleClose() {
+    setAttemptedClose(true);
+    if (pendingIssues.length > 0) {
+      setMessage({ type: "error", text: "Completa los campos marcados antes de cerrar." });
+      return;
+    }
+
     setPending("close");
     setMessage(null);
     try {
       await closeCall({
         callId: call.id,
         leadId: lead.id,
-        status: (status || null) as CallStatus | null,
-        outcome: (outcome || null) as CallOutcome | null,
+        status,
+        outcome,
         reason: reason || null,
         notes: notes || null,
         next_action_at: localInputToIso(nextActionAt),
@@ -154,7 +185,7 @@ export function CallTypificationForm({
         equifax_recipient_email: equifaxEmail || null,
       });
     } catch (e) {
-      setMessage({ type: "error", text: e instanceof Error ? e.message : "Error al cerrar gestión." });
+      setMessage({ type: "error", text: e instanceof Error ? e.message : "Error al cerrar gestion." });
     } finally {
       setPending(null);
     }
@@ -162,7 +193,7 @@ export function CallTypificationForm({
 
   async function handleDiscard() {
     if (!discardReason.trim()) {
-      setMessage({ type: "error", text: "Indica el motivo del error técnico para descartar." });
+      setMessage({ type: "error", text: "Indica el motivo del error tecnico para descartar." });
       return;
     }
     setPending("discard");
@@ -177,92 +208,90 @@ export function CallTypificationForm({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="rounded-xl border border-border bg-surface p-5">
-        <h2 className="mb-4 text-sm font-semibold text-foreground">Tipificación de la llamada</h2>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Estado</label>
-              <select
-                value={status}
-                onChange={(e) => handleStatusChange(e.target.value as CallStatus | "")}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <option value="">Selecciona...</option>
-                {CALL_STATUSES.map((s) => (
-                  <option key={s.value} value={s.value}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Resultado</label>
-              <select
-                value={outcome}
-                disabled={status !== "connected"}
-                onChange={(e) => handleOutcomeChange(e.target.value as CallOutcome | "")}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <option value="">Selecciona...</option>
-                {outcomeOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Motivo</label>
-              {status === "connected" ? (
-                <select
-                  value={reason}
-                  disabled={!outcome}
-                  onChange={(e) => setReason(e.target.value)}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <option value="">Selecciona...</option>
-                  {reasonOptions.map((r) => (
-                    <option key={r.value} value={r.value}>
-                      {r.label}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  readOnly
-                  value={reason || "—"}
-                  className="w-full rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-foreground"
-                />
-              )}
-            </div>
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">Tipificacion rapida Equifax</h2>
+            <p className="mt-1 text-xs text-muted-foreground">Flujo definido por la campana. Selecciona motivo y cierra.</p>
           </div>
+          {reasonConfig && (
+            <span className="rounded-full bg-accent px-2.5 py-1 text-xs font-medium text-accent-foreground">
+              {reasonConfig.agenda === "required" ? "Requiere agenda" : "Lista para cerrar"}
+            </span>
+          )}
+        </div>
 
-          <div className="mt-4">
-            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Notas de gestión</label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={3}
-              placeholder="Detalle de la conversación, próximo paso..."
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
-          </div>
-
-          {showAgendaBlock && (
-            <div className="mt-4 rounded-lg border border-border bg-background p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-foreground">Agenda</h3>
-                <span
-                  className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-                    agendaRequirement === "required" ? "bg-danger-bg text-danger" : "bg-warning-bg text-warning"
+        <div className="space-y-4">
+          <div>
+            <p className="mb-2 text-xs font-medium text-muted-foreground">1. Estado</p>
+            <div className="grid grid-cols-2 gap-2">
+              {stateOptions.map((option) => (
+                <button
+                  key={option.label}
+                  type="button"
+                  onClick={() => handleStateSelect(option.label)}
+                  className={`rounded-lg border px-4 py-3 text-left text-sm font-semibold transition-colors ${
+                    selectedState === option.label
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-background text-foreground hover:bg-surface-muted"
                   }`}
                 >
-                  {agendaRequirement === "required" ? "Obligatoria" : "Opcional (o deja una observación)"}
-                </span>
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {selectedState && (
+            <div>
+              <p className="mb-2 text-xs font-medium text-muted-foreground">2. Resultado</p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                {resultOptions.map((option) => (
+                  <button
+                    key={option.label}
+                    type="button"
+                    onClick={() => handleResultSelect(option.label)}
+                    className={`rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition-colors ${
+                      selectedResult === option.label
+                        ? "border-primary bg-primary/15 text-primary"
+                        : "border-border bg-background text-foreground hover:bg-surface-muted"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {selectedResult && (
+            <div>
+              <p className="mb-2 text-xs font-medium text-muted-foreground">3. Motivo</p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                {reasonOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => handleReasonSelect(option)}
+                    className={`min-h-11 rounded-lg border px-3 py-2 text-left text-xs font-semibold uppercase transition-colors ${
+                      reason === option.value
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border bg-background text-foreground hover:bg-surface-muted"
+                    }`}
+                  >
+                    {option.value}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {showAgendaBlock && (
+            <div className="rounded-lg border border-border bg-background p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <CalendarClock size={16} className="text-warning" />
+                <h3 className="text-sm font-semibold text-foreground">Agenda requerida</h3>
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
@@ -275,7 +304,7 @@ export function CallTypificationForm({
                   />
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Bloque horario (opcional)</label>
+                  <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Bloque horario</label>
                   <input
                     type="text"
                     value={nextActionWindow}
@@ -297,27 +326,27 @@ export function CallTypificationForm({
           )}
 
           {showEquifaxBlock && (
-            <div className="mt-4 rounded-lg border border-border bg-background p-4">
-              <h3 className="mb-3 text-sm font-semibold text-foreground">Validaciones comerciales Equifax</h3>
+            <div className="rounded-lg border border-border bg-background p-4">
+              <h3 className="mb-3 text-sm font-semibold text-foreground">Datos comerciales Equifax</h3>
               <div className="mb-3">
                 <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Productos</label>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  {EQUIFAX_PRODUCTS.map((p) => (
-                    <label key={p} className="flex items-center gap-2 text-sm text-foreground">
+                  {EQUIFAX_PRODUCTS.map((product) => (
+                    <label key={product} className="flex items-center gap-2 text-sm text-foreground">
                       <input
                         type="checkbox"
-                        checked={equifaxProducts.includes(p)}
-                        onChange={() => toggleEquifaxProduct(p)}
+                        checked={equifaxProducts.includes(product)}
+                        onChange={() => toggleEquifaxProduct(product)}
                         className="rounded border-border"
                       />
-                      {p}
+                      {product}
                     </label>
                   ))}
                 </div>
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1.5 block text-xs font-medium text-muted-foreground">UF mensual de la oportunidad</label>
+                  <label className="mb-1.5 block text-xs font-medium text-muted-foreground">UF mensual</label>
                   <input
                     type="number"
                     step="0.01"
@@ -328,9 +357,7 @@ export function CallTypificationForm({
                 </div>
                 {reason === "COTIZACION ENVIADA" && (
                   <div>
-                    <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                      Email destinatario (si no hay email de contacto/lead)
-                    </label>
+                    <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Email destinatario</label>
                     <input
                       type="email"
                       value={equifaxEmail}
@@ -343,14 +370,25 @@ export function CallTypificationForm({
               </div>
             </div>
           )}
-        </div>
 
-      {/* Acciones de guardado + feedback */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Notas de gestion</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              placeholder="Detalle breve o proximo paso..."
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </div>
+        </div>
+      </div>
+
       <div className="rounded-xl border border-border bg-surface p-5">
-        {pendingIssues.length > 0 && (
+        {attemptedClose && pendingIssues.length > 0 && (
           <ul className="mb-3 space-y-1 rounded-lg bg-warning-bg p-3 text-xs text-warning">
             {pendingIssues.map((issue) => (
-              <li key={issue}>• {issue}</li>
+              <li key={issue}>- {issue}</li>
             ))}
           </ul>
         )}
@@ -367,49 +405,44 @@ export function CallTypificationForm({
         )}
 
         <div className="flex flex-wrap items-center gap-2">
-          <div>
-            <button
-              type="button"
-              onClick={handleSaveProgress}
-              disabled={pending !== null}
-              className="rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-surface-muted disabled:opacity-50"
-            >
-              {pending === "progress" ? "Guardando..." : "Guardar avance"}
-            </button>
-            <p className="mt-1 text-xs text-muted-foreground">Guarda lo registrado sin cerrar la gestión.</p>
-          </div>
-          <div>
-            <button
-              type="button"
-              onClick={handleClose}
-              disabled={pending !== null || pendingIssues.length > 0}
-              className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover disabled:opacity-50"
-            >
-              {pending === "close" ? "Cerrando..." : "Guardar y terminar"}
-            </button>
-            <p className="mt-1 text-xs text-muted-foreground">Cierra la llamada actual.</p>
-          </div>
+          <button
+            type="button"
+            onClick={handleSaveProgress}
+            disabled={pending !== null}
+            className="rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-surface-muted disabled:opacity-50"
+          >
+            {pending === "progress" ? "Guardando..." : "Guardar avance"}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleClose}
+            disabled={pending !== null}
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary-hover disabled:opacity-50"
+          >
+            {pending === "close" ? "Cerrando..." : "Guardar y terminar"}
+          </button>
 
           <button
             type="button"
             onClick={() => setDiscardOpen((v) => !v)}
-            className="ml-auto self-start rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground hover:text-danger"
+            className="ml-auto rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground hover:text-danger"
           >
-            Descartar por error técnico
+            Descartar por error tecnico
           </button>
         </div>
 
         {discardOpen && (
           <div className="mt-3 rounded-lg border border-border bg-background p-3">
             <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-              Motivo del error técnico (no se escribirá tipificación en el lead)
+              Motivo del error tecnico
             </label>
             <div className="flex gap-2">
               <input
                 type="text"
                 value={discardReason}
                 onChange={(e) => setDiscardReason(e.target.value)}
-                placeholder="Ej: se cortó la llamada por falla de telefonía"
+                placeholder="Ej: se corto la llamada por falla de telefonia"
                 className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
               <button
@@ -418,7 +451,7 @@ export function CallTypificationForm({
                 disabled={pending !== null}
                 className="rounded-lg bg-danger px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
               >
-                {pending === "discard" ? "Descartando..." : "Confirmar descarte"}
+                {pending === "discard" ? "Descartando..." : "Confirmar"}
               </button>
             </div>
           </div>
