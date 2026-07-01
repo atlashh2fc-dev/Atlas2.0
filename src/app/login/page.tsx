@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -39,9 +40,14 @@ export default function LoginPage() {
 
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-lg font-bold text-primary-foreground">
-            A
-          </div>
+          <Image
+            src="/atlas-logo.png"
+            alt="Atlas"
+            width={64}
+            height={64}
+            priority
+            className="mx-auto mb-4 size-16 rounded-full object-contain shadow-sm"
+          />
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Atlas</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Inicia sesión para gestionar tus leads

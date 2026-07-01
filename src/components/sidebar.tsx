@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { AppRole, Profile } from "@/lib/types";
@@ -69,9 +70,14 @@ export function Sidebar({ profile }: { profile: Profile }) {
   return (
     <aside className="hidden w-60 flex-shrink-0 flex-col border-r border-border bg-surface md:flex">
       <div className="flex h-16 items-center gap-2 border-b border-border px-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground shadow-sm shadow-primary/30">
-          A
-        </div>
+        <Image
+          src="/atlas-logo.png"
+          alt="Atlas"
+          width={36}
+          height={36}
+          className="size-9 rounded-full object-contain shadow-sm"
+          priority
+        />
         <span className="text-base font-semibold text-foreground">Atlas</span>
         <span className="ml-auto rounded-full bg-surface-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
           2.0
