@@ -31,13 +31,13 @@ const REASON_LABEL = new Map(CALL_REASONS.map((r) => [r.value, r.label]));
 const CHART_COLORS = [
   "var(--primary)",
   "var(--accent)",
-  "#22c55e",
-  "#f59e0b",
-  "#ef4444",
-  "#8b5cf6",
-  "#06b6d4",
-  "#ec4899",
-  "#84cc16",
+  "var(--foreground)",
+  "var(--muted-foreground)",
+  "var(--success)",
+  "var(--warning)",
+  "var(--danger)",
+  "color-mix(in srgb, var(--primary) 62%, var(--accent))",
+  "color-mix(in srgb, var(--muted-foreground) 55%, var(--accent))",
 ];
 
 function fmtInt(n: number): string {
@@ -401,7 +401,7 @@ export function CampaignDashboard({ calls, totalLeads, agentOptions }: Props) {
               />
               <Funnel dataKey="value" data={funnelData} isAnimationActive>
                 <LabelList position="right" dataKey="name" fill="var(--foreground)" stroke="none" fontSize={12} />
-                <LabelList position="center" dataKey="value" fill="#fff" stroke="none" fontSize={13} fontWeight={600} />
+                <LabelList position="center" dataKey="value" fill="var(--primary-foreground)" stroke="none" fontSize={13} fontWeight={600} />
               </Funnel>
             </FunnelChart>
           </ResponsiveContainer>
@@ -426,7 +426,7 @@ export function CampaignDashboard({ calls, totalLeads, agentOptions }: Props) {
                 }}
               />
               <Area type="monotone" dataKey="gestiones" stroke="var(--primary)" fill="var(--primary)" fillOpacity={0.12} />
-              <Line type="monotone" dataKey="ventas" stroke="#22c55e" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="ventas" stroke="var(--success)" strokeWidth={2} dot={false} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>

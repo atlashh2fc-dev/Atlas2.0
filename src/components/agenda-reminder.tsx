@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Bell, AlertTriangle } from "lucide-react";
@@ -11,12 +11,20 @@ interface AgendaItem {
   next_action_at: string;
 }
 
+interface AgendaContextValue {
+  items: AgendaItem[];
+  overdue: AgendaItem[];
+  nowTick: number;
+}
+
+const AgendaContext = createContext<AgendaContextValue | null>(null);
+
 /**
  * Agendas del ejecutivo logueado (managed_by = userId): trae próximas y
  * vencidas, se mantiene al día con realtime sobre `leads` + un tick cada
  * 30s para recalcular qué está vencido sin depender de refetch.
  */
-function useMyAgenda(userId: string) {
+function useAgendaSubscription(userId: string): AgendaContextValue {
   const [items, setItems] = useState<AgendaItem[]>([]);
   const [nowTick, setNowTick] = useState(() => Date.now());
 
@@ -56,13 +64,30 @@ function useMyAgenda(userId: string) {
     };
   }, [userId, refresh]);
 
-  const overdue = items.filter((i) => new Date(i.next_action_at).getTime() <= nowTick);
+  const overdue = useMemo(
+    () => items.filter((i) => new Date(i.next_action_at).getTime() <= nowTick),
+    [items, nowTick]
+  );
+
   return { items, overdue, nowTick };
 }
 
+function useAgenda() {
+  const value = useContext(AgendaContext);
+  if (!value) {
+    throw new Error("AgendaBell y AgendaBanner deben renderizarse dentro de AgendaProvider.");
+  }
+  return value;
+}
+
+export function AgendaProvider({ userId, children }: { userId: string; children: React.ReactNode }) {
+  const agenda = useAgendaSubscription(userId);
+  return <AgendaContext.Provider value={agenda}>{children}</AgendaContext.Provider>;
+}
+
 /** Campana en el header: contador + dropdown con las próximas/vencidas agendas del ejecutivo. */
-export function AgendaBell({ userId }: { userId: string }) {
-  const { items, overdue, nowTick } = useMyAgenda(userId);
+export function AgendaBell() {
+  const { items, overdue, nowTick } = useAgenda();
   const [open, setOpen] = useState(false);
 
   return (
@@ -133,8 +158,8 @@ export function AgendaBell({ userId }: { userId: string }) {
 }
 
 /** Banner que aparece debajo del header en todas las pantallas cuando hay agendas vencidas. */
-export function AgendaBanner({ userId }: { userId: string }) {
-  const { overdue } = useMyAgenda(userId);
+export function AgendaBanner() {
+  const { overdue } = useAgenda();
   const [dismissedCount, setDismissedCount] = useState<number | null>(null);
 
   if (overdue.length === 0 || dismissedCount === overdue.length) return null;

@@ -18,8 +18,8 @@ function fmtInt(n: number): string {
 
 function complianceColor(rate: number | null): string {
   if (rate === null) return "var(--muted-foreground)";
-  if (rate >= 80) return "#22c55e";
-  if (rate >= 50) return "#f59e0b";
+  if (rate >= 80) return "var(--success)";
+  if (rate >= 50) return "var(--warning)";
   return "var(--danger)";
 }
 
@@ -54,7 +54,7 @@ export function AgentPerformanceChart({ agents }: { agents: AgentPerformance[] }
         <Legend wrapperStyle={{ fontSize: 12 }} />
         <Bar dataKey="Gestiones" fill="var(--primary)" radius={[0, 4, 4, 0]} />
         <Bar dataKey="Leads gestionados" fill="var(--accent)" radius={[0, 4, 4, 0]} />
-        <Bar dataKey="Conversiones" fill="#22c55e" radius={[0, 4, 4, 0]} />
+        <Bar dataKey="Conversiones" fill="var(--foreground)" radius={[0, 4, 4, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );

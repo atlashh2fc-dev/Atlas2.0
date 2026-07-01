@@ -1,45 +1,51 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f7f7f8;
+  --blue-corp: #049dd9;
+  --aqua-accent: #79f2e6;
+  --black-dark: #262523;
+  --grey-main: #8c8c8c;
+  --grey-light: #f2f2f2;
+
+  --background: var(--grey-light);
   --surface: #ffffff;
-  --surface-muted: #f1f1f3;
-  --foreground: #18181b;
-  --muted-foreground: #6b7280;
-  --border: #e4e4e7;
-  --primary: #4f46e5;
+  --surface-muted: #e8f7f8;
+  --foreground: var(--black-dark);
+  --muted-foreground: var(--grey-main);
+  --border: #d8dddd;
+  --primary: var(--blue-corp);
   --primary-foreground: #ffffff;
-  --primary-hover: #4338ca;
-  --accent: #ede9fe;
-  --accent-foreground: #4f46e5;
+  --primary-hover: #0388bd;
+  --accent: var(--aqua-accent);
+  --accent-foreground: var(--black-dark);
   --success: #16a34a;
   --success-bg: #dcfce7;
   --warning: #d97706;
   --warning-bg: #fef3c7;
   --danger: #dc2626;
   --danger-bg: #fee2e2;
-  --ring: #4f46e5;
+  --ring: var(--blue-corp);
 }
 
 .dark {
-  --background: #0b0b0e;
-  --surface: #15151a;
-  --surface-muted: #1d1d23;
-  --foreground: #f4f4f5;
-  --muted-foreground: #9b9ba5;
-  --border: #2a2a32;
-  --primary: #818cf8;
-  --primary-foreground: #0b0b0e;
-  --primary-hover: #a5b4fc;
-  --accent: #232336;
-  --accent-foreground: #c7d2fe;
+  --background: #1f1f1d;
+  --surface: #262523;
+  --surface-muted: #32312f;
+  --foreground: #f2f2f2;
+  --muted-foreground: #b9b9b9;
+  --border: #42413e;
+  --primary: #049dd9;
+  --primary-foreground: #ffffff;
+  --primary-hover: #20b4ec;
+  --accent: #79f2e6;
+  --accent-foreground: #262523;
   --success: #4ade80;
   --success-bg: #14532d;
   --warning: #fbbf24;
   --warning-bg: #451a03;
   --danger: #f87171;
   --danger-bg: #450a0a;
-  --ring: #818cf8;
+  --ring: #79f2e6;
 }
 
 @theme inline {
@@ -61,8 +67,8 @@
   --color-danger: var(--danger);
   --color-danger-bg: var(--danger-bg);
   --color-ring: var(--ring);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: "Outfit", var(--font-plus-jakarta), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plus-jakarta), ui-monospace, monospace;
 }
 
 * {

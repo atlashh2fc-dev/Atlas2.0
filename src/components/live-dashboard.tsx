@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { StatCard } from "@/components/stat-card";
 import Link from "next/link";
@@ -41,6 +41,7 @@ export function LiveDashboard({
   const [recent, setRecent] = useState(initialRecent);
   const [agenda, setAgenda] = useState(initialAgenda);
   const [live, setLive] = useState(false);
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Se actualiza desde un efecto (nunca durante el render) para decidir qué
   // agendas ya están vencidas, sin llamar a Date.now() de forma impura.
   const [nowTick, setNowTick] = useState(() => Date.now());
@@ -97,18 +98,27 @@ export function LiveDashboard({
     );
   }, [userId]);
 
+  const scheduleRefresh = useCallback(() => {
+    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+    refreshTimerRef.current = setTimeout(() => {
+      refreshTimerRef.current = null;
+      void refresh();
+    }, 300);
+  }, [refresh]);
+
   useEffect(() => {
     const supabase = createClient();
     const channel = supabase
       .channel("dashboard-live")
-      .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, () => refresh())
-      .on("postgres_changes", { event: "*", schema: "public", table: "interactions" }, () => refresh())
+      .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, scheduleRefresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "interactions" }, scheduleRefresh)
       .subscribe((status) => setLive(status === "SUBSCRIBED"));
 
     return () => {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
       supabase.removeChannel(channel);
     };
-  }, [refresh]);
+  }, [scheduleRefresh]);
 
   return (
     <div className="space-y-6">

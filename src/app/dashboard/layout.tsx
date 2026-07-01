@@ -2,7 +2,7 @@ import { requireProfile } from "@/lib/auth";
 import { Sidebar } from "@/components/sidebar";
 import { Header } from "@/components/header";
 import { DialerListener } from "@/components/dialer-listener";
-import { AgendaBanner } from "@/components/agenda-reminder";
+import { AgendaBanner, AgendaProvider } from "@/components/agenda-reminder";
 
 export default async function DashboardLayout({
   children,
@@ -17,8 +17,14 @@ export default async function DashboardLayout({
       <DialerListener userId={profile.id} />
       <Sidebar profile={profile} />
       <div className="flex flex-1 flex-col overflow-hidden">
-        <Header profile={profile} />
-        {showAgendaReminder && <AgendaBanner userId={profile.id} />}
+        {showAgendaReminder ? (
+          <AgendaProvider userId={profile.id}>
+            <Header profile={profile} />
+            <AgendaBanner />
+          </AgendaProvider>
+        ) : (
+          <Header profile={profile} />
+        )}
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>
     </div>
