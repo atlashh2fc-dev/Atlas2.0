@@ -4,42 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { StatCard } from "@/components/stat-card";
 import Link from "next/link";
-
-interface RecentInteraction {
-  id: string;
-  result: string;
-  created_at: string;
-  lead_name: string;
-}
-
-interface AgendaLead {
-  id: string;
-  full_name: string;
-  rut: string | null;
-  phone: string | null;
-  next_action_at: string;
-}
-
-interface Stats {
-  total: number;
-  enGestion: number;
-  convertidos: number;
-}
+import type { HomeDashboardSummary } from "@/lib/types";
 
 export function LiveDashboard({
-  userId,
-  initialStats,
-  initialRecent,
-  initialAgenda,
+  initialSummary,
 }: {
-  userId: string;
-  initialStats: Stats;
-  initialRecent: RecentInteraction[];
-  initialAgenda: AgendaLead[];
+  initialSummary: HomeDashboardSummary;
 }) {
-  const [stats, setStats] = useState(initialStats);
-  const [recent, setRecent] = useState(initialRecent);
-  const [agenda, setAgenda] = useState(initialAgenda);
+  const [summary, setSummary] = useState(initialSummary);
   const [live, setLive] = useState(false);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Se actualiza desde un efecto (nunca durante el render) para decidir qué
@@ -53,50 +25,12 @@ export function LiveDashboard({
 
   const refresh = useCallback(async () => {
     const supabase = createClient();
+    const { data, error } = await supabase.rpc("get_home_dashboard_summary");
 
-    const endOfToday = new Date();
-    endOfToday.setHours(23, 59, 59, 999);
-
-    const [{ count: total }, { count: enGestion }, { count: convertidos }, { data: recientes }, { data: agendaLeads }] =
-      await Promise.all([
-        supabase.from("leads").select("*", { count: "exact", head: true }),
-        supabase.from("leads").select("*", { count: "exact", head: true }).eq("status", "en_gestion"),
-        supabase.from("leads").select("*", { count: "exact", head: true }).eq("status", "convertido"),
-        supabase
-          .from("interactions")
-          .select("id, result, created_at, leads(full_name)")
-          .order("created_at", { ascending: false })
-          .limit(5),
-        supabase
-          .from("leads")
-          .select("id, full_name, rut, phone, next_action_at")
-          .eq("managed_by", userId)
-          .not("next_action_at", "is", null)
-          .lte("next_action_at", endOfToday.toISOString())
-          .order("next_action_at", { ascending: true })
-          .limit(20),
-      ]);
-
-    setStats({ total: total ?? 0, enGestion: enGestion ?? 0, convertidos: convertidos ?? 0 });
-    setRecent(
-      (recientes ?? []).map((r) => ({
-        id: r.id,
-        result: r.result,
-        created_at: r.created_at,
-        lead_name:
-          (r as unknown as { leads: { full_name: string } | null }).leads?.full_name ?? "Lead",
-      }))
-    );
-    setAgenda(
-      (agendaLeads ?? []).map((l) => ({
-        id: l.id,
-        full_name: l.full_name,
-        rut: l.rut,
-        phone: l.phone,
-        next_action_at: l.next_action_at as string,
-      }))
-    );
-  }, [userId]);
+    if (!error && data) {
+      setSummary(data as HomeDashboardSummary);
+    }
+  }, []);
 
   const scheduleRefresh = useCallback(() => {
     if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
@@ -119,6 +53,8 @@ export function LiveDashboard({
       supabase.removeChannel(channel);
     };
   }, [scheduleRefresh]);
+
+  const { stats, recent, agenda } = summary;
 
   return (
     <div className="space-y-6">

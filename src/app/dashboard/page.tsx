@@ -1,53 +1,15 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { LiveDashboard } from "@/components/live-dashboard";
+import type { HomeDashboardSummary } from "@/lib/types";
 
 export default async function DashboardPage() {
   const profile = await requireProfile();
   const supabase = await createClient();
 
-  const endOfToday = new Date();
-  endOfToday.setHours(23, 59, 59, 999);
-
-  const [
-    { count: totalLeads },
-    { count: enGestion },
-    { count: convertidos },
-    { data: recientes },
-    { data: agendaLeads },
-  ] = await Promise.all([
-    supabase.from("leads").select("*", { count: "exact", head: true }),
-    supabase.from("leads").select("*", { count: "exact", head: true }).eq("status", "en_gestion"),
-    supabase.from("leads").select("*", { count: "exact", head: true }).eq("status", "convertido"),
-    supabase
-      .from("interactions")
-      .select("id, result, created_at, leads(full_name)")
-      .order("created_at", { ascending: false })
-      .limit(5),
-    supabase
-      .from("leads")
-      .select("id, full_name, rut, phone, next_action_at")
-      .eq("managed_by", profile.id)
-      .not("next_action_at", "is", null)
-      .lte("next_action_at", endOfToday.toISOString())
-      .order("next_action_at", { ascending: true })
-      .limit(20),
-  ]);
-
-  const initialRecent = (recientes ?? []).map((r) => ({
-    id: r.id,
-    result: r.result,
-    created_at: r.created_at,
-    lead_name: (r as unknown as { leads: { full_name: string } | null }).leads?.full_name ?? "Lead",
-  }));
-
-  const initialAgenda = (agendaLeads ?? []).map((l) => ({
-    id: l.id,
-    full_name: l.full_name,
-    rut: l.rut,
-    phone: l.phone,
-    next_action_at: l.next_action_at as string,
-  }));
+  const { data, error } = await supabase.rpc("get_home_dashboard_summary");
+  if (error) throw new Error(error.message);
+  const summary = data as HomeDashboardSummary;
 
   return (
     <div className="space-y-6">
@@ -60,16 +22,7 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      <LiveDashboard
-        userId={profile.id}
-        initialStats={{
-          total: totalLeads ?? 0,
-          enGestion: enGestion ?? 0,
-          convertidos: convertidos ?? 0,
-        }}
-        initialRecent={initialRecent}
-        initialAgenda={initialAgenda}
-      />
+      <LiveDashboard initialSummary={summary} />
     </div>
   );
 }

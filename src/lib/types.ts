@@ -234,6 +234,27 @@ export interface CampaignDashboardSummary {
   }[];
 }
 
+export interface HomeDashboardSummary {
+  stats: {
+    total: number;
+    enGestion: number;
+    convertidos: number;
+  };
+  recent: {
+    id: string;
+    result: string;
+    created_at: string;
+    lead_name: string;
+  }[];
+  agenda: {
+    id: string;
+    full_name: string;
+    rut: string | null;
+    phone: string | null;
+    next_action_at: string;
+  }[];
+}
+
 export const LEAD_STATUSES = [
   { value: "nuevo", label: "Nuevo" },
   { value: "en_gestion", label: "En gestión" },
