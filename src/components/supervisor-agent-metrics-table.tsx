@@ -35,6 +35,14 @@ type SortKey =
   | "tmo_seconds";
 
 type Scope = "all" | "active" | "historical";
+type PriorityFilter =
+  | "all"
+  | "heavy_load"
+  | "low_contact"
+  | "no_contact"
+  | "scheduled"
+  | "commercial_opportunity"
+  | "no_progress";
 
 const columns: { key: SortKey; label: string; align?: "right" }[] = [
   { key: "full_name", label: "Ejecutivo" },
@@ -49,6 +57,64 @@ const columns: { key: SortKey; label: string; align?: "right" }[] = [
   { key: "ventas", label: "Ventas", align: "right" },
   { key: "uf", label: "UF", align: "right" },
   { key: "tmo_seconds", label: "TMO", align: "right" },
+];
+
+const priorityFilters: {
+  key: PriorityFilter;
+  label: string;
+  sortKey: SortKey;
+  sortDirection: "asc" | "desc";
+  matches: (agent: SupervisorAgentMetric) => boolean;
+}[] = [
+  {
+    key: "all",
+    label: "Todos",
+    sortKey: "crm_gestiones",
+    sortDirection: "desc",
+    matches: () => true,
+  },
+  {
+    key: "heavy_load",
+    label: "Mayor carga",
+    sortKey: "leads_gestionados",
+    sortDirection: "desc",
+    matches: (agent) => agent.leads_gestionados > 0 || agent.crm_gestiones > 0,
+  },
+  {
+    key: "low_contact",
+    label: "Baja contactabilidad",
+    sortKey: "contactabilidad",
+    sortDirection: "asc",
+    matches: (agent) => agent.llamadas_cerradas > 0 && numberValue(agent.contactabilidad) < 35,
+  },
+  {
+    key: "no_contact",
+    label: "No contacto",
+    sortKey: "no_contacto",
+    sortDirection: "desc",
+    matches: (agent) => agent.no_contacto > 0,
+  },
+  {
+    key: "scheduled",
+    label: "Agendas",
+    sortKey: "agendas",
+    sortDirection: "desc",
+    matches: (agent) => agent.agendas > 0,
+  },
+  {
+    key: "commercial_opportunity",
+    label: "Oportunidad comercial",
+    sortKey: "contactos_efectivos",
+    sortDirection: "desc",
+    matches: (agent) => agent.contactos_efectivos > 0 && agent.ventas === 0,
+  },
+  {
+    key: "no_progress",
+    label: "Sin avance",
+    sortKey: "crm_gestiones",
+    sortDirection: "asc",
+    matches: (agent) => agent.crm_gestiones === 0 || agent.llamadas_cerradas === 0,
+  },
 ];
 
 function numberValue(value: number | null | undefined): number {
@@ -96,8 +162,11 @@ function cellValue(agent: SupervisorAgentMetric, key: SortKey): string {
 export function SupervisorAgentMetricsTable({ agents }: { agents: SupervisorAgentMetric[] }) {
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<Scope>("all");
-  const [sortKey, setSortKey] = useState<SortKey>("crm_gestiones");
+  const [priority, setPriority] = useState<PriorityFilter>("heavy_load");
+  const [sortKey, setSortKey] = useState<SortKey>("leads_gestionados");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+  const activePriority =
+    priorityFilters.find((filter) => filter.key === priority) ?? priorityFilters[0];
 
   const visibleAgents = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -110,7 +179,7 @@ export function SupervisorAgentMetricsTable({ agents }: { agents: SupervisorAgen
         const matchesScope =
           scope === "all" ||
           (scope === "historical" ? agent.is_historical_only : !agent.is_historical_only);
-        return matchesQuery && matchesScope;
+        return matchesQuery && matchesScope && activePriority.matches(agent);
       })
       .sort((a, b) => {
         const left = metricValue(a, sortKey);
@@ -122,7 +191,13 @@ export function SupervisorAgentMetricsTable({ agents }: { agents: SupervisorAgen
         }
         return sortDirection === "asc" ? left - right : right - left;
       });
-  }, [agents, query, scope, sortDirection, sortKey]);
+  }, [activePriority, agents, query, scope, sortDirection, sortKey]);
+
+  const selectPriority = (filter: (typeof priorityFilters)[number]) => {
+    setPriority(filter.key);
+    setSortKey(filter.sortKey);
+    setSortDirection(filter.sortDirection);
+  };
 
   const setSort = (key: SortKey) => {
     if (key === sortKey) {
@@ -135,42 +210,47 @@ export function SupervisorAgentMetricsTable({ agents }: { agents: SupervisorAgen
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-surface">
-      <div className="grid gap-3 border-b border-border p-4 md:grid-cols-[minmax(220px,1fr)_180px_220px]">
-        <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Buscar ejecutivo o equipo..."
-          className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        />
-        <select
-          value={scope}
-          onChange={(event) => setScope(event.target.value as Scope)}
-          className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <option value="all">Todos</option>
-          <option value="active">Activos</option>
-          <option value="historical">Históricos</option>
-        </select>
-        <select
-          value={`${sortKey}:${sortDirection}`}
-          onChange={(event) => {
-            const [key, direction] = event.target.value.split(":") as [SortKey, "asc" | "desc"];
-            setSortKey(key);
-            setSortDirection(direction);
-          }}
-          className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          {columns.map((column) => (
-            <option key={`${column.key}:desc`} value={`${column.key}:desc`}>
-              {column.label} mayor a menor
-            </option>
-          ))}
-          {columns.map((column) => (
-            <option key={`${column.key}:asc`} value={`${column.key}:asc`}>
-              {column.label} menor a mayor
-            </option>
-          ))}
-        </select>
+      <div className="space-y-3 border-b border-border p-4">
+        <div className="grid gap-3 md:grid-cols-[minmax(220px,1fr)_180px]">
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Buscar ejecutivo o equipo..."
+            className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+          <select
+            value={scope}
+            onChange={(event) => setScope(event.target.value as Scope)}
+            className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <option value="all">Todos</option>
+            <option value="active">Activos</option>
+            <option value="historical">Históricos</option>
+          </select>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground">Priorizar</span>
+          {priorityFilters.map((filter) => {
+            const isActive = priority === filter.key;
+            return (
+              <button
+                key={filter.key}
+                type="button"
+                onClick={() => selectPriority(filter)}
+                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                  isActive
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border bg-background text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {filter.label}
+              </button>
+            );
+          })}
+          <span className="ml-auto text-xs text-muted-foreground">
+            {formatNumber(visibleAgents.length)} ejecutivos
+          </span>
+        </div>
       </div>
 
       <div className="overflow-x-auto">
@@ -191,7 +271,7 @@ export function SupervisorAgentMetricsTable({ agents }: { agents: SupervisorAgen
                   >
                     <span>{column.label}</span>
                     {sortKey === column.key && (
-                      <span className="text-[10px] uppercase text-primary">{sortDirection}</span>
+                      <span className="text-[11px] text-primary">{sortDirection === "asc" ? "↑" : "↓"}</span>
                     )}
                   </button>
                 </th>
