@@ -220,6 +220,7 @@ export default async function MailDashboardPage({
   const agentOptions = (agents ?? []) as AgentOption[];
   const agentSummaryById = new Map(agentSummary.map((row) => [row.agent_id, row]));
   const activeAgentIds = new Set(agentOptions.map((agent) => agent.id));
+  const historicalAgentRows = agentSummary.filter((row) => !activeAgentIds.has(row.agent_id));
   const agentSummaryForDisplay = [
     ...agentOptions.map(
       (agent) =>
@@ -242,7 +243,7 @@ export default async function MailDashboardPage({
           last_event_at: null,
         }
     ),
-    ...agentSummary.filter((row) => !activeAgentIds.has(row.agent_id)),
+    ...historicalAgentRows,
   ].sort((left, right) => {
     if (right.assigned_leads !== left.assigned_leads) return right.assigned_leads - left.assigned_leads;
     if (right.clicked_uncontacted_leads !== left.clicked_uncontacted_leads) {
@@ -380,18 +381,23 @@ export default async function MailDashboardPage({
             <div>
               <h3 className="text-sm font-semibold text-foreground">Control por ejecutivo</h3>
               <p className="mt-1 text-xs text-muted-foreground">
-                Seguimiento de leads Atlas mail asignados{selectedCampaign ? ` en ${selectedCampaign.name}` : " en todas las campañas"}.
+                Seguimiento de leads Atlas mail gestionados o asignados{selectedCampaign ? ` en ${selectedCampaign.name}` : " en todas las campañas"}.
               </p>
             </div>
             <div className="flex flex-wrap gap-2 text-xs">
               <span className="rounded-full border border-border bg-surface px-3 py-1 text-muted-foreground">
-                {formatNumber(agentSummaryForDisplay.length)} ejecutivo{agentSummaryForDisplay.length === 1 ? "" : "s"} activo{agentSummaryForDisplay.length === 1 ? "" : "s"}
+                {formatNumber(agentOptions.length)} ejecutivo{agentOptions.length === 1 ? "" : "s"} activo{agentOptions.length === 1 ? "" : "s"}
               </span>
               <span className="rounded-full border border-border bg-surface px-3 py-1 text-muted-foreground">
                 {formatNumber(agentSummary.length)} con carga mail
               </span>
+              {historicalAgentRows.length > 0 && (
+                <span className="rounded-full border border-border bg-surface px-3 py-1 text-muted-foreground">
+                  {formatNumber(historicalAgentRows.length)} histórico{historicalAgentRows.length === 1 ? "" : "s"}
+                </span>
+              )}
               <span className="rounded-full border border-border bg-surface px-3 py-1 text-muted-foreground">
-                {formatNumber(agentTotals.assigned)} asignados
+                {formatNumber(agentTotals.assigned)} gestionados/asignados
               </span>
               <span className={`rounded-full border px-3 py-1 ${agentTotals.clickedUncontacted > 0 ? "border-warning/30 bg-warning-bg text-warning" : "border-success/30 bg-success-bg text-success"}`}>
                 {formatNumber(agentTotals.clickedUncontacted)} clicks sin contacto
@@ -449,7 +455,7 @@ export default async function MailDashboardPage({
                 {agentSummaryForDisplay.length === 0 && (
                   <tr>
                     <td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">
-                      No hay ejecutivos activos disponibles para este filtro.
+                      No hay ejecutivos con gestión mail para este filtro.
                     </td>
                   </tr>
                 )}
