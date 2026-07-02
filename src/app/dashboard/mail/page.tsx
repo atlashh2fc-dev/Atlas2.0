@@ -85,6 +85,39 @@ function MetricCard({ label, value, detail }: { label: string; value: string; de
   );
 }
 
+function CampaignFilterForm({
+  campaigns,
+  selectedMailCampaignId,
+  compact = false,
+}: {
+  campaigns: MailCampaign[];
+  selectedMailCampaignId: string | null;
+  compact?: boolean;
+}) {
+  return (
+    <form className="flex flex-wrap items-center gap-2">
+      <select
+        name="mailCampaign"
+        defaultValue={selectedMailCampaignId ?? ""}
+        className={`${compact ? "min-w-72" : "min-w-64"} rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground`}
+      >
+        <option value="">Todas las campañas mail Equifax</option>
+        {campaigns.map((campaign) => (
+          <option key={campaign.id} value={campaign.id}>
+            {campaign.name}
+          </option>
+        ))}
+      </select>
+      <button
+        type="submit"
+        className="rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-surface-muted"
+      >
+        Filtrar
+      </button>
+    </form>
+  );
+}
+
 async function fetchMailEngagementQueue(
   supabase: Awaited<ReturnType<typeof createClient>>,
   selectedMailCampaignId: string | null
@@ -167,6 +200,8 @@ export default async function MailDashboardPage({
     },
     { sent: 0, opened: 0, clicked: 0, hot: 0, assigned: 0, managed: 0 }
   );
+  const selectedCampaign = campaigns.find((campaign) => campaign.id === selectedMailCampaignId) ?? null;
+  const selectedDetail = selectedMailCampaignId ? reports[0] ?? null : null;
 
   return (
     <div className="space-y-6">
@@ -177,26 +212,7 @@ export default async function MailDashboardPage({
             Contenedor operativo Equifax: solo leads con apertura o click, listos para asignación manual.
           </p>
         </div>
-        <form className="flex items-center gap-2">
-          <select
-            name="mailCampaign"
-            defaultValue={selectedMailCampaignId ?? ""}
-            className="min-w-64 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-          >
-            <option value="">Todas las campañas mail Equifax</option>
-            {campaigns.map((campaign) => (
-              <option key={campaign.id} value={campaign.id}>
-                {campaign.name}
-              </option>
-            ))}
-          </select>
-          <button
-            type="submit"
-            className="rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-surface-muted"
-          >
-            Filtrar
-          </button>
-        </form>
+        <CampaignFilterForm campaigns={campaigns} selectedMailCampaignId={selectedMailCampaignId} />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
@@ -253,7 +269,43 @@ export default async function MailDashboardPage({
 
       <section className="rounded-xl border border-border bg-surface">
         <div className="border-b border-border px-5 py-4">
-          <h2 className="text-sm font-semibold text-foreground">Leads con apertura o click</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Leads con apertura o click</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {selectedCampaign ? selectedCampaign.name : "Todas las campañas mail Equifax"}
+              </p>
+            </div>
+            <CampaignFilterForm campaigns={campaigns} selectedMailCampaignId={selectedMailCampaignId} compact />
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+            <div className="rounded-lg border border-border bg-background px-3 py-2">
+              <p className="text-xs text-muted-foreground">Enviados</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">{formatNumber(selectedDetail?.sent_leads ?? totals.sent)}</p>
+            </div>
+            <div className="rounded-lg border border-border bg-background px-3 py-2">
+              <p className="text-xs text-muted-foreground">Aperturas</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">{formatNumber(selectedDetail?.opened_leads ?? totals.opened)}</p>
+            </div>
+            <div className="rounded-lg border border-border bg-background px-3 py-2">
+              <p className="text-xs text-muted-foreground">Clicks</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">{formatNumber(selectedDetail?.clicked_leads ?? totals.clicked)}</p>
+            </div>
+            <div className="rounded-lg border border-border bg-background px-3 py-2">
+              <p className="text-xs text-muted-foreground">Hot leads</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">{formatNumber(selectedDetail?.hot_leads ?? totals.hot)}</p>
+            </div>
+            <div className="rounded-lg border border-border bg-background px-3 py-2">
+              <p className="text-xs text-muted-foreground">Asignados</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">
+                {formatNumber(selectedDetail?.assigned_hot_leads ?? totals.assigned)}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border bg-background px-3 py-2">
+              <p className="text-xs text-muted-foreground">Última señal</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">{formatDate(selectedDetail?.last_event_at)}</p>
+            </div>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
