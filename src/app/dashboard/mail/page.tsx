@@ -53,6 +53,20 @@ type AgentOption = {
   email: string;
 };
 
+type MailAgentSummary = {
+  agent_id: string;
+  agent_name: string;
+  assigned_leads: number;
+  clicked_leads: number;
+  opened_only_leads: number;
+  contacted_leads: number;
+  interactions: number;
+  agendas: number;
+  overdue_agendas: number;
+  next_agenda_at: string | null;
+  last_event_at: string | null;
+};
+
 function formatNumber(value: number | null | undefined) {
   return Math.round(Number(value ?? 0)).toLocaleString("es-CL");
 }
@@ -144,6 +158,91 @@ async function fetchMailEngagementQueue(
   return rows;
 }
 
+async function fetchMailAgentSummary(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  queue: MailQueueRow[]
+) {
+  const assignedRows = queue.filter((row) => row.assigned_to);
+  const leadIds = [...new Set(assignedRows.map((row) => row.lead_id))];
+
+  if (leadIds.length === 0) {
+    return [] as MailAgentSummary[];
+  }
+
+  const leads: { id: string; next_action_at: string | null }[] = [];
+  const interactions: { lead_id: string }[] = [];
+  const pageSize = 1000;
+
+  for (let index = 0; index < leadIds.length; index += pageSize) {
+    const chunk = leadIds.slice(index, index + pageSize);
+    const [{ data: leadPage, error: leadError }, { data: interactionPage, error: interactionError }] = await Promise.all([
+      supabase.from("leads").select("id, next_action_at").in("id", chunk),
+      supabase.from("interactions").select("lead_id").in("lead_id", chunk),
+    ]);
+
+    if (leadError) throw new Error(leadError.message);
+    if (interactionError) throw new Error(interactionError.message);
+
+    leads.push(...((leadPage ?? []) as { id: string; next_action_at: string | null }[]));
+    interactions.push(...((interactionPage ?? []) as { lead_id: string }[]));
+  }
+
+  const leadMeta = new Map(leads.map((lead) => [lead.id, lead]));
+  const interactionsByLead = interactions.reduce((acc, row) => {
+    acc.set(row.lead_id, (acc.get(row.lead_id) ?? 0) + 1);
+    return acc;
+  }, new Map<string, number>());
+  const now = Date.now();
+  const summaries = new Map<string, MailAgentSummary>();
+
+  for (const row of assignedRows) {
+    const agentId = row.assigned_to!;
+    const current =
+      summaries.get(agentId) ??
+      {
+        agent_id: agentId,
+        agent_name: row.assigned_to_name ?? "Ejecutivo sin nombre",
+        assigned_leads: 0,
+        clicked_leads: 0,
+        opened_only_leads: 0,
+        contacted_leads: 0,
+        interactions: 0,
+        agendas: 0,
+        overdue_agendas: 0,
+        next_agenda_at: null,
+        last_event_at: null,
+      };
+    const lead = leadMeta.get(row.lead_id);
+    const interactionCount = interactionsByLead.get(row.lead_id) ?? 0;
+
+    current.assigned_leads += 1;
+    current.clicked_leads += row.clicked ? 1 : 0;
+    current.opened_only_leads += !row.clicked && row.opened ? 1 : 0;
+    current.contacted_leads += interactionCount > 0 ? 1 : 0;
+    current.interactions += interactionCount;
+
+    if (lead?.next_action_at) {
+      current.agendas += 1;
+      if (new Date(lead.next_action_at).getTime() <= now) current.overdue_agendas += 1;
+      if (!current.next_agenda_at || new Date(lead.next_action_at) < new Date(current.next_agenda_at)) {
+        current.next_agenda_at = lead.next_action_at;
+      }
+    }
+
+    if (!current.last_event_at || new Date(row.last_event_at) > new Date(current.last_event_at)) {
+      current.last_event_at = row.last_event_at;
+    }
+
+    summaries.set(agentId, current);
+  }
+
+  return Array.from(summaries.values()).sort((left, right) => {
+    if (right.overdue_agendas !== left.overdue_agendas) return right.overdue_agendas - left.overdue_agendas;
+    if (right.clicked_leads !== left.clicked_leads) return right.clicked_leads - left.clicked_leads;
+    return right.assigned_leads - left.assigned_leads;
+  });
+}
+
 export default async function MailDashboardPage({
   searchParams,
 }: {
@@ -186,6 +285,7 @@ export default async function MailDashboardPage({
   const campaigns = (mailCampaigns ?? []) as MailCampaign[];
   const reports = (reportData ?? []) as MailReportRow[];
   const queue = queueData;
+  const agentSummary = await fetchMailAgentSummary(supabase, queue);
   const agentOptions = (agents ?? []) as AgentOption[];
 
   const totals = reports.reduce(
@@ -202,6 +302,19 @@ export default async function MailDashboardPage({
   );
   const selectedCampaign = campaigns.find((campaign) => campaign.id === selectedMailCampaignId) ?? null;
   const selectedDetail = selectedMailCampaignId ? reports[0] ?? null : null;
+  const unassignedHotLeads = queue.filter((row) => !row.assigned_to).length;
+  const agentTotals = agentSummary.reduce(
+    (acc, row) => {
+      acc.assigned += row.assigned_leads;
+      acc.clicked += row.clicked_leads;
+      acc.contacted += row.contacted_leads;
+      acc.interactions += row.interactions;
+      acc.agendas += row.agendas;
+      acc.overdue += row.overdue_agendas;
+      return acc;
+    },
+    { assigned: 0, clicked: 0, contacted: 0, interactions: 0, agendas: 0, overdue: 0 }
+  );
 
   return (
     <div className="space-y-6">
@@ -305,6 +418,126 @@ export default async function MailDashboardPage({
               <p className="text-xs text-muted-foreground">Última señal</p>
               <p className="mt-1 text-sm font-semibold text-foreground">{formatDate(selectedDetail?.last_event_at)}</p>
             </div>
+          </div>
+        </div>
+
+        <div className="border-t border-border bg-background/40 px-5 py-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Control por ejecutivo</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Seguimiento de leads Atlas mail asignados{selectedCampaign ? ` en ${selectedCampaign.name}` : " en todas las campañas"}.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <span className="rounded-full border border-border bg-surface px-3 py-1 text-muted-foreground">
+                {formatNumber(agentSummary.length)} ejecutivo{agentSummary.length === 1 ? "" : "s"}
+              </span>
+              <span className="rounded-full border border-border bg-surface px-3 py-1 text-muted-foreground">
+                {formatNumber(agentTotals.assigned)} asignados
+              </span>
+              <span className={`rounded-full border px-3 py-1 ${unassignedHotLeads > 0 ? "border-warning/30 bg-warning-bg text-warning" : "border-success/30 bg-success-bg text-success"}`}>
+                {formatNumber(unassignedHotLeads)} sin asignar
+              </span>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-lg border border-border bg-surface p-4">
+              <p className="text-xs text-muted-foreground">Contactados</p>
+              <p className="mt-1 text-2xl font-semibold text-foreground">{formatNumber(agentTotals.contacted)}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{percent(agentTotals.contacted, agentTotals.assigned)} de los asignados</p>
+            </div>
+            <div className="rounded-lg border border-border bg-surface p-4">
+              <p className="text-xs text-muted-foreground">Gestiones CRM</p>
+              <p className="mt-1 text-2xl font-semibold text-foreground">{formatNumber(agentTotals.interactions)}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Interacciones registradas sobre leads mail</p>
+            </div>
+            <div className="rounded-lg border border-border bg-surface p-4">
+              <p className="text-xs text-muted-foreground">Agendas</p>
+              <p className="mt-1 text-2xl font-semibold text-foreground">{formatNumber(agentTotals.agendas)}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Próximas acciones vigentes o vencidas</p>
+            </div>
+            <div className={`rounded-lg border p-4 ${agentTotals.overdue > 0 ? "border-danger/30 bg-danger-bg" : "border-success/30 bg-success-bg"}`}>
+              <p className={`text-xs ${agentTotals.overdue > 0 ? "text-danger" : "text-success"}`}>Agendas vencidas</p>
+              <p className={`mt-1 text-2xl font-semibold ${agentTotals.overdue > 0 ? "text-danger" : "text-success"}`}>
+                {formatNumber(agentTotals.overdue)}
+              </p>
+              <p className={`mt-1 text-xs ${agentTotals.overdue > 0 ? "text-danger" : "text-success"}`}>
+                {agentTotals.overdue > 0 ? "Prioridad de recuperación" : "Sin atraso operativo"}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 overflow-x-auto rounded-lg border border-border bg-surface">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                  <th className="px-4 py-3 font-medium">Ejecutivo</th>
+                  <th className="px-4 py-3 font-medium">Leads mail</th>
+                  <th className="px-4 py-3 font-medium">Señales</th>
+                  <th className="px-4 py-3 font-medium">Contactos</th>
+                  <th className="px-4 py-3 font-medium">Agendas</th>
+                  <th className="px-4 py-3 font-medium">Seguimiento</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {agentSummary.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">
+                      Todavía no hay leads mail asignados para este filtro.
+                    </td>
+                  </tr>
+                )}
+                {agentSummary.map((row) => {
+                  const contactRate = row.assigned_leads > 0 ? row.contacted_leads / row.assigned_leads : 0;
+                  const needsAttention = row.overdue_agendas > 0 || contactRate < 0.5;
+                  return (
+                    <tr key={row.agent_id}>
+                      <td className="px-4 py-3">
+                        <p className="font-medium text-foreground">{row.agent_name}</p>
+                        <p className="text-xs text-muted-foreground">Última señal: {formatDate(row.last_event_at)}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="font-semibold text-foreground">{formatNumber(row.assigned_leads)}</p>
+                        <p className="text-xs text-muted-foreground">{percent(row.assigned_leads, agentTotals.assigned)} de asignados</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-1.5">
+                          <span className="rounded-full bg-success-bg px-2 py-0.5 text-xs font-medium text-success">
+                            {formatNumber(row.clicked_leads)} clicks
+                          </span>
+                          <span className="rounded-full bg-warning-bg px-2 py-0.5 text-xs font-medium text-warning">
+                            {formatNumber(row.opened_only_leads)} aperturas
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="font-semibold text-foreground">{formatNumber(row.contacted_leads)}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatNumber(row.interactions)} gestiones · {percent(row.contacted_leads, row.assigned_leads)}
+                        </p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="font-semibold text-foreground">{formatNumber(row.agendas)}</p>
+                        <p className={row.overdue_agendas > 0 ? "text-xs font-medium text-danger" : "text-xs text-muted-foreground"}>
+                          {formatNumber(row.overdue_agendas)} vencidas · próxima {formatDate(row.next_agenda_at)}
+                        </p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                            needsAttention ? "bg-warning-bg text-warning" : "bg-success-bg text-success"
+                          }`}
+                        >
+                          {needsAttention ? "Revisar carga" : "En seguimiento"}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
         <div className="overflow-x-auto">
