@@ -3,6 +3,7 @@ import { Sidebar } from "@/components/sidebar";
 import { Header } from "@/components/header";
 import { DialerListener } from "@/components/dialer-listener";
 import { AgendaBanner, AgendaProvider } from "@/components/agenda-reminder";
+import { CtiBar } from "@/components/cti-bar";
 
 export default async function DashboardLayout({
   children,
@@ -27,6 +28,7 @@ export default async function DashboardLayout({
         )}
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>
+      <CtiBar profile={profile} />
     </div>
   );
 }
