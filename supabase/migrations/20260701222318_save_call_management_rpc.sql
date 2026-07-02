@@ -278,42 +278,8 @@ begin
 end;
 $function$;
 
-revoke all on function public.normalize_management_text(text)
-  from public;
-
-revoke all on function public.normalize_management_text(text)
-  from anon;
-
 grant execute on function public.normalize_management_text(text)
   to authenticated;
-
-revoke all on function public.save_call_management(
-  uuid,
-  uuid,
-  text,
-  text,
-  text,
-  text,
-  timestamp with time zone,
-  text,
-  text[],
-  numeric,
-  text
-) from public;
-
-revoke all on function public.save_call_management(
-  uuid,
-  uuid,
-  text,
-  text,
-  text,
-  text,
-  timestamp with time zone,
-  text,
-  text[],
-  numeric,
-  text
-) from anon;
 
 grant execute on function public.save_call_management(
   uuid,
@@ -327,4 +293,4 @@ grant execute on function public.save_call_management(
   text[],
   numeric,
   text
-) to authenticated;
+) to authenticated;;

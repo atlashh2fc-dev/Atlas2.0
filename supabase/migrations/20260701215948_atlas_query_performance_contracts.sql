@@ -85,4 +85,4 @@ alter policy calls_update on public.calls
         where leads.team_id = (select current_team_id())
       )
     )
-  );
+  );;

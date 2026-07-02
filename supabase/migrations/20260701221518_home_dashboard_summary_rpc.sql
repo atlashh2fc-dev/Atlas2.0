@@ -76,4 +76,4 @@ as $function$
 $function$;
 
 grant execute on function public.get_home_dashboard_summary()
-  to authenticated;
+  to authenticated;;

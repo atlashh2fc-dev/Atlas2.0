@@ -171,3 +171,4 @@ revoke all on function public.current_team_id() from public, anon;
 grant execute on function public.current_team_id() to authenticated;
 
 revoke all on function public.handle_new_user() from public, anon, authenticated;
+;

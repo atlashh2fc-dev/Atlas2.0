@@ -225,4 +225,4 @@ as $function$
 $function$;
 
 grant execute on function public.get_campaign_dashboard_summary(uuid, timestamptz, timestamptz, timestamptz, timestamptz)
-  to authenticated;
+  to authenticated;;
