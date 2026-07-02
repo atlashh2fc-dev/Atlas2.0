@@ -17,6 +17,7 @@ import {
   Upload,
   UserPlus,
   PhoneCall,
+  MailCheck,
 } from "lucide-react";
 
 interface NavItem {
@@ -47,6 +48,7 @@ const NAV_ITEMS: NavItem[] = [
     roles: ["supervisor"],
     sectionLabel: "Supervisión",
   },
+  { href: "/dashboard/mail", label: "Leads mail", icon: MailCheck, roles: ["supervisor", "admin"] },
   { href: "/dashboard/reportes", label: "Reportes", icon: BarChart3, roles: ["supervisor", "admin"] },
   {
     href: "/dashboard/leads/nuevo",

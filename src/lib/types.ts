@@ -41,6 +41,14 @@ export interface Lead {
   managed_by: string | null;
   campaign_id: string | null;
   crm_entity_id: string | null;
+  external_last_source_code?: string | null;
+  external_last_seen_at?: string | null;
+  external_priority_rank?: number | null;
+  external_priority_reason?: string | null;
+  mail_priority_bucket?: string | null;
+  mail_priority_rank?: number | null;
+  mail_priority_reason?: string | null;
+  mail_last_event_at?: string | null;
 }
 
 export interface Interaction {

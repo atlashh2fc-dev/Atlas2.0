@@ -1,0 +1,338 @@
+import Link from "next/link";
+
+import { assignMailEngagementLead } from "@/app/actions/mail";
+import { requireProfile } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
+
+type MailCampaign = {
+  id: string;
+  name: string;
+  campaign_id: string;
+  umbrella_key: string;
+  status: string;
+};
+
+type MailReportRow = {
+  mail_campaign_id: string | null;
+  mail_campaign_name: string;
+  campaign_id: string;
+  campaign_name: string;
+  sent_leads: number;
+  delivered_leads: number;
+  opened_leads: number;
+  clicked_leads: number;
+  hot_leads: number;
+  assigned_hot_leads: number;
+  managed_hot_leads: number;
+  last_event_at: string | null;
+};
+
+type MailQueueRow = {
+  mail_campaign_id: string | null;
+  mail_campaign_name: string;
+  campaign_id: string;
+  campaign_name: string;
+  lead_id: string;
+  full_name: string;
+  rut: string | null;
+  phone: string | null;
+  email: string | null;
+  assigned_to: string | null;
+  assigned_to_name: string | null;
+  team_id: string | null;
+  opened: boolean;
+  clicked: boolean;
+  last_event_at: string;
+  priority_rank: number;
+  priority_reason: string;
+};
+
+type AgentOption = {
+  id: string;
+  full_name: string;
+  email: string;
+};
+
+function formatNumber(value: number | null | undefined) {
+  return Math.round(Number(value ?? 0)).toLocaleString("es-CL");
+}
+
+function formatDate(value: string | null | undefined) {
+  if (!value) return "—";
+  return new Date(value).toLocaleString("es-CL", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function percent(part: number, total: number) {
+  if (total <= 0) return "—";
+  return `${((part / total) * 100).toLocaleString("es-CL", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })}%`;
+}
+
+function MetricCard({ label, value, detail }: { label: string; value: string; detail?: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-surface p-4">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-1 text-2xl font-semibold text-foreground">{value}</p>
+      {detail && <p className="mt-2 text-xs text-muted-foreground">{detail}</p>}
+    </div>
+  );
+}
+
+async function fetchMailEngagementQueue(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  selectedMailCampaignId: string | null
+) {
+  const pageSize = 1000;
+  const rows: MailQueueRow[] = [];
+
+  for (let offset = 0; offset < 20000; offset += pageSize) {
+    const { data, error } = await supabase.rpc("get_mail_engagement_queue", {
+      p_mail_campaign_id: selectedMailCampaignId,
+      p_campaign_id: null,
+      p_limit: pageSize,
+      p_offset: offset,
+    });
+
+    if (error) throw new Error(error.message);
+
+    const page = (data ?? []) as MailQueueRow[];
+    rows.push(...page);
+
+    if (page.length < pageSize) break;
+  }
+
+  return rows;
+}
+
+export default async function MailDashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ mailCampaign?: string }>;
+}) {
+  const profile = await requireProfile(["supervisor", "admin"]);
+  const { mailCampaign } = await searchParams;
+  const selectedMailCampaignId = mailCampaign || null;
+  const supabase = await createClient();
+
+  const agentsQuery = supabase
+    .from("profiles")
+    .select("id, full_name, email")
+    .eq("role", "agente")
+    .eq("active", true)
+    .order("full_name");
+
+  if (profile.role === "supervisor") {
+    if (profile.team_id) agentsQuery.eq("team_id", profile.team_id);
+    else agentsQuery.eq("id", "00000000-0000-0000-0000-000000000000");
+  }
+
+  const [{ data: mailCampaigns }, { data: reportData, error: reportError }, queueData, { data: agents }] =
+    await Promise.all([
+      supabase
+        .from("mail_campaigns")
+        .select("id, name, campaign_id, umbrella_key, status")
+        .eq("umbrella_key", "equifax")
+        .order("updated_at", { ascending: false }),
+      supabase.rpc("get_mail_engagement_report", {
+        p_mail_campaign_id: selectedMailCampaignId,
+        p_campaign_id: null,
+      }),
+      fetchMailEngagementQueue(supabase, selectedMailCampaignId),
+      agentsQuery,
+    ]);
+
+  if (reportError) throw new Error(reportError.message);
+
+  const campaigns = (mailCampaigns ?? []) as MailCampaign[];
+  const reports = (reportData ?? []) as MailReportRow[];
+  const queue = queueData;
+  const agentOptions = (agents ?? []) as AgentOption[];
+
+  const totals = reports.reduce(
+    (acc, row) => {
+      acc.sent += row.sent_leads;
+      acc.opened += row.opened_leads;
+      acc.clicked += row.clicked_leads;
+      acc.hot += row.hot_leads;
+      acc.assigned += row.assigned_hot_leads;
+      acc.managed += row.managed_hot_leads;
+      return acc;
+    },
+    { sent: 0, opened: 0, clicked: 0, hot: 0, assigned: 0, managed: 0 }
+  );
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-foreground">Leads de campañas mail</h1>
+          <p className="text-sm text-muted-foreground">
+            Contenedor operativo Equifax: solo leads con apertura o click, listos para asignación manual.
+          </p>
+        </div>
+        <form className="flex items-center gap-2">
+          <select
+            name="mailCampaign"
+            defaultValue={selectedMailCampaignId ?? ""}
+            className="min-w-64 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+          >
+            <option value="">Todas las campañas mail Equifax</option>
+            {campaigns.map((campaign) => (
+              <option key={campaign.id} value={campaign.id}>
+                {campaign.name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="submit"
+            className="rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-surface-muted"
+          >
+            Filtrar
+          </button>
+        </form>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+        <MetricCard label="Enviados" value={formatNumber(totals.sent)} />
+        <MetricCard label="Aperturas" value={formatNumber(totals.opened)} detail={percent(totals.opened, totals.sent)} />
+        <MetricCard label="Clicks" value={formatNumber(totals.clicked)} detail={percent(totals.clicked, totals.sent)} />
+        <MetricCard label="Priorizados" value={formatNumber(totals.hot)} detail="Apertura o click" />
+        <MetricCard label="Asignados" value={formatNumber(totals.assigned)} detail={percent(totals.assigned, totals.hot)} />
+        <MetricCard label="Gestionados" value={formatNumber(totals.managed)} detail={percent(totals.managed, totals.hot)} />
+      </div>
+
+      <section className="rounded-xl border border-border bg-surface">
+        <div className="border-b border-border px-5 py-4">
+          <h2 className="text-sm font-semibold text-foreground">Reportería por campaña mail</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                <th className="px-5 py-3 font-medium">Campaña mail</th>
+                <th className="px-5 py-3 font-medium">CRM</th>
+                <th className="px-5 py-3 font-medium">Enviados</th>
+                <th className="px-5 py-3 font-medium">Aperturas</th>
+                <th className="px-5 py-3 font-medium">Clicks</th>
+                <th className="px-5 py-3 font-medium">Asignados</th>
+                <th className="px-5 py-3 font-medium">Última señal</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {reports.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-5 py-6 text-center text-muted-foreground">
+                    Sin señales mail para el filtro seleccionado.
+                  </td>
+                </tr>
+              )}
+              {reports.map((row) => (
+                <tr key={`${row.mail_campaign_id ?? row.campaign_id}-${row.campaign_id}`}>
+                  <td className="px-5 py-3 font-medium text-foreground">{row.mail_campaign_name}</td>
+                  <td className="px-5 py-3 text-muted-foreground">{row.campaign_name}</td>
+                  <td className="px-5 py-3 text-muted-foreground">{formatNumber(row.sent_leads)}</td>
+                  <td className="px-5 py-3 text-muted-foreground">{formatNumber(row.opened_leads)}</td>
+                  <td className="px-5 py-3 text-muted-foreground">{formatNumber(row.clicked_leads)}</td>
+                  <td className="px-5 py-3 text-muted-foreground">
+                    {formatNumber(row.assigned_hot_leads)} / {formatNumber(row.hot_leads)}
+                  </td>
+                  <td className="px-5 py-3 text-muted-foreground">{formatDate(row.last_event_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-border bg-surface">
+        <div className="border-b border-border px-5 py-4">
+          <h2 className="text-sm font-semibold text-foreground">Leads con apertura o click</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                <th className="px-5 py-3 font-medium">Lead</th>
+                <th className="px-5 py-3 font-medium">Señal</th>
+                <th className="px-5 py-3 font-medium">Campaña</th>
+                <th className="px-5 py-3 font-medium">Asignado</th>
+                <th className="px-5 py-3 font-medium">Asignar</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {queue.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-5 py-6 text-center text-muted-foreground">
+                    No hay leads con apertura o click para asignar.
+                  </td>
+                </tr>
+              )}
+              {queue.map((row) => (
+                <tr key={`${row.mail_campaign_id ?? row.campaign_id}-${row.lead_id}`}>
+                  <td className="px-5 py-3">
+                    <Link href={`/dashboard/leads/${row.lead_id}`} className="font-medium text-foreground hover:text-primary">
+                      {row.full_name}
+                    </Link>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {row.rut ?? "Sin RUT"} · {row.phone ?? row.email ?? "Sin contacto"}
+                    </p>
+                  </td>
+                  <td className="px-5 py-3">
+                    <div className="flex flex-wrap gap-1.5">
+                      {row.clicked && (
+                        <span className="rounded-full bg-success-bg px-2 py-0.5 text-xs font-medium text-success">Click</span>
+                      )}
+                      {row.opened && (
+                        <span className="rounded-full bg-warning-bg px-2 py-0.5 text-xs font-medium text-warning">Apertura</span>
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">{formatDate(row.last_event_at)}</p>
+                  </td>
+                  <td className="px-5 py-3 text-muted-foreground">
+                    <p>{row.mail_campaign_name}</p>
+                    <p className="text-xs">{row.campaign_name}</p>
+                  </td>
+                  <td className="px-5 py-3 text-muted-foreground">{row.assigned_to_name ?? "Sin asignar"}</td>
+                  <td className="px-5 py-3">
+                    <form action={assignMailEngagementLead} className="flex min-w-72 items-center gap-2">
+                      <input type="hidden" name="lead_id" value={row.lead_id} />
+                      <input type="hidden" name="mail_campaign_id" value={row.mail_campaign_id ?? ""} />
+                      <select
+                        name="agent_id"
+                        defaultValue={row.assigned_to ?? ""}
+                        required
+                        className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground"
+                      >
+                        <option value="" disabled>
+                          Ejecutivo
+                        </option>
+                        {agentOptions.map((agent) => (
+                          <option key={agent.id} value={agent.id}>
+                            {agent.full_name}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="submit"
+                        className="rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary-hover"
+                      >
+                        Asignar
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  );
+}
