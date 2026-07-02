@@ -58,7 +58,12 @@ export function ManualLeadRecordForm({
         return;
       }
 
-      setMessage({ type: "success", text: "Registro creado correctamente." });
+      setMessage({
+        type: "success",
+        text: result.duplicate
+          ? "El RUT ya existía. Abriremos la ficha existente."
+          : "Registro creado correctamente.",
+      });
       if (result.leadId) router.push(`/dashboard/leads/${result.leadId}`);
       else router.push("/dashboard/leads");
     });

@@ -19,6 +19,7 @@ type ManualRecordResult = {
   ok: boolean;
   message?: string;
   leadId?: string;
+  duplicate?: boolean;
 };
 
 function blankToNull(value: string | undefined): string | null {
@@ -54,12 +55,14 @@ export async function createManualLeadRecord(input: ManualRecordInput): Promise<
       data && typeof data === "object" && "lead_id" in data && typeof data.lead_id === "string"
         ? data.lead_id
         : undefined;
+    const duplicate =
+      data && typeof data === "object" && "duplicate" in data && data.duplicate === true;
 
     revalidatePath("/dashboard/leads");
     revalidatePath("/dashboard/team");
     if (leadId) revalidatePath(`/dashboard/leads/${leadId}`);
 
-    return { ok: true, leadId };
+    return { ok: true, leadId, duplicate };
   } catch (error) {
     return {
       ok: false,

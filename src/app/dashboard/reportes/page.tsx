@@ -25,8 +25,11 @@ type SupervisorReportKpis = {
 
 type SupervisorReportAgent = {
   agent_id: string;
+  profile_id?: string | null;
+  historical_agent_id?: string | null;
   full_name: string;
   team_name: string | null;
+  is_historical_only?: boolean;
   crm_gestiones: number;
   llamadas_cerradas: number;
   leads_gestionados: number;
@@ -195,7 +198,7 @@ export default async function ReportesPage({
           <MetricCard label="Cotizaciones" value={formatNumber(kpis.cotizaciones)} />
           <MetricCard label="Ventas / validación" value={formatNumber(kpis.ventas)} tone="good" />
           <MetricCard label="UF comercial" value={formatUf(kpis.uf)} />
-          <MetricCard label="Ejecutivos activos" value={formatNumber(report.agents.length)} />
+          <MetricCard label="Ejecutivos reportados" value={formatNumber(report.agents.length)} />
         </section>
 
         <section>
@@ -222,13 +225,20 @@ export default async function ReportesPage({
                 {report.agents.length === 0 && (
                   <tr>
                     <td colSpan={12} className="px-5 py-6 text-center text-muted-foreground">
-                      Sin ejecutivos activos.
+                      Sin ejecutivos reportados.
                     </td>
                   </tr>
                 )}
                 {report.agents.map((agent) => (
                   <tr key={agent.agent_id}>
-                    <td className="px-5 py-3 font-medium text-foreground">{agent.full_name}</td>
+                    <td className="px-5 py-3 font-medium text-foreground">
+                      <span>{agent.full_name}</span>
+                      {agent.is_historical_only && (
+                        <span className="ml-2 rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                          Histórico
+                        </span>
+                      )}
+                    </td>
                     <td className="px-5 py-3 text-muted-foreground">{formatNumber(agent.crm_gestiones)}</td>
                     <td className="px-5 py-3 text-muted-foreground">{formatNumber(agent.leads_gestionados)}</td>
                     <td className="px-5 py-3 text-muted-foreground">{formatNumber(agent.llamadas_cerradas)}</td>
