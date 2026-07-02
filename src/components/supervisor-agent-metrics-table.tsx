@@ -1,9 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { CalendarClock, ExternalLink, FileText, Loader2, Mail, Phone, ShoppingCart, X } from "lucide-react";
 
 export type SupervisorAgentMetric = {
   agent_id: string;
+  profile_id?: string | null;
+  historical_agent_id?: string | null;
   full_name: string;
   team_name: string | null;
   is_historical_only?: boolean;
@@ -35,6 +38,7 @@ type SortKey =
   | "tmo_seconds";
 
 type Scope = "all" | "active" | "historical";
+type DrilldownMetric = "agendas" | "cotizaciones" | "ventas";
 type PriorityFilter =
   | "all"
   | "heavy_load"
@@ -58,6 +62,60 @@ const columns: { key: SortKey; label: string; align?: "right" }[] = [
   { key: "uf", label: "UF", align: "right" },
   { key: "tmo_seconds", label: "TMO", align: "right" },
 ];
+
+const drilldownColumns = new Set<SortKey>(["agendas", "cotizaciones", "ventas"]);
+
+const metricLabels: Record<DrilldownMetric, string> = {
+  agendas: "Agendas",
+  cotizaciones: "Cotizaciones",
+  ventas: "Ventas",
+};
+
+type DrilldownContact = {
+  id: string;
+  contact_type: "phone" | "email";
+  value: string;
+  label: string | null;
+  is_primary: boolean;
+  is_valid: boolean | null;
+};
+
+type DrilldownItem = {
+  call_id: string;
+  lead_id: string;
+  activity_at: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+  status: string | null;
+  outcome: string | null;
+  reason: string | null;
+  notes: string | null;
+  next_action_at: string | null;
+  equifax_products: string[] | null;
+  equifax_uf_amount: number | null;
+  equifax_recipient_email: string | null;
+  agent_name: string;
+  lead: {
+    id: string;
+    full_name: string;
+    rut: string | null;
+    phone: string | null;
+    email: string | null;
+    status: string | null;
+    tipificacion_actual: string | null;
+    observacion_actual: string | null;
+    next_action_at: string | null;
+    managed_at: string | null;
+    campaign_name: string | null;
+  };
+  contacts: DrilldownContact[];
+};
+
+type DrilldownPayload = {
+  metric: DrilldownMetric;
+  limit: number;
+  items: DrilldownItem[];
+};
 
 const priorityFilters: {
   key: PriorityFilter;
@@ -146,6 +204,17 @@ function formatDuration(seconds: number | null) {
   return `${minutes}m`;
 }
 
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return "-";
+  return new Date(value).toLocaleString("es-CL");
+}
+
+function getMetricIcon(metric: DrilldownMetric) {
+  if (metric === "agendas") return CalendarClock;
+  if (metric === "cotizaciones") return FileText;
+  return ShoppingCart;
+}
+
 function metricValue(agent: SupervisorAgentMetric, key: SortKey): number | string {
   if (key === "full_name") return agent.full_name;
   return numberValue(agent[key]);
@@ -159,14 +228,63 @@ function cellValue(agent: SupervisorAgentMetric, key: SortKey): string {
   return formatNumber(agent[key]);
 }
 
-export function SupervisorAgentMetricsTable({ agents }: { agents: SupervisorAgentMetric[] }) {
+export function SupervisorAgentMetricsTable({
+  agents,
+  rangeFrom,
+  rangeTo,
+}: {
+  agents: SupervisorAgentMetric[];
+  rangeFrom: string;
+  rangeTo: string;
+}) {
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<Scope>("all");
   const [priority, setPriority] = useState<PriorityFilter>("heavy_load");
   const [sortKey, setSortKey] = useState<SortKey>("leads_gestionados");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+  const [drilldown, setDrilldown] = useState<{ agent: SupervisorAgentMetric; metric: DrilldownMetric } | null>(null);
+  const [payload, setPayload] = useState<DrilldownPayload | null>(null);
+  const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const activePriority =
     priorityFilters.find((filter) => filter.key === priority) ?? priorityFilters[0];
+  const selectedItem =
+    payload?.items.find((item) => item.call_id === selectedCallId) ?? payload?.items[0] ?? null;
+
+  useEffect(() => {
+    if (!drilldown) return;
+
+    const controller = new AbortController();
+    const params = new URLSearchParams({
+      metric: drilldown.metric,
+      from: rangeFrom,
+      to: rangeTo,
+    });
+    if (drilldown.agent.profile_id) params.set("profileId", drilldown.agent.profile_id);
+    if (drilldown.agent.historical_agent_id) {
+      params.set("historicalAgentId", drilldown.agent.historical_agent_id);
+    }
+
+    fetch(`/api/reportes/supervisor-drilldown?${params.toString()}`, { signal: controller.signal })
+      .then(async (response) => {
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error ?? "No se pudo cargar el detalle.");
+        return body as DrilldownPayload;
+      })
+      .then((body) => {
+        setPayload(body);
+        setSelectedCallId(body.items[0]?.call_id ?? null);
+      })
+      .catch((error: Error) => {
+        if (error.name !== "AbortError") setLoadError(error.message);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [drilldown, rangeFrom, rangeTo]);
 
   const visibleAgents = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -206,6 +324,14 @@ export function SupervisorAgentMetricsTable({ agents }: { agents: SupervisorAgen
     }
     setSortKey(key);
     setSortDirection(key === "full_name" ? "asc" : "desc");
+  };
+
+  const openDrilldown = (agent: SupervisorAgentMetric, metric: DrilldownMetric) => {
+    setPayload(null);
+    setSelectedCallId(null);
+    setLoadError(null);
+    setLoading(true);
+    setDrilldown({ agent, metric });
   };
 
   return (
@@ -304,6 +430,15 @@ export function SupervisorAgentMetricsTable({ agents }: { agents: SupervisorAgen
                           </span>
                         )}
                       </>
+                    ) : drilldownColumns.has(column.key) && numberValue(agent[column.key]) > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => openDrilldown(agent, column.key as DrilldownMetric)}
+                        className="rounded-md px-2 py-1 font-medium text-primary hover:bg-surface-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        title={`Ver detalle de ${column.label.toLowerCase()}`}
+                      >
+                        {cellValue(agent, column.key)}
+                      </button>
                     ) : (
                       cellValue(agent, column.key)
                     )}
@@ -314,6 +449,185 @@ export function SupervisorAgentMetricsTable({ agents }: { agents: SupervisorAgen
           </tbody>
         </table>
       </div>
+
+      {drilldown && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
+          <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl">
+            <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">
+                  {metricLabels[drilldown.metric]} · {drilldown.agent.full_name}
+                </p>
+                <h3 className="text-lg font-semibold text-foreground">Detalle de gestiones</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDrilldown(null)}
+                className="rounded-lg border border-border bg-background p-2 text-muted-foreground hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label="Cerrar detalle"
+              >
+                <X className="size-4" aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[380px_1fr]">
+              <div className="min-h-0 overflow-y-auto border-b border-border lg:border-b-0 lg:border-r">
+                {loading && (
+                  <div className="flex h-48 items-center justify-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                    Cargando detalle...
+                  </div>
+                )}
+                {loadError && <div className="p-5 text-sm text-danger">{loadError}</div>}
+                {!loading && !loadError && payload?.items.length === 0 && (
+                  <div className="p-5 text-sm text-muted-foreground">Sin gestiones para este filtro.</div>
+                )}
+                {!loading &&
+                  !loadError &&
+                  payload?.items.map((item) => {
+                    const Icon = getMetricIcon(drilldown.metric);
+                    const isActive = selectedItem?.call_id === item.call_id;
+                    return (
+                      <button
+                        key={item.call_id}
+                        type="button"
+                        onClick={() => setSelectedCallId(item.call_id)}
+                        className={`block w-full border-b border-border px-5 py-4 text-left transition ${
+                          isActive ? "bg-surface-muted" : "hover:bg-surface-muted/70"
+                        }`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <span className="mt-1 rounded-lg bg-background p-2 text-primary">
+                            <Icon className="size-4" aria-hidden="true" />
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-semibold text-foreground">
+                              {item.lead.full_name}
+                            </span>
+                            <span className="mt-0.5 block text-xs text-muted-foreground">
+                              {item.reason ?? item.outcome ?? "Gestión"} · {formatDateTime(item.activity_at)}
+                            </span>
+                            <span className="mt-1 block text-xs text-muted-foreground">
+                              {item.lead.rut ?? "Sin RUT"} · {item.contacts.length} contacto(s)
+                            </span>
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+              </div>
+
+              <div className="min-h-0 overflow-y-auto p-5">
+                {!selectedItem && !loading && (
+                  <div className="text-sm text-muted-foreground">Selecciona una gestión para ver el detalle.</div>
+                )}
+
+                {selectedItem && (
+                  <div className="space-y-5">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h4 className="text-xl font-semibold text-foreground">{selectedItem.lead.full_name}</h4>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {selectedItem.lead.rut ?? "Sin RUT"} · {selectedItem.lead.campaign_name ?? "Sin campaña"}
+                        </p>
+                      </div>
+                      <a
+                        href={`/dashboard/leads/${selectedItem.lead_id}`}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
+                      >
+                        Abrir ficha 360
+                        <ExternalLink className="size-3.5" aria-hidden="true" />
+                      </a>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <div className="rounded-lg border border-border bg-background p-3">
+                        <p className="text-xs text-muted-foreground">Última tipificación</p>
+                        <p className="mt-1 text-sm font-medium text-foreground">
+                          {selectedItem.lead.tipificacion_actual ?? selectedItem.reason ?? "-"}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-border bg-background p-3">
+                        <p className="text-xs text-muted-foreground">Próxima agenda</p>
+                        <p className="mt-1 text-sm font-medium text-foreground">
+                          {formatDateTime(selectedItem.lead.next_action_at ?? selectedItem.next_action_at)}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-border bg-background p-3">
+                        <p className="text-xs text-muted-foreground">UF / Venta</p>
+                        <p className="mt-1 text-sm font-medium text-foreground">
+                          {selectedItem.equifax_uf_amount
+                            ? `UF ${formatDecimal(selectedItem.equifax_uf_amount, 2)}`
+                            : "-"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-border bg-background p-4">
+                      <h5 className="text-sm font-semibold text-foreground">Contactos</h5>
+                      <div className="mt-3 grid gap-2 md:grid-cols-2">
+                        {selectedItem.contacts.length === 0 && (
+                          <p className="text-sm text-muted-foreground">Sin contactos normalizados.</p>
+                        )}
+                        {selectedItem.contacts.map((contact) => {
+                          const ContactIcon = contact.contact_type === "phone" ? Phone : Mail;
+                          return (
+                            <div key={contact.id} className="flex items-center gap-2 rounded-lg border border-border px-3 py-2">
+                              <ContactIcon className="size-4 text-muted-foreground" aria-hidden="true" />
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-medium text-foreground">{contact.value}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {contact.contact_type === "phone" ? "Teléfono" : "Email"}
+                                  {contact.is_primary ? " · Principal" : ""}
+                                  {contact.is_valid === false ? " · Inválido" : ""}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-border bg-background p-4">
+                      <h5 className="text-sm font-semibold text-foreground">Gestión seleccionada</h5>
+                      <dl className="mt-3 grid gap-3 text-sm md:grid-cols-2">
+                        <div>
+                          <dt className="text-muted-foreground">Fecha gestión</dt>
+                          <dd className="text-foreground">{formatDateTime(selectedItem.activity_at)}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-muted-foreground">Ejecutivo</dt>
+                          <dd className="text-foreground">{selectedItem.agent_name}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-muted-foreground">Estado / resultado</dt>
+                          <dd className="text-foreground">
+                            {[selectedItem.status, selectedItem.outcome].filter(Boolean).join(" / ") || "-"}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-muted-foreground">Motivo</dt>
+                          <dd className="text-foreground">{selectedItem.reason ?? "-"}</dd>
+                        </div>
+                      </dl>
+                      {(selectedItem.notes || selectedItem.lead.observacion_actual) && (
+                        <p className="mt-3 rounded-lg bg-surface px-3 py-2 text-sm text-muted-foreground">
+                          {selectedItem.notes ?? selectedItem.lead.observacion_actual}
+                        </p>
+                      )}
+                      {selectedItem.equifax_products && selectedItem.equifax_products.length > 0 && (
+                        <p className="mt-3 text-sm text-muted-foreground">
+                          Productos: {selectedItem.equifax_products.join(", ")}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

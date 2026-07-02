@@ -324,7 +324,7 @@ export default async function ReportesPage({
 
         <section>
           <h2 className="mb-3 text-sm font-semibold text-foreground">Métricas por ejecutivo</h2>
-          <SupervisorAgentMetricsTable agents={report.agents} />
+          <SupervisorAgentMetricsTable agents={report.agents} rangeFrom={report.range.from} rangeTo={report.range.to} />
         </section>
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
