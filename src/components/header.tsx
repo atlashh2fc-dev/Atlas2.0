@@ -21,7 +21,7 @@ export function Header({ profile }: { profile: Profile }) {
 
       <div className="flex items-center gap-3">
         <QuickSearch />
-        {(profile.role === "agente" || profile.role === "admin") && <AgendaBell />}
+        {profile.role === "agente" && <AgendaBell />}
         <ThemeToggle />
         <form action={signOut}>
           <button

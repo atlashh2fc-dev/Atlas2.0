@@ -10,7 +10,7 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const profile = await requireProfile();
-  const showAgendaReminder = profile.role === "agente" || profile.role === "admin";
+  const showAgendaReminder = profile.role === "agente";
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background">
