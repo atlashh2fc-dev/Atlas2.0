@@ -218,6 +218,38 @@ export default async function MailDashboardPage({
   const queue = queueData;
   const agentSummary = (agentSummaryData ?? []) as MailAgentSummary[];
   const agentOptions = (agents ?? []) as AgentOption[];
+  const agentSummaryById = new Map(agentSummary.map((row) => [row.agent_id, row]));
+  const activeAgentIds = new Set(agentOptions.map((agent) => agent.id));
+  const agentSummaryForDisplay = [
+    ...agentOptions.map(
+      (agent) =>
+        agentSummaryById.get(agent.id) ?? {
+          agent_id: agent.id,
+          agent_name: agent.full_name ?? agent.email ?? "Ejecutivo sin nombre",
+          assigned_leads: 0,
+          clicked_leads: 0,
+          opened_only_leads: 0,
+          uncontacted_leads: 0,
+          clicked_uncontacted_leads: 0,
+          contacted_leads: 0,
+          interactions: 0,
+          agendas: 0,
+          pending_agendas: 0,
+          overdue_agendas: 0,
+          no_next_action_leads: 0,
+          next_agenda_at: null,
+          last_interaction_at: null,
+          last_event_at: null,
+        }
+    ),
+    ...agentSummary.filter((row) => !activeAgentIds.has(row.agent_id)),
+  ].sort((left, right) => {
+    if (right.assigned_leads !== left.assigned_leads) return right.assigned_leads - left.assigned_leads;
+    if (right.clicked_uncontacted_leads !== left.clicked_uncontacted_leads) {
+      return right.clicked_uncontacted_leads - left.clicked_uncontacted_leads;
+    }
+    return left.agent_name.localeCompare(right.agent_name, "es");
+  });
 
   const totals = reports.reduce(
     (acc, row) => {
@@ -329,34 +361,16 @@ export default async function MailDashboardPage({
                 {selectedCampaign ? selectedCampaign.name : "Todas las campañas mail Equifax"}
               </p>
             </div>
-            <CampaignFilterForm campaigns={campaigns} selectedMailCampaignId={selectedMailCampaignId} compact />
-          </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-            <div className="rounded-lg border border-border bg-background px-3 py-2">
-              <p className="text-xs text-muted-foreground">Enviados</p>
-              <p className="mt-1 text-sm font-semibold text-foreground">{formatNumber(selectedDetail?.sent_leads ?? totals.sent)}</p>
-            </div>
-            <div className="rounded-lg border border-border bg-background px-3 py-2">
-              <p className="text-xs text-muted-foreground">Aperturas</p>
-              <p className="mt-1 text-sm font-semibold text-foreground">{formatNumber(selectedDetail?.opened_leads ?? totals.opened)}</p>
-            </div>
-            <div className="rounded-lg border border-border bg-background px-3 py-2">
-              <p className="text-xs text-muted-foreground">Clicks</p>
-              <p className="mt-1 text-sm font-semibold text-foreground">{formatNumber(selectedDetail?.clicked_leads ?? totals.clicked)}</p>
-            </div>
-            <div className="rounded-lg border border-border bg-background px-3 py-2">
-              <p className="text-xs text-muted-foreground">Hot leads</p>
-              <p className="mt-1 text-sm font-semibold text-foreground">{formatNumber(selectedDetail?.hot_leads ?? totals.hot)}</p>
-            </div>
-            <div className="rounded-lg border border-border bg-background px-3 py-2">
-              <p className="text-xs text-muted-foreground">Asignados</p>
-              <p className="mt-1 text-sm font-semibold text-foreground">
-                {formatNumber(selectedDetail?.assigned_hot_leads ?? totals.assigned)}
-              </p>
-            </div>
-            <div className="rounded-lg border border-border bg-background px-3 py-2">
-              <p className="text-xs text-muted-foreground">Última señal</p>
-              <p className="mt-1 text-sm font-semibold text-foreground">{formatDate(selectedDetail?.last_event_at ?? latestReportEventAt)}</p>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <span className="rounded-full border border-border bg-background px-3 py-1 text-muted-foreground">
+                {formatNumber(selectedDetail?.hot_leads ?? totals.hot)} priorizados
+              </span>
+              <span className={`rounded-full border px-3 py-1 ${unassignedHotLeads > 0 ? "border-warning/30 bg-warning-bg text-warning" : "border-success/30 bg-success-bg text-success"}`}>
+                {formatNumber(unassignedHotLeads)} sin asignar
+              </span>
+              <span className="rounded-full border border-border bg-background px-3 py-1 text-muted-foreground">
+                Última señal {formatDate(selectedDetail?.last_event_at ?? latestReportEventAt)}
+              </span>
             </div>
           </div>
         </div>
@@ -371,7 +385,10 @@ export default async function MailDashboardPage({
             </div>
             <div className="flex flex-wrap gap-2 text-xs">
               <span className="rounded-full border border-border bg-surface px-3 py-1 text-muted-foreground">
-                {formatNumber(agentSummary.length)} ejecutivo{agentSummary.length === 1 ? "" : "s"} con carga
+                {formatNumber(agentSummaryForDisplay.length)} ejecutivo{agentSummaryForDisplay.length === 1 ? "" : "s"} activo{agentSummaryForDisplay.length === 1 ? "" : "s"}
+              </span>
+              <span className="rounded-full border border-border bg-surface px-3 py-1 text-muted-foreground">
+                {formatNumber(agentSummary.length)} con carga mail
               </span>
               <span className="rounded-full border border-border bg-surface px-3 py-1 text-muted-foreground">
                 {formatNumber(agentTotals.assigned)} asignados
@@ -429,25 +446,28 @@ export default async function MailDashboardPage({
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {agentSummary.length === 0 && (
+                {agentSummaryForDisplay.length === 0 && (
                   <tr>
                     <td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">
-                      Todavía no hay leads mail asignados para este filtro.
+                      No hay ejecutivos activos disponibles para este filtro.
                     </td>
                   </tr>
                 )}
-                {agentSummary.map((row) => {
+                {agentSummaryForDisplay.map((row) => {
                   const contactRate = row.assigned_leads > 0 ? row.contacted_leads / row.assigned_leads : 0;
-                  const attentionLabel = row.overdue_agendas > 0
-                    ? "Agendas vencidas"
-                    : row.clicked_uncontacted_leads > 0
-                      ? "Clicks sin contacto"
-                      : contactRate < 0.5
-                        ? "Bajo contacto"
-                        : row.no_next_action_leads > 0
-                          ? "Sin próxima acción"
-                          : "En seguimiento";
-                  const needsAttention = attentionLabel !== "En seguimiento";
+                  const attentionLabel =
+                    row.assigned_leads === 0
+                      ? "Sin asignación mail"
+                      : row.overdue_agendas > 0
+                        ? "Agendas vencidas"
+                        : row.clicked_uncontacted_leads > 0
+                          ? "Clicks sin contacto"
+                          : contactRate < 0.5
+                            ? "Bajo contacto"
+                            : row.no_next_action_leads > 0
+                              ? "Sin próxima acción"
+                              : "En seguimiento";
+                  const needsAttention = attentionLabel !== "En seguimiento" && attentionLabel !== "Sin asignación mail";
                   return (
                     <tr key={row.agent_id}>
                       <td className="px-4 py-3">
@@ -490,7 +510,11 @@ export default async function MailDashboardPage({
                       <td className="px-4 py-3">
                         <span
                           className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-                            needsAttention ? "bg-warning-bg text-warning" : "bg-success-bg text-success"
+                            attentionLabel === "Sin asignación mail"
+                              ? "bg-surface-muted text-muted-foreground"
+                              : needsAttention
+                                ? "bg-warning-bg text-warning"
+                                : "bg-success-bg text-success"
                           }`}
                         >
                           {attentionLabel}
