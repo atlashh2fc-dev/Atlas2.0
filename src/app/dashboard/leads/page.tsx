@@ -19,20 +19,20 @@ function parseView(value: string | undefined): LeadQueueView {
 function roleCopy(role: string) {
   if (role === "supervisor") {
     return {
-      title: "Cola del equipo",
+      title: "Registros del equipo",
       description: "Leads visibles de tu equipo, filtrados por prioridad, ejecutivo y campaña.",
       action: "Revisar",
     };
   }
   if (role === "admin") {
     return {
-      title: "Cola global",
+      title: "Registros globales",
       description: "Vista global de leads para auditoría, búsqueda y control operacional.",
       action: "Abrir",
     };
   }
   return {
-    title: "Mi cola de gestión",
+    title: "Mis registros de gestión",
     description: "Tus próximas gestiones ordenadas por urgencia.",
     action: "Gestionar",
   };

@@ -7,25 +7,44 @@ import { getOrCreateOpenCall } from "@/app/actions/calls";
 import { CallTypificationForm } from "@/components/call-typification-form";
 import { CallTimer } from "@/components/call-timer";
 import { buildCallReasonCatalogFromWorkflow, getReasonConfig } from "@/lib/call-typification";
-import type { WorkflowStep, WorkflowStepBranch } from "@/lib/types";
+import type { Campaign, Lead, Profile, Team, Workflow, WorkflowStep, WorkflowStepBranch } from "@/lib/types";
 
-type ProfileEmbed = { full_name: string } | { full_name: string }[] | null;
+type LeadContact = {
+  id: string;
+  contact_type: "phone" | "email";
+  value: string;
+  label: string | null;
+  is_primary: boolean;
+  is_valid: boolean | null;
+  source: string;
+};
 
-function one<T>(value: T | T[] | null): T | null {
-  return Array.isArray(value) ? value[0] ?? null : value;
-}
+type LeadTimelineItem = {
+  source: "call" | "interaction";
+  id: string;
+  occurred_at: string | null;
+  title: string | null;
+  notes: string | null;
+  next_action_at: string | null;
+  agent_name: string;
+  metadata: Record<string, unknown>;
+};
 
-/**
- * El nombre del ejecutivo que gestionó: para registros migrados del CRM legado
- * (historical_agent_id) usamos el nombre guardado en `historical_agents`, ya que
- * `agent_id` en esos casos apunta a un perfil placeholder ("Migración Histórica").
- */
-function agentName(profileEmbed: ProfileEmbed, historicalEmbed: ProfileEmbed): string {
-  const historical = one(historicalEmbed);
-  if (historical) return historical.full_name;
-  const profile = one(profileEmbed);
-  return profile?.full_name ?? "—";
-}
+type Lead360 = {
+  lead: Lead;
+  contacts: LeadContact[];
+  campaign: Pick<Campaign, "id" | "name" | "workflow_id"> | null;
+  team: Pick<Team, "id" | "name"> | null;
+  assigned_profile: Pick<Profile, "id" | "full_name" | "email"> | null;
+  managed_profile: Pick<Profile, "id" | "full_name" | "email"> | null;
+  workflow: Pick<Workflow, "id" | "name"> | null;
+  summary: {
+    timeline_count: number;
+    last_activity_at: string | null;
+    next_action_at: string | null;
+  };
+  timeline: LeadTimelineItem[];
+};
 
 export default async function LeadDetailPage({
   params,
@@ -36,25 +55,18 @@ export default async function LeadDetailPage({
   const { id } = await params;
   const supabase = await createClient();
 
-  const { data: lead } = await supabase.from("leads").select("*").eq("id", id).single();
-  if (!lead) notFound();
+  const { data: lead360 } = await supabase.rpc("get_lead_360", { p_lead_id: id });
+  if (!lead360) notFound();
 
-  const { data: campaign } = lead.campaign_id
-    ? await supabase.from("campaigns").select("id, name, workflow_id").eq("id", lead.campaign_id).maybeSingle()
-    : { data: null };
-  const [{ data: assignedProfile }, { data: team }] = await Promise.all([
-    lead.assigned_to
-      ? supabase.from("profiles").select("id, full_name, email").eq("id", lead.assigned_to).maybeSingle()
-      : { data: null },
-    lead.team_id
-      ? supabase.from("teams").select("id, name").eq("id", lead.team_id).maybeSingle()
-      : { data: null },
-  ]);
+  const record = lead360 as Lead360;
+  const lead = record.lead;
+  const campaign = record.campaign;
+  const assignedProfile = record.assigned_profile;
+  const team = record.team;
+  const contacts = record.contacts ?? [];
 
   const effectiveWorkflowId = lead.workflow_id ?? campaign?.workflow_id ?? null;
-  const { data: workflow } = effectiveWorkflowId
-    ? await supabase.from("workflows").select("id, name").eq("id", effectiveWorkflowId).maybeSingle()
-    : { data: null };
+  const workflow = record.workflow;
   const [{ data: workflowSteps }, { data: workflowBranches }] = effectiveWorkflowId
     ? await Promise.all([
         supabase
@@ -78,50 +90,14 @@ export default async function LeadDetailPage({
   const isAdminView = profile.role === "admin";
   const call = canManageCall ? await getOrCreateOpenCall(id) : null;
 
-  const { data: previousCalls } = await supabase
-    .from("calls")
-    .select(
-      "*, profiles!calls_agent_id_fkey(full_name), historical_agents!calls_historical_agent_id_fkey(full_name)"
-    )
-    .eq("lead_id", id)
-    .not("ended_at", "is", null)
-    .order("ended_at", { ascending: false })
-    .limit(10);
-
-  const { data: interactions } = await supabase
-    .from("interactions")
-    .select(
-      "*, profiles!interactions_agent_id_fkey(full_name), historical_agents!interactions_historical_agent_id_fkey(full_name)"
-    )
-    .eq("lead_id", id)
-    .order("created_at", { ascending: false })
-    .limit(20);
-
-  // Historial combinado: llamadas cerradas + gestiones registradas, orden cronológico descendente.
-  // Las llamadas migradas del CRM legado no tienen reason/notes propios (el outcome
-  // genérico "other" no aporta nada): la tipificación real de esos casos ya queda
-  // registrada en su interacción correspondiente, así que esas llamadas vacías se
-  // omiten para no duplicar la misma gestión sin información real.
-  const history = [
-    ...(previousCalls ?? [])
-      .filter((c) => c.reason || c.notes)
-      .map((c) => ({
-        key: `call-${c.id}`,
-        date: c.ended_at,
-        title: getReasonConfig(c.reason)?.label ?? c.reason ?? "Llamada",
-        notes: c.notes,
-        agenda: c.next_action_at,
-        agent: agentName(c.profiles as ProfileEmbed, c.historical_agents as ProfileEmbed),
-      })),
-    ...(interactions ?? []).map((i) => ({
-      key: `interaction-${i.id}`,
-      date: i.created_at,
-      title: i.result,
-      notes: i.notes,
-      agenda: null as string | null,
-      agent: agentName(i.profiles as ProfileEmbed, i.historical_agents as ProfileEmbed),
-    })),
-  ].sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime());
+  const history = (record.timeline ?? []).map((item) => ({
+    key: `${item.source}-${item.id}`,
+    date: item.occurred_at,
+    title: getReasonConfig(item.title)?.label ?? item.title ?? "Gestión",
+    notes: item.notes,
+    agenda: item.next_action_at,
+    agent: item.agent_name,
+  }));
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -166,6 +142,30 @@ export default async function LeadDetailPage({
               </div>
             )}
           </dl>
+        </div>
+
+        <div className="rounded-xl border border-border bg-surface p-5">
+          <h2 className="mb-3 text-sm font-semibold text-foreground">Contactos</h2>
+          <div className="space-y-2 text-sm">
+            {contacts.length === 0 && <p className="text-muted-foreground">Sin contactos registrados.</p>}
+            {contacts.map((contact) => (
+              <div key={contact.id} className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-foreground">{contact.value}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {contact.contact_type === "phone" ? "Teléfono" : "Correo"}
+                    {contact.label ? ` · ${contact.label}` : ""}
+                    {contact.is_primary ? " · Principal" : ""}
+                  </p>
+                </div>
+                {contact.is_valid === false && (
+                  <span className="rounded-full bg-danger-bg px-2 py-0.5 text-xs font-medium text-danger">
+                    inválido
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="rounded-xl border border-border bg-surface p-5">

@@ -36,7 +36,7 @@ const NAV_ITEMS: NavItem[] = [
     roles: ["agente", "supervisor", "admin"],
     sectionLabel: "Operación",
   },
-  { href: "/dashboard/leads", label: "Cola", icon: Users, roles: ["agente", "supervisor", "admin"] },
+  { href: "/dashboard/leads", label: "Registros", icon: Users, roles: ["agente", "supervisor", "admin"] },
   { href: "/dashboard/agenda", label: "Mi agenda", icon: CalendarClock, roles: ["agente", "admin"] },
   {
     href: "/dashboard/team",
