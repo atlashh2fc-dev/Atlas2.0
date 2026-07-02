@@ -31,6 +31,14 @@ function localInputToIso(value: string): string | null {
   return d.toISOString();
 }
 
+function localInputToWindow(value: string): string {
+  const hour = Number(value.match(/T(\d{2}):/)?.[1]);
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23) return "";
+  const start = String(hour).padStart(2, "0");
+  const end = String((hour + 1) % 24).padStart(2, "0");
+  return `${start}:00-${end}:00`;
+}
+
 type PendingAction = "progress" | "agenda" | "close" | "discard" | null;
 
 export function CallTypificationForm({
@@ -51,7 +59,6 @@ export function CallTypificationForm({
   const [reason, setReason] = useState<string>(call.reason ?? "");
   const [notes, setNotes] = useState<string>(call.notes ?? "");
   const [nextActionAt, setNextActionAt] = useState<string>(isoToLocalInput(call.next_action_at));
-  const [nextActionWindow, setNextActionWindow] = useState<string>(call.next_action_window ?? "");
   const [equifaxProducts, setEquifaxProducts] = useState<string[]>(call.equifax_products ?? []);
   const [equifaxUf, setEquifaxUf] = useState<string>(call.equifax_uf_amount?.toString() ?? "");
   const [equifaxEmail, setEquifaxEmail] = useState<string>(call.equifax_recipient_email ?? "");
@@ -70,6 +77,7 @@ export function CallTypificationForm({
   const reasonConfig = getReasonConfigFrom(catalog, reason);
   const showAgendaBlock = reasonConfig?.agenda === "required" || reasonConfig?.agenda === "optional";
   const showEquifaxBlock = reason === "COTIZACION ENVIADA" || outcome === "sale";
+  const inferredNextActionWindow = localInputToWindow(nextActionAt);
 
   const pendingIssues = useMemo(
     () =>
@@ -152,7 +160,7 @@ export function CallTypificationForm({
     setPending("agenda");
     setMessage(null);
     try {
-      await saveCallAgenda({ callId: call.id, leadId: lead.id, nextActionAt: iso, nextActionWindow: nextActionWindow || null });
+      await saveCallAgenda({ callId: call.id, leadId: lead.id, nextActionAt: iso });
       setMessage({ type: "success", text: "Agenda guardada." });
     } catch (e) {
       setMessage({ type: "error", text: e instanceof Error ? e.message : "Error al guardar agenda." });
@@ -179,7 +187,6 @@ export function CallTypificationForm({
         reason: reason || null,
         notes: notes || null,
         next_action_at: localInputToIso(nextActionAt),
-        next_action_window: nextActionWindow || null,
         equifax_products: equifaxProducts,
         equifax_uf_amount: equifaxUf ? Number(equifaxUf) : null,
         equifax_recipient_email: equifaxEmail || null,
@@ -304,14 +311,10 @@ export function CallTypificationForm({
                   />
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Bloque horario</label>
-                  <input
-                    type="text"
-                    value={nextActionWindow}
-                    onChange={(e) => setNextActionWindow(e.target.value)}
-                    placeholder="Ej: AM / PM, 15:00-16:00"
-                    className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  />
+                  <p className="mb-1.5 block text-xs font-medium text-muted-foreground">Bloque inferido</p>
+                  <div className="min-h-10 rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-foreground">
+                    {inferredNextActionWindow || "Selecciona fecha y hora"}
+                  </div>
                 </div>
               </div>
               <button

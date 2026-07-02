@@ -21,6 +21,22 @@ async function requireAgent() {
   return { supabase, userId: user.id };
 }
 
+function inferNextActionWindow(nextActionAt: string | null): string | null {
+  if (!nextActionAt) return null;
+  const date = new Date(nextActionAt);
+  if (Number.isNaN(date.getTime())) return null;
+  const hourText = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "America/Santiago",
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).format(date);
+  const hour = Number(hourText);
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23) return null;
+  const start = String(hour).padStart(2, "0");
+  const end = String((hour + 1) % 24).padStart(2, "0");
+  return `${start}:00-${end}:00`;
+}
+
 /**
  * Devuelve la llamada abierta (sin cerrar) del agente actual para este lead,
  * o crea una nueva si no existe ninguna. Se usa al entrar a la ficha de
@@ -190,10 +206,9 @@ export async function saveCallAgenda(input: {
   callId: string;
   leadId: string;
   nextActionAt: string;
-  nextActionWindow?: string | null;
 }) {
   const { supabase, userId } = await requireAgent();
-  const { callId, leadId, nextActionAt, nextActionWindow } = input;
+  const { callId, leadId, nextActionAt } = input;
 
   if (!nextActionAt || Number.isNaN(new Date(nextActionAt).getTime())) {
     throw new Error("Selecciona una fecha y hora de agenda válida.");
@@ -210,7 +225,7 @@ export async function saveCallAgenda(input: {
     .from("calls")
     .update({
       next_action_at: nextActionAt,
-      next_action_window: nextActionWindow || null,
+      next_action_window: inferNextActionWindow(nextActionAt),
       callback_owner_user_id: userId,
       updated_at: new Date().toISOString(),
     })
@@ -222,7 +237,7 @@ export async function saveCallAgenda(input: {
     lead_id: leadId,
     agent_id: userId,
     event_type: "call.agenda_saved",
-    payload: { next_action_at: nextActionAt, next_action_window: nextActionWindow ?? null },
+    payload: { next_action_at: nextActionAt, next_action_window: inferNextActionWindow(nextActionAt) },
   });
 
   revalidatePath(`/dashboard/leads/${leadId}`);
@@ -237,7 +252,6 @@ export async function closeCall(input: {
   reason: string | null;
   notes: string | null;
   next_action_at: string | null;
-  next_action_window: string | null;
   equifax_products: string[];
   equifax_uf_amount: number | null;
   equifax_recipient_email: string | null;
@@ -251,7 +265,6 @@ export async function closeCall(input: {
     reason,
     notes,
     next_action_at,
-    next_action_window,
     equifax_products,
     equifax_uf_amount,
     equifax_recipient_email,
@@ -292,7 +305,7 @@ export async function closeCall(input: {
     p_reason: reason,
     p_notes: notes,
     p_next_action_at: next_action_at,
-    p_next_action_window: next_action_window,
+    p_next_action_window: inferNextActionWindow(next_action_at),
     p_equifax_products: equifax_products,
     p_equifax_uf_amount: equifax_uf_amount,
     p_equifax_recipient_email: equifax_recipient_email,

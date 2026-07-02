@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { StatCard } from "@/components/stat-card";
 import Link from "next/link";
 import type { HomeDashboardSummary } from "@/lib/types";
 
@@ -54,7 +53,7 @@ export function LiveDashboard({
     };
   }, [scheduleRefresh]);
 
-  const { stats, recent, agenda } = summary;
+  const { recent, agenda } = summary;
 
   return (
     <div className="space-y-6">
@@ -65,12 +64,6 @@ export function LiveDashboard({
         <span className="text-xs text-muted-foreground">
           {live ? "Datos en vivo" : "Conectando..."}
         </span>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard label="Leads visibles" value={stats.total} />
-        <StatCard label="En gestión" value={stats.enGestion} />
-        <StatCard label="Convertidos" value={stats.convertidos} />
       </div>
 
       <div className="rounded-xl border border-border bg-surface">
