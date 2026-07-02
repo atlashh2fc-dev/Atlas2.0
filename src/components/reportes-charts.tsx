@@ -27,6 +27,26 @@ type SupervisorDailyPoint = {
   agendas: number;
 };
 
+type SupervisorPipelineKpis = {
+  base_total: number;
+  recorridos: number;
+  contactados: number;
+  crm_gestiones: number;
+  cotizaciones: number;
+  ventas: number;
+};
+
+type SupervisorAgentChartMetric = {
+  full_name: string;
+  crm_gestiones: number;
+  contactos_efectivos: number;
+  no_contacto: number;
+  agendas: number;
+  cotizaciones: number;
+  ventas: number;
+  contactabilidad: number | null;
+};
+
 const TOOLTIP_STYLE = {
   background: "var(--surface)",
   border: "1px solid var(--border)",
@@ -215,6 +235,82 @@ export function SupervisorDailyChart({ daily }: { daily: SupervisorDailyPoint[] 
           dot={false}
         />
       </AreaChart>
+    </ResponsiveContainer>
+  );
+}
+
+export function SupervisorPipelineChart({ kpis }: { kpis: SupervisorPipelineKpis }) {
+  const data = [
+    { name: "Base", value: kpis.base_total },
+    { name: "Recorridos", value: kpis.recorridos },
+    { name: "Contactados", value: kpis.contactados },
+    { name: "CRM tipificado", value: kpis.crm_gestiones },
+    { name: "Cotizaciones", value: kpis.cotizaciones },
+    { name: "Ventas", value: kpis.ventas },
+  ];
+
+  return (
+    <ResponsiveContainer width="100%" height={320}>
+      <BarChart data={data} layout="vertical" margin={{ top: 8, right: 28, bottom: 0, left: 8 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+        <XAxis type="number" tick={AXIS_TICK} tickFormatter={(value) => fmtInt(Number(value))} />
+        <YAxis type="category" dataKey="name" width={120} tick={AXIS_TICK} />
+        <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => fmtInt(Number(value))} />
+        <Bar dataKey="value" radius={[0, 5, 5, 0]}>
+          {data.map((entry) => (
+            <Cell
+              key={entry.name}
+              fill={
+                entry.name === "Ventas"
+                  ? "var(--success)"
+                  : entry.name === "Cotizaciones"
+                    ? "var(--warning)"
+                    : "var(--primary)"
+              }
+            />
+          ))}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+export function SupervisorAgentFocusChart({ agents }: { agents: SupervisorAgentChartMetric[] }) {
+  const data = agents
+    .filter((agent) => agent.crm_gestiones > 0 || agent.contactos_efectivos > 0 || agent.no_contacto > 0)
+    .sort((a, b) => b.crm_gestiones - a.crm_gestiones)
+    .slice(0, 10)
+    .map((agent) => ({
+      name: agent.full_name,
+      Contactados: agent.contactos_efectivos,
+      "No contacto": agent.no_contacto,
+      Agendas: agent.agendas,
+      Cotizaciones: agent.cotizaciones,
+      Ventas: agent.ventas,
+    }));
+
+  if (data.length === 0) {
+    return (
+      <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
+        Sin gestión por ejecutivo en el período.
+      </div>
+    );
+  }
+
+  return (
+    <ResponsiveContainer width="100%" height={Math.max(320, data.length * 38)}>
+      <BarChart data={data} layout="vertical" margin={{ top: 8, right: 24, bottom: 0, left: 8 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+        <XAxis type="number" tick={AXIS_TICK} tickFormatter={(value) => fmtInt(Number(value))} />
+        <YAxis type="category" dataKey="name" width={150} tick={AXIS_TICK} />
+        <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => fmtInt(Number(value))} />
+        <Legend wrapperStyle={{ fontSize: 12 }} />
+        <Bar dataKey="Contactados" stackId="a" fill="var(--accent)" radius={[0, 0, 0, 0]} />
+        <Bar dataKey="No contacto" stackId="a" fill="var(--warning)" radius={[0, 0, 0, 0]} />
+        <Bar dataKey="Agendas" stackId="a" fill="var(--primary)" radius={[0, 0, 0, 0]} />
+        <Bar dataKey="Cotizaciones" stackId="a" fill="color-mix(in srgb, var(--success) 70%, var(--primary))" radius={[0, 0, 0, 0]} />
+        <Bar dataKey="Ventas" stackId="a" fill="var(--success)" radius={[0, 5, 5, 0]} />
+      </BarChart>
     </ResponsiveContainer>
   );
 }

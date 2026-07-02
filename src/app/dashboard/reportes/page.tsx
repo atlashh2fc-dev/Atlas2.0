@@ -1,14 +1,18 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import type { ReactNode } from "react";
 import type { AgentPerformance, CampaignDashboardSummary as CampaignDashboardSummaryData, WorkflowCompliance } from "@/lib/types";
 import { CampaignDashboardSummary } from "@/components/campaign-dashboard-summary";
 import {
   AgentPerformanceChart,
+  SupervisorAgentFocusChart,
   SupervisorDailyChart,
+  SupervisorPipelineChart,
   SupervisorTipificationsChart,
   WorkflowComplianceChart,
 } from "@/components/reportes-charts";
 import { SupervisorAgentMetricsTable } from "@/components/supervisor-agent-metrics-table";
+import { ChartDownloadButton } from "@/components/chart-download-button";
 
 type SupervisorReportKpis = {
   base_total: number;
@@ -151,6 +155,28 @@ function MetricCard({
   );
 }
 
+function ChartPanel({
+  title,
+  filename,
+  rows,
+  children,
+}: {
+  title: string;
+  filename: string;
+  rows: Record<string, string | number | null | undefined>[];
+  children: ReactNode;
+}) {
+  return (
+    <section className="rounded-xl border border-border bg-surface p-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+        <ChartDownloadButton filename={filename} rows={rows} />
+      </div>
+      {children}
+    </section>
+  );
+}
+
 const DASHBOARD_WINDOW_DAYS = 30;
 
 function startOfDay(date: Date): Date {
@@ -193,6 +219,35 @@ export default async function ReportesPage({
 
     const report = data as SupervisorReportSummary;
     const kpis = report.kpis;
+    const tipificationRows = report.tipifications.map((row) => ({
+      Tipificación: row.label,
+      Cantidad: row.count,
+    }));
+    const dailyRows = report.daily.map((row) => ({
+      Día: formatDate(row.day),
+      Gestiones: row.crm_gestiones,
+      Contactados: row.contactos_efectivos,
+      Agendas: row.agendas,
+    }));
+    const pipelineRows = [
+      { Etapa: "Base", Cantidad: kpis.base_total },
+      { Etapa: "Recorridos", Cantidad: kpis.recorridos },
+      { Etapa: "Contactados", Cantidad: kpis.contactados },
+      { Etapa: "CRM tipificado", Cantidad: kpis.crm_gestiones },
+      { Etapa: "Cotizaciones", Cantidad: kpis.cotizaciones },
+      { Etapa: "Ventas", Cantidad: kpis.ventas },
+    ];
+    const agentFocusRows = report.agents.map((agent) => ({
+      Ejecutivo: agent.full_name,
+      Equipo: agent.team_name,
+      Gestiones: agent.crm_gestiones,
+      Contactados: agent.contactos_efectivos,
+      "No contacto": agent.no_contacto,
+      Agendas: agent.agendas,
+      Cotizaciones: agent.cotizaciones,
+      Ventas: agent.ventas,
+      Contactabilidad: agent.contactabilidad,
+    }));
 
     return (
       <div className="space-y-6">
@@ -273,73 +328,21 @@ export default async function ReportesPage({
         </section>
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          <section className="space-y-3">
-            <h2 className="mb-3 text-sm font-semibold text-foreground">Tipificaciones</h2>
-            <div className="rounded-xl border border-border bg-surface p-4">
-              <SupervisorTipificationsChart tipifications={report.tipifications} />
-            </div>
-            <div className="overflow-hidden rounded-xl border border-border bg-surface">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                    <th className="px-5 py-3 font-medium">Tipificación</th>
-                    <th className="px-5 py-3 text-right font-medium">Cantidad</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {report.tipifications.length === 0 && (
-                    <tr>
-                      <td colSpan={2} className="px-5 py-6 text-center text-muted-foreground">
-                        Sin tipificaciones en el período.
-                      </td>
-                    </tr>
-                  )}
-                  {report.tipifications.map((row) => (
-                    <tr key={row.label}>
-                      <td className="px-5 py-3 font-medium text-foreground">{row.label}</td>
-                      <td className="px-5 py-3 text-right text-muted-foreground">{formatNumber(row.count)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
+          <ChartPanel title="Tipificaciones" filename="tipificaciones-equipo.xlsx" rows={tipificationRows}>
+            <SupervisorTipificationsChart tipifications={report.tipifications} />
+          </ChartPanel>
 
-          <section className="space-y-3">
-            <h2 className="mb-3 text-sm font-semibold text-foreground">Movimiento diario</h2>
-            <div className="rounded-xl border border-border bg-surface p-4">
-              <SupervisorDailyChart daily={report.daily} />
-            </div>
-            <div className="overflow-hidden rounded-xl border border-border bg-surface">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                    <th className="px-5 py-3 font-medium">Día</th>
-                    <th className="px-5 py-3 font-medium">Gestiones</th>
-                    <th className="px-5 py-3 font-medium">Contactados</th>
-                    <th className="px-5 py-3 font-medium">Agendas</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {report.daily.length === 0 && (
-                    <tr>
-                      <td colSpan={4} className="px-5 py-6 text-center text-muted-foreground">
-                        Sin movimiento diario en el período.
-                      </td>
-                    </tr>
-                  )}
-                  {report.daily.map((row) => (
-                    <tr key={row.day}>
-                      <td className="px-5 py-3 font-medium text-foreground">{formatDate(row.day)}</td>
-                      <td className="px-5 py-3 text-muted-foreground">{formatNumber(row.crm_gestiones)}</td>
-                      <td className="px-5 py-3 text-muted-foreground">{formatNumber(row.contactos_efectivos)}</td>
-                      <td className="px-5 py-3 text-muted-foreground">{formatNumber(row.agendas)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
+          <ChartPanel title="Movimiento diario" filename="movimiento-diario-equipo.xlsx" rows={dailyRows}>
+            <SupervisorDailyChart daily={report.daily} />
+          </ChartPanel>
+
+          <ChartPanel title="Embudo operativo" filename="embudo-operativo-equipo.xlsx" rows={pipelineRows}>
+            <SupervisorPipelineChart kpis={kpis} />
+          </ChartPanel>
+
+          <ChartPanel title="Foco por ejecutivo" filename="foco-ejecutivo-equipo.xlsx" rows={agentFocusRows}>
+            <SupervisorAgentFocusChart agents={report.agents} />
+          </ChartPanel>
         </div>
       </div>
     );
