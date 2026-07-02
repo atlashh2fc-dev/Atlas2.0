@@ -14,6 +14,7 @@ import {
   Megaphone,
   History,
   CalendarClock,
+  Upload,
 } from "lucide-react";
 
 interface NavItem {
@@ -28,12 +29,30 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { href: "/dashboard", label: "Inicio", icon: LayoutDashboard, roles: ["agente", "supervisor", "admin"] },
+  {
+    href: "/dashboard",
+    label: "Inicio",
+    icon: LayoutDashboard,
+    roles: ["agente", "supervisor", "admin"],
+    sectionLabel: "Operación",
+  },
   { href: "/dashboard/leads", label: "Cola", icon: Users, roles: ["agente", "supervisor", "admin"] },
   { href: "/dashboard/agenda", label: "Mi agenda", icon: CalendarClock, roles: ["agente", "admin"] },
-  { href: "/dashboard/team", label: "Mi equipo", icon: UsersRound, roles: ["supervisor"] },
+  {
+    href: "/dashboard/team",
+    label: "Mi equipo",
+    icon: UsersRound,
+    roles: ["supervisor"],
+    sectionLabel: "Supervisión",
+  },
   { href: "/dashboard/reportes", label: "Reportes", icon: BarChart3, roles: ["supervisor", "admin"] },
-  { href: "/dashboard/admin/usuarios", label: "Usuarios", icon: ShieldCheck, roles: ["admin"] },
+  {
+    href: "/dashboard/leads/cargar",
+    label: "Cargar leads",
+    icon: Upload,
+    roles: ["supervisor", "admin"],
+    sectionLabel: "Datos",
+  },
   {
     href: "/dashboard/admin/ejecutivos-historicos",
     label: "Ejecutivos históricos",
@@ -41,11 +60,18 @@ const NAV_ITEMS: NavItem[] = [
     roles: ["admin"],
   },
   {
+    href: "/dashboard/admin/usuarios",
+    label: "Usuarios",
+    icon: ShieldCheck,
+    roles: ["admin"],
+    sectionLabel: "Administración",
+  },
+  {
     href: "/dashboard/admin/campanas",
     label: "Campañas",
     icon: Megaphone,
     roles: ["admin"],
-    sectionLabel: "Gestión de campañas",
+    sectionLabel: "Campañas",
   },
   { href: "/dashboard/admin/flujos", label: "Flujos", icon: Workflow, roles: ["admin"], indent: true },
 ];

@@ -3,8 +3,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { requireProfile } from "@/lib/auth";
 
 export async function createCampaign(formData: FormData) {
+  await requireProfile(["admin"]);
   const name = (formData.get("name") as string)?.trim();
   const description = (formData.get("description") as string)?.trim() || null;
 
@@ -28,6 +30,7 @@ export async function createCampaign(formData: FormData) {
 }
 
 export async function setCampaignWorkflow(formData: FormData) {
+  await requireProfile(["admin"]);
   const campaignId = formData.get("campaign_id") as string;
   const workflowId = (formData.get("workflow_id") as string) || null;
 
@@ -42,6 +45,7 @@ export async function setCampaignWorkflow(formData: FormData) {
 }
 
 export async function toggleCampaignActive(formData: FormData) {
+  await requireProfile(["admin"]);
   const campaignId = formData.get("campaign_id") as string;
   const active = formData.get("active") === "true";
 
@@ -57,6 +61,7 @@ export async function toggleCampaignActive(formData: FormData) {
 }
 
 export async function addCampaignAgent(formData: FormData) {
+  await requireProfile(["admin"]);
   const campaignId = formData.get("campaign_id") as string;
   const profileId = formData.get("profile_id") as string;
   if (!profileId) throw new Error("Selecciona un ejecutivo.");
@@ -72,6 +77,7 @@ export async function addCampaignAgent(formData: FormData) {
 }
 
 export async function removeCampaignAgent(formData: FormData) {
+  await requireProfile(["admin"]);
   const campaignId = formData.get("campaign_id") as string;
   const membershipId = formData.get("membership_id") as string;
 

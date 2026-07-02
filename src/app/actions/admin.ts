@@ -4,8 +4,10 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 import type { AppRole } from "@/lib/types";
+import { requireProfile } from "@/lib/auth";
 
 export async function createUserAccount(formData: FormData) {
+  await requireProfile(["admin"]);
   const fullName = (formData.get("full_name") as string)?.trim();
   const email = (formData.get("email") as string)?.trim().toLowerCase();
   const password = formData.get("password") as string;
@@ -24,13 +26,14 @@ export async function createUserAccount(formData: FormData) {
     email,
     password,
     email_confirm: true,
-    user_metadata: { full_name: fullName, role },
+    user_metadata: { full_name: fullName },
+    app_metadata: { role },
   });
 
   if (error) throw new Error(error.message);
 
-  // El trigger on_auth_user_created crea el perfil con full_name/role desde
-  // user_metadata. Si se especificó equipo, lo asignamos aquí.
+  // El trigger on_auth_user_created crea el perfil con full_name desde
+  // user_metadata y role desde app_metadata. Si se especificó equipo, lo asignamos aquí.
   if (teamId && data.user) {
     const { error: teamError } = await admin
       .from("profiles")
@@ -43,6 +46,7 @@ export async function createUserAccount(formData: FormData) {
 }
 
 export async function updateUserRole(formData: FormData) {
+  await requireProfile(["admin"]);
   const userId = formData.get("user_id") as string;
   const role = formData.get("role") as AppRole;
   const teamId = (formData.get("team_id") as string) || null;
@@ -58,6 +62,7 @@ export async function updateUserRole(formData: FormData) {
 }
 
 export async function toggleUserActive(formData: FormData) {
+  await requireProfile(["admin"]);
   const userId = formData.get("user_id") as string;
   const active = formData.get("active") === "true";
 
@@ -72,6 +77,7 @@ export async function toggleUserActive(formData: FormData) {
 }
 
 export async function createTeam(formData: FormData) {
+  await requireProfile(["admin"]);
   const name = formData.get("name") as string;
   const supervisorId = (formData.get("supervisor_id") as string) || null;
   const supabase = await createClient();
@@ -82,6 +88,7 @@ export async function createTeam(formData: FormData) {
 
 /** Asigna o cambia el supervisor a cargo de un equipo (define de quién dependen sus agentes). */
 export async function updateTeamSupervisor(formData: FormData) {
+  await requireProfile(["admin"]);
   const teamId = formData.get("team_id") as string;
   const supervisorId = (formData.get("supervisor_id") as string) || null;
 
@@ -101,6 +108,7 @@ export async function updateTeamSupervisor(formData: FormData) {
  * gestión real del nuevo agente (sin perder la trazabilidad al registro histórico original).
  */
 export async function activateHistoricalAgent(formData: FormData) {
+  await requireProfile(["admin"]);
   const historicalAgentId = formData.get("historical_agent_id") as string;
   const email = (formData.get("email") as string)?.trim().toLowerCase();
   const password = formData.get("password") as string;
@@ -131,7 +139,8 @@ export async function activateHistoricalAgent(formData: FormData) {
     email,
     password,
     email_confirm: true,
-    user_metadata: { full_name: historicalAgent.full_name, role },
+    user_metadata: { full_name: historicalAgent.full_name },
+    app_metadata: { role },
   });
 
   if (error) throw new Error(error.message);
@@ -170,10 +179,34 @@ export async function activateHistoricalAgent(formData: FormData) {
 }
 
 export async function assignLead(formData: FormData) {
+  const profile = await requireProfile(["supervisor", "admin"]);
   const leadId = formData.get("lead_id") as string;
   const agentId = formData.get("agent_id") as string;
 
   const supabase = await createClient();
+  if (profile.role === "supervisor") {
+    if (!profile.team_id) throw new Error("Tu supervisor no tiene equipo asignado.");
+
+    const { data: lead } = await supabase
+      .from("leads")
+      .select("id")
+      .eq("id", leadId)
+      .eq("team_id", profile.team_id)
+      .maybeSingle();
+    if (!lead) throw new Error("No puedes asignar un lead fuera de tu equipo.");
+
+    if (agentId) {
+      const { data: agent } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("id", agentId)
+        .eq("team_id", profile.team_id)
+        .eq("role", "agente")
+        .maybeSingle();
+      if (!agent) throw new Error("El ejecutivo destino no pertenece a tu equipo.");
+    }
+  }
+
   const { error } = await supabase
     .from("leads")
     .update({ assigned_to: agentId || null })
@@ -190,6 +223,7 @@ export async function assignLead(formData: FormData) {
  * una nueva fecha/hora, también actualiza next_action_at.
  */
 export async function reassignAgenda(formData: FormData) {
+  const profile = await requireProfile(["supervisor", "admin"]);
   const leadId = formData.get("lead_id") as string;
   const agentId = formData.get("agent_id") as string;
   const nextActionAtRaw = formData.get("next_action_at") as string;
@@ -207,6 +241,29 @@ export async function reassignAgenda(formData: FormData) {
   }
 
   const supabase = await createClient();
+  if (profile.role === "supervisor") {
+    if (!profile.team_id) throw new Error("Tu supervisor no tiene equipo asignado.");
+
+    const [{ data: lead }, { data: agent }] = await Promise.all([
+      supabase
+        .from("leads")
+        .select("id")
+        .eq("id", leadId)
+        .eq("team_id", profile.team_id)
+        .maybeSingle(),
+      supabase
+        .from("profiles")
+        .select("id")
+        .eq("id", agentId)
+        .eq("team_id", profile.team_id)
+        .eq("role", "agente")
+        .maybeSingle(),
+    ]);
+
+    if (!lead) throw new Error("No puedes reagendar un lead fuera de tu equipo.");
+    if (!agent) throw new Error("El ejecutivo destino no pertenece a tu equipo.");
+  }
+
   const { error } = await supabase.from("leads").update(update).eq("id", leadId);
 
   if (error) throw new Error(error.message);

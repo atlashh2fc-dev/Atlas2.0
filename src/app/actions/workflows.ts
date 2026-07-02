@@ -5,8 +5,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { WorkflowFieldType, WorkflowStep, WorkflowStepBranch } from "@/lib/types";
 import { WORKFLOW_TEMPLATES } from "@/lib/workflow-templates";
+import { requireProfile } from "@/lib/auth";
 
 export async function createWorkflow(formData: FormData) {
+  await requireProfile(["admin"]);
   const name = formData.get("name") as string;
   const description = (formData.get("description") as string) || null;
 
@@ -23,6 +25,7 @@ export async function createWorkflow(formData: FormData) {
 }
 
 export async function createWorkflowFromTemplate(formData: FormData) {
+  await requireProfile(["admin"]);
   const templateId = formData.get("template_id") as string;
   const template = WORKFLOW_TEMPLATES.find((t) => t.id === templateId);
   if (!template) throw new Error("Plantilla no encontrada");
@@ -104,6 +107,7 @@ export async function createWorkflowFromTemplate(formData: FormData) {
 }
 
 export async function toggleWorkflowActive(formData: FormData) {
+  await requireProfile(["admin"]);
   const workflowId = formData.get("workflow_id") as string;
   const active = formData.get("active") === "true";
 
@@ -118,6 +122,7 @@ export async function toggleWorkflowActive(formData: FormData) {
 }
 
 export async function addWorkflowStep(formData: FormData) {
+  await requireProfile(["admin"]);
   const workflowId = formData.get("workflow_id") as string;
   const name = formData.get("name") as string;
   const description = (formData.get("description") as string) || null;
@@ -154,6 +159,7 @@ export async function addWorkflowStep(formData: FormData) {
 }
 
 export async function deleteWorkflowStep(formData: FormData) {
+  await requireProfile(["admin"]);
   const stepId = formData.get("step_id") as string;
   const workflowId = formData.get("workflow_id") as string;
 
@@ -172,6 +178,7 @@ export async function createWorkflowStepNode(input: {
   posY: number;
   makeStart?: boolean;
 }): Promise<WorkflowStep> {
+  await requireProfile(["admin"]);
   const supabase = await createClient();
 
   const { data: existing } = await supabase
@@ -221,6 +228,7 @@ export async function updateWorkflowStepNode(input: {
   options: string[];
   isMandatory: boolean;
 }): Promise<void> {
+  await requireProfile(["admin"]);
   const supabase = await createClient();
   const { error } = await supabase
     .from("workflow_steps")
@@ -242,6 +250,7 @@ export async function updateWorkflowStepPosition(input: {
   posX: number;
   posY: number;
 }): Promise<void> {
+  await requireProfile(["admin"]);
   const supabase = await createClient();
   const { error } = await supabase
     .from("workflow_steps")
@@ -254,6 +263,7 @@ export async function setStartStep(input: {
   workflowId: string;
   stepId: string;
 }): Promise<void> {
+  await requireProfile(["admin"]);
   const supabase = await createClient();
   await supabase
     .from("workflow_steps")
@@ -270,6 +280,7 @@ export async function deleteWorkflowStepNode(input: {
   stepId: string;
   workflowId: string;
 }): Promise<void> {
+  await requireProfile(["admin"]);
   const supabase = await createClient();
   const { error } = await supabase.from("workflow_steps").delete().eq("id", input.stepId);
   if (error) throw new Error(error.message);
@@ -281,6 +292,7 @@ export async function upsertBranch(input: {
   fromOption: string | null;
   toStepId: string | null;
 }): Promise<WorkflowStepBranch> {
+  await requireProfile(["admin"]);
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("workflow_step_branches")
@@ -304,12 +316,14 @@ export async function deleteBranch(input: {
   branchId: string;
   workflowId: string;
 }): Promise<void> {
+  await requireProfile(["admin"]);
   const supabase = await createClient();
   const { error } = await supabase.from("workflow_step_branches").delete().eq("id", input.branchId);
   if (error) throw new Error(error.message);
 }
 
 export async function assignLeadWorkflow(formData: FormData) {
+  await requireProfile(["admin"]);
   const leadId = formData.get("lead_id") as string;
   const workflowId = (formData.get("workflow_id") as string) || null;
 

@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { LEAD_STATUSES } from "@/lib/types";
 import { getOrCreateOpenCall } from "@/app/actions/calls";
@@ -41,6 +42,14 @@ export default async function LeadDetailPage({
   const { data: campaign } = lead.campaign_id
     ? await supabase.from("campaigns").select("id, name, workflow_id").eq("id", lead.campaign_id).maybeSingle()
     : { data: null };
+  const [{ data: assignedProfile }, { data: team }] = await Promise.all([
+    lead.assigned_to
+      ? supabase.from("profiles").select("id, full_name, email").eq("id", lead.assigned_to).maybeSingle()
+      : { data: null },
+    lead.team_id
+      ? supabase.from("teams").select("id, name").eq("id", lead.team_id).maybeSingle()
+      : { data: null },
+  ]);
 
   const effectiveWorkflowId = lead.workflow_id ?? campaign?.workflow_id ?? null;
   const { data: workflow } = effectiveWorkflowId
@@ -61,10 +70,12 @@ export default async function LeadDetailPage({
     (workflowBranches ?? []) as WorkflowStepBranch[]
   );
 
-  // Solo agentes (y admin) pueden abrir/crear una llamada: la política RLS de
+  // Solo agentes pueden abrir/crear una llamada: la política RLS de
   // `calls` no permite INSERT a supervisores, así que para ellos esta ficha
   // es de solo lectura y nunca se intenta crear una llamada en su nombre.
-  const canManageCall = profile.role === "agente" || profile.role === "admin";
+  const canManageCall = profile.role === "agente";
+  const isSupervisorView = profile.role === "supervisor";
+  const isAdminView = profile.role === "admin";
   const call = canManageCall ? await getOrCreateOpenCall(id) : null;
 
   const { data: previousCalls } = await supabase
@@ -115,7 +126,11 @@ export default async function LeadDetailPage({
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
       {/* Cliente, contexto de campana e historial */}
-      <div className={`space-y-6 ${call ? "lg:col-span-1" : "lg:col-span-3"}`}>
+      <div
+        className={`space-y-6 ${
+          call ? "lg:col-span-1" : isSupervisorView || isAdminView ? "lg:col-span-2" : "lg:col-span-3"
+        }`}
+      >
         <div className="rounded-xl border border-border bg-surface p-5">
           <div className="flex items-center justify-between gap-2">
             <h1 className="text-lg font-semibold text-foreground">{lead.full_name}</h1>
@@ -195,6 +210,120 @@ export default async function LeadDetailPage({
           </ul>
         </div>
       </div>
+
+      {isSupervisorView && (
+        <div className="space-y-4">
+          <div className="rounded-xl border border-border bg-surface p-5">
+            <h2 className="text-sm font-semibold text-foreground">Vista de supervisión</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Puedes revisar contexto, historial y prioridad del lead. La llamada la cierra el ejecutivo asignado.
+            </p>
+
+            <dl className="mt-4 space-y-2 text-sm">
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted-foreground">Asignado a</dt>
+                <dd className="text-right text-foreground">
+                  {assignedProfile?.full_name ?? "Sin asignar"}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted-foreground">Estado workflow</dt>
+                <dd className="text-right text-foreground">{lead.workflow_status ?? "—"}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted-foreground">Última gestión</dt>
+                <dd className="text-right text-foreground">
+                  {lead.managed_at ? new Date(lead.managed_at).toLocaleString("es-CL") : "—"}
+                </dd>
+              </div>
+            </dl>
+          </div>
+
+          <div className="rounded-xl border border-border bg-surface p-5">
+            <h2 className="text-sm font-semibold text-foreground">Acciones rápidas</h2>
+            <div className="mt-4 grid grid-cols-1 gap-2">
+              <Link
+                href="/dashboard/team"
+                className="rounded-lg bg-primary px-3 py-2 text-center text-sm font-medium text-primary-foreground hover:bg-primary-hover"
+              >
+                Reasignar en Mi equipo
+              </Link>
+              <Link
+                href="/dashboard/reportes"
+                className="rounded-lg border border-border bg-background px-3 py-2 text-center text-sm font-medium text-foreground hover:bg-surface-muted"
+              >
+                Ver rendimiento
+              </Link>
+              <Link
+                href="/dashboard/leads/cargar"
+                className="rounded-lg border border-border bg-background px-3 py-2 text-center text-sm font-medium text-foreground hover:bg-surface-muted"
+              >
+                Cargar nuevos leads
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isAdminView && (
+        <div className="space-y-4">
+          <div className="rounded-xl border border-border bg-surface p-5">
+            <h2 className="text-sm font-semibold text-foreground">Vista administrativa</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Auditoría del lead, asignación y configuración asociada. La gestión telefónica queda en manos del ejecutivo.
+            </p>
+
+            <dl className="mt-4 space-y-2 text-sm">
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted-foreground">Ejecutivo</dt>
+                <dd className="text-right text-foreground">{assignedProfile?.full_name ?? "Sin asignar"}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted-foreground">Equipo</dt>
+                <dd className="text-right text-foreground">{team?.name ?? "Sin equipo"}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted-foreground">Campaña</dt>
+                <dd className="text-right text-foreground">{campaign?.name ?? "Sin campaña"}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted-foreground">Workflow</dt>
+                <dd className="text-right text-foreground">{lead.workflow_status ?? "—"}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted-foreground">Actualizado</dt>
+                <dd className="text-right text-foreground">{new Date(lead.updated_at).toLocaleString("es-CL")}</dd>
+              </div>
+            </dl>
+          </div>
+
+          <div className="rounded-xl border border-border bg-surface p-5">
+            <h2 className="text-sm font-semibold text-foreground">Acciones administrativas</h2>
+            <div className="mt-4 grid grid-cols-1 gap-2">
+              {campaign?.id && (
+                <Link
+                  href={`/dashboard/admin/campanas/${campaign.id}`}
+                  className="rounded-lg bg-primary px-3 py-2 text-center text-sm font-medium text-primary-foreground hover:bg-primary-hover"
+                >
+                  Abrir campaña
+                </Link>
+              )}
+              <Link
+                href="/dashboard/admin/usuarios"
+                className="rounded-lg border border-border bg-background px-3 py-2 text-center text-sm font-medium text-foreground hover:bg-surface-muted"
+              >
+                Usuarios y equipos
+              </Link>
+              <Link
+                href="/dashboard/reportes"
+                className="rounded-lg border border-border bg-background px-3 py-2 text-center text-sm font-medium text-foreground hover:bg-surface-muted"
+              >
+                Ver reportes
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tipificación de la llamada */}
       {call && (

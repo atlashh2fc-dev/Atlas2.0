@@ -19,6 +19,7 @@ export async function getCurrentProfile(): Promise<Profile | null> {
 export async function requireProfile(allowed?: Profile["role"][]) {
   const profile = await getCurrentProfile();
   if (!profile) redirect("/login");
+  if (!profile.active) redirect("/login");
   if (allowed && !allowed.includes(profile.role)) redirect("/dashboard");
   return profile;
 }

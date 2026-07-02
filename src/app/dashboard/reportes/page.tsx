@@ -37,21 +37,26 @@ export default async function ReportesPage({
 }: {
   searchParams: Promise<{ campaign?: string }>;
 }) {
-  await requireProfile(["supervisor", "admin"]);
+  const profile = await requireProfile(["supervisor", "admin"]);
   const { campaign: campaignParam } = await searchParams;
   const supabase = await createClient();
 
-  const { data: agentPerf } = await supabase
+  const agentPerfQuery = supabase
     .from("agent_performance")
     .select("*")
     .order("total_interactions", { ascending: false });
+  if (profile.role === "supervisor" && profile.team_id) {
+    agentPerfQuery.eq("team_id", profile.team_id);
+  }
+  const { data: agentPerf } = await agentPerfQuery;
 
-  const { data: workflowCompliance } = await supabase.rpc("get_workflow_compliance");
+  const { data: workflowCompliance } =
+    profile.role === "admin" ? await supabase.rpc("get_workflow_compliance") : { data: [] };
 
-  const { data: campaignList } = await supabase
-    .from("campaigns")
-    .select("id, name")
-    .order("name");
+  const { data: campaignList } =
+    profile.role === "admin"
+      ? await supabase.from("campaigns").select("id, name").order("name")
+      : { data: [] };
 
   const agents = (agentPerf ?? []) as AgentPerformance[];
   const workflows = (workflowCompliance ?? []) as WorkflowCompliance[];
@@ -92,9 +97,13 @@ export default async function ReportesPage({
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-xl font-semibold text-foreground">Reportes</h1>
+        <h1 className="text-xl font-semibold text-foreground">
+          {profile.role === "admin" ? "Reportes" : "Reportes del equipo"}
+        </h1>
         <p className="text-sm text-muted-foreground">
-          Rendimiento por ejecutivo y cumplimiento de flujos de gestión.
+          {profile.role === "admin"
+            ? "Rendimiento por ejecutivo y cumplimiento de flujos de gestión."
+            : "Rendimiento operacional de los ejecutivos bajo tu supervisión."}
         </p>
       </div>
 
@@ -155,43 +164,46 @@ export default async function ReportesPage({
         </div>
       </div>
 
-      <div>
-        <h2 className="mb-3 text-sm font-semibold text-foreground">Cumplimiento de flujos</h2>
-        <div className="mb-4 rounded-xl border border-border bg-surface p-5">
-          <WorkflowComplianceChart workflows={workflows} />
-        </div>
-        <div className="overflow-hidden rounded-xl border border-border bg-surface">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th className="px-5 py-3 font-medium">Flujo</th>
-                <th className="px-5 py-3 font-medium">Leads asignados</th>
-                <th className="px-5 py-3 font-medium">Cumplimiento completo</th>
-                <th className="px-5 py-3 font-medium">% cumplimiento</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {workflows.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="px-5 py-6 text-center text-muted-foreground">
-                    No hay flujos configurados.
-                  </td>
+      {profile.role === "admin" && (
+        <div>
+          <h2 className="mb-3 text-sm font-semibold text-foreground">Cumplimiento de flujos</h2>
+          <div className="mb-4 rounded-xl border border-border bg-surface p-5">
+            <WorkflowComplianceChart workflows={workflows} />
+          </div>
+          <div className="overflow-hidden rounded-xl border border-border bg-surface">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                  <th className="px-5 py-3 font-medium">Flujo</th>
+                  <th className="px-5 py-3 font-medium">Leads asignados</th>
+                  <th className="px-5 py-3 font-medium">Cumplimiento completo</th>
+                  <th className="px-5 py-3 font-medium">% cumplimiento</th>
                 </tr>
-              )}
-              {workflows.map((w) => (
-                <tr key={w.workflow_id}>
-                  <td className="px-5 py-3 font-medium text-foreground">{w.workflow_name}</td>
-                  <td className="px-5 py-3 text-muted-foreground">{w.total_leads}</td>
-                  <td className="px-5 py-3 text-muted-foreground">{w.compliant_leads}</td>
-                  <td className="px-5 py-3 text-muted-foreground">
-                    {w.compliance_rate !== null ? `${w.compliance_rate}%` : "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {workflows.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="px-5 py-6 text-center text-muted-foreground">
+                      No hay flujos configurados.
+                    </td>
+                  </tr>
+                )}
+                {workflows.map((w) => (
+                  <tr key={w.workflow_id}>
+                    <td className="px-5 py-3 font-medium text-foreground">{w.workflow_name}</td>
+                    <td className="px-5 py-3 text-muted-foreground">{w.total_leads}</td>
+                    <td className="px-5 py-3 text-muted-foreground">{w.compliant_leads}</td>
+                    <td className="px-5 py-3 text-muted-foreground">
+                      {w.compliance_rate !== null ? `${w.compliance_rate}%` : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
+      {profile.role === "admin" && (
       <div>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-foreground">Dashboard de campaña</h2>
@@ -226,6 +238,7 @@ export default async function ReportesPage({
 
         {selectedCampaign && dashboardSummary && <CampaignDashboardSummary key={selectedCampaign.id} summary={dashboardSummary} />}
       </div>
+      )}
     </div>
   );
 }
