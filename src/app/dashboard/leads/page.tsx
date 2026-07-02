@@ -58,7 +58,6 @@ export default async function LeadsPage({
   const agentSearchVisibilityFilter = profile.team_id
     ? `assigned_to.eq.${profile.id},managed_by.eq.${profile.id},and(assigned_to.is.null,managed_by.is.null,team_id.eq.${profile.team_id})`
     : `assigned_to.eq.${profile.id},managed_by.eq.${profile.id}`;
-  const agentQueueVisibilityFilter = `assigned_to.eq.${profile.id},managed_by.eq.${profile.id}`;
 
   const [{ data: agentOptions }, { data: campaignOptions }] = canFilterOperation
     ? await Promise.all([
@@ -101,19 +100,14 @@ export default async function LeadsPage({
       error = leadsError;
     }
   } else {
-    const queueQuery = supabase
-      .from("leads")
-      .select(leadSelect)
-      .order("updated_at", { ascending: false });
-    if (profile.role === "agente") queueQuery.or(agentQueueVisibilityFilter);
-    if (profile.role === "supervisor" && profile.team_id) queueQuery.eq("team_id", profile.team_id);
-    if (filters.agent) queueQuery.or(`assigned_to.eq.${filters.agent},managed_by.eq.${filters.agent}`);
-    if (filters.campaign) queueQuery.eq("campaign_id", filters.campaign);
-    if (filters.status) queueQuery.eq("status", filters.status);
-
-    const { data: queueLeads, error: queueError } = await queueQuery.limit(profile.role === "admin" ? 300 : 200);
-    leads = (queueLeads ?? []) as LeadQueueRow[];
-    error = queueError;
+    const { data: records, error: recordsError } = await supabase.rpc("get_lead_records", {
+      p_agent: filters.agent || null,
+      p_campaign: filters.campaign || null,
+      p_status: filters.status || null,
+      p_limit: profile.role === "admin" ? 300 : 200,
+    });
+    leads = (records ?? []) as LeadQueueRow[];
+    error = recordsError;
   }
 
   return (

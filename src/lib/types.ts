@@ -40,6 +40,7 @@ export interface Lead {
   managed_at: string | null;
   managed_by: string | null;
   campaign_id: string | null;
+  crm_entity_id: string | null;
 }
 
 export interface Interaction {
