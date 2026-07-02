@@ -179,41 +179,25 @@ export async function activateHistoricalAgent(formData: FormData) {
 }
 
 export async function assignLead(formData: FormData) {
-  const profile = await requireProfile(["supervisor", "admin"]);
+  await requireProfile(["supervisor", "admin"]);
   const leadId = formData.get("lead_id") as string;
-  const agentId = formData.get("agent_id") as string;
+  const agentId = ((formData.get("agent_id") as string) || "").trim() || null;
 
+  if (!leadId) throw new Error("Registro no válido.");
   const supabase = await createClient();
-  if (profile.role === "supervisor") {
-    if (!profile.team_id) throw new Error("Tu supervisor no tiene equipo asignado.");
-
-    const { data: lead } = await supabase
-      .from("leads")
-      .select("id")
-      .eq("id", leadId)
-      .eq("team_id", profile.team_id)
-      .maybeSingle();
-    if (!lead) throw new Error("No puedes asignar un lead fuera de tu equipo.");
-
-    if (agentId) {
-      const { data: agent } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("id", agentId)
-        .eq("team_id", profile.team_id)
-        .eq("role", "agente")
-        .maybeSingle();
-      if (!agent) throw new Error("El ejecutivo destino no pertenece a tu equipo.");
-    }
-  }
-
-  const { error } = await supabase
-    .from("leads")
-    .update({ assigned_to: agentId || null })
-    .eq("id", leadId);
+  const { error } = await supabase.rpc("assign_lead", {
+    p_lead_id: leadId,
+    p_agent_id: agentId,
+    p_reason: agentId ? "Asignación manual desde Mi equipo" : "Desasignación manual desde Mi equipo",
+    p_source: "team.assignment_form",
+    p_set_managed_by: false,
+    p_next_action_at: null,
+  });
 
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/team");
+  revalidatePath("/dashboard/leads");
+  revalidatePath(`/dashboard/leads/${leadId}`);
 }
 
 /**
@@ -223,7 +207,7 @@ export async function assignLead(formData: FormData) {
  * una nueva fecha/hora, también actualiza next_action_at.
  */
 export async function reassignAgenda(formData: FormData) {
-  const profile = await requireProfile(["supervisor", "admin"]);
+  await requireProfile(["supervisor", "admin"]);
   const leadId = formData.get("lead_id") as string;
   const agentId = formData.get("agent_id") as string;
   const nextActionAtRaw = formData.get("next_action_at") as string;
@@ -232,40 +216,17 @@ export async function reassignAgenda(formData: FormData) {
     throw new Error("Debes seleccionar el ejecutivo al que reasignar la agenda.");
   }
 
-  const update: Record<string, unknown> = {
-    managed_by: agentId,
-    assigned_to: agentId,
-  };
-  if (nextActionAtRaw) {
-    update.next_action_at = new Date(nextActionAtRaw).toISOString();
-  }
-
   const supabase = await createClient();
-  if (profile.role === "supervisor") {
-    if (!profile.team_id) throw new Error("Tu supervisor no tiene equipo asignado.");
-
-    const [{ data: lead }, { data: agent }] = await Promise.all([
-      supabase
-        .from("leads")
-        .select("id")
-        .eq("id", leadId)
-        .eq("team_id", profile.team_id)
-        .maybeSingle(),
-      supabase
-        .from("profiles")
-        .select("id")
-        .eq("id", agentId)
-        .eq("team_id", profile.team_id)
-        .eq("role", "agente")
-        .maybeSingle(),
-    ]);
-
-    if (!lead) throw new Error("No puedes reagendar un lead fuera de tu equipo.");
-    if (!agent) throw new Error("El ejecutivo destino no pertenece a tu equipo.");
-  }
-
-  const { error } = await supabase.from("leads").update(update).eq("id", leadId);
-
+  const { error } = await supabase.rpc("assign_lead", {
+    p_lead_id: leadId,
+    p_agent_id: agentId,
+    p_reason: "Reasignación de agenda desde Mi equipo",
+    p_source: "team.agenda_reassignment_form",
+    p_set_managed_by: true,
+    p_next_action_at: nextActionAtRaw ? new Date(nextActionAtRaw).toISOString() : null,
+  });
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/team");
+  revalidatePath("/dashboard/leads");
+  revalidatePath(`/dashboard/leads/${leadId}`);
 }
