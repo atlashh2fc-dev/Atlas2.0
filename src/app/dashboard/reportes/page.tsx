@@ -19,7 +19,9 @@ type SupervisorReportKpis = {
   asignados: number;
   sin_asignar: number;
   recorridos: number;
+  vocalcom_recorridos?: number;
   contactados: number;
+  vocalcom_contactados?: number;
   contactabilidad: number | null;
   crm_gestiones: number;
   llamadas_cerradas: number;
@@ -270,13 +272,13 @@ export default async function ReportesPage({
           <MetricCard
             label="Recorridos"
             value={formatNumber(kpis.recorridos)}
-            detail={`${formatNumber(kpis.sin_asignar)} sin asignar`}
+            detail={`${formatNumber(kpis.vocalcom_recorridos)} desde Vocalcom`}
             progress={percent(kpis.recorridos, kpis.base_total)}
           />
           <MetricCard
             label="Contactados"
             value={formatNumber(kpis.contactados)}
-            detail={`Contactabilidad ${formatPercent(kpis.contactabilidad)}`}
+            detail={`Contactabilidad ${formatPercent(kpis.contactabilidad)} · ${formatNumber(kpis.vocalcom_contactados)} Vocalcom`}
             tone="good"
             progress={kpis.contactabilidad ?? 0}
           />

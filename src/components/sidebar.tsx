@@ -16,6 +16,7 @@ import {
   CalendarClock,
   Upload,
   UserPlus,
+  PhoneCall,
 } from "lucide-react";
 
 interface NavItem {
@@ -64,6 +65,12 @@ const NAV_ITEMS: NavItem[] = [
     href: "/dashboard/admin/ejecutivos-historicos",
     label: "Ejecutivos históricos",
     icon: History,
+    roles: ["admin"],
+  },
+  {
+    href: "/dashboard/admin/vocalcom",
+    label: "Cargar Vocalcom",
+    icon: PhoneCall,
     roles: ["admin"],
   },
   {
