@@ -15,6 +15,7 @@ import {
   History,
   CalendarClock,
   Upload,
+  UserPlus,
 } from "lucide-react";
 
 interface NavItem {
@@ -47,11 +48,17 @@ const NAV_ITEMS: NavItem[] = [
   },
   { href: "/dashboard/reportes", label: "Reportes", icon: BarChart3, roles: ["supervisor", "admin"] },
   {
+    href: "/dashboard/leads/nuevo",
+    label: "Nuevo registro",
+    icon: UserPlus,
+    roles: ["supervisor", "admin"],
+    sectionLabel: "Datos",
+  },
+  {
     href: "/dashboard/leads/cargar",
     label: "Cargar leads",
     icon: Upload,
-    roles: ["supervisor", "admin"],
-    sectionLabel: "Datos",
+    roles: ["admin"],
   },
   {
     href: "/dashboard/admin/ejecutivos-historicos",

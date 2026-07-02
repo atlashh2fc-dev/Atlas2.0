@@ -143,11 +143,11 @@ export default async function DashboardPage() {
                 <p className="mt-1 text-lg font-semibold text-foreground">{unassignedResult.count ?? 0}</p>
               </Link>
               <Link
-                href="/dashboard/leads/cargar"
+                href="/dashboard/leads/nuevo"
                 className="rounded-lg border border-border bg-background p-4 hover:bg-surface-muted"
               >
-                <p className="text-xs text-muted-foreground">Aumentar base</p>
-                <p className="mt-1 text-lg font-semibold text-foreground">Cargar leads</p>
+                <p className="text-xs text-muted-foreground">Registro manual</p>
+                <p className="mt-1 text-lg font-semibold text-foreground">Nuevo registro</p>
               </Link>
             </div>
           </div>

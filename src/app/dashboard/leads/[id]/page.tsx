@@ -255,10 +255,10 @@ export default async function LeadDetailPage({
                 Ver rendimiento
               </Link>
               <Link
-                href="/dashboard/leads/cargar"
+                href="/dashboard/leads/nuevo"
                 className="rounded-lg border border-border bg-background px-3 py-2 text-center text-sm font-medium text-foreground hover:bg-surface-muted"
               >
-                Cargar nuevos leads
+                Nuevo registro
               </Link>
             </div>
           </div>

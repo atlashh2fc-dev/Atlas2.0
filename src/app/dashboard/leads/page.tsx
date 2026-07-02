@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
 import { Search } from "lucide-react";
+import Link from "next/link";
 import { LEAD_STATUSES } from "@/lib/types";
 import { LeadsQueue, type LeadQueueRow, type LeadQueueView } from "@/components/leads-queue";
 
@@ -119,6 +120,14 @@ export default async function LeadsPage({
             Hola, {profile.full_name.split(" ")[0]}. {copy.description}
           </p>
         </div>
+        {(profile.role === "supervisor" || profile.role === "admin") && (
+          <Link
+            href="/dashboard/leads/nuevo"
+            className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
+          >
+            Nuevo registro
+          </Link>
+        )}
       </div>
 
       <form className="grid gap-3 rounded-xl border border-border bg-surface p-4 lg:grid-cols-[minmax(240px,1fr)_repeat(3,minmax(160px,220px))_auto]">
