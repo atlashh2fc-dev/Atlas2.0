@@ -7,6 +7,18 @@ import Link from "next/link";
 
 type ProfileEmbed = { full_name: string } | { full_name: string }[] | null;
 type Option = { id: string; name?: string; full_name?: string };
+type TeamReportSummary = {
+  kpis?: {
+    base_total?: number;
+    asignados?: number;
+    sin_asignar?: number;
+    agendas_vencidas?: number;
+  };
+  agents?: {
+    agent_id: string;
+    is_historical_only?: boolean;
+  }[];
+};
 
 function one<T>(value: T | T[] | null): T | null {
   return Array.isArray(value) ? value[0] ?? null : value;
@@ -17,6 +29,31 @@ function toDatetimeLocal(iso: string): string {
   const d = new Date(iso);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+const TEAM_REPORT_WINDOW_DAYS = 180;
+
+function startOfDay(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function endOfDay(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+function addDays(date: Date, days: number): Date {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+function percent(part: number, total: number): number {
+  if (total <= 0) return 0;
+  return (part / total) * 100;
 }
 
 export default async function TeamPage({
@@ -41,7 +78,10 @@ export default async function TeamPage({
     );
   }
 
-  const [{ data: agents }, { data: campaigns }] = await Promise.all([
+  const reportTo = endOfDay(new Date());
+  const reportFrom = startOfDay(addDays(reportTo, -(TEAM_REPORT_WINDOW_DAYS - 1)));
+
+  const [{ data: agents }, { data: campaigns }, { data: teamReport }] = await Promise.all([
     supabase
       .from("profiles")
       .select("id, full_name")
@@ -49,6 +89,11 @@ export default async function TeamPage({
       .eq("role", "agente")
       .order("full_name"),
     supabase.from("campaigns").select("id, name").order("name"),
+    supabase.rpc("get_supervisor_report_summary", {
+      p_from: reportFrom.toISOString(),
+      p_to: reportTo.toISOString(),
+      p_team_id: null,
+    }),
   ]);
 
   const leadsQuery = supabase
@@ -80,6 +125,15 @@ export default async function TeamPage({
   const overdueAgenda = agendaRows.filter((lead) => new Date(lead.next_action_at!) <= now);
   const upcomingAgenda = agendaRows.filter((lead) => new Date(lead.next_action_at!) > now);
   const unassigned = (leads ?? []).filter((lead) => !lead.assigned_to).length;
+  const activeAgents = agents ?? [];
+  const reportSummary = teamReport as TeamReportSummary | null;
+  const reportedAgents = reportSummary?.agents ?? [];
+  const reportedAgentsCount = reportedAgents.length || activeAgents.length;
+  const historicalAgentsCount = reportedAgents.filter((agent) => agent.is_historical_only).length;
+  const reportKpis = reportSummary?.kpis;
+  const visibleBaseTotal = reportKpis?.base_total ?? (leads ?? []).length;
+  const visibleUnassigned = reportKpis?.sin_asignar ?? unassigned;
+  const visibleOverdue = reportKpis?.agendas_vencidas ?? overdueAgenda.length;
 
   return (
     <div className="space-y-6">
@@ -93,10 +147,33 @@ export default async function TeamPage({
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Ejecutivos" value={(agents ?? []).length} />
-        <StatCard label="Leads visibles" value={(leads ?? []).length} />
-        <StatCard label="Sin asignar" value={unassigned} />
-        <StatCard label="Agendas vencidas" value={overdueAgenda.length} />
+        <StatCard
+          label="Ejecutivos reportados"
+          value={reportedAgentsCount}
+          hint={`${activeAgents.length} activos para asignación${historicalAgentsCount ? ` · ${historicalAgentsCount} históricos` : ""}`}
+          progress={percent(activeAgents.length, reportedAgentsCount)}
+          tone="good"
+        />
+        <StatCard
+          label="Base equipo"
+          value={visibleBaseTotal.toLocaleString("es-CL")}
+          hint="Datos agregados desde Supabase"
+          progress={percent(reportKpis?.asignados ?? 0, visibleBaseTotal)}
+        />
+        <StatCard
+          label="Sin asignar"
+          value={visibleUnassigned.toLocaleString("es-CL")}
+          hint="Disponible para distribución"
+          progress={percent(visibleUnassigned, visibleBaseTotal)}
+          tone={visibleUnassigned > 0 ? "warn" : "good"}
+        />
+        <StatCard
+          label="Agendas vencidas"
+          value={visibleOverdue.toLocaleString("es-CL")}
+          hint="Compromisos a recuperar"
+          progress={percent(visibleOverdue, Math.max(visibleOverdue, reportKpis?.agendas_vencidas ?? overdueAgenda.length))}
+          tone={visibleOverdue > 0 ? "danger" : "good"}
+        />
       </div>
 
       <form className="grid gap-3 rounded-xl border border-border bg-surface p-4 md:grid-cols-[repeat(3,minmax(180px,1fr))_auto]">
@@ -105,8 +182,8 @@ export default async function TeamPage({
           defaultValue={filters.agent}
           className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <option value="">Todos los ejecutivos</option>
-          {((agents ?? []) as Option[]).map((option) => (
+          <option value="">Todos los ejecutivos activos</option>
+          {(activeAgents as Option[]).map((option) => (
             <option key={option.id} value={option.id}>
               {option.full_name}
             </option>
@@ -189,7 +266,7 @@ export default async function TeamPage({
                         defaultValue={lead.managed_by ?? ""}
                         className="rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground"
                       >
-                        {(agents ?? []).map((a) => (
+                        {activeAgents.map((a) => (
                           <option key={a.id} value={a.id}>
                             {a.full_name}
                           </option>
@@ -258,7 +335,7 @@ export default async function TeamPage({
                         defaultValue={lead.managed_by ?? ""}
                         className="rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground"
                       >
-                        {(agents ?? []).map((a) => (
+                        {activeAgents.map((a) => (
                           <option key={a.id} value={a.id}>
                             {a.full_name}
                           </option>
@@ -328,7 +405,7 @@ export default async function TeamPage({
                       className="rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground"
                     >
                       <option value="">Sin asignar</option>
-                      {(agents ?? []).map((a) => (
+                      {activeAgents.map((a) => (
                         <option key={a.id} value={a.id}>
                           {a.full_name}
                         </option>

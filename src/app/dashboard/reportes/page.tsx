@@ -2,7 +2,13 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { AgentPerformance, CampaignDashboardSummary as CampaignDashboardSummaryData, WorkflowCompliance } from "@/lib/types";
 import { CampaignDashboardSummary } from "@/components/campaign-dashboard-summary";
-import { AgentPerformanceChart, WorkflowComplianceChart } from "@/components/reportes-charts";
+import {
+  AgentPerformanceChart,
+  SupervisorDailyChart,
+  SupervisorTipificationsChart,
+  WorkflowComplianceChart,
+} from "@/components/reportes-charts";
+import { SupervisorAgentMetricsTable } from "@/components/supervisor-agent-metrics-table";
 
 type SupervisorReportKpis = {
   base_total: number;
@@ -93,16 +99,24 @@ function formatDate(value: string) {
   return new Date(value).toLocaleDateString("es-CL", { day: "2-digit", month: "2-digit" });
 }
 
+function percent(part: number | null | undefined, total: number | null | undefined): number {
+  const denominator = Number(total ?? 0);
+  if (denominator <= 0) return 0;
+  return (Number(part ?? 0) / denominator) * 100;
+}
+
 function MetricCard({
   label,
   value,
   detail,
   tone = "default",
+  progress,
 }: {
   label: string;
   value: string;
   detail?: string;
   tone?: "default" | "good" | "warn" | "danger";
+  progress?: number;
 }) {
   const toneClass =
     tone === "good"
@@ -112,12 +126,27 @@ function MetricCard({
         : tone === "danger"
           ? "border-danger/30"
           : "border-border";
+  const clampedProgress =
+    typeof progress === "number" ? Math.min(100, Math.max(0, progress)) : null;
+  const barClass =
+    tone === "good"
+      ? "bg-success"
+      : tone === "warn"
+        ? "bg-warning"
+        : tone === "danger"
+          ? "bg-danger"
+          : "bg-primary";
 
   return (
     <div className={`rounded-xl border ${toneClass} bg-surface p-5`}>
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="mt-1 text-2xl font-semibold text-foreground">{value}</p>
       {detail && <p className="mt-2 text-xs text-muted-foreground">{detail}</p>}
+      {clampedProgress !== null && (
+        <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-surface-muted">
+          <div className={`h-full rounded-full ${barClass}`} style={{ width: `${clampedProgress}%` }} />
+        </div>
+      )}
     </div>
   );
 }
@@ -177,89 +206,78 @@ export default async function ReportesPage({
         </div>
 
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <MetricCard label="Base equipo" value={formatNumber(kpis.base_total)} detail={`${formatNumber(kpis.asignados)} asignados`} />
-          <MetricCard label="Recorridos" value={formatNumber(kpis.recorridos)} detail={`${formatNumber(kpis.sin_asignar)} sin asignar`} />
+          <MetricCard
+            label="Base equipo"
+            value={formatNumber(kpis.base_total)}
+            detail={`${formatNumber(kpis.asignados)} asignados`}
+            progress={percent(kpis.asignados, kpis.base_total)}
+          />
+          <MetricCard
+            label="Recorridos"
+            value={formatNumber(kpis.recorridos)}
+            detail={`${formatNumber(kpis.sin_asignar)} sin asignar`}
+            progress={percent(kpis.recorridos, kpis.base_total)}
+          />
           <MetricCard
             label="Contactados"
             value={formatNumber(kpis.contactados)}
             detail={`Contactabilidad ${formatPercent(kpis.contactabilidad)}`}
             tone="good"
+            progress={kpis.contactabilidad ?? 0}
           />
-          <MetricCard label="CRM tipificado" value={formatNumber(kpis.crm_gestiones)} detail={`${formatNumber(kpis.llamadas_cerradas)} llamadas cerradas`} />
-          <MetricCard label="No contacto" value={formatNumber(kpis.no_contacto)} detail="No contesta, ocupado, buzón o fuera de servicio" />
-          <MetricCard label="Agendas creadas" value={formatNumber(kpis.agendas_creadas)} detail={`${formatNumber(kpis.agendas_pendientes)} pendientes`} />
+          <MetricCard
+            label="CRM tipificado"
+            value={formatNumber(kpis.crm_gestiones)}
+            detail={`${formatNumber(kpis.llamadas_cerradas)} llamadas cerradas`}
+            progress={percent(kpis.crm_gestiones, kpis.llamadas_cerradas)}
+          />
+          <MetricCard
+            label="No contacto"
+            value={formatNumber(kpis.no_contacto)}
+            detail="No contesta, ocupado, buzón o fuera de servicio"
+            progress={percent(kpis.no_contacto, kpis.llamadas_cerradas)}
+            tone="warn"
+          />
+          <MetricCard
+            label="Agendas creadas"
+            value={formatNumber(kpis.agendas_creadas)}
+            detail={`${formatNumber(kpis.agendas_pendientes)} pendientes`}
+            progress={percent(kpis.agendas_pendientes, kpis.agendas_creadas)}
+          />
           <MetricCard
             label="Agendas vencidas"
             value={formatNumber(kpis.agendas_vencidas)}
             detail="Compromisos pendientes de recuperar"
             tone={kpis.agendas_vencidas > 0 ? "danger" : "default"}
+            progress={percent(kpis.agendas_vencidas, kpis.agendas_creadas)}
           />
           <MetricCard label="TMO" value={formatDuration(kpis.tmo_seconds)} detail="Promedio llamadas cerradas" />
-          <MetricCard label="Cotizaciones" value={formatNumber(kpis.cotizaciones)} />
-          <MetricCard label="Ventas / validación" value={formatNumber(kpis.ventas)} tone="good" />
+          <MetricCard
+            label="Cotizaciones"
+            value={formatNumber(kpis.cotizaciones)}
+            progress={percent(kpis.cotizaciones, kpis.contactados)}
+          />
+          <MetricCard
+            label="Ventas / validación"
+            value={formatNumber(kpis.ventas)}
+            tone="good"
+            progress={percent(kpis.ventas, kpis.cotizaciones)}
+          />
           <MetricCard label="UF comercial" value={formatUf(kpis.uf)} />
           <MetricCard label="Ejecutivos reportados" value={formatNumber(report.agents.length)} />
         </section>
 
         <section>
           <h2 className="mb-3 text-sm font-semibold text-foreground">Métricas por ejecutivo</h2>
-          <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-            <table className="w-full min-w-[1040px] text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                  <th className="px-5 py-3 font-medium">Ejecutivo</th>
-                  <th className="px-5 py-3 font-medium">Gestiones</th>
-                  <th className="px-5 py-3 font-medium">Leads</th>
-                  <th className="px-5 py-3 font-medium">Llamadas</th>
-                  <th className="px-5 py-3 font-medium">Contactados</th>
-                  <th className="px-5 py-3 font-medium">%</th>
-                  <th className="px-5 py-3 font-medium">No contacto</th>
-                  <th className="px-5 py-3 font-medium">Agendas</th>
-                  <th className="px-5 py-3 font-medium">Cotizaciones</th>
-                  <th className="px-5 py-3 font-medium">Ventas</th>
-                  <th className="px-5 py-3 font-medium">UF</th>
-                  <th className="px-5 py-3 font-medium">TMO</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {report.agents.length === 0 && (
-                  <tr>
-                    <td colSpan={12} className="px-5 py-6 text-center text-muted-foreground">
-                      Sin ejecutivos reportados.
-                    </td>
-                  </tr>
-                )}
-                {report.agents.map((agent) => (
-                  <tr key={agent.agent_id}>
-                    <td className="px-5 py-3 font-medium text-foreground">
-                      <span>{agent.full_name}</span>
-                      {agent.is_historical_only && (
-                        <span className="ml-2 rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                          Histórico
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-5 py-3 text-muted-foreground">{formatNumber(agent.crm_gestiones)}</td>
-                    <td className="px-5 py-3 text-muted-foreground">{formatNumber(agent.leads_gestionados)}</td>
-                    <td className="px-5 py-3 text-muted-foreground">{formatNumber(agent.llamadas_cerradas)}</td>
-                    <td className="px-5 py-3 text-muted-foreground">{formatNumber(agent.contactos_efectivos)}</td>
-                    <td className="px-5 py-3 text-muted-foreground">{formatPercent(agent.contactabilidad)}</td>
-                    <td className="px-5 py-3 text-muted-foreground">{formatNumber(agent.no_contacto)}</td>
-                    <td className="px-5 py-3 text-muted-foreground">{formatNumber(agent.agendas)}</td>
-                    <td className="px-5 py-3 text-muted-foreground">{formatNumber(agent.cotizaciones)}</td>
-                    <td className="px-5 py-3 text-muted-foreground">{formatNumber(agent.ventas)}</td>
-                    <td className="px-5 py-3 text-muted-foreground">{formatDecimal(agent.uf, 2)}</td>
-                    <td className="px-5 py-3 text-muted-foreground">{formatDuration(agent.tmo_seconds)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <SupervisorAgentMetricsTable agents={report.agents} />
         </section>
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          <section>
+          <section className="space-y-3">
             <h2 className="mb-3 text-sm font-semibold text-foreground">Tipificaciones</h2>
+            <div className="rounded-xl border border-border bg-surface p-4">
+              <SupervisorTipificationsChart tipifications={report.tipifications} />
+            </div>
             <div className="overflow-hidden rounded-xl border border-border bg-surface">
               <table className="w-full text-sm">
                 <thead>
@@ -287,8 +305,11 @@ export default async function ReportesPage({
             </div>
           </section>
 
-          <section>
+          <section className="space-y-3">
             <h2 className="mb-3 text-sm font-semibold text-foreground">Movimiento diario</h2>
+            <div className="rounded-xl border border-border bg-surface p-4">
+              <SupervisorDailyChart daily={report.daily} />
+            </div>
             <div className="overflow-hidden rounded-xl border border-border bg-surface">
               <table className="w-full text-sm">
                 <thead>
