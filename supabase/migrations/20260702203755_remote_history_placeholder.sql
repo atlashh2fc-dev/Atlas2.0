@@ -1,0 +1,6 @@
+-- Placeholder for remote migration history alignment.
+--
+-- The linked Supabase project already has migration version 20260702203755
+-- recorded, but this checkout did not contain the corresponding SQL file.
+-- Keep this migration intentionally empty so `supabase db push --linked`
+-- can validate local/remote history without applying unrelated pending work.

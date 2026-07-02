@@ -59,11 +59,16 @@ type MailAgentSummary = {
   assigned_leads: number;
   clicked_leads: number;
   opened_only_leads: number;
+  uncontacted_leads: number;
+  clicked_uncontacted_leads: number;
   contacted_leads: number;
   interactions: number;
   agendas: number;
+  pending_agendas: number;
   overdue_agendas: number;
+  no_next_action_leads: number;
   next_agenda_at: string | null;
+  last_interaction_at: string | null;
   last_event_at: string | null;
 };
 
@@ -158,91 +163,6 @@ async function fetchMailEngagementQueue(
   return rows;
 }
 
-async function fetchMailAgentSummary(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  queue: MailQueueRow[]
-) {
-  const assignedRows = queue.filter((row) => row.assigned_to);
-  const leadIds = [...new Set(assignedRows.map((row) => row.lead_id))];
-
-  if (leadIds.length === 0) {
-    return [] as MailAgentSummary[];
-  }
-
-  const leads: { id: string; next_action_at: string | null }[] = [];
-  const interactions: { lead_id: string }[] = [];
-  const pageSize = 1000;
-
-  for (let index = 0; index < leadIds.length; index += pageSize) {
-    const chunk = leadIds.slice(index, index + pageSize);
-    const [{ data: leadPage, error: leadError }, { data: interactionPage, error: interactionError }] = await Promise.all([
-      supabase.from("leads").select("id, next_action_at").in("id", chunk),
-      supabase.from("interactions").select("lead_id").in("lead_id", chunk),
-    ]);
-
-    if (leadError) throw new Error(leadError.message);
-    if (interactionError) throw new Error(interactionError.message);
-
-    leads.push(...((leadPage ?? []) as { id: string; next_action_at: string | null }[]));
-    interactions.push(...((interactionPage ?? []) as { lead_id: string }[]));
-  }
-
-  const leadMeta = new Map(leads.map((lead) => [lead.id, lead]));
-  const interactionsByLead = interactions.reduce((acc, row) => {
-    acc.set(row.lead_id, (acc.get(row.lead_id) ?? 0) + 1);
-    return acc;
-  }, new Map<string, number>());
-  const now = Date.now();
-  const summaries = new Map<string, MailAgentSummary>();
-
-  for (const row of assignedRows) {
-    const agentId = row.assigned_to!;
-    const current =
-      summaries.get(agentId) ??
-      {
-        agent_id: agentId,
-        agent_name: row.assigned_to_name ?? "Ejecutivo sin nombre",
-        assigned_leads: 0,
-        clicked_leads: 0,
-        opened_only_leads: 0,
-        contacted_leads: 0,
-        interactions: 0,
-        agendas: 0,
-        overdue_agendas: 0,
-        next_agenda_at: null,
-        last_event_at: null,
-      };
-    const lead = leadMeta.get(row.lead_id);
-    const interactionCount = interactionsByLead.get(row.lead_id) ?? 0;
-
-    current.assigned_leads += 1;
-    current.clicked_leads += row.clicked ? 1 : 0;
-    current.opened_only_leads += !row.clicked && row.opened ? 1 : 0;
-    current.contacted_leads += interactionCount > 0 ? 1 : 0;
-    current.interactions += interactionCount;
-
-    if (lead?.next_action_at) {
-      current.agendas += 1;
-      if (new Date(lead.next_action_at).getTime() <= now) current.overdue_agendas += 1;
-      if (!current.next_agenda_at || new Date(lead.next_action_at) < new Date(current.next_agenda_at)) {
-        current.next_agenda_at = lead.next_action_at;
-      }
-    }
-
-    if (!current.last_event_at || new Date(row.last_event_at) > new Date(current.last_event_at)) {
-      current.last_event_at = row.last_event_at;
-    }
-
-    summaries.set(agentId, current);
-  }
-
-  return Array.from(summaries.values()).sort((left, right) => {
-    if (right.overdue_agendas !== left.overdue_agendas) return right.overdue_agendas - left.overdue_agendas;
-    if (right.clicked_leads !== left.clicked_leads) return right.clicked_leads - left.clicked_leads;
-    return right.assigned_leads - left.assigned_leads;
-  });
-}
-
 export default async function MailDashboardPage({
   searchParams,
 }: {
@@ -265,7 +185,13 @@ export default async function MailDashboardPage({
     else agentsQuery.eq("id", "00000000-0000-0000-0000-000000000000");
   }
 
-  const [{ data: mailCampaigns }, { data: reportData, error: reportError }, queueData, { data: agents }] =
+  const [
+    { data: mailCampaigns },
+    { data: reportData, error: reportError },
+    { data: agentSummaryData, error: agentSummaryError },
+    queueData,
+    { data: agents },
+  ] =
     await Promise.all([
       supabase
         .from("mail_campaigns")
@@ -276,16 +202,21 @@ export default async function MailDashboardPage({
         p_mail_campaign_id: selectedMailCampaignId,
         p_campaign_id: null,
       }),
+      supabase.rpc("get_mail_agent_control_summary", {
+        p_mail_campaign_id: selectedMailCampaignId,
+        p_campaign_id: null,
+      }),
       fetchMailEngagementQueue(supabase, selectedMailCampaignId),
       agentsQuery,
     ]);
 
   if (reportError) throw new Error(reportError.message);
+  if (agentSummaryError) throw new Error(agentSummaryError.message);
 
   const campaigns = (mailCampaigns ?? []) as MailCampaign[];
   const reports = (reportData ?? []) as MailReportRow[];
   const queue = queueData;
-  const agentSummary = await fetchMailAgentSummary(supabase, queue);
+  const agentSummary = (agentSummaryData ?? []) as MailAgentSummary[];
   const agentOptions = (agents ?? []) as AgentOption[];
 
   const totals = reports.reduce(
@@ -302,18 +233,27 @@ export default async function MailDashboardPage({
   );
   const selectedCampaign = campaigns.find((campaign) => campaign.id === selectedMailCampaignId) ?? null;
   const selectedDetail = selectedMailCampaignId ? reports[0] ?? null : null;
+  const latestReportEventAt = reports.reduce<string | null>((latest, row) => {
+    if (!row.last_event_at) return latest;
+    if (!latest || new Date(row.last_event_at) > new Date(latest)) return row.last_event_at;
+    return latest;
+  }, null);
   const unassignedHotLeads = queue.filter((row) => !row.assigned_to).length;
   const agentTotals = agentSummary.reduce(
     (acc, row) => {
       acc.assigned += row.assigned_leads;
       acc.clicked += row.clicked_leads;
       acc.contacted += row.contacted_leads;
+      acc.uncontacted += row.uncontacted_leads;
+      acc.clickedUncontacted += row.clicked_uncontacted_leads;
       acc.interactions += row.interactions;
       acc.agendas += row.agendas;
+      acc.pending += row.pending_agendas;
       acc.overdue += row.overdue_agendas;
+      acc.noNextAction += row.no_next_action_leads;
       return acc;
     },
-    { assigned: 0, clicked: 0, contacted: 0, interactions: 0, agendas: 0, overdue: 0 }
+    { assigned: 0, clicked: 0, contacted: 0, uncontacted: 0, clickedUncontacted: 0, interactions: 0, agendas: 0, pending: 0, overdue: 0, noNextAction: 0 }
   );
 
   return (
@@ -416,7 +356,7 @@ export default async function MailDashboardPage({
             </div>
             <div className="rounded-lg border border-border bg-background px-3 py-2">
               <p className="text-xs text-muted-foreground">Última señal</p>
-              <p className="mt-1 text-sm font-semibold text-foreground">{formatDate(selectedDetail?.last_event_at)}</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">{formatDate(selectedDetail?.last_event_at ?? latestReportEventAt)}</p>
             </div>
           </div>
         </div>
@@ -431,10 +371,13 @@ export default async function MailDashboardPage({
             </div>
             <div className="flex flex-wrap gap-2 text-xs">
               <span className="rounded-full border border-border bg-surface px-3 py-1 text-muted-foreground">
-                {formatNumber(agentSummary.length)} ejecutivo{agentSummary.length === 1 ? "" : "s"}
+                {formatNumber(agentSummary.length)} ejecutivo{agentSummary.length === 1 ? "" : "s"} con carga
               </span>
               <span className="rounded-full border border-border bg-surface px-3 py-1 text-muted-foreground">
                 {formatNumber(agentTotals.assigned)} asignados
+              </span>
+              <span className={`rounded-full border px-3 py-1 ${agentTotals.clickedUncontacted > 0 ? "border-warning/30 bg-warning-bg text-warning" : "border-success/30 bg-success-bg text-success"}`}>
+                {formatNumber(agentTotals.clickedUncontacted)} clicks sin contacto
               </span>
               <span className={`rounded-full border px-3 py-1 ${unassignedHotLeads > 0 ? "border-warning/30 bg-warning-bg text-warning" : "border-success/30 bg-success-bg text-success"}`}>
                 {formatNumber(unassignedHotLeads)} sin asignar
@@ -446,7 +389,9 @@ export default async function MailDashboardPage({
             <div className="rounded-lg border border-border bg-surface p-4">
               <p className="text-xs text-muted-foreground">Contactados</p>
               <p className="mt-1 text-2xl font-semibold text-foreground">{formatNumber(agentTotals.contacted)}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{percent(agentTotals.contacted, agentTotals.assigned)} de los asignados</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {percent(agentTotals.contacted, agentTotals.assigned)} de asignados · {formatNumber(agentTotals.uncontacted)} sin contacto
+              </p>
             </div>
             <div className="rounded-lg border border-border bg-surface p-4">
               <p className="text-xs text-muted-foreground">Gestiones CRM</p>
@@ -454,9 +399,11 @@ export default async function MailDashboardPage({
               <p className="mt-1 text-xs text-muted-foreground">Interacciones registradas sobre leads mail</p>
             </div>
             <div className="rounded-lg border border-border bg-surface p-4">
-              <p className="text-xs text-muted-foreground">Agendas</p>
-              <p className="mt-1 text-2xl font-semibold text-foreground">{formatNumber(agentTotals.agendas)}</p>
-              <p className="mt-1 text-xs text-muted-foreground">Próximas acciones vigentes o vencidas</p>
+              <p className="text-xs text-muted-foreground">Agendas pendientes</p>
+              <p className="mt-1 text-2xl font-semibold text-foreground">{formatNumber(agentTotals.pending)}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {formatNumber(agentTotals.noNextAction)} asignados sin próxima acción
+              </p>
             </div>
             <div className={`rounded-lg border p-4 ${agentTotals.overdue > 0 ? "border-danger/30 bg-danger-bg" : "border-success/30 bg-success-bg"}`}>
               <p className={`text-xs ${agentTotals.overdue > 0 ? "text-danger" : "text-success"}`}>Agendas vencidas</p>
@@ -491,12 +438,22 @@ export default async function MailDashboardPage({
                 )}
                 {agentSummary.map((row) => {
                   const contactRate = row.assigned_leads > 0 ? row.contacted_leads / row.assigned_leads : 0;
-                  const needsAttention = row.overdue_agendas > 0 || contactRate < 0.5;
+                  const attentionLabel = row.overdue_agendas > 0
+                    ? "Agendas vencidas"
+                    : row.clicked_uncontacted_leads > 0
+                      ? "Clicks sin contacto"
+                      : contactRate < 0.5
+                        ? "Bajo contacto"
+                        : row.no_next_action_leads > 0
+                          ? "Sin próxima acción"
+                          : "En seguimiento";
+                  const needsAttention = attentionLabel !== "En seguimiento";
                   return (
                     <tr key={row.agent_id}>
                       <td className="px-4 py-3">
                         <p className="font-medium text-foreground">{row.agent_name}</p>
-                        <p className="text-xs text-muted-foreground">Última señal: {formatDate(row.last_event_at)}</p>
+                        <p className="text-xs text-muted-foreground">Última señal mail: {formatDate(row.last_event_at)}</p>
+                        <p className="text-xs text-muted-foreground">Última gestión CRM: {formatDate(row.last_interaction_at)}</p>
                       </td>
                       <td className="px-4 py-3">
                         <p className="font-semibold text-foreground">{formatNumber(row.assigned_leads)}</p>
@@ -508,7 +465,7 @@ export default async function MailDashboardPage({
                             {formatNumber(row.clicked_leads)} clicks
                           </span>
                           <span className="rounded-full bg-warning-bg px-2 py-0.5 text-xs font-medium text-warning">
-                            {formatNumber(row.opened_only_leads)} aperturas
+                            {formatNumber(row.opened_only_leads)} aperturas sin click
                           </span>
                         </div>
                       </td>
@@ -517,12 +474,18 @@ export default async function MailDashboardPage({
                         <p className="text-xs text-muted-foreground">
                           {formatNumber(row.interactions)} gestiones · {percent(row.contacted_leads, row.assigned_leads)}
                         </p>
+                        {row.clicked_uncontacted_leads > 0 && (
+                          <p className="text-xs font-medium text-warning">{formatNumber(row.clicked_uncontacted_leads)} clicks sin contacto</p>
+                        )}
                       </td>
                       <td className="px-4 py-3">
-                        <p className="font-semibold text-foreground">{formatNumber(row.agendas)}</p>
+                        <p className="font-semibold text-foreground">{formatNumber(row.pending_agendas)} pendientes</p>
                         <p className={row.overdue_agendas > 0 ? "text-xs font-medium text-danger" : "text-xs text-muted-foreground"}>
                           {formatNumber(row.overdue_agendas)} vencidas · próxima {formatDate(row.next_agenda_at)}
                         </p>
+                        {row.no_next_action_leads > 0 && (
+                          <p className="text-xs text-muted-foreground">{formatNumber(row.no_next_action_leads)} sin próxima acción</p>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <span
@@ -530,7 +493,7 @@ export default async function MailDashboardPage({
                             needsAttention ? "bg-warning-bg text-warning" : "bg-success-bg text-success"
                           }`}
                         >
-                          {needsAttention ? "Revisar carga" : "En seguimiento"}
+                          {attentionLabel}
                         </span>
                       </td>
                     </tr>
