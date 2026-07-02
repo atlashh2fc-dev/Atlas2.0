@@ -55,9 +55,10 @@ export default async function LeadsPage({
     campaign: canFilterOperation ? campaign || "" : "",
     status: canFilterOperation ? status || "" : "",
   };
-  const agentVisibilityFilter = profile.team_id
+  const agentSearchVisibilityFilter = profile.team_id
     ? `assigned_to.eq.${profile.id},managed_by.eq.${profile.id},and(assigned_to.is.null,managed_by.is.null,team_id.eq.${profile.team_id})`
     : `assigned_to.eq.${profile.id},managed_by.eq.${profile.id}`;
+  const agentQueueVisibilityFilter = `assigned_to.eq.${profile.id},managed_by.eq.${profile.id}`;
 
   const [{ data: agentOptions }, { data: campaignOptions }] = canFilterOperation
     ? await Promise.all([
@@ -89,7 +90,7 @@ export default async function LeadsPage({
         .from("leads")
         .select(leadSelect)
         .in("id", ids);
-      if (profile.role === "agente") matchedQuery.or(agentVisibilityFilter);
+      if (profile.role === "agente") matchedQuery.or(agentSearchVisibilityFilter);
       if (profile.role === "supervisor" && profile.team_id) matchedQuery.eq("team_id", profile.team_id);
       if (filters.agent) matchedQuery.or(`assigned_to.eq.${filters.agent},managed_by.eq.${filters.agent}`);
       if (filters.campaign) matchedQuery.eq("campaign_id", filters.campaign);
@@ -104,7 +105,7 @@ export default async function LeadsPage({
       .from("leads")
       .select(leadSelect)
       .order("updated_at", { ascending: false });
-    if (profile.role === "agente") queueQuery.or(agentVisibilityFilter);
+    if (profile.role === "agente") queueQuery.or(agentQueueVisibilityFilter);
     if (profile.role === "supervisor" && profile.team_id) queueQuery.eq("team_id", profile.team_id);
     if (filters.agent) queueQuery.or(`assigned_to.eq.${filters.agent},managed_by.eq.${filters.agent}`);
     if (filters.campaign) queueQuery.eq("campaign_id", filters.campaign);
