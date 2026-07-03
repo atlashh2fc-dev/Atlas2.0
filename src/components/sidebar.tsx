@@ -10,6 +10,7 @@ import {
   UsersRound,
   ShieldCheck,
   BarChart3,
+  LineChart,
   Workflow,
   Megaphone,
   History,
@@ -59,7 +60,13 @@ const NAV_ITEMS: NavItem[] = [
     icon: Activity,
     roles: ["supervisor", "admin"],
   },
-  { href: "/dashboard/reportes", label: "Reportes", icon: BarChart3, roles: ["supervisor", "admin"] },
+  {
+    href: "/dashboard/supervision/reportes",
+    label: "Reportes de discador",
+    icon: LineChart,
+    roles: ["supervisor", "admin"],
+  },
+  { href: "/dashboard/reportes", label: "Reportes de gestión", icon: BarChart3, roles: ["supervisor", "admin"] },
 
   // Discador: todo lo que configura cómo se marca y quién atiende.
   {

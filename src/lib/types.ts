@@ -285,6 +285,38 @@ export interface QueueHealth {
   no_answer_today: number;
 }
 
+export interface CallMetricsReportRow {
+  report_date: string;
+  campaign_id: string;
+  campaign_name: string;
+  total_attempts: number;
+  answered: number;
+  completed: number;
+  no_answer: number;
+  busy: number;
+  failed: number;
+  abandoned: number;
+  voicemail: number;
+  avg_ring_seconds: number | null;
+  avg_talk_seconds: number | null;
+  abandonment_rate: number | null;
+  service_level_20s: number | null;
+}
+
+export interface AgentActivityReportRow {
+  profile_id: string;
+  full_name: string;
+  calls_handled: number;
+  talk_seconds: number;
+  avg_handle_seconds: number | null;
+  logged_in_seconds: number;
+  productive_seconds: number;
+  occupancy_rate: number | null;
+  available_seconds: number;
+  paused_seconds: number;
+  adherence_rate: number | null;
+}
+
 export interface CampaignPerformance {
   campaign_id: string;
   campaign_name: string;
