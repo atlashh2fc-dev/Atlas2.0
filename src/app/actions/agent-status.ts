@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { requireProfile } from "@/lib/auth";
+import { requireProfile, getCurrentProfile } from "@/lib/auth";
 import type { AgentStatusReason } from "@/lib/types";
 
 /**
@@ -17,9 +17,48 @@ export async function listActiveStatusReasons(): Promise<AgentStatusReason[]> {
     .from("agent_status_reasons")
     .select("*")
     .eq("is_active", true)
+    .eq("is_system", false)
     .order("sort_order");
   if (error) throw new Error(error.message);
   return data ?? [];
+}
+
+/**
+ * Fuerza al agente que llama a "Desconectado" (motivo de sistema, is_pause,
+ * no seleccionable manualmente). Se invoca desde signOut() ANTES de cerrar
+ * la sesión, así el monitor en vivo deja de mostrarlo como "Disponible" de
+ * inmediato y el motor lo pausa en la cola de Asterisk en su próximo ciclo
+ * (hasta 10 seg.) — sin esto, cerrar sesión no terminaba el estado
+ * "Disponible" y quedaba como riesgo real de asignación de llamadas a un
+ * agente que ya no está conectado.
+ */
+export async function markAgentLoggedOut(): Promise<void> {
+  // Ojo: NO usar requireProfile() acá — se llama desde signOut() justo antes
+  // de cerrar la sesión, y requireProfile() redirige a /login si no
+  // encuentra perfil (ese redirect() lanza un throw especial de Next que no
+  // debe quedar envuelto en un try/catch genérico). getCurrentProfile() no
+  // tiene ese efecto secundario.
+  const profile = await getCurrentProfile();
+  if (!profile) return;
+  const supabase = await createClient();
+
+  const { data: reason, error: reasonError } = await supabase
+    .from("agent_status_reasons")
+    .select("id")
+    .eq("code", "desconectado")
+    .maybeSingle();
+  if (reasonError) throw new Error(reasonError.message);
+  if (!reason) return; // migración no aplicada aún; no bloquear el logout por esto.
+
+  const { error } = await supabase.from("agent_current_status").upsert(
+    {
+      profile_id: profile.id,
+      reason_id: reason.id,
+      since: new Date().toISOString(),
+    },
+    { onConflict: "profile_id" }
+  );
+  if (error) throw new Error(error.message);
 }
 
 /**
