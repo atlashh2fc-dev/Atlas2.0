@@ -8,7 +8,7 @@ import {
   removeCampaignAgent,
   toggleCampaignActive,
 } from "@/app/actions/campaigns";
-import { upsertDialerCampaignConfig } from "@/app/actions/dialer-config";
+import { upsertDialerCampaignConfig, toggleDialerCampaignActive } from "@/app/actions/dialer-config";
 import { DIAL_MODES, type DialerCampaignConfig } from "@/lib/types";
 
 export default async function CampaignDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -56,6 +56,23 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
           >
             Ver dashboard
           </Link>
+          {dc && (
+            <form action={toggleDialerCampaignActive}>
+              <input type="hidden" name="campaign_id" value={campaign.id} />
+              <input type="hidden" name="currently_active" value={String(dc.is_active)} />
+              <button
+                type="submit"
+                title="Pausa/reanuda solo el discado automático (el motor lo aplica en el próximo tick, ~segundos), sin tocar el resto de la configuración"
+                className={`rounded-lg px-3 py-2 text-xs font-medium ${
+                  dc.is_active
+                    ? "border border-danger text-danger hover:bg-danger/10"
+                    : "bg-success text-white hover:opacity-90"
+                }`}
+              >
+                {dc.is_active ? "Pausar discado" : "Reanudar discado"}
+              </button>
+            </form>
+          )}
           <form action={toggleCampaignActive}>
           <input type="hidden" name="campaign_id" value={campaign.id} />
           <input type="hidden" name="active" value={String(campaign.is_active)} />
@@ -254,6 +271,60 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
               defaultValue={dc?.trunk_context ?? "twilio"}
               className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
             />
+          </label>
+
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-foreground">Tope de reintentos automáticos</span>
+            <input
+              type="number"
+              name="max_redial_attempts"
+              min="0"
+              max="20"
+              defaultValue={dc?.max_redial_attempts ?? 4}
+              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+            />
+            <span className="text-[11px] text-muted-foreground">
+              Backoff automático: 15min tras el 1er no-contesta/ocupado, 1h tras el 2do, 4h desde el 3ro.
+              Al llegar al tope, el lead sigue disponible para gestión manual pero deja de auto-discarse.
+            </span>
+          </label>
+
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-foreground">Timeout de cola sin agente (seg.)</span>
+            <input
+              type="number"
+              name="abandon_timeout_seconds"
+              min="10"
+              max="600"
+              defaultValue={dc?.abandon_timeout_seconds ?? 90}
+              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+            />
+            <span className="text-[11px] text-muted-foreground">
+              Si un cliente contesta y no hay ejecutivo libre, cuánto espera en espera antes de cortar
+              (se cuenta como abandono).
+            </span>
+          </label>
+
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-foreground">Tasa de abandono objetivo (%)</span>
+            <input
+              type="number"
+              name="target_abandonment_rate"
+              step="0.5"
+              min="0"
+              max="100"
+              defaultValue={dc?.target_abandonment_rate ?? 6.0}
+              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+            />
+            <span className="text-[11px] text-muted-foreground">
+              Solo aplica en modo Predictivo: el motor ajusta el ratio de marcación para mantener el
+              abandono medido cerca de este valor (tope: el ratio de arriba).
+            </span>
+          </label>
+
+          <label className="flex items-center gap-2">
+            <input type="checkbox" name="amd_enabled" value="true" defaultChecked={dc?.amd_enabled ?? false} />
+            <span className="text-sm text-foreground">Detectar contestador automático (AMD)</span>
           </label>
 
           <label className="flex items-center gap-2 sm:col-span-2">

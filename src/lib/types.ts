@@ -223,6 +223,10 @@ export interface DialerCampaignConfig {
   queue_name: string;
   wrapup_seconds: number;
   is_active: boolean;
+  max_redial_attempts: number;
+  abandon_timeout_seconds: number;
+  target_abandonment_rate: number;
+  amd_enabled: boolean;
   created_at: string;
   updated_at: string;
 }

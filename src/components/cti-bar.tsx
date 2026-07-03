@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { Phone, PhoneOff, Mic, MicOff, Delete } from "lucide-react";
 import type { Profile, AgentStatusReason } from "@/lib/types";
 import { getMySipCredentials } from "@/app/actions/agent-sip";
-import { listActiveStatusReasons, getMyCurrentStatus, setMyCurrentStatus } from "@/app/actions/agent-status";
+import { listActiveStatusReasons, getMyCurrentStatus, setMyCurrentStatus, heartbeat } from "@/app/actions/agent-status";
+
+const HEARTBEAT_MS = 20_000;
 
 /**
  * Barra CTI del agente: softphone WebRTC embebido en el CRM, conectado a la
@@ -70,6 +72,28 @@ export function CtiBar({ profile }: { profile: Profile }) {
         setCurrentReasonId(current?.reason.id ?? reasons.find((r) => !r.is_pause)?.id ?? null);
       })
       .catch((err) => console.error("CTI: fallo al cargar estado de agente", err));
+  }, [profile.role]);
+
+  // Heartbeat mientras la pestaña sigue abierta: si el agente cierra el
+  // navegador/tab sin usar "Cerrar sesión", esto simplemente deja de
+  // llamarse (no hay nada que cancelar del lado del cliente) y el motor
+  // detecta el vencimiento y fuerza "Desconectado" — ver tarea del fix de
+  // logout. No se ejecuta si el usuario no es agente (no tiene estado que
+  // reportar).
+  useEffect(() => {
+    if (profile.role !== "agente") return;
+    let disposed = false;
+    function ping() {
+      heartbeat().catch((err) => {
+        if (!disposed) console.error("CTI: heartbeat falló", err);
+      });
+    }
+    ping();
+    const id = setInterval(ping, HEARTBEAT_MS);
+    return () => {
+      disposed = true;
+      clearInterval(id);
+    };
   }, [profile.role]);
 
   async function handleStatusChange(reasonId: string) {

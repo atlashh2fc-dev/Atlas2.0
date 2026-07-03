@@ -62,6 +62,23 @@ export async function markAgentLoggedOut(): Promise<void> {
 }
 
 /**
+ * Heartbeat del agente logueado: se llama cada ~20s mientras la pestaña del
+ * CRM está abierta (ver CtiBar). El motor revisa last_heartbeat_at y fuerza
+ * 'desconectado' si se vence (~60s sin heartbeat) — esto cubre el caso que
+ * markAgentLoggedOut() NO cubre: cerrar la pestaña/navegador o que se
+ * caiga sin pasar por el botón "Cerrar sesión".
+ */
+export async function heartbeat(): Promise<void> {
+  const profile = await requireProfile();
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("agent_current_status")
+    .update({ last_heartbeat_at: new Date().toISOString() })
+    .eq("profile_id", profile.id);
+  if (error) throw new Error(error.message);
+}
+
+/**
  * Estado actual del agente que llama (su propia fila, vía RLS
  * profile_id = auth.uid()).
  */
