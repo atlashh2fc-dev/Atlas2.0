@@ -90,6 +90,7 @@ const NAV_ITEMS: NavItem[] = [
     sectionLabel: "Campañas",
   },
   { href: "/dashboard/admin/flujos", label: "Flujos", icon: Workflow, roles: ["admin"], indent: true },
+  { href: "/dashboard/admin/agentes-sip", label: "Extensiones SIP", icon: PhoneCall, roles: ["admin"], indent: true },
 ];
 
 const ROLE_LABEL: Record<AppRole, string> = {

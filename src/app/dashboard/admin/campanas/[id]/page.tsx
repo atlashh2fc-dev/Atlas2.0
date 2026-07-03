@@ -8,6 +8,8 @@ import {
   removeCampaignAgent,
   toggleCampaignActive,
 } from "@/app/actions/campaigns";
+import { upsertDialerCampaignConfig } from "@/app/actions/dialer-config";
+import { DIAL_MODES, type DialerCampaignConfig } from "@/lib/types";
 
 export default async function CampaignDetailPage({ params }: { params: Promise<{ id: string }> }) {
   await requireProfile(["admin"]);
@@ -17,7 +19,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
   const { data: campaign } = await supabase.from("campaigns").select("*").eq("id", id).single();
   if (!campaign) notFound();
 
-  const [{ data: workflows }, { data: members }, { data: agents }, { count: leadCount }] =
+  const [{ data: workflows }, { data: members }, { data: agents }, { count: leadCount }, { data: dialerConfig }] =
     await Promise.all([
       supabase.from("workflows").select("id, name").order("name"),
       supabase
@@ -27,7 +29,10 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
         .order("assigned_at", { ascending: true }),
       supabase.from("profiles").select("id, full_name, email").eq("role", "agente").order("full_name"),
       supabase.from("leads").select("id", { count: "exact", head: true }).eq("campaign_id", id),
+      supabase.from("dialer_campaign_configs").select("*").eq("campaign_id", id).maybeSingle(),
     ]);
+
+  const dc = dialerConfig as DialerCampaignConfig | null;
 
   const assignedIds = new Set((members ?? []).map((m) => m.profile_id));
   const availableAgents = (agents ?? []).filter((a) => !assignedIds.has(a.id));
@@ -168,6 +173,106 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
             Agregar
           </button>
         </form>
+      </div>
+
+      <div className="rounded-xl border border-border bg-surface p-5">
+        <h2 className="mb-1 text-sm font-semibold text-foreground">Configuración de discado</h2>
+        <p className="mb-4 text-xs text-muted-foreground">
+          Define cómo el motor de discado maneja esta campaña. Los ejecutivos asignados arriba son los
+          que se sincronizan como miembros de la cola.
+        </p>
+        <form action={upsertDialerCampaignConfig} className="grid gap-4 sm:grid-cols-2">
+          <input type="hidden" name="campaign_id" value={campaign.id} />
+
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-foreground">Modo de discado</span>
+            <select
+              name="dial_mode"
+              defaultValue={dc?.dial_mode ?? "manual"}
+              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+            >
+              {DIAL_MODES.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-foreground">Ratio de discado</span>
+            <input
+              type="number"
+              name="max_dial_ratio"
+              step="0.1"
+              min="0.1"
+              defaultValue={dc?.max_dial_ratio ?? 1.0}
+              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+            />
+          </label>
+
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-foreground">Tiempo entre llamadas (seg.)</span>
+            <input
+              type="number"
+              name="wrapup_seconds"
+              min="0"
+              max="600"
+              defaultValue={dc?.wrapup_seconds ?? 5}
+              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+            />
+          </label>
+
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-foreground">Caller ID (E.164)</span>
+            <input
+              type="text"
+              name="caller_id"
+              placeholder="+16507062614"
+              defaultValue={dc?.caller_id ?? ""}
+              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+            />
+          </label>
+
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-foreground">Nombre de la cola (Asterisk)</span>
+            <input
+              type="text"
+              name="queue_name"
+              required
+              placeholder="campania_ventas"
+              defaultValue={dc?.queue_name ?? ""}
+              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+            />
+          </label>
+
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-foreground">Trunk / contexto saliente</span>
+            <input
+              type="text"
+              name="trunk_context"
+              defaultValue={dc?.trunk_context ?? "twilio"}
+              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+            />
+          </label>
+
+          <label className="flex items-center gap-2 sm:col-span-2">
+            <input type="checkbox" name="is_active" value="true" defaultChecked={dc?.is_active ?? false} />
+            <span className="text-sm text-foreground">Campaña activa para el motor de discado</span>
+          </label>
+
+          <div className="sm:col-span-2">
+            <button
+              type="submit"
+              className="rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary-hover"
+            >
+              Guardar configuración
+            </button>
+          </div>
+        </form>
+        <p className="mt-3 text-xs text-muted-foreground">
+          {DIAL_MODES.find((m) => m.value === (dc?.dial_mode ?? "manual"))?.description}
+        </p>
       </div>
     </div>
   );

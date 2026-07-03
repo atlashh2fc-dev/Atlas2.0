@@ -189,6 +189,54 @@ export interface CampaignAgent {
   assigned_at: string;
 }
 
+export type DialMode = "manual" | "preview" | "progressive" | "predictive";
+
+export const DIAL_MODES: { value: DialMode; label: string; description: string }[] = [
+  {
+    value: "manual",
+    label: "Manual",
+    description: "El motor no auto-disca. El ejecutivo marca desde la barra CTI o la ficha del lead.",
+  },
+  {
+    value: "preview",
+    label: "Vista previa",
+    description: "El motor reserva el próximo lead para el agente antes de marcar.",
+  },
+  {
+    value: "progressive",
+    label: "Progresivo",
+    description: "El motor marca ~1 llamada por agente disponible (ratio cercano a 1).",
+  },
+  {
+    value: "predictive",
+    label: "Predictivo (asistido)",
+    description: "El motor sobre-marca según el ratio configurado, anticipando abandonos.",
+  },
+];
+
+export interface DialerCampaignConfig {
+  campaign_id: string;
+  dial_mode: DialMode;
+  max_dial_ratio: number;
+  caller_id: string | null;
+  trunk_context: string;
+  queue_name: string;
+  wrapup_seconds: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentSipCredential {
+  id: string;
+  profile_id: string;
+  extension: string;
+  sip_password: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface CampaignPerformance {
   campaign_id: string;
   campaign_name: string;

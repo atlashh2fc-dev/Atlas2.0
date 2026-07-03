@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Phone, PhoneOff, Mic, MicOff, Delete } from "lucide-react";
 import type { Profile } from "@/lib/types";
+import { getMySipCredentials } from "@/app/actions/agent-sip";
 
 /**
  * Barra CTI del agente: softphone WebRTC embebido en el CRM, conectado a la
@@ -10,17 +11,14 @@ import type { Profile } from "@/lib/types";
  * (docs/dialer-engine-architecture.md). Permite marcar manualmente un
  * número (click-to-call) sin pasar por el motor de campañas.
  *
- * NOTA (validación / MVP): usa una única extensión SIP compartida (6002)
- * mientras no exista aprovisionamiento por agente. Con más de un agente
- * conectado a la vez esta línea se pisaría — antes de habilitarla para
- * varios ejecutivos hay que crear un endpoint PJSIP por agente (ver
- * dialer-engine-architecture.md, sección CTI).
+ * Cada usuario se registra con SU PROPIA extensión (agent_sip_credentials,
+ * generada desde /dashboard/admin/agentes-sip) — ya no hay una línea
+ * compartida. Si el usuario no tiene extensión activa asignada, la barra
+ * simplemente no se muestra.
  */
 
 const SIP_WSS_SERVER = "wss://54.233.114.5:8089/ws";
 const SIP_DOMAIN = "54.233.114.5";
-const SIP_USER = "6002";
-const SIP_PASSWORD = "1uBmRFaXW84MwY1BB9kW";
 
 type RegState = "idle" | "connecting" | "registered" | "error";
 type CallState = "idle" | "calling" | "ringing" | "in_call" | "ending";
@@ -33,6 +31,9 @@ function formatElapsed(ms: number): string {
 }
 
 export function CtiBar({ profile }: { profile: Profile }) {
+  const [credential, setCredential] = useState<{ extension: string; sip_password: string } | null | undefined>(
+    undefined
+  );
   const [regState, setRegState] = useState<RegState>("idle");
   const [callState, setCallState] = useState<CallState>("idle");
   const [number, setNumber] = useState("");
@@ -48,26 +49,36 @@ export function CtiBar({ profile }: { profile: Profile }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
+    getMySipCredentials()
+      .then(setCredential)
+      .catch((err) => {
+        console.error("CTI: fallo al obtener credenciales SIP propias", err);
+        setCredential(null);
+      });
+  }, []);
+
+  useEffect(() => {
     if (callState !== "in_call" || !callStartedAt) return;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, [callState, callStartedAt]);
 
   useEffect(() => {
+    if (!credential) return;
     let disposed = false;
 
-    async function register() {
+    async function register(sipUser: string, sipPassword: string) {
       setRegState("connecting");
       try {
         const { UserAgent, Registerer } = await import("sip.js");
 
-        const uri = UserAgent.makeURI(`sip:${SIP_USER}@${SIP_DOMAIN}`);
+        const uri = UserAgent.makeURI(`sip:${sipUser}@${SIP_DOMAIN}`);
         if (!uri) throw new Error("URI SIP inválida");
 
         const ua = new UserAgent({
           uri,
-          authorizationUsername: SIP_USER,
-          authorizationPassword: SIP_PASSWORD,
+          authorizationUsername: sipUser,
+          authorizationPassword: sipPassword,
           transportOptions: { server: SIP_WSS_SERVER, traceSip: false },
           logLevel: "error",
         });
@@ -94,14 +105,14 @@ export function CtiBar({ profile }: { profile: Profile }) {
       }
     }
 
-    register();
+    register(credential.extension, credential.sip_password);
 
     return () => {
       disposed = true;
       uaRef.current?.stop().catch(() => {});
       uaRef.current = null;
     };
-  }, []);
+  }, [credential]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function attachRemoteAudio(session: any) {
@@ -189,6 +200,8 @@ export function CtiBar({ profile }: { profile: Profile }) {
     });
     setMuted(nextMuted);
   }
+
+  if (!credential) return null;
 
   const statusColor =
     regState === "registered" ? "bg-success" : regState === "connecting" ? "bg-warning" : "bg-danger";
