@@ -255,6 +255,35 @@ export interface AgentCurrentStatus {
   updated_at: string;
 }
 
+export type PhoneStatus = "offline" | "available" | "ringing" | "on_call" | "wrap_up";
+
+export interface AgentLiveStatus {
+  profile_id: string;
+  full_name: string;
+  email: string;
+  extension: string;
+  campaign_id: string | null;
+  campaign_name: string | null;
+  phone_status: PhoneStatus;
+  phone_status_since: string | null;
+  reason_id: string | null;
+  reason_code: string | null;
+  reason_label: string | null;
+  is_pause: boolean;
+  reason_since: string | null;
+}
+
+export interface QueueHealth {
+  campaign_id: string;
+  campaign_name: string;
+  queue_name: string;
+  in_flight: number;
+  answered_today: number;
+  abandoned_today: number;
+  completed_today: number;
+  no_answer_today: number;
+}
+
 export interface CampaignPerformance {
   campaign_id: string;
   campaign_name: string;

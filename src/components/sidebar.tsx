@@ -19,6 +19,7 @@ import {
   PhoneCall,
   MailCheck,
   UserCog,
+  Activity,
 } from "lucide-react";
 
 interface NavItem {
@@ -33,6 +34,7 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
+  // Operación: lo que un ejecutivo usa día a día.
   {
     href: "/dashboard",
     label: "Inicio",
@@ -42,6 +44,8 @@ const NAV_ITEMS: NavItem[] = [
   },
   { href: "/dashboard/leads", label: "Registros", icon: Users, roles: ["agente", "supervisor", "admin"] },
   { href: "/dashboard/agenda", label: "Mi agenda", icon: CalendarClock, roles: ["agente"] },
+
+  // Supervisión: monitoreo del equipo, en vivo e histórico.
   {
     href: "/dashboard/team",
     label: "Mi equipo",
@@ -49,8 +53,26 @@ const NAV_ITEMS: NavItem[] = [
     roles: ["supervisor"],
     sectionLabel: "Supervisión",
   },
-  { href: "/dashboard/mail", label: "Leads mail", icon: MailCheck, roles: ["supervisor", "admin"] },
+  {
+    href: "/dashboard/supervision/monitor",
+    label: "Monitor en vivo",
+    icon: Activity,
+    roles: ["supervisor", "admin"],
+  },
   { href: "/dashboard/reportes", label: "Reportes", icon: BarChart3, roles: ["supervisor", "admin"] },
+
+  // Discador: todo lo que configura cómo se marca y quién atiende.
+  {
+    href: "/dashboard/admin/campanas",
+    label: "Campañas",
+    icon: Megaphone,
+    roles: ["admin"],
+    sectionLabel: "Discador",
+  },
+  { href: "/dashboard/admin/agentes-sip", label: "Extensiones SIP", icon: PhoneCall, roles: ["admin"], indent: true },
+  { href: "/dashboard/admin/estados-agente", label: "Estados de agente", icon: UserCog, roles: ["admin"], indent: true },
+
+  // Datos: carga e importación de bases y leads.
   {
     href: "/dashboard/leads/nuevo",
     label: "Nuevo registro",
@@ -65,17 +87,20 @@ const NAV_ITEMS: NavItem[] = [
     roles: ["admin"],
   },
   {
-    href: "/dashboard/admin/ejecutivos-historicos",
-    label: "Ejecutivos históricos",
-    icon: History,
-    roles: ["admin"],
-  },
-  {
     href: "/dashboard/admin/vocalcom",
     label: "Cargar Vocalcom",
     icon: PhoneCall,
     roles: ["admin"],
   },
+  {
+    href: "/dashboard/admin/ejecutivos-historicos",
+    label: "Ejecutivos históricos",
+    icon: History,
+    roles: ["admin"],
+  },
+  { href: "/dashboard/mail", label: "Leads mail", icon: MailCheck, roles: ["supervisor", "admin"] },
+
+  // Administración: cuentas y configuración de flujos productivos.
   {
     href: "/dashboard/admin/usuarios",
     label: "Usuarios",
@@ -83,16 +108,7 @@ const NAV_ITEMS: NavItem[] = [
     roles: ["admin"],
     sectionLabel: "Administración",
   },
-  {
-    href: "/dashboard/admin/campanas",
-    label: "Campañas",
-    icon: Megaphone,
-    roles: ["admin"],
-    sectionLabel: "Campañas",
-  },
-  { href: "/dashboard/admin/flujos", label: "Flujos", icon: Workflow, roles: ["admin"], indent: true },
-  { href: "/dashboard/admin/agentes-sip", label: "Extensiones SIP", icon: PhoneCall, roles: ["admin"], indent: true },
-  { href: "/dashboard/admin/estados-agente", label: "Estados de agente", icon: UserCog, roles: ["admin"], indent: true },
+  { href: "/dashboard/admin/flujos", label: "Flujos", icon: Workflow, roles: ["admin"] },
 ];
 
 const ROLE_LABEL: Record<AppRole, string> = {
