@@ -18,6 +18,7 @@ import {
   UserPlus,
   PhoneCall,
   MailCheck,
+  UserCog,
 } from "lucide-react";
 
 interface NavItem {
@@ -91,6 +92,7 @@ const NAV_ITEMS: NavItem[] = [
   },
   { href: "/dashboard/admin/flujos", label: "Flujos", icon: Workflow, roles: ["admin"], indent: true },
   { href: "/dashboard/admin/agentes-sip", label: "Extensiones SIP", icon: PhoneCall, roles: ["admin"], indent: true },
+  { href: "/dashboard/admin/estados-agente", label: "Estados de agente", icon: UserCog, roles: ["admin"], indent: true },
 ];
 
 const ROLE_LABEL: Record<AppRole, string> = {

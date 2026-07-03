@@ -237,6 +237,24 @@ export interface AgentSipCredential {
   updated_at: string;
 }
 
+export interface AgentStatusReason {
+  id: string;
+  code: string;
+  label: string;
+  is_pause: boolean;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentCurrentStatus {
+  profile_id: string;
+  reason_id: string;
+  since: string;
+  updated_at: string;
+}
+
 export interface CampaignPerformance {
   campaign_id: string;
   campaign_name: string;

@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Phone, PhoneOff, Mic, MicOff, Delete } from "lucide-react";
-import type { Profile } from "@/lib/types";
+import type { Profile, AgentStatusReason } from "@/lib/types";
 import { getMySipCredentials } from "@/app/actions/agent-sip";
+import { listActiveStatusReasons, getMyCurrentStatus, setMyCurrentStatus } from "@/app/actions/agent-status";
 
 /**
  * Barra CTI del agente: softphone WebRTC embebido en el CRM, conectado a la
@@ -42,6 +43,10 @@ export function CtiBar({ profile }: { profile: Profile }) {
   const [now, setNow] = useState(() => Date.now());
   const [expanded, setExpanded] = useState(false);
 
+  const [statusReasons, setStatusReasons] = useState<AgentStatusReason[]>([]);
+  const [currentReasonId, setCurrentReasonId] = useState<string | null>(null);
+  const [savingStatus, setSavingStatus] = useState(false);
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const uaRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -56,6 +61,28 @@ export function CtiBar({ profile }: { profile: Profile }) {
         setCredential(null);
       });
   }, []);
+
+  useEffect(() => {
+    if (profile.role !== "agente") return;
+    Promise.all([listActiveStatusReasons(), getMyCurrentStatus()])
+      .then(([reasons, current]) => {
+        setStatusReasons(reasons);
+        setCurrentReasonId(current?.reason.id ?? reasons.find((r) => !r.is_pause)?.id ?? null);
+      })
+      .catch((err) => console.error("CTI: fallo al cargar estado de agente", err));
+  }, [profile.role]);
+
+  async function handleStatusChange(reasonId: string) {
+    setCurrentReasonId(reasonId);
+    setSavingStatus(true);
+    try {
+      await setMyCurrentStatus(reasonId);
+    } catch (err) {
+      console.error("CTI: fallo al guardar estado de agente", err);
+    } finally {
+      setSavingStatus(false);
+    }
+  }
 
   useEffect(() => {
     if (callState !== "in_call" || !callStartedAt) return;
@@ -201,7 +228,8 @@ export function CtiBar({ profile }: { profile: Profile }) {
     setMuted(nextMuted);
   }
 
-  if (!credential) return null;
+  const showStatusSelector = profile.role === "agente" && statusReasons.length > 0;
+  if (!credential && !showStatusSelector) return null;
 
   const statusColor =
     regState === "registered" ? "bg-success" : regState === "connecting" ? "bg-warning" : "bg-danger";
@@ -212,23 +240,51 @@ export function CtiBar({ profile }: { profile: Profile }) {
         ? "Conectando softphone..."
         : "Softphone desconectado";
 
+  const currentReason = statusReasons.find((r) => r.id === currentReasonId) ?? null;
+
   return (
     <div className="fixed bottom-6 right-6 z-50 w-80 rounded-2xl border border-border bg-surface shadow-xl">
       <audio ref={audioRef} autoPlay className="hidden" />
 
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-center justify-between gap-2 rounded-2xl px-4 py-3 text-left"
-      >
-        <span className="flex items-center gap-2">
-          <span className={`h-2.5 w-2.5 rounded-full ${statusColor}`} />
-          <span className="text-sm font-medium text-foreground">Discador · {profile.full_name.split(" ")[0]}</span>
-        </span>
-        <span className="text-xs text-muted-foreground">{statusLabel}</span>
-      </button>
+      {showStatusSelector && (
+        <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
+          <span
+            className={`h-2 w-2 flex-shrink-0 rounded-full ${
+              currentReason && !currentReason.is_pause ? "bg-success" : "bg-warning"
+            }`}
+          />
+          <select
+            value={currentReasonId ?? ""}
+            onChange={(e) => handleStatusChange(e.target.value)}
+            disabled={savingStatus}
+            className="w-full rounded-lg border border-border bg-background px-2 py-1 text-xs font-medium text-foreground outline-none disabled:opacity-60"
+          >
+            {statusReasons.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
-      {expanded && (
+      {!credential ? null : (
+        <>
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="flex w-full items-center justify-between gap-2 rounded-2xl px-4 py-3 text-left"
+          >
+            <span className="flex items-center gap-2">
+              <span className={`h-2.5 w-2.5 rounded-full ${statusColor}`} />
+              <span className="text-sm font-medium text-foreground">
+                Discador · {profile.full_name.split(" ")[0]}
+              </span>
+            </span>
+            <span className="text-xs text-muted-foreground">{statusLabel}</span>
+          </button>
+
+          {expanded && (
         <div className="border-t border-border p-4">
           {callState === "in_call" || callState === "calling" || callState === "ringing" ? (
             <div className="flex flex-col items-center gap-3 py-2">
@@ -290,6 +346,8 @@ export function CtiBar({ profile }: { profile: Profile }) {
             </div>
           )}
         </div>
+          )}
+        </>
       )}
     </div>
   );
