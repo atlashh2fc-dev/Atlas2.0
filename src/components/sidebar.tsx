@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -21,6 +22,9 @@ import {
   MailCheck,
   UserCog,
   Activity,
+  ChevronDown,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 
 interface NavItem {
@@ -32,6 +36,21 @@ interface NavItem {
   sectionLabel?: string;
   /** Ítem secundario dentro de un grupo (p. ej. "Flujos" bajo "Campañas"): se muestra indentado y más sutil. */
   indent?: boolean;
+}
+
+type NavGroup = { label: string; items: NavItem[] };
+
+/** Agrupa los ítems visibles por su `sectionLabel` (cada label inicia un grupo). */
+function buildGroups(items: NavItem[]): NavGroup[] {
+  const groups: NavGroup[] = [];
+  for (const item of items) {
+    if (item.sectionLabel || groups.length === 0) {
+      groups.push({ label: item.sectionLabel ?? "General", items: [item] });
+    } else {
+      groups[groups.length - 1].items.push(item);
+    }
+  }
+  return groups;
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -133,75 +152,130 @@ function initials(fullName: string): string {
 
 export function Sidebar({ profile }: { profile: Profile }) {
   const pathname = usePathname();
-  const items = NAV_ITEMS.filter((item) => item.roles.includes(profile.role));
+  const groups = buildGroups(NAV_ITEMS.filter((item) => item.roles.includes(profile.role)));
+
+  const [rail, setRail] = useState(false);
+  const [collapsed, setCollapsed] = useState<string[]>([]);
+  const toggleGroup = (label: string) =>
+    setCollapsed((c) => (c.includes(label) ? c.filter((l) => l !== label) : [...c, label]));
+
+  const isActive = (href: string) =>
+    pathname === href || (href !== "/dashboard" && pathname.startsWith(href + "/"));
 
   return (
-    <aside className="hidden w-60 flex-shrink-0 flex-col border-r border-border bg-surface md:flex">
-      <div className="flex h-16 items-center gap-2 border-b border-border px-5">
+    <aside
+      className={`hidden flex-shrink-0 flex-col border-r border-border bg-surface transition-[width] duration-200 md:flex ${
+        rail ? "w-16" : "w-60"
+      }`}
+    >
+      <div className={`flex h-16 items-center gap-2 border-b border-border ${rail ? "justify-center px-2" : "px-4"}`}>
         <Image
           src="/atlas-logo.png"
           alt="Atlas"
-          width={36}
-          height={36}
-          className="size-9 rounded-full object-contain shadow-sm"
+          width={32}
+          height={32}
+          className="size-8 flex-shrink-0 rounded-full object-contain shadow-sm"
           priority
         />
-        <span className="text-base font-semibold text-foreground">Atlas</span>
-        <span className="ml-auto rounded-full bg-surface-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-          2.0
-        </span>
+        {!rail && (
+          <>
+            <div className="leading-none">
+              <span className="text-sm font-semibold text-foreground">Atlas</span>
+              <p className="mt-0.5 text-[10px] text-muted-foreground">Consola · {ROLE_LABEL[profile.role]}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setRail(true)}
+              aria-label="Colapsar menú"
+              className="ml-auto flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground"
+            >
+              <PanelLeftClose size={17} />
+            </button>
+          </>
+        )}
       </div>
 
-      <nav className="flex-1 space-y-0.5 overflow-y-auto p-3">
-        {items.map((item) => {
-          const active =
-            pathname === item.href ||
-            (item.href !== "/dashboard" && pathname.startsWith(item.href + "/"));
-          const Icon = item.icon;
+      {rail && (
+        <button
+          type="button"
+          onClick={() => setRail(false)}
+          aria-label="Expandir menú"
+          className="mx-2 mt-2 flex h-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground"
+        >
+          <PanelLeftOpen size={17} />
+        </button>
+      )}
+
+      <nav className="flex-1 overflow-y-auto p-2">
+        {groups.map((group) => {
+          const isCollapsed = collapsed.includes(group.label);
           return (
-            <div key={item.href}>
-              {item.sectionLabel && (
-                <p className="mb-1 mt-4 px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 first:mt-1">
-                  {item.sectionLabel}
-                </p>
-              )}
-              <Link
-                href={item.href}
-                className={`group relative flex items-center gap-3 rounded-md text-sm font-medium transition-colors ${
-                  item.indent ? "ml-3 py-1.5 pl-3 pr-3 text-[13px]" : "px-3 py-1.5"
-                } ${
-                  active
-                    ? "bg-primary/10 font-semibold text-primary"
-                    : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"
-                }`}
-              >
-                {active && !item.indent && (
-                  <span className="absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-full bg-primary" />
-                )}
-                <span
-                  className={`flex items-center justify-center rounded-md transition-colors ${
-                    item.indent
-                      ? ""
-                      : `h-7 w-7 ${active ? "bg-primary/15 text-primary" : "text-muted-foreground group-hover:text-foreground"}`
-                  }`}
+            <div key={group.label} className="mb-1">
+              {rail ? (
+                <div className="mx-2 my-1.5 border-t border-border/60" />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group.label)}
+                  className="flex w-full items-center gap-1.5 px-3 pb-1 pt-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 transition-colors hover:text-muted-foreground"
                 >
-                  <Icon size={item.indent ? 16 : 16} />
-                </span>
-                {item.label}
-              </Link>
+                  <span>{group.label}</span>
+                  <ChevronDown
+                    size={13}
+                    className={`ml-auto transition-transform ${isCollapsed ? "-rotate-90" : ""}`}
+                  />
+                </button>
+              )}
+
+              {!isCollapsed &&
+                group.items.map((item) => {
+                  const active = isActive(item.href);
+                  const Icon = item.icon;
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      title={rail ? item.label : undefined}
+                      className={`group relative flex items-center gap-3 rounded-md text-sm font-medium transition-colors ${
+                        rail ? "justify-center px-2 py-2" : item.indent ? "py-1.5 pl-6 pr-3 text-[13px]" : "px-3 py-1.5"
+                      } ${
+                        active
+                          ? "bg-primary/10 font-semibold text-primary"
+                          : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"
+                      }`}
+                    >
+                      {active && !rail && (
+                        <span className="absolute -left-2 top-1/2 h-5 w-1 -translate-y-1/2 rounded-full bg-primary" />
+                      )}
+                      <span
+                        className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors ${
+                          active ? "bg-primary/15 text-primary" : "text-muted-foreground group-hover:text-foreground"
+                        }`}
+                      >
+                        <Icon size={16} />
+                      </span>
+                      {!rail && item.label}
+                    </Link>
+                  );
+                })}
             </div>
           );
         })}
       </nav>
 
-      <div className="flex items-center gap-2.5 border-t border-border p-3">
-        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-foreground">
-          {initials(profile.full_name)}
+      <div className={`flex items-center gap-2.5 border-t border-border p-3 ${rail ? "justify-center" : ""}`}>
+        <div className="relative flex-shrink-0">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+            {initials(profile.full_name)}
+          </div>
+          <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-success ring-2 ring-surface" />
         </div>
-        <div className="min-w-0">
-          <p className="truncate text-xs font-medium text-foreground">{profile.full_name}</p>
-          <p className="truncate text-[11px] text-muted-foreground">{ROLE_LABEL[profile.role]}</p>
-        </div>
+        {!rail && (
+          <div className="min-w-0">
+            <p className="truncate text-xs font-medium text-foreground">{profile.full_name}</p>
+            <p className="truncate text-[11px] text-muted-foreground">{ROLE_LABEL[profile.role]}</p>
+          </div>
+        )}
       </div>
     </aside>
   );
