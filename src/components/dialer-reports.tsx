@@ -7,6 +7,7 @@ import {
   listCampaignsForReports,
 } from "@/app/actions/dialer-reports";
 import type { AgentActivityReportRow, CallMetricsReportRow } from "@/lib/types";
+import { Button, Card, Field, Input, SectionCard, Select } from "@/components/ui";
 
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -101,34 +102,20 @@ export function DialerReports() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-surface p-4">
-        <div>
-          <label className="block text-[11px] font-medium text-muted-foreground">Desde</label>
-          <input
-            type="date"
-            value={pendingFrom}
-            onChange={(e) => setPendingFrom(e.target.value)}
-            className="mt-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm"
-          />
-        </div>
-        <div>
-          <label className="block text-[11px] font-medium text-muted-foreground">Hasta</label>
-          <input
-            type="date"
-            value={pendingTo}
-            onChange={(e) => setPendingTo(e.target.value)}
-            className="mt-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm"
-          />
-        </div>
-        <div>
-          <label className="block text-[11px] font-medium text-muted-foreground">Campaña</label>
-          <select
+      <Card className="flex flex-wrap items-end gap-3">
+        <Field label="Desde" className="w-auto">
+          <Input type="date" value={pendingFrom} onChange={(e) => setPendingFrom(e.target.value)} />
+        </Field>
+        <Field label="Hasta" className="w-auto">
+          <Input type="date" value={pendingTo} onChange={(e) => setPendingTo(e.target.value)} />
+        </Field>
+        <Field label="Campaña" className="w-auto">
+          <Select
             value={campaignId}
             onChange={(e) => {
               setLoading(true);
               setCampaignId(e.target.value);
             }}
-            className="mt-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm"
           >
             <option value="">Todas</option>
             {campaigns.map((c) => (
@@ -136,19 +123,18 @@ export function DialerReports() {
                 {c.name}
               </option>
             ))}
-          </select>
-        </div>
-        <button
+          </Select>
+        </Field>
+        <Button
           onClick={() => {
             setLoading(true);
             setRange({ from: pendingFrom, to: pendingTo });
           }}
-          className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground"
         >
           Aplicar
-        </button>
+        </Button>
         {loading && <span className="text-xs text-muted-foreground">Cargando...</span>}
-      </div>
+      </Card>
 
       {error && <p className="text-sm text-danger">Error: {error}</p>}
 
@@ -164,10 +150,7 @@ export function DialerReports() {
         />
       </div>
 
-      <div className="rounded-xl border border-border bg-surface">
-        <div className="border-b border-border p-4">
-          <h2 className="text-sm font-semibold text-foreground">Métricas de llamadas por día y campaña</h2>
-        </div>
+      <SectionCard title="Métricas de llamadas por día y campaña">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="text-muted-foreground">
@@ -213,16 +196,12 @@ export function DialerReports() {
             </tbody>
           </table>
         </div>
-      </div>
+      </SectionCard>
 
-      <div className="rounded-xl border border-border bg-surface">
-        <div className="border-b border-border p-4">
-          <h2 className="text-sm font-semibold text-foreground">Actividad por agente</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Ocupación: tiempo en llamada/wrap-up sobre tiempo conectado. Adherencia: tiempo Disponible sobre
-            tiempo en motivos no-sistema (excluye desconexiones).
-          </p>
-        </div>
+      <SectionCard
+        title="Actividad por agente"
+        description="Ocupación: tiempo en llamada/wrap-up sobre tiempo conectado. Adherencia: tiempo Disponible sobre tiempo en motivos no-sistema (excluye desconexiones)."
+      >
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="text-muted-foreground">
@@ -264,7 +243,7 @@ export function DialerReports() {
             </tbody>
           </table>
         </div>
-      </div>
+      </SectionCard>
     </div>
   );
 }

@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { ComponentType } from "react";
 import { AlertTriangle, CalendarClock, CheckCircle2, PhoneCall } from "lucide-react";
 import { LEAD_STATUSES } from "@/lib/types";
+import { Table, Thead, Th, Tbody, Tr, Td, TableEmpty, buttonClasses } from "@/components/ui";
 
 const STATUS_LABEL = Object.fromEntries(LEAD_STATUSES.map((s) => [s.value, s.label]));
 
@@ -236,7 +237,7 @@ export function LeadsQueue({
             >
               {tab.label}
               {typeof tab.count === "number" && (
-                <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${active ? "bg-white/20" : "bg-surface-muted"}`}>
+                <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${active ? "bg-primary-foreground/20" : "bg-surface-muted"}`}>
                   {tab.count}
                 </span>
               )}
@@ -246,37 +247,31 @@ export function LeadsQueue({
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-        <table className="w-full min-w-[980px] text-sm">
-          <thead>
-            <tr className="border-b border-border text-left text-xs text-muted-foreground">
-              <th className="px-5 py-3 font-medium">Prioridad</th>
-              <th className="px-5 py-3 font-medium">Lead</th>
-              <th className="px-5 py-3 font-medium">Contacto</th>
-              <th className="px-5 py-3 font-medium">Estado operativo</th>
-              <th className="px-5 py-3 font-medium">Ultima gestion</th>
-              <th className="px-5 py-3 font-medium"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
+        <Table className="min-w-[980px]">
+          <Thead>
+            <Th>Prioridad</Th>
+            <Th>Lead</Th>
+            <Th>Contacto</Th>
+            <Th>Estado operativo</Th>
+            <Th>Ultima gestion</Th>
+            <Th />
+          </Thead>
+          <Tbody>
             {errorMessage && (
-              <tr>
-                <td colSpan={6} className="px-5 py-6 text-center text-danger">
+              <Tr>
+                <Td colSpan={6} className="py-6 text-center text-danger">
                   Error al cargar leads: {errorMessage}
-                </td>
-              </tr>
+                </Td>
+              </Tr>
             )}
             {!errorMessage && rows.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-5 py-6 text-center text-muted-foreground">
-                  No hay gestiones para este filtro.
-                </td>
-              </tr>
+              <TableEmpty colSpan={6}>No hay gestiones para este filtro.</TableEmpty>
             )}
             {rows.map(({ lead, state }, index) => {
               const Icon = state.icon;
               return (
-                <tr key={lead.id} className="hover:bg-surface-muted">
-                  <td className="px-5 py-3">
+                <Tr key={lead.id} className="hover:bg-surface-muted">
+                  <Td>
                     <div className="flex items-center gap-2">
                       <span className="flex h-7 w-7 items-center justify-center rounded-full bg-surface-muted text-xs font-semibold text-foreground">
                         {index + 1}
@@ -286,8 +281,8 @@ export function LeadsQueue({
                         {state.label}
                       </span>
                     </div>
-                  </td>
-                  <td className="px-5 py-3">
+                  </Td>
+                  <Td>
                     <Link
                       href={`/dashboard/leads/${lead.id}`}
                       className="font-medium text-foreground hover:text-primary"
@@ -297,37 +292,37 @@ export function LeadsQueue({
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       {STATUS_LABEL[lead.status] ?? lead.status}
                     </p>
-                  </td>
-                  <td className="px-5 py-3 text-muted-foreground">
+                  </Td>
+                  <Td muted>
                     <p>{lead.rut ?? "-"}</p>
                     <p className={hasPhone(lead) ? "" : "font-medium text-danger"}>{lead.phone ?? "Sin telefono"}</p>
-                  </td>
-                  <td className="px-5 py-3">
+                  </Td>
+                  <Td>
                     <p className="text-sm text-foreground">{state.detail}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       Actualizado: {new Date(lead.updated_at).toLocaleDateString("es-CL")}
                     </p>
-                  </td>
-                  <td className="px-5 py-3 text-muted-foreground">
-                    {lead.tipificacion_actual ?? (lead.managed_at ? "Gestionado" : "-")}
-                  </td>
-                  <td className="px-5 py-3 text-right">
+                  </Td>
+                  <Td muted>{lead.tipificacion_actual ?? (lead.managed_at ? "Gestionado" : "-")}</Td>
+                  <Td align="right">
                     <Link
                       href={`/dashboard/leads/${lead.id}`}
-                      className={`inline-flex items-center justify-center rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
-                        state.tone === "primary" || state.tone === "danger" || state.tone === "warning"
-                          ? "bg-primary text-primary-foreground hover:bg-primary-hover"
-                          : "border border-border text-foreground hover:bg-surface-muted"
-                      }`}
+                      className={buttonClasses({
+                        variant:
+                          state.tone === "primary" || state.tone === "danger" || state.tone === "warning"
+                            ? "primary"
+                            : "secondary",
+                        size: "sm",
+                      })}
                     >
                       {hasPhone(lead) ? copy.action : "Revisar"}
                     </Link>
-                  </td>
-                </tr>
+                  </Td>
+                </Tr>
               );
             })}
-          </tbody>
-        </table>
+          </Tbody>
+        </Table>
       </div>
     </>
   );

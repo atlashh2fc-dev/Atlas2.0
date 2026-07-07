@@ -2,6 +2,21 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { createCampaign, toggleCampaignActive } from "@/app/actions/campaigns";
 import Link from "next/link";
+import {
+  Badge,
+  Button,
+  Card,
+  Input,
+  PageHeader,
+  SectionCard,
+  Table,
+  Tbody,
+  Td,
+  Th,
+  Thead,
+  TableEmpty,
+  Tr,
+} from "@/components/ui";
 
 export default async function CampaignsPage() {
   await requireProfile(["admin"]);
@@ -25,98 +40,62 @@ export default async function CampaignsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-foreground">Campañas</h1>
-        <p className="text-sm text-muted-foreground">
-          Cada campaña es su propio ecosistema: ejecutivos asignados, base de datos de leads y un
-          flujo productivo propio.
-        </p>
-      </div>
+      <PageHeader
+        title="Campañas"
+        description="Cada campaña es su propio ecosistema: ejecutivos asignados, base de datos de leads y un flujo productivo propio."
+      />
 
-      <div className="overflow-hidden rounded-xl border border-border bg-surface">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-left text-xs text-muted-foreground">
-              <th className="px-5 py-3 font-medium">Nombre</th>
-              <th className="px-5 py-3 font-medium">Flujo productivo</th>
-              <th className="px-5 py-3 font-medium">Leads</th>
-              <th className="px-5 py-3 font-medium">Estado</th>
-              <th className="px-5 py-3 font-medium"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
+      <SectionCard>
+        <Table>
+          <Thead>
+            <Th>Nombre</Th>
+            <Th>Flujo productivo</Th>
+            <Th>Leads</Th>
+            <Th>Estado</Th>
+            <Th />
+          </Thead>
+          <Tbody>
             {(campaigns ?? []).length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-5 py-6 text-center text-muted-foreground">
-                  Todavía no hay campañas creadas.
-                </td>
-              </tr>
+              <TableEmpty colSpan={5}>Todavía no hay campañas creadas.</TableEmpty>
             )}
             {(campaigns ?? []).map((c) => (
-              <tr key={c.id}>
-                <td className="px-5 py-3 font-medium text-foreground">
+              <Tr key={c.id}>
+                <Td strong>
                   <Link href={`/dashboard/admin/campanas/${c.id}`} className="hover:text-primary">
                     {c.name}
                   </Link>
-                  {c.description && (
-                    <p className="mt-0.5 text-xs text-muted-foreground">{c.description}</p>
-                  )}
-                </td>
-                <td className="px-5 py-3 text-muted-foreground">
-                  {(c.workflows as { name: string } | null)?.name ?? "Sin flujo asignado"}
-                </td>
-                <td className="px-5 py-3 text-muted-foreground">{countByCampaign.get(c.id) ?? 0}</td>
-                <td className="px-5 py-3">
-                  <span
-                    className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${
-                      c.is_active ? "bg-success-bg text-success" : "bg-danger-bg text-danger"
-                    }`}
-                  >
+                  {c.description && <p className="mt-0.5 text-xs text-muted-foreground">{c.description}</p>}
+                </Td>
+                <Td muted>{(c.workflows as { name: string } | null)?.name ?? "Sin flujo asignado"}</Td>
+                <Td muted>{countByCampaign.get(c.id) ?? 0}</Td>
+                <Td>
+                  <Badge tone={c.is_active ? "success" : "danger"}>
                     {c.is_active ? "Activa" : "Inactiva"}
-                  </span>
-                </td>
-                <td className="px-5 py-3 text-right">
+                  </Badge>
+                </Td>
+                <Td align="right">
                   <form action={toggleCampaignActive}>
                     <input type="hidden" name="campaign_id" value={c.id} />
                     <input type="hidden" name="active" value={String(c.is_active)} />
-                    <button
-                      type="submit"
-                      className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-foreground hover:bg-surface-muted"
-                    >
+                    <Button type="submit" variant="secondary" size="sm">
                       {c.is_active ? "Desactivar" : "Activar"}
-                    </button>
+                    </Button>
                   </form>
-                </td>
-              </tr>
+                </Td>
+              </Tr>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </Tbody>
+        </Table>
+      </SectionCard>
 
-      <div className="rounded-xl border border-border bg-surface p-5">
+      <Card>
         <h2 className="mb-3 text-sm font-semibold text-foreground">Crear campaña</h2>
         <form action={createCampaign} className="flex max-w-xl flex-col gap-3 sm:flex-row">
-          <input
-            type="text"
-            name="name"
-            required
-            placeholder="Nombre de la campaña"
-            className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
-          />
-          <input
-            type="text"
-            name="description"
-            placeholder="Descripción (opcional)"
-            className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
-          />
-          <button
-            type="submit"
-            className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
-          >
-            Crear y configurar
-          </button>
+          <Input type="text" name="name" required placeholder="Nombre de la campaña" className="flex-1" />
+          <Input type="text" name="description" placeholder="Descripción (opcional)" className="flex-1" />
+          <Button type="submit">Crear y configurar</Button>
         </form>
-      </div>
+      </Card>
     </div>
   );
 }

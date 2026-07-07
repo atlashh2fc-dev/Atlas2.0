@@ -8,6 +8,18 @@ import { CallTypificationForm } from "@/components/call-typification-form";
 import { CallTimer } from "@/components/call-timer";
 import { buildCallReasonCatalogFromWorkflow, getReasonConfig } from "@/lib/call-typification";
 import type { Campaign, Lead, Profile, Team, Workflow, WorkflowStep, WorkflowStepBranch } from "@/lib/types";
+import { Badge, Card, SectionCard, buttonClasses } from "@/components/ui";
+import type { ReactNode } from "react";
+
+/** Fila etiqueta/valor para las fichas de detalle (dt/dd alineados). */
+function InfoRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex justify-between gap-3">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="text-right text-foreground">{children}</dd>
+    </div>
+  );
+}
 
 type LeadContact = {
   id: string;
@@ -107,44 +119,28 @@ export default async function LeadDetailPage({
           call ? "lg:col-span-1" : isSupervisorView || isAdminView ? "lg:col-span-2" : "lg:col-span-3"
         }`}
       >
-        <div className="rounded-xl border border-border bg-surface p-5">
+        <Card>
           <div className="flex items-center justify-between gap-2">
-            <h1 className="text-lg font-semibold text-foreground">{lead.full_name}</h1>
+            <h1 className="text-xl font-semibold text-foreground">{lead.full_name}</h1>
             {call && <CallTimer startedAt={call.started_at} endedAt={call.ended_at} />}
           </div>
           <dl className="mt-4 space-y-2 text-sm">
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">RUT</dt>
-              <dd className="text-foreground">{lead.rut ?? "—"}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">Teléfono</dt>
-              <dd className="text-foreground">{lead.phone ?? "—"}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">Correo</dt>
-              <dd className="text-foreground">{lead.email ?? "—"}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">Estado</dt>
-              <dd className="text-foreground">
-                {LEAD_STATUSES.find((s) => s.value === lead.status)?.label ?? lead.status}
-              </dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">Tipificación actual</dt>
-              <dd className="text-foreground">{lead.tipificacion_actual ?? "—"}</dd>
-            </div>
+            <InfoRow label="RUT">{lead.rut ?? "—"}</InfoRow>
+            <InfoRow label="Teléfono">{lead.phone ?? "—"}</InfoRow>
+            <InfoRow label="Correo">{lead.email ?? "—"}</InfoRow>
+            <InfoRow label="Estado">
+              {LEAD_STATUSES.find((s) => s.value === lead.status)?.label ?? lead.status}
+            </InfoRow>
+            <InfoRow label="Tipificación actual">{lead.tipificacion_actual ?? "—"}</InfoRow>
             {lead.next_action_at && (
-              <div className="flex justify-between">
-                <dt className="text-muted-foreground">Próxima agenda</dt>
-                <dd className="text-foreground">{new Date(lead.next_action_at).toLocaleString("es-CL")}</dd>
-              </div>
+              <InfoRow label="Próxima agenda">
+                {new Date(lead.next_action_at).toLocaleString("es-CL")}
+              </InfoRow>
             )}
           </dl>
-        </div>
+        </Card>
 
-        <div className="rounded-xl border border-border bg-surface p-5">
+        <Card>
           <h2 className="mb-3 text-sm font-semibold text-foreground">Contactos</h2>
           <div className="space-y-2 text-sm">
             {contacts.length === 0 && <p className="text-muted-foreground">Sin contactos registrados.</p>}
@@ -158,34 +154,21 @@ export default async function LeadDetailPage({
                     {contact.is_primary ? " · Principal" : ""}
                   </p>
                 </div>
-                {contact.is_valid === false && (
-                  <span className="rounded-full bg-danger-bg px-2 py-0.5 text-xs font-medium text-danger">
-                    inválido
-                  </span>
-                )}
+                {contact.is_valid === false && <Badge tone="danger">inválido</Badge>}
               </div>
             ))}
           </div>
-        </div>
+        </Card>
 
-        <div className="rounded-xl border border-border bg-surface p-5">
+        <Card>
           <h2 className="mb-3 text-sm font-semibold text-foreground">Campaña y flujo</h2>
           <dl className="space-y-2 text-sm">
-            <div className="flex justify-between gap-3">
-              <dt className="text-muted-foreground">Campaña</dt>
-              <dd className="text-right text-foreground">{campaign?.name ?? "Sin campaña"}</dd>
-            </div>
-            <div className="flex justify-between gap-3">
-              <dt className="text-muted-foreground">Flujo</dt>
-              <dd className="text-right text-foreground">{workflow?.name ?? "Equifax"}</dd>
-            </div>
+            <InfoRow label="Campaña">{campaign?.name ?? "Sin campaña"}</InfoRow>
+            <InfoRow label="Flujo">{workflow?.name ?? "Equifax"}</InfoRow>
           </dl>
-        </div>
+        </Card>
 
-        <div className="rounded-xl border border-border bg-surface">
-          <div className="border-b border-border px-5 py-4">
-            <h2 className="text-sm font-semibold text-foreground">Historial de gestiones</h2>
-          </div>
+        <SectionCard title="Historial de gestiones">
           <ul className="max-h-96 divide-y divide-border overflow-y-auto">
             {history.length === 0 && (
               <li className="px-5 py-6 text-center text-sm text-muted-foreground">Sin gestiones registradas todavía.</li>
@@ -208,120 +191,91 @@ export default async function LeadDetailPage({
               </li>
             ))}
           </ul>
-        </div>
+        </SectionCard>
       </div>
 
       {isSupervisorView && (
         <div className="space-y-4">
-          <div className="rounded-xl border border-border bg-surface p-5">
+          <Card>
             <h2 className="text-sm font-semibold text-foreground">Vista de supervisión</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Puedes revisar contexto, historial y prioridad del lead. La llamada la cierra el ejecutivo asignado.
             </p>
 
             <dl className="mt-4 space-y-2 text-sm">
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted-foreground">Asignado a</dt>
-                <dd className="text-right text-foreground">
-                  {assignedProfile?.full_name ?? "Sin asignar"}
-                </dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted-foreground">Estado workflow</dt>
-                <dd className="text-right text-foreground">{lead.workflow_status ?? "—"}</dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted-foreground">Última gestión</dt>
-                <dd className="text-right text-foreground">
-                  {lead.managed_at ? new Date(lead.managed_at).toLocaleString("es-CL") : "—"}
-                </dd>
-              </div>
+              <InfoRow label="Asignado a">{assignedProfile?.full_name ?? "Sin asignar"}</InfoRow>
+              <InfoRow label="Estado workflow">{lead.workflow_status ?? "—"}</InfoRow>
+              <InfoRow label="Última gestión">
+                {lead.managed_at ? new Date(lead.managed_at).toLocaleString("es-CL") : "—"}
+              </InfoRow>
             </dl>
-          </div>
+          </Card>
 
-          <div className="rounded-xl border border-border bg-surface p-5">
+          <Card>
             <h2 className="text-sm font-semibold text-foreground">Acciones rápidas</h2>
             <div className="mt-4 grid grid-cols-1 gap-2">
-              <Link
-                href="/dashboard/team"
-                className="rounded-lg bg-primary px-3 py-2 text-center text-sm font-medium text-primary-foreground hover:bg-primary-hover"
-              >
+              <Link href="/dashboard/team" className={buttonClasses({ className: "w-full" })}>
                 Reasignar en Mi equipo
               </Link>
               <Link
                 href="/dashboard/reportes"
-                className="rounded-lg border border-border bg-background px-3 py-2 text-center text-sm font-medium text-foreground hover:bg-surface-muted"
+                className={buttonClasses({ variant: "secondary", className: "w-full" })}
               >
                 Ver rendimiento
               </Link>
               <Link
                 href="/dashboard/leads/nuevo"
-                className="rounded-lg border border-border bg-background px-3 py-2 text-center text-sm font-medium text-foreground hover:bg-surface-muted"
+                className={buttonClasses({ variant: "secondary", className: "w-full" })}
               >
                 Nuevo registro
               </Link>
             </div>
-          </div>
+          </Card>
         </div>
       )}
 
       {isAdminView && (
         <div className="space-y-4">
-          <div className="rounded-xl border border-border bg-surface p-5">
+          <Card>
             <h2 className="text-sm font-semibold text-foreground">Vista administrativa</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Auditoría del lead, asignación y configuración asociada. La gestión telefónica queda en manos del ejecutivo.
             </p>
 
             <dl className="mt-4 space-y-2 text-sm">
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted-foreground">Ejecutivo</dt>
-                <dd className="text-right text-foreground">{assignedProfile?.full_name ?? "Sin asignar"}</dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted-foreground">Equipo</dt>
-                <dd className="text-right text-foreground">{team?.name ?? "Sin equipo"}</dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted-foreground">Campaña</dt>
-                <dd className="text-right text-foreground">{campaign?.name ?? "Sin campaña"}</dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted-foreground">Workflow</dt>
-                <dd className="text-right text-foreground">{lead.workflow_status ?? "—"}</dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted-foreground">Actualizado</dt>
-                <dd className="text-right text-foreground">{new Date(lead.updated_at).toLocaleString("es-CL")}</dd>
-              </div>
+              <InfoRow label="Ejecutivo">{assignedProfile?.full_name ?? "Sin asignar"}</InfoRow>
+              <InfoRow label="Equipo">{team?.name ?? "Sin equipo"}</InfoRow>
+              <InfoRow label="Campaña">{campaign?.name ?? "Sin campaña"}</InfoRow>
+              <InfoRow label="Workflow">{lead.workflow_status ?? "—"}</InfoRow>
+              <InfoRow label="Actualizado">{new Date(lead.updated_at).toLocaleString("es-CL")}</InfoRow>
             </dl>
-          </div>
+          </Card>
 
-          <div className="rounded-xl border border-border bg-surface p-5">
+          <Card>
             <h2 className="text-sm font-semibold text-foreground">Acciones administrativas</h2>
             <div className="mt-4 grid grid-cols-1 gap-2">
               {campaign?.id && (
                 <Link
                   href={`/dashboard/admin/campanas/${campaign.id}`}
-                  className="rounded-lg bg-primary px-3 py-2 text-center text-sm font-medium text-primary-foreground hover:bg-primary-hover"
+                  className={buttonClasses({ className: "w-full" })}
                 >
                   Abrir campaña
                 </Link>
               )}
               <Link
                 href="/dashboard/admin/usuarios"
-                className="rounded-lg border border-border bg-background px-3 py-2 text-center text-sm font-medium text-foreground hover:bg-surface-muted"
+                className={buttonClasses({ variant: "secondary", className: "w-full" })}
               >
                 Usuarios y equipos
               </Link>
               <Link
                 href="/dashboard/reportes"
-                className="rounded-lg border border-border bg-background px-3 py-2 text-center text-sm font-medium text-foreground hover:bg-surface-muted"
+                className={buttonClasses({ variant: "secondary", className: "w-full" })}
               >
                 Ver reportes
               </Link>
             </div>
-          </div>
+          </Card>
         </div>
       )}
 

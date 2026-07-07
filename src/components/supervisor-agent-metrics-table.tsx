@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { CalendarClock, ExternalLink, FileText, Loader2, Mail, Phone, ShoppingCart, X } from "lucide-react";
+import { Input, Select, buttonClasses } from "@/components/ui";
 
 export type SupervisorAgentMetric = {
   agent_id: string;
@@ -338,21 +339,16 @@ export function SupervisorAgentMetricsTable({
     <div className="overflow-hidden rounded-xl border border-border bg-surface">
       <div className="space-y-3 border-b border-border p-4">
         <div className="grid gap-3 md:grid-cols-[minmax(220px,1fr)_180px]">
-          <input
+          <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Buscar ejecutivo o equipo..."
-            className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
-          <select
-            value={scope}
-            onChange={(event) => setScope(event.target.value as Scope)}
-            className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
+          <Select value={scope} onChange={(event) => setScope(event.target.value as Scope)}>
             <option value="all">Todos</option>
             <option value="active">Activos</option>
             <option value="historical">Históricos</option>
-          </select>
+          </Select>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium text-muted-foreground">Priorizar</span>
@@ -531,10 +527,7 @@ export function SupervisorAgentMetricsTable({
                           {selectedItem.lead.rut ?? "Sin RUT"} · {selectedItem.lead.campaign_name ?? "Sin campaña"}
                         </p>
                       </div>
-                      <a
-                        href={`/dashboard/leads/${selectedItem.lead_id}`}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
-                      >
+                      <a href={`/dashboard/leads/${selectedItem.lead_id}`} className={buttonClasses()}>
                         Abrir ficha 360
                         <ExternalLink className="size-3.5" aria-hidden="true" />
                       </a>

@@ -2,6 +2,22 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { activateHistoricalAgent } from "@/app/actions/admin";
 import type { AppRole } from "@/lib/types";
+import {
+  Badge,
+  Button,
+  Field,
+  Input,
+  PageHeader,
+  SectionCard,
+  Select,
+  Table,
+  Tbody,
+  Td,
+  Th,
+  Thead,
+  TableEmpty,
+  Tr,
+} from "@/components/ui";
 
 const ROLES: AppRole[] = ["agente", "supervisor", "admin"];
 
@@ -39,48 +55,37 @@ export default async function HistoricalAgentsAdminPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-foreground">Ejecutivos históricos</h1>
-        <p className="text-sm text-muted-foreground">
-          Personas que aparecen en la gestión heredada de un CRM legado. Mientras no se activen,
-          su historial queda registrado pero sin login propio. Activar un ejecutivo crea una
-          cuenta real y le reasigna todo su historial de llamadas, sin perder la trazabilidad al
-          origen legado.
-        </p>
-      </div>
+      <PageHeader
+        title="Ejecutivos históricos"
+        description="Personas que aparecen en la gestión heredada de un CRM legado. Mientras no se activen, su historial queda registrado pero sin login propio. Activar un ejecutivo crea una cuenta real y le reasigna todo su historial de llamadas, sin perder la trazabilidad al origen legado."
+      />
 
-      <div className="overflow-hidden rounded-xl border border-border bg-surface">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-left text-xs text-muted-foreground">
-              <th className="px-5 py-3 font-medium">Ejecutivo (legado)</th>
-              <th className="px-5 py-3 font-medium">Sistema origen</th>
-              <th className="px-5 py-3 font-medium">Llamadas históricas</th>
-              <th className="px-5 py-3 font-medium">Estado</th>
-              <th className="px-5 py-3 font-medium">Activar</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
+      <SectionCard>
+        <Table>
+          <Thead>
+            <Th>Ejecutivo (legado)</Th>
+            <Th>Sistema origen</Th>
+            <Th>Llamadas históricas</Th>
+            <Th>Estado</Th>
+            <Th>Activar</Th>
+          </Thead>
+          <Tbody>
             {(agents ?? []).map((a) => {
               const linked = profileOf(a.linked_profile_id);
               const calls = countsByAgent.get(a.id) ?? 0;
               return (
-                <tr key={a.id}>
-                  <td className="px-5 py-3 font-medium text-foreground">{a.full_name}</td>
-                  <td className="px-5 py-3 text-muted-foreground">{a.legacy_system}</td>
-                  <td className="px-5 py-3 text-muted-foreground">{calls}</td>
-                  <td className="px-5 py-3">
+                <Tr key={a.id}>
+                  <Td strong>{a.full_name}</Td>
+                  <Td muted>{a.legacy_system}</Td>
+                  <Td muted>{calls}</Td>
+                  <Td>
                     {linked ? (
-                      <span className="inline-flex items-center rounded-full bg-success-bg px-2.5 py-1 text-xs font-medium text-success">
-                        Activo como {linked.full_name}
-                      </span>
+                      <Badge tone="success">Activo como {linked.full_name}</Badge>
                     ) : (
-                      <span className="inline-flex items-center rounded-full bg-surface-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                        Sin activar
-                      </span>
+                      <Badge tone="neutral">Sin activar</Badge>
                     )}
-                  </td>
-                  <td className="px-5 py-3">
+                  </Td>
+                  <Td>
                     {linked ? (
                       <span className="text-xs text-muted-foreground">—</span>
                     ) : (
@@ -93,79 +98,51 @@ export default async function HistoricalAgentsAdminPage() {
                           className="mt-3 flex flex-wrap items-end gap-2 rounded-lg border border-border bg-background p-3"
                         >
                           <input type="hidden" name="historical_agent_id" value={a.id} />
-                          <div className="flex flex-col gap-1">
-                            <label className="text-xs text-muted-foreground">Correo</label>
-                            <input
-                              type="email"
-                              name="email"
-                              required
-                              placeholder="correo@ejemplo.com"
-                              className="w-52 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
-                            />
-                          </div>
-                          <div className="flex flex-col gap-1">
-                            <label className="text-xs text-muted-foreground">Contraseña</label>
-                            <input
+                          <Field label="Correo" className="w-52">
+                            <Input type="email" name="email" required placeholder="correo@ejemplo.com" />
+                          </Field>
+                          <Field label="Contraseña" className="w-40">
+                            <Input
                               type="text"
                               name="password"
                               required
                               minLength={6}
                               placeholder="Mínimo 6 caracteres"
-                              className="w-40 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
                             />
-                          </div>
-                          <div className="flex flex-col gap-1">
-                            <label className="text-xs text-muted-foreground">Rol</label>
-                            <select
-                              name="role"
-                              defaultValue="agente"
-                              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                            >
+                          </Field>
+                          <Field label="Rol">
+                            <Select name="role" defaultValue="agente" className="w-auto">
                               {ROLES.map((r) => (
                                 <option key={r} value={r}>
                                   {r}
                                 </option>
                               ))}
-                            </select>
-                          </div>
-                          <div className="flex flex-col gap-1">
-                            <label className="text-xs text-muted-foreground">Equipo</label>
-                            <select
-                              name="team_id"
-                              defaultValue=""
-                              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                            >
+                            </Select>
+                          </Field>
+                          <Field label="Equipo">
+                            <Select name="team_id" defaultValue="" className="w-auto">
                               <option value="">Sin equipo</option>
                               {(teams ?? []).map((t) => (
                                 <option key={t.id} value={t.id}>
                                   {t.name}
                                 </option>
                               ))}
-                            </select>
-                          </div>
-                          <button
-                            type="submit"
-                            className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
-                          >
-                            Crear cuenta y activar
-                          </button>
+                            </Select>
+                          </Field>
+                          <Button type="submit">Crear cuenta y activar</Button>
                         </form>
                       </details>
                     )}
-                  </td>
-                </tr>
+                  </Td>
+                </Tr>
               );
             })}
             {(agents ?? []).length === 0 && (
-              <tr>
-                <td className="px-5 py-6 text-center text-muted-foreground" colSpan={5}>
-                  No hay ejecutivos históricos registrados.
-                </td>
-              </tr>
+              <TableEmpty colSpan={5}>No hay ejecutivos históricos registrados.</TableEmpty>
             )}
-          </tbody>
-        </table>
-      </div>
+          </Tbody>
+        </Table>
+      </SectionCard>
     </div>
   );
 }

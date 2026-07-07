@@ -1,12 +1,35 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { assignLead, reassignAgenda } from "@/app/actions/admin";
-import { StatCard } from "@/components/stat-card";
 import { LEAD_STATUSES } from "@/lib/types";
 import Link from "next/link";
+import {
+  Badge,
+  Button,
+  Callout,
+  PageHeader,
+  SectionCard,
+  Select,
+  StatCard,
+  Table,
+  Tbody,
+  Td,
+  Th,
+  Thead,
+  TableEmpty,
+  Tr,
+} from "@/components/ui";
 
 type ProfileEmbed = { full_name: string } | { full_name: string }[] | null;
 type Option = { id: string; name?: string; full_name?: string };
+type AgentOption = { id: string; full_name: string };
+type AgendaLead = {
+  id: string;
+  full_name: string;
+  next_action_at: string | null;
+  managed_by: string | null;
+  profiles: ProfileEmbed;
+};
 type TeamReportSummary = {
   kpis?: {
     base_total?: number;
@@ -56,6 +79,84 @@ function percent(part: number, total: number): number {
   return (part / total) * 100;
 }
 
+/** Formulario en línea para reasignar ejecutivo y fecha de una agenda. */
+function ReassignForm({ lead, agents }: { lead: AgendaLead; agents: AgentOption[] }) {
+  return (
+    <form action={reassignAgenda} className="flex items-center gap-2">
+      <input type="hidden" name="lead_id" value={lead.id} />
+      <Select name="agent_id" fieldSize="sm" defaultValue={lead.managed_by ?? ""} className="w-auto">
+        {agents.map((a) => (
+          <option key={a.id} value={a.id}>
+            {a.full_name}
+          </option>
+        ))}
+      </Select>
+      <input
+        type="datetime-local"
+        name="next_action_at"
+        defaultValue={toDatetimeLocal(lead.next_action_at!)}
+        className="rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      />
+      <Button type="submit" size="sm">
+        Reagendar
+      </Button>
+    </form>
+  );
+}
+
+/** Tabla de agendas (vencidas o próximas) con reasignación en línea. */
+function AgendaTable({
+  title,
+  description,
+  rows,
+  agents,
+  overdue,
+  emptyText,
+}: {
+  title: string;
+  description?: string;
+  rows: AgendaLead[];
+  agents: AgentOption[];
+  overdue: boolean;
+  emptyText: string;
+}) {
+  return (
+    <SectionCard title={title} description={description}>
+      <Table>
+        <Thead>
+          <Th>Lead</Th>
+          <Th>Ejecutivo</Th>
+          <Th>Agenda</Th>
+          <Th>Reagendar</Th>
+        </Thead>
+        <Tbody>
+          {rows.length === 0 && <TableEmpty colSpan={4}>{emptyText}</TableEmpty>}
+          {rows.map((lead) => {
+            const managerName = one(lead.profiles)?.full_name ?? "—";
+            return (
+              <Tr key={lead.id}>
+                <Td strong>
+                  <Link href={`/dashboard/leads/${lead.id}`} className="hover:text-primary">
+                    {lead.full_name}
+                  </Link>
+                </Td>
+                <Td muted>{managerName}</Td>
+                <Td className={overdue ? "font-medium text-danger" : "text-foreground"}>
+                  {overdue ? "Vencida: " : ""}
+                  {new Date(lead.next_action_at!).toLocaleString("es-CL")}
+                </Td>
+                <Td>
+                  <ReassignForm lead={lead} agents={agents} />
+                </Td>
+              </Tr>
+            );
+          })}
+        </Tbody>
+      </Table>
+    </SectionCard>
+  );
+}
+
 export default async function TeamPage({
   searchParams,
 }: {
@@ -72,9 +173,10 @@ export default async function TeamPage({
 
   if (!profile.team_id) {
     return (
-      <div className="rounded-xl border border-danger/30 bg-danger-bg p-5 text-sm text-danger">
-        Tu usuario supervisor no tiene equipo asignado. Un administrador debe asociarte a un equipo antes de usar esta vista.
-      </div>
+      <Callout tone="danger">
+        Tu usuario supervisor no tiene equipo asignado. Un administrador debe asociarte a un equipo antes de
+        usar esta vista.
+      </Callout>
     );
   }
 
@@ -121,11 +223,11 @@ export default async function TeamPage({
   const { data: agendaLeads } = profile.team_id ? await agendaQuery : { data: [] };
 
   const now = new Date();
-  const agendaRows = agendaLeads ?? [];
+  const agendaRows = (agendaLeads ?? []) as AgendaLead[];
   const overdueAgenda = agendaRows.filter((lead) => new Date(lead.next_action_at!) <= now);
   const upcomingAgenda = agendaRows.filter((lead) => new Date(lead.next_action_at!) > now);
   const unassigned = (leads ?? []).filter((lead) => !lead.assigned_to).length;
-  const activeAgents = agents ?? [];
+  const activeAgents = (agents ?? []) as AgentOption[];
   const reportSummary = teamReport as TeamReportSummary | null;
   const reportedAgents = reportSummary?.agents ?? [];
   const reportedAgentsCount = reportedAgents.length || activeAgents.length;
@@ -137,14 +239,10 @@ export default async function TeamPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">Mi equipo</h1>
-          <p className="text-sm text-muted-foreground">
-            Asigna leads, corrige agendas vencidas y monitorea la carga de tus ejecutivos.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="Mi equipo"
+        description="Asigna leads, corrige agendas vencidas y monitorea la carga de tus ejecutivos."
+      />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
@@ -177,232 +275,83 @@ export default async function TeamPage({
       </div>
 
       <form className="grid gap-3 rounded-xl border border-border bg-surface p-4 md:grid-cols-[repeat(3,minmax(180px,1fr))_auto]">
-        <select
-          name="agent"
-          defaultValue={filters.agent}
-          className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
+        <Select name="agent" defaultValue={filters.agent}>
           <option value="">Todos los ejecutivos activos</option>
           {(activeAgents as Option[]).map((option) => (
             <option key={option.id} value={option.id}>
               {option.full_name}
             </option>
           ))}
-        </select>
-        <select
-          name="campaign"
-          defaultValue={filters.campaign}
-          className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
+        </Select>
+        <Select name="campaign" defaultValue={filters.campaign}>
           <option value="">Todas las campañas</option>
           {((campaigns ?? []) as Option[]).map((option) => (
             <option key={option.id} value={option.id}>
               {option.name}
             </option>
           ))}
-        </select>
-        <select
-          name="status"
-          defaultValue={filters.status}
-          className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
+        </Select>
+        <Select name="status" defaultValue={filters.status}>
           <option value="">Todos los estados</option>
           {LEAD_STATUSES.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
             </option>
           ))}
-        </select>
-        <button
-          type="submit"
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
-        >
-          Filtrar
-        </button>
+        </Select>
+        <Button type="submit">Filtrar</Button>
       </form>
 
-      <div className="overflow-hidden rounded-xl border border-border bg-surface">
-        <div className="border-b border-border px-5 py-4">
-          <h2 className="text-sm font-semibold text-foreground">Agendas vencidas</h2>
-          <p className="text-xs text-muted-foreground">
-            Reasigna o corrige primero estas llamadas para recuperar SLA operativo.
-          </p>
-        </div>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-left text-xs text-muted-foreground">
-              <th className="px-5 py-3 font-medium">Lead</th>
-              <th className="px-5 py-3 font-medium">Ejecutivo</th>
-              <th className="px-5 py-3 font-medium">Agenda</th>
-              <th className="px-5 py-3 font-medium">Reagendar</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {overdueAgenda.length === 0 && (
-              <tr>
-                <td colSpan={4} className="px-5 py-6 text-center text-muted-foreground">
-                  No hay agendas vencidas con estos filtros.
-                </td>
-              </tr>
-            )}
-            {overdueAgenda.map((lead) => {
-              const managerName = one(lead.profiles as ProfileEmbed)?.full_name ?? "—";
-              return (
-                <tr key={lead.id}>
-                  <td className="px-5 py-3 font-medium text-foreground">
-                    <Link href={`/dashboard/leads/${lead.id}`} className="hover:text-primary">
-                      {lead.full_name}
-                    </Link>
-                  </td>
-                  <td className="px-5 py-3 text-muted-foreground">{managerName}</td>
-                  <td className="px-5 py-3 font-medium text-danger">
-                    Vencida: {new Date(lead.next_action_at!).toLocaleString("es-CL")}
-                  </td>
-                  <td className="px-5 py-3">
-                    <form action={reassignAgenda} className="flex items-center gap-2">
-                      <input type="hidden" name="lead_id" value={lead.id} />
-                      <select
-                        name="agent_id"
-                        defaultValue={lead.managed_by ?? ""}
-                        className="rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground"
-                      >
-                        {activeAgents.map((a) => (
-                          <option key={a.id} value={a.id}>
-                            {a.full_name}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        type="datetime-local"
-                        name="next_action_at"
-                        defaultValue={toDatetimeLocal(lead.next_action_at!)}
-                        className="rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground"
-                      />
-                      <button
-                        type="submit"
-                        className="rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary-hover"
-                      >
-                        Reagendar
-                      </button>
-                    </form>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      <AgendaTable
+        title="Agendas vencidas"
+        description="Reasigna o corrige primero estas llamadas para recuperar SLA operativo."
+        rows={overdueAgenda}
+        agents={activeAgents}
+        overdue
+        emptyText="No hay agendas vencidas con estos filtros."
+      />
 
-      <div className="overflow-hidden rounded-xl border border-border bg-surface">
-        <div className="border-b border-border px-5 py-4">
-          <h2 className="text-sm font-semibold text-foreground">Próximas agendas</h2>
-        </div>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-left text-xs text-muted-foreground">
-              <th className="px-5 py-3 font-medium">Lead</th>
-              <th className="px-5 py-3 font-medium">Ejecutivo</th>
-              <th className="px-5 py-3 font-medium">Agenda</th>
-              <th className="px-5 py-3 font-medium">Reagendar</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {upcomingAgenda.length === 0 && (
-              <tr>
-                <td colSpan={4} className="px-5 py-6 text-center text-muted-foreground">
-                  No hay próximas agendas con estos filtros.
-                </td>
-              </tr>
-            )}
-            {upcomingAgenda.map((lead) => {
-              const managerName = one(lead.profiles as ProfileEmbed)?.full_name ?? "—";
-              return (
-                <tr key={lead.id}>
-                  <td className="px-5 py-3 font-medium text-foreground">
-                    <Link href={`/dashboard/leads/${lead.id}`} className="hover:text-primary">
-                      {lead.full_name}
-                    </Link>
-                  </td>
-                  <td className="px-5 py-3 text-muted-foreground">{managerName}</td>
-                  <td className="px-5 py-3 text-foreground">
-                    {new Date(lead.next_action_at!).toLocaleString("es-CL")}
-                  </td>
-                  <td className="px-5 py-3">
-                    <form action={reassignAgenda} className="flex items-center gap-2">
-                      <input type="hidden" name="lead_id" value={lead.id} />
-                      <select
-                        name="agent_id"
-                        defaultValue={lead.managed_by ?? ""}
-                        className="rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground"
-                      >
-                        {activeAgents.map((a) => (
-                          <option key={a.id} value={a.id}>
-                            {a.full_name}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        type="datetime-local"
-                        name="next_action_at"
-                        defaultValue={toDatetimeLocal(lead.next_action_at!)}
-                        className="rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground"
-                      />
-                      <button
-                        type="submit"
-                        className="rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary-hover"
-                      >
-                        Reagendar
-                      </button>
-                    </form>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      <AgendaTable
+        title="Próximas agendas"
+        rows={upcomingAgenda}
+        agents={activeAgents}
+        overdue={false}
+        emptyText="No hay próximas agendas con estos filtros."
+      />
 
-      <div className="overflow-hidden rounded-xl border border-border bg-surface">
-        <div className="border-b border-border px-5 py-4">
-          <h2 className="text-sm font-semibold text-foreground">Asignación de leads</h2>
-        </div>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-left text-xs text-muted-foreground">
-              <th className="px-5 py-3 font-medium">Lead</th>
-              <th className="px-5 py-3 font-medium">RUT</th>
-              <th className="px-5 py-3 font-medium">Estado</th>
-              <th className="px-5 py-3 font-medium">Asignado a</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
+      <SectionCard title="Asignación de leads">
+        <Table>
+          <Thead>
+            <Th>Lead</Th>
+            <Th>RUT</Th>
+            <Th>Estado</Th>
+            <Th>Asignado a</Th>
+          </Thead>
+          <Tbody>
             {(leads ?? []).length === 0 && (
-              <tr>
-                <td colSpan={4} className="px-5 py-6 text-center text-muted-foreground">
-                  No hay leads en tu equipo todavía.
-                </td>
-              </tr>
+              <TableEmpty colSpan={4}>No hay leads en tu equipo todavía.</TableEmpty>
             )}
             {(leads ?? []).map((lead) => (
-              <tr key={lead.id}>
-                <td className="px-5 py-3 font-medium text-foreground">
+              <Tr key={lead.id}>
+                <Td strong>
                   <Link href={`/dashboard/leads/${lead.id}`} className="hover:text-primary">
                     {lead.full_name}
                   </Link>
-                </td>
-                <td className="px-5 py-3 text-muted-foreground">{lead.rut ?? "—"}</td>
-                <td className="px-5 py-3">
-                  <span className="rounded-full bg-surface-muted px-2 py-1 text-xs font-medium text-muted-foreground">
+                </Td>
+                <Td muted>{lead.rut ?? "—"}</Td>
+                <Td>
+                  <Badge tone="neutral">
                     {LEAD_STATUSES.find((s) => s.value === lead.status)?.label ?? lead.status}
-                  </span>
-                </td>
-                <td className="px-5 py-3">
+                  </Badge>
+                </Td>
+                <Td>
                   <form action={assignLead} className="flex items-center gap-2">
                     <input type="hidden" name="lead_id" value={lead.id} />
-                    <select
+                    <Select
                       name="agent_id"
+                      fieldSize="sm"
                       defaultValue={lead.assigned_to ?? ""}
-                      className="rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground"
+                      className="w-auto"
                     >
                       <option value="">Sin asignar</option>
                       {activeAgents.map((a) => (
@@ -410,20 +359,17 @@ export default async function TeamPage({
                           {a.full_name}
                         </option>
                       ))}
-                    </select>
-                    <button
-                      type="submit"
-                      className="rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary-hover"
-                    >
+                    </Select>
+                    <Button type="submit" size="sm">
                       Asignar
-                    </button>
+                    </Button>
                   </form>
-                </td>
-              </tr>
+                </Td>
+              </Tr>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </Tbody>
+        </Table>
+      </SectionCard>
     </div>
   );
 }

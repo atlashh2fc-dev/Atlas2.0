@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getAgentLiveStatus, getQueueHealth } from "@/app/actions/supervision";
 import type { AgentLiveStatus, QueueHealth } from "@/lib/types";
+import { Card, SectionCard, StatusDot, type BadgeTone } from "@/components/ui";
 
 const POLL_MS = 5000;
 
@@ -17,23 +18,23 @@ function formatElapsed(sinceIso: string | null, now: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-function agentDisplay(a: AgentLiveStatus): { label: string; colorClass: string; since: string | null } {
+function agentDisplay(a: AgentLiveStatus): { label: string; tone: BadgeTone; since: string | null } {
   if (a.phone_status === "on_call") {
-    return { label: "En llamada", colorClass: "bg-primary", since: a.phone_status_since };
+    return { label: "En llamada", tone: "info", since: a.phone_status_since };
   }
   if (a.phone_status === "ringing") {
-    return { label: "Timbrando", colorClass: "bg-warning", since: a.phone_status_since };
+    return { label: "Timbrando", tone: "warning", since: a.phone_status_since };
   }
   if (a.is_pause && a.reason_label) {
-    return { label: a.reason_label, colorClass: "bg-danger", since: a.reason_since };
+    return { label: a.reason_label, tone: "danger", since: a.reason_since };
   }
   if (a.phone_status === "wrap_up") {
-    return { label: "Posterior a llamada", colorClass: "bg-warning", since: a.phone_status_since };
+    return { label: "Posterior a llamada", tone: "warning", since: a.phone_status_since };
   }
   if (a.phone_status === "available") {
-    return { label: "Disponible", colorClass: "bg-success", since: a.reason_since ?? a.phone_status_since };
+    return { label: "Disponible", tone: "success", since: a.reason_since ?? a.phone_status_since };
   }
-  return { label: "Sin conexión", colorClass: "bg-muted-foreground/40", since: null };
+  return { label: "Sin conexión", tone: "neutral", since: null };
 }
 
 function QueueHealthCard({ q }: { q: QueueHealth }) {
@@ -41,7 +42,7 @@ function QueueHealthCard({ q }: { q: QueueHealth }) {
   const abandonRate = handled > 0 ? Math.round((q.abandoned_today / handled) * 100) : 0;
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-5">
+    <Card>
       <p className="text-sm font-medium text-foreground">{q.campaign_name}</p>
       <p className="text-xs text-muted-foreground">Cola: {q.queue_name}</p>
       <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -64,7 +65,7 @@ function QueueHealthCard({ q }: { q: QueueHealth }) {
           <p className="text-[11px] text-muted-foreground">No contesta hoy</p>
         </div>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -124,16 +125,13 @@ export function LiveMonitor() {
         ))}
       </div>
 
-      <div className="rounded-xl border border-border bg-surface">
-        <div className="border-b border-border p-4">
-          <h2 className="text-sm font-semibold text-foreground">Ejecutivos ({agents.length})</h2>
-        </div>
+      <SectionCard title={`Ejecutivos (${agents.length})`}>
         <div className="divide-y divide-border">
           {agents.length === 0 && (
             <p className="p-5 text-sm text-muted-foreground">No hay ejecutivos con extensión activa.</p>
           )}
           {agents.map((a) => {
-            const { label, colorClass, since } = agentDisplay(a);
+            const { label, tone, since } = agentDisplay(a);
             return (
               <div key={a.profile_id} className="flex items-center justify-between gap-4 p-4">
                 <div className="min-w-0">
@@ -144,7 +142,7 @@ export function LiveMonitor() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={`h-2.5 w-2.5 rounded-full ${colorClass}`} />
+                  <StatusDot tone={tone} />
                   <span className="text-sm text-foreground">{label}</span>
                   <span className="w-14 text-right text-xs tabular-nums text-muted-foreground">
                     {formatElapsed(since, now)}
@@ -154,7 +152,7 @@ export function LiveMonitor() {
             );
           })}
         </div>
-      </div>
+      </SectionCard>
     </div>
   );
 }

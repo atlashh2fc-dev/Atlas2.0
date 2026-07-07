@@ -5,6 +5,7 @@ import { Phone, PhoneOff, Mic, MicOff, Delete } from "lucide-react";
 import type { Profile, AgentStatusReason } from "@/lib/types";
 import { getMySipCredentials } from "@/app/actions/agent-sip";
 import { listActiveStatusReasons, getMyCurrentStatus, setMyCurrentStatus, heartbeat } from "@/app/actions/agent-status";
+import { StatusDot, Input, Select, type BadgeTone } from "@/components/ui";
 
 const HEARTBEAT_MS = 20_000;
 
@@ -255,8 +256,8 @@ export function CtiBar({ profile }: { profile: Profile }) {
   const showStatusSelector = profile.role === "agente" && statusReasons.length > 0;
   if (!credential && !showStatusSelector) return null;
 
-  const statusColor =
-    regState === "registered" ? "bg-success" : regState === "connecting" ? "bg-warning" : "bg-danger";
+  const regTone: BadgeTone =
+    regState === "registered" ? "success" : regState === "connecting" ? "warning" : "danger";
   const statusLabel =
     regState === "registered"
       ? "Softphone conectado"
@@ -272,23 +273,23 @@ export function CtiBar({ profile }: { profile: Profile }) {
 
       {showStatusSelector && (
         <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-          <span
-            className={`h-2 w-2 flex-shrink-0 rounded-full ${
-              currentReason && !currentReason.is_pause ? "bg-success" : "bg-warning"
-            }`}
+          <StatusDot
+            tone={currentReason && !currentReason.is_pause ? "success" : "warning"}
+            className="h-2 w-2"
           />
-          <select
+          <Select
+            fieldSize="sm"
             value={currentReasonId ?? ""}
             onChange={(e) => handleStatusChange(e.target.value)}
             disabled={savingStatus}
-            className="w-full rounded-lg border border-border bg-background px-2 py-1 text-xs font-medium text-foreground outline-none disabled:opacity-60"
+            className="font-medium"
           >
             {statusReasons.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.label}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       )}
 
@@ -300,7 +301,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
             className="flex w-full items-center justify-between gap-2 rounded-2xl px-4 py-3 text-left"
           >
             <span className="flex items-center gap-2">
-              <span className={`h-2.5 w-2.5 rounded-full ${statusColor}`} />
+              <StatusDot tone={regTone} />
               <span className="text-sm font-medium text-foreground">
                 Discador · {profile.full_name.split(" ")[0]}
               </span>
@@ -332,7 +333,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
                 <button
                   type="button"
                   onClick={handleHangup}
-                  className="flex h-11 w-11 items-center justify-center rounded-full bg-danger text-white hover:opacity-90"
+                  className="flex h-11 w-11 items-center justify-center rounded-full bg-danger text-primary-foreground hover:opacity-90"
                   title="Colgar"
                 >
                   <PhoneOff size={18} />
@@ -341,12 +342,11 @@ export function CtiBar({ profile }: { profile: Profile }) {
             </div>
           ) : (
             <div className="flex flex-col gap-3">
-              <input
+              <Input
                 type="tel"
                 value={number}
                 onChange={(e) => setNumber(e.target.value)}
                 placeholder="+56 9 XXXX XXXX"
-                className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-foreground/30"
               />
               <div className="flex items-center gap-2">
                 <button
@@ -361,7 +361,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
                   type="button"
                   onClick={handleCall}
                   disabled={regState !== "registered" || !number.trim()}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-success py-2 text-sm font-medium text-white disabled:opacity-40"
+                  className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-success py-2 text-sm font-medium text-primary-foreground disabled:opacity-40"
                 >
                   <Phone size={16} />
                   Llamar

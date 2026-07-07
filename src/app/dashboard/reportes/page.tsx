@@ -11,6 +11,7 @@ import {
 } from "@/components/reportes-charts";
 import { SupervisorAgentMetricsTable } from "@/components/supervisor-agent-metrics-table";
 import { ChartDownloadButton } from "@/components/chart-download-button";
+import { Button, Card, PageHeader, Select } from "@/components/ui";
 
 type SupervisorReportKpis = {
   base_total: number;
@@ -251,14 +252,10 @@ export default async function ReportesPage({
 
     return (
       <div className="space-y-6">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-semibold text-foreground">Reportes del equipo</h1>
-            <p className="text-sm text-muted-foreground">
-              Últimos {DASHBOARD_WINDOW_DAYS} días · {formatDate(report.range.from)} a {formatDate(report.range.to)}
-            </p>
-          </div>
-        </div>
+        <PageHeader
+          title="Reportes del equipo"
+          description={`Últimos ${DASHBOARD_WINDOW_DAYS} días · ${formatDate(report.range.from)} a ${formatDate(report.range.to)}`}
+        />
 
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <MetricCard
@@ -372,40 +369,29 @@ export default async function ReportesPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">Dashboard de campaña</h1>
-          <p className="text-sm text-muted-foreground">
-            KPIs, embudo y seguimiento de la campaña seleccionada.
-          </p>
-        </div>
-          {campaigns.length > 0 && (
+      <PageHeader
+        title="Dashboard de campaña"
+        description="KPIs, embudo y seguimiento de la campaña seleccionada."
+        actions={
+          campaigns.length > 0 ? (
             <form className="flex items-center gap-2">
-              <select
-                name="campaign"
-                defaultValue={selectedCampaignId ?? ""}
-                className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-              >
+              <Select name="campaign" defaultValue={selectedCampaignId ?? ""} className="w-auto">
                 {campaigns.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
                   </option>
                 ))}
-              </select>
-              <button
-                type="submit"
-                className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
-              >
-                Ver
-              </button>
+              </Select>
+              <Button type="submit">Ver</Button>
             </form>
-          )}
-      </div>
+          ) : undefined
+        }
+      />
 
       {campaigns.length === 0 && (
-        <div className="rounded-xl border border-border bg-surface p-6 text-center text-sm text-muted-foreground">
+        <Card className="p-6 text-center text-sm text-muted-foreground">
           No hay campañas configuradas.
-        </div>
+        </Card>
       )}
 
       {selectedCampaign && dashboardSummary && <CampaignDashboardSummary key={selectedCampaign.id} summary={dashboardSummary} />}

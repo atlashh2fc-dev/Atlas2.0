@@ -3,6 +3,20 @@ import Link from "next/link";
 import { assignMailEngagementLead } from "@/app/actions/mail";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import {
+  Badge,
+  Button,
+  PageHeader,
+  SectionCard,
+  Select,
+  Table,
+  Tbody,
+  Td,
+  Th,
+  Thead,
+  TableEmpty,
+  Tr,
+} from "@/components/ui";
 
 type MailCampaign = {
   id: string;
@@ -115,10 +129,10 @@ function CampaignFilterForm({
 }) {
   return (
     <form className="flex flex-wrap items-center gap-2">
-      <select
+      <Select
         name="mailCampaign"
         defaultValue={selectedMailCampaignId ?? ""}
-        className={`${compact ? "min-w-72" : "min-w-64"} rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground`}
+        className={compact ? "w-72" : "w-64"}
       >
         <option value="">Todas las campañas mail Equifax</option>
         {campaigns.map((campaign) => (
@@ -126,13 +140,10 @@ function CampaignFilterForm({
             {campaign.name}
           </option>
         ))}
-      </select>
-      <button
-        type="submit"
-        className="rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-surface-muted"
-      >
+      </Select>
+      <Button type="submit" variant="secondary">
         Filtrar
-      </button>
+      </Button>
     </form>
   );
 }
@@ -291,15 +302,11 @@ export default async function MailDashboardPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">Leads de campañas mail</h1>
-          <p className="text-sm text-muted-foreground">
-            Contenedor operativo Equifax: solo leads con apertura o click, listos para asignación manual.
-          </p>
-        </div>
-        <CampaignFilterForm campaigns={campaigns} selectedMailCampaignId={selectedMailCampaignId} />
-      </div>
+      <PageHeader
+        title="Leads de campañas mail"
+        description="Contenedor operativo Equifax: solo leads con apertura o click, listos para asignación manual."
+        actions={<CampaignFilterForm campaigns={campaigns} selectedMailCampaignId={selectedMailCampaignId} />}
+      />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
         <MetricCard label="Enviados" value={formatNumber(totals.sent)} />
@@ -310,48 +317,39 @@ export default async function MailDashboardPage({
         <MetricCard label="Gestionados" value={formatNumber(totals.managed)} detail={percent(totals.managed, totals.hot)} />
       </div>
 
-      <section className="rounded-xl border border-border bg-surface">
-        <div className="border-b border-border px-5 py-4">
-          <h2 className="text-sm font-semibold text-foreground">Reportería por campaña mail</h2>
-        </div>
+      <SectionCard title="Reportería por campaña mail">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th className="px-5 py-3 font-medium">Campaña mail</th>
-                <th className="px-5 py-3 font-medium">CRM</th>
-                <th className="px-5 py-3 font-medium">Enviados</th>
-                <th className="px-5 py-3 font-medium">Aperturas</th>
-                <th className="px-5 py-3 font-medium">Clicks</th>
-                <th className="px-5 py-3 font-medium">Asignados</th>
-                <th className="px-5 py-3 font-medium">Última señal</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
+          <Table>
+            <Thead>
+              <Th>Campaña mail</Th>
+              <Th>CRM</Th>
+              <Th>Enviados</Th>
+              <Th>Aperturas</Th>
+              <Th>Clicks</Th>
+              <Th>Asignados</Th>
+              <Th>Última señal</Th>
+            </Thead>
+            <Tbody>
               {reports.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-5 py-6 text-center text-muted-foreground">
-                    Sin señales mail para el filtro seleccionado.
-                  </td>
-                </tr>
+                <TableEmpty colSpan={7}>Sin señales mail para el filtro seleccionado.</TableEmpty>
               )}
               {reports.map((row) => (
-                <tr key={`${row.mail_campaign_id ?? row.campaign_id}-${row.campaign_id}`}>
-                  <td className="px-5 py-3 font-medium text-foreground">{row.mail_campaign_name}</td>
-                  <td className="px-5 py-3 text-muted-foreground">{row.campaign_name}</td>
-                  <td className="px-5 py-3 text-muted-foreground">{formatNumber(row.sent_leads)}</td>
-                  <td className="px-5 py-3 text-muted-foreground">{formatNumber(row.opened_leads)}</td>
-                  <td className="px-5 py-3 text-muted-foreground">{formatNumber(row.clicked_leads)}</td>
-                  <td className="px-5 py-3 text-muted-foreground">
+                <Tr key={`${row.mail_campaign_id ?? row.campaign_id}-${row.campaign_id}`}>
+                  <Td strong>{row.mail_campaign_name}</Td>
+                  <Td muted>{row.campaign_name}</Td>
+                  <Td muted>{formatNumber(row.sent_leads)}</Td>
+                  <Td muted>{formatNumber(row.opened_leads)}</Td>
+                  <Td muted>{formatNumber(row.clicked_leads)}</Td>
+                  <Td muted>
                     {formatNumber(row.assigned_hot_leads)} / {formatNumber(row.hot_leads)}
-                  </td>
-                  <td className="px-5 py-3 text-muted-foreground">{formatDate(row.last_event_at)}</td>
-                </tr>
+                  </Td>
+                  <Td muted>{formatDate(row.last_event_at)}</Td>
+                </Tr>
               ))}
-            </tbody>
-          </table>
+            </Tbody>
+          </Table>
         </div>
-      </section>
+      </SectionCard>
 
       <section className="rounded-xl border border-border bg-surface">
         <div className="border-b border-border px-5 py-4">
@@ -440,24 +438,20 @@ export default async function MailDashboardPage({
           </div>
 
           <div className="mt-4 overflow-x-auto rounded-lg border border-border bg-surface">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                  <th className="px-4 py-3 font-medium">Ejecutivo</th>
-                  <th className="px-4 py-3 font-medium">Leads mail</th>
-                  <th className="px-4 py-3 font-medium">Señales</th>
-                  <th className="px-4 py-3 font-medium">Contactos</th>
-                  <th className="px-4 py-3 font-medium">Agendas</th>
-                  <th className="px-4 py-3 font-medium">Seguimiento</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
+            <Table>
+              <Thead>
+                <Th>Ejecutivo</Th>
+                <Th>Leads mail</Th>
+                <Th>Señales</Th>
+                <Th>Contactos</Th>
+                <Th>Agendas</Th>
+                <Th>Seguimiento</Th>
+              </Thead>
+              <Tbody>
                 {agentSummaryForDisplay.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">
-                      No hay ejecutivos con gestión mail para este filtro.
-                    </td>
-                  </tr>
+                  <TableEmpty colSpan={6}>
+                    No hay ejecutivos con gestión mail para este filtro.
+                  </TableEmpty>
                 )}
                 {agentSummaryForDisplay.map((row) => {
                   const contactRate = row.assigned_leads > 0 ? row.contacted_leads / row.assigned_leads : 0;
@@ -475,27 +469,23 @@ export default async function MailDashboardPage({
                               : "En seguimiento";
                   const needsAttention = attentionLabel !== "En seguimiento" && attentionLabel !== "Sin asignación mail";
                   return (
-                    <tr key={row.agent_id}>
-                      <td className="px-4 py-3">
+                    <Tr key={row.agent_id}>
+                      <Td>
                         <p className="font-medium text-foreground">{row.agent_name}</p>
                         <p className="text-xs text-muted-foreground">Última señal mail: {formatDate(row.last_event_at)}</p>
                         <p className="text-xs text-muted-foreground">Última gestión CRM: {formatDate(row.last_interaction_at)}</p>
-                      </td>
-                      <td className="px-4 py-3">
+                      </Td>
+                      <Td>
                         <p className="font-semibold text-foreground">{formatNumber(row.assigned_leads)}</p>
                         <p className="text-xs text-muted-foreground">{percent(row.assigned_leads, agentTotals.assigned)} de asignados</p>
-                      </td>
-                      <td className="px-4 py-3">
+                      </Td>
+                      <Td>
                         <div className="flex flex-wrap gap-1.5">
-                          <span className="rounded-full bg-success-bg px-2 py-0.5 text-xs font-medium text-success">
-                            {formatNumber(row.clicked_leads)} clicks
-                          </span>
-                          <span className="rounded-full bg-warning-bg px-2 py-0.5 text-xs font-medium text-warning">
-                            {formatNumber(row.opened_only_leads)} aperturas sin click
-                          </span>
+                          <Badge tone="success">{formatNumber(row.clicked_leads)} clicks</Badge>
+                          <Badge tone="warning">{formatNumber(row.opened_only_leads)} aperturas sin click</Badge>
                         </div>
-                      </td>
-                      <td className="px-4 py-3">
+                      </Td>
+                      <Td>
                         <p className="font-semibold text-foreground">{formatNumber(row.contacted_leads)}</p>
                         <p className="text-xs text-muted-foreground">
                           {formatNumber(row.interactions)} gestiones · {percent(row.contacted_leads, row.assigned_leads)}
@@ -503,8 +493,8 @@ export default async function MailDashboardPage({
                         {row.clicked_uncontacted_leads > 0 && (
                           <p className="text-xs font-medium text-warning">{formatNumber(row.clicked_uncontacted_leads)} clicks sin contacto</p>
                         )}
-                      </td>
-                      <td className="px-4 py-3">
+                      </Td>
+                      <Td>
                         <p className="font-semibold text-foreground">{formatNumber(row.pending_agendas)} pendientes</p>
                         <p className={row.overdue_agendas > 0 ? "text-xs font-medium text-danger" : "text-xs text-muted-foreground"}>
                           {formatNumber(row.overdue_agendas)} vencidas · próxima {formatDate(row.next_agenda_at)}
@@ -512,81 +502,72 @@ export default async function MailDashboardPage({
                         {row.no_next_action_leads > 0 && (
                           <p className="text-xs text-muted-foreground">{formatNumber(row.no_next_action_leads)} sin próxima acción</p>
                         )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                      </Td>
+                      <Td>
+                        <Badge
+                          tone={
                             attentionLabel === "Sin asignación mail"
-                              ? "bg-surface-muted text-muted-foreground"
+                              ? "neutral"
                               : needsAttention
-                                ? "bg-warning-bg text-warning"
-                                : "bg-success-bg text-success"
-                          }`}
+                                ? "warning"
+                                : "success"
+                          }
                         >
                           {attentionLabel}
-                        </span>
-                      </td>
-                    </tr>
+                        </Badge>
+                      </Td>
+                    </Tr>
                   );
                 })}
-              </tbody>
-            </table>
+              </Tbody>
+            </Table>
           </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th className="px-5 py-3 font-medium">Lead</th>
-                <th className="px-5 py-3 font-medium">Señal</th>
-                <th className="px-5 py-3 font-medium">Campaña</th>
-                <th className="px-5 py-3 font-medium">Asignado</th>
-                <th className="px-5 py-3 font-medium">Asignar</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
+          <Table>
+            <Thead>
+              <Th>Lead</Th>
+              <Th>Señal</Th>
+              <Th>Campaña</Th>
+              <Th>Asignado</Th>
+              <Th>Asignar</Th>
+            </Thead>
+            <Tbody>
               {queue.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-5 py-6 text-center text-muted-foreground">
-                    No hay leads con apertura o click para asignar.
-                  </td>
-                </tr>
+                <TableEmpty colSpan={5}>No hay leads con apertura o click para asignar.</TableEmpty>
               )}
               {queue.map((row) => (
-                <tr key={`${row.mail_campaign_id ?? row.campaign_id}-${row.lead_id}`}>
-                  <td className="px-5 py-3">
+                <Tr key={`${row.mail_campaign_id ?? row.campaign_id}-${row.lead_id}`}>
+                  <Td>
                     <Link href={`/dashboard/leads/${row.lead_id}`} className="font-medium text-foreground hover:text-primary">
                       {row.full_name}
                     </Link>
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       {row.rut ?? "Sin RUT"} · {row.phone ?? row.email ?? "Sin contacto"}
                     </p>
-                  </td>
-                  <td className="px-5 py-3">
+                  </Td>
+                  <Td>
                     <div className="flex flex-wrap gap-1.5">
-                      {row.clicked && (
-                        <span className="rounded-full bg-success-bg px-2 py-0.5 text-xs font-medium text-success">Click</span>
-                      )}
-                      {row.opened && (
-                        <span className="rounded-full bg-warning-bg px-2 py-0.5 text-xs font-medium text-warning">Apertura</span>
-                      )}
+                      {row.clicked && <Badge tone="success">Click</Badge>}
+                      {row.opened && <Badge tone="warning">Apertura</Badge>}
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">{formatDate(row.last_event_at)}</p>
-                  </td>
-                  <td className="px-5 py-3 text-muted-foreground">
+                  </Td>
+                  <Td muted>
                     <p>{row.mail_campaign_name}</p>
                     <p className="text-xs">{row.campaign_name}</p>
-                  </td>
-                  <td className="px-5 py-3 text-muted-foreground">{row.assigned_to_name ?? "Sin asignar"}</td>
-                  <td className="px-5 py-3">
+                  </Td>
+                  <Td muted>{row.assigned_to_name ?? "Sin asignar"}</Td>
+                  <Td>
                     <form action={assignMailEngagementLead} className="flex min-w-72 items-center gap-2">
                       <input type="hidden" name="lead_id" value={row.lead_id} />
                       <input type="hidden" name="mail_campaign_id" value={row.mail_campaign_id ?? ""} />
-                      <select
+                      <Select
                         name="agent_id"
+                        fieldSize="sm"
                         defaultValue={row.assigned_to ?? ""}
                         required
-                        className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground"
+                        className="min-w-0 flex-1"
                       >
                         <option value="" disabled>
                           Ejecutivo
@@ -596,19 +577,16 @@ export default async function MailDashboardPage({
                             {agent.full_name}
                           </option>
                         ))}
-                      </select>
-                      <button
-                        type="submit"
-                        className="rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary-hover"
-                      >
+                      </Select>
+                      <Button type="submit" size="sm">
                         Asignar
-                      </button>
+                      </Button>
                     </form>
-                  </td>
-                </tr>
+                  </Td>
+                </Tr>
               ))}
-            </tbody>
-          </table>
+            </Tbody>
+          </Table>
         </div>
       </section>
     </div>
