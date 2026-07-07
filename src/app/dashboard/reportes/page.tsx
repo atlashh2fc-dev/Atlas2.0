@@ -143,12 +143,12 @@ function MetricCard({
           : "bg-primary";
 
   return (
-    <div className={`rounded-xl border ${toneClass} bg-surface p-5`}>
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-foreground">{value}</p>
-      {detail && <p className="mt-2 text-xs text-muted-foreground">{detail}</p>}
+    <div className={`rounded-lg border ${toneClass} bg-surface p-4 shadow-sm`}>
+      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-1.5 text-2xl font-semibold tabular-nums text-foreground">{value}</p>
+      {detail && <p className="mt-1.5 text-xs text-muted-foreground">{detail}</p>}
       {clampedProgress !== null && (
-        <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-surface-muted">
+        <div className="mt-3 h-1 overflow-hidden rounded-full bg-surface-muted">
           <div className={`h-full rounded-full ${barClass}`} style={{ width: `${clampedProgress}%` }} />
         </div>
       )}
@@ -168,7 +168,7 @@ function ChartPanel({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-border bg-surface p-4">
+    <section className="rounded-lg border border-border bg-surface p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-foreground">{title}</h2>
         <ChartDownloadButton filename={filename} rows={rows} />

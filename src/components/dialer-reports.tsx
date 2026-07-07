@@ -38,9 +38,9 @@ function formatPercent(v: number | null | undefined): string {
 function SummaryCard({ label, value, tone }: { label: string; value: string; tone?: "danger" | "success" | "warning" }) {
   const toneClass = tone === "danger" ? "text-danger" : tone === "success" ? "text-success" : tone === "warning" ? "text-warning" : "text-foreground";
   return (
-    <div className="rounded-xl border border-border bg-surface p-4">
-      <p className={`text-xl font-semibold ${toneClass}`}>{value}</p>
-      <p className="mt-1 text-[11px] text-muted-foreground">{label}</p>
+    <div className="rounded-lg border border-border bg-surface p-4 shadow-sm">
+      <p className={`text-xl font-semibold tabular-nums ${toneClass}`}>{value}</p>
+      <p className="mt-1 text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
     </div>
   );
 }

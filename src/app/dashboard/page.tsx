@@ -111,7 +111,7 @@ export default async function DashboardPage() {
         </div>
 
         {!teamId && (
-          <div className="rounded-xl border border-danger/30 bg-danger-bg px-5 py-4 text-sm text-danger">
+          <div className="rounded-lg border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger">
             Tu usuario supervisor no tiene equipo asignado. Un administrador debe asociarte a un equipo.
           </div>
         )}
@@ -125,7 +125,7 @@ export default async function DashboardPage() {
         </div>
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-          <div className="rounded-xl border border-border bg-surface p-5 xl:col-span-2">
+          <div className="rounded-lg border border-border bg-surface p-4 shadow-sm xl:col-span-2">
             <h2 className="text-sm font-semibold text-foreground">Alertas operativas</h2>
             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
               <Link
@@ -152,7 +152,7 @@ export default async function DashboardPage() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-border bg-surface">
+          <div className="rounded-lg border border-border bg-surface shadow-sm">
             <div className="border-b border-border px-5 py-4">
               <h2 className="text-sm font-semibold text-foreground">Top ejecutivos</h2>
             </div>
@@ -245,7 +245,7 @@ export default async function DashboardPage() {
         </div>
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-          <div className="rounded-xl border border-border bg-surface p-5 xl:col-span-2">
+          <div className="rounded-lg border border-border bg-surface p-4 shadow-sm xl:col-span-2">
             <h2 className="text-sm font-semibold text-foreground">Pendientes de configuración</h2>
             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
               <Link
@@ -272,7 +272,7 @@ export default async function DashboardPage() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-border bg-surface">
+          <div className="rounded-lg border border-border bg-surface shadow-sm">
             <div className="border-b border-border px-5 py-4">
               <h2 className="text-sm font-semibold text-foreground">Campañas recientes</h2>
             </div>

@@ -9,7 +9,9 @@ export function Card({
   className?: string;
   children: ReactNode;
 }) {
-  return <div className={cn("rounded-xl border border-border bg-surface p-5", className)}>{children}</div>;
+  return (
+    <div className={cn("rounded-lg border border-border bg-surface p-4 shadow-sm", className)}>{children}</div>
+  );
 }
 
 /**
@@ -31,12 +33,12 @@ export function SectionCard({
 }) {
   const hasHeader = title || description || actions;
   return (
-    <div className={cn("overflow-hidden rounded-xl border border-border bg-surface", className)}>
+    <div className={cn("overflow-hidden rounded-lg border border-border bg-surface shadow-sm", className)}>
       {hasHeader && (
-        <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
+        <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
           <div>
             {title && <h2 className="text-sm font-semibold text-foreground">{title}</h2>}
-            {description && <p className="text-xs text-muted-foreground">{description}</p>}
+            {description && <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>}
           </div>
           {actions}
         </div>
@@ -66,6 +68,6 @@ export function Callout({
   children: ReactNode;
 }) {
   return (
-    <div className={cn("rounded-xl border p-5 text-sm", CALLOUT_TONES[tone], className)}>{children}</div>
+    <div className={cn("rounded-lg border p-4 text-sm", CALLOUT_TONES[tone], className)}>{children}</div>
   );
 }

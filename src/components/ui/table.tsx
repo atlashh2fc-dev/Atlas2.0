@@ -4,14 +4,16 @@ import { cn } from "@/lib/utils";
 type Align = "left" | "right";
 
 export function Table({ className, children }: { className?: string; children: ReactNode }) {
-  return <table className={cn("w-full text-sm", className)}>{children}</table>;
+  return <table className={cn("w-full border-collapse text-sm tabular-nums", className)}>{children}</table>;
 }
 
-/** Cabecera de tabla. Pásale celdas `<Th>` como children. */
+/** Cabecera de tabla: tintada, sticky y en versalitas (estilo consola de datos). */
 export function Thead({ children }: { children: ReactNode }) {
   return (
-    <thead>
-      <tr className="border-b border-border text-left text-xs text-muted-foreground">{children}</tr>
+    <thead className="sticky top-0 z-10">
+      <tr className="border-b border-border bg-surface-muted text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+        {children}
+      </tr>
     </thead>
   );
 }
@@ -26,7 +28,9 @@ export function Th({
   children?: ReactNode;
 }) {
   return (
-    <th className={cn("px-5 py-3 font-medium", align === "right" && "text-right", className)}>{children}</th>
+    <th className={cn("px-4 py-2.5 font-semibold", align === "right" && "text-right", className)}>
+      {children}
+    </th>
   );
 }
 
@@ -35,7 +39,7 @@ export function Tbody({ children }: { children: ReactNode }) {
 }
 
 export function Tr({ className, children }: { className?: string; children: ReactNode }) {
-  return <tr className={className}>{children}</tr>;
+  return <tr className={cn("transition-colors hover:bg-surface-muted/50", className)}>{children}</tr>;
 }
 
 export function Td({
@@ -57,7 +61,7 @@ export function Td({
     <td
       colSpan={colSpan}
       className={cn(
-        "px-5 py-3",
+        "px-4 py-2.5",
         align === "right" && "text-right",
         muted && "text-muted-foreground",
         strong && "font-medium text-foreground",

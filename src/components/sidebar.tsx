@@ -167,16 +167,16 @@ export function Sidebar({ profile }: { profile: Profile }) {
               )}
               <Link
                 href={item.href}
-                className={`group relative flex items-center gap-3 rounded-lg text-sm font-medium transition-colors ${
-                  item.indent ? "ml-3 py-1.5 pl-3 pr-3 text-[13px]" : "px-3 py-2"
+                className={`group relative flex items-center gap-3 rounded-md text-sm font-medium transition-colors ${
+                  item.indent ? "ml-3 py-1.5 pl-3 pr-3 text-[13px]" : "px-3 py-1.5"
                 } ${
                   active
-                    ? "bg-accent text-accent-foreground"
+                    ? "bg-primary/10 font-semibold text-primary"
                     : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"
                 }`}
               >
                 {active && !item.indent && (
-                  <span className="absolute -left-3 top-1/2 h-4 w-1 -translate-y-1/2 rounded-full bg-primary" />
+                  <span className="absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-full bg-primary" />
                 )}
                 <span
                   className={`flex items-center justify-center rounded-md transition-colors ${

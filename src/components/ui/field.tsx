@@ -22,11 +22,11 @@ export function Field({
 export type FieldSize = "sm" | "md";
 
 const FIELD_BASE =
-  "w-full rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60";
+  "w-full rounded-md border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60";
 
 const FIELD_SIZES: Record<FieldSize, string> = {
   sm: "px-2 py-1 text-xs",
-  md: "px-3 py-2 text-sm",
+  md: "px-3 py-1.5 text-sm",
 };
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {

@@ -14,10 +14,15 @@ export function PageHeader({
   className?: string;
 }) {
   return (
-    <div className={cn("flex flex-wrap items-end justify-between gap-4", className)}>
+    <div
+      className={cn(
+        "flex flex-wrap items-end justify-between gap-4 border-b border-border pb-4",
+        className
+      )}
+    >
       <div>
-        <h1 className="text-xl font-semibold text-foreground">{title}</h1>
-        {description && <p className="text-sm text-muted-foreground">{description}</p>}
+        <h1 className="text-xl font-semibold tracking-tight text-foreground">{title}</h1>
+        {description && <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>}
       </div>
       {actions}
     </div>
