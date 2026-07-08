@@ -4,6 +4,7 @@ import { assignLead, reassignAgenda } from "@/app/actions/admin";
 import { LEAD_STATUSES } from "@/lib/types";
 import Link from "next/link";
 import {
+  ActionForm,
   Badge,
   Button,
   Callout,
@@ -82,7 +83,7 @@ function percent(part: number, total: number): number {
 /** Formulario en línea para reasignar ejecutivo y fecha de una agenda. */
 function ReassignForm({ lead, agents }: { lead: AgendaLead; agents: AgentOption[] }) {
   return (
-    <form action={reassignAgenda} className="flex items-center gap-2">
+    <ActionForm action={reassignAgenda} success="Agenda reasignada" className="flex items-center gap-2">
       <input type="hidden" name="lead_id" value={lead.id} />
       <Select name="agent_id" fieldSize="sm" defaultValue={lead.managed_by ?? ""} className="w-auto">
         {agents.map((a) => (
@@ -95,12 +96,12 @@ function ReassignForm({ lead, agents }: { lead: AgendaLead; agents: AgentOption[
         type="datetime-local"
         name="next_action_at"
         defaultValue={toDatetimeLocal(lead.next_action_at!)}
-        className="rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       />
       <Button type="submit" size="sm">
         Reagendar
       </Button>
-    </form>
+    </ActionForm>
   );
 }
 
@@ -345,7 +346,7 @@ export default async function TeamPage({
                   </Badge>
                 </Td>
                 <Td>
-                  <form action={assignLead} className="flex items-center gap-2">
+                  <ActionForm action={assignLead} success="Lead asignado" className="flex items-center gap-2">
                     <input type="hidden" name="lead_id" value={lead.id} />
                     <Select
                       name="agent_id"
@@ -363,7 +364,7 @@ export default async function TeamPage({
                     <Button type="submit" size="sm">
                       Asignar
                     </Button>
-                  </form>
+                  </ActionForm>
                 </Td>
               </Tr>
             ))}
