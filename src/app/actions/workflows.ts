@@ -9,10 +9,27 @@ import { requireProfile } from "@/lib/auth";
 
 export async function createWorkflow(formData: FormData) {
   await requireProfile(["admin"]);
-  const name = formData.get("name") as string;
-  const description = (formData.get("description") as string) || null;
+  const name = (formData.get("name") as string)?.trim();
+  const description = (formData.get("description") as string)?.trim() || null;
+  const campaignId = (formData.get("campaign_id") as string) || null;
+
+  if (!name) throw new Error("El nombre del flujo es obligatorio.");
 
   const supabase = await createClient();
+
+  // Validar la campaña antes de crear el flujo evita dejar flujos huérfanos
+  // por un id inválido o por una campaña eliminada en otra sesión.
+  if (campaignId) {
+    const { data: campaign, error: campaignError } = await supabase
+      .from("campaigns")
+      .select("id")
+      .eq("id", campaignId)
+      .maybeSingle();
+
+    if (campaignError) throw new Error(campaignError.message);
+    if (!campaign) throw new Error("La campaña seleccionada ya no existe.");
+  }
+
   const { data, error } = await supabase
     .from("workflows")
     .insert({ name, description })
@@ -20,6 +37,23 @@ export async function createWorkflow(formData: FormData) {
     .single();
 
   if (error) throw new Error(error.message);
+
+  if (campaignId) {
+    const { error: campaignError } = await supabase
+      .from("campaigns")
+      .update({ workflow_id: data.id, updated_at: new Date().toISOString() })
+      .eq("id", campaignId);
+
+    if (campaignError) {
+      // La creación ya ocurrió; compensamos para que la acción no deje un
+      // flujo sin la campaña que el administrador pidió conectar.
+      await supabase.from("workflows").delete().eq("id", data.id);
+      throw new Error(campaignError.message);
+    }
+    revalidatePath(`/dashboard/admin/campanas/${campaignId}`);
+    revalidatePath("/dashboard/admin/campanas");
+  }
+
   revalidatePath("/dashboard/admin/flujos");
   redirect(`/dashboard/admin/flujos/${data.id}`);
 }
