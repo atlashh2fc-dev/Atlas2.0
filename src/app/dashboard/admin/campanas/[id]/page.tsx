@@ -126,8 +126,15 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
           </form>
           <p className="mt-2 text-xs text-muted-foreground">
             Este es el flujo que los ejecutivos verán al gestionar leads de esta campaña. Edítalo en{" "}
-            <Link href="/dashboard/admin/flujos" className="text-primary hover:underline">
+            <Link href={`/dashboard/admin/flujos?campaign_id=${campaign.id}`} className="text-primary hover:underline">
               Flujos de gestión
+            </Link>
+            {" "}o{" "}
+            <Link
+              href={`/dashboard/admin/flujos?campaign_id=${campaign.id}`}
+              className="font-medium text-primary hover:underline"
+            >
+              crea un flujo nuevo para esta campaña
             </Link>
             .
           </p>

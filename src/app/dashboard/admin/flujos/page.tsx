@@ -4,8 +4,13 @@ import { createWorkflow, createWorkflowFromTemplate, toggleWorkflowActive } from
 import { WORKFLOW_TEMPLATES } from "@/lib/workflow-templates";
 import Link from "next/link";
 
-export default async function WorkflowsPage() {
+export default async function WorkflowsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ campaign_id?: string }>;
+}) {
   await requireProfile(["admin"]);
+  const { campaign_id: campaignId } = await searchParams;
   const supabase = await createClient();
 
   const { data: workflows } = await supabase
@@ -18,9 +23,19 @@ export default async function WorkflowsPage() {
     .select("id, name, workflow_id")
     .order("name");
 
+  const selectedCampaign = (campaigns ?? []).find((campaign) => campaign.id === campaignId);
+
   return (
     <div className="space-y-6">
       <div>
+        {selectedCampaign && (
+          <Link
+            href={`/dashboard/admin/campanas/${selectedCampaign.id}`}
+            className="mb-2 inline-block text-xs text-muted-foreground hover:text-primary"
+          >
+            ← Volver a {selectedCampaign.name}
+          </Link>
+        )}
         <h1 className="text-xl font-semibold text-foreground">Flujos de gestión</h1>
         <p className="text-sm text-muted-foreground">
           Define los pasos obligatorios que los agentes deben completar al gestionar un lead.
@@ -37,7 +52,9 @@ export default async function WorkflowsPage() {
             <span className="text-2xl">✦</span>
             <h3 className="mt-2 text-sm font-semibold text-foreground">Crear flujo desde cero</h3>
             <p className="mt-1 flex-1 text-xs text-muted-foreground">
-              Diseña tus propios pasos y déjalo conectado inmediatamente a una campaña.
+              {selectedCampaign
+                ? `Diseña los pasos para ${selectedCampaign.name}; quedará conectado automáticamente.`
+                : "Diseña tus propios pasos y déjalo conectado inmediatamente a una campaña."}
             </p>
             {(campaigns ?? []).length > 0 ? (
               <form action={createWorkflow} className="mt-3 space-y-2">
@@ -54,21 +71,30 @@ export default async function WorkflowsPage() {
                   placeholder="Descripción (opcional)"
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground"
                 />
-                <select
-                  name="campaign_id"
-                  required
-                  defaultValue=""
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground"
-                >
-                  <option value="" disabled>
-                    Conectar a una campaña
-                  </option>
-                  {(campaigns ?? []).map((campaign) => (
-                    <option key={campaign.id} value={campaign.id}>
-                      {campaign.name}{campaign.workflow_id ? " (reemplaza su flujo actual)" : ""}
+                {selectedCampaign ? (
+                  <>
+                    <input type="hidden" name="campaign_id" value={selectedCampaign.id} />
+                    <p className="rounded-lg border border-primary/25 bg-background px-3 py-2 text-xs font-medium text-foreground">
+                      Campaña: {selectedCampaign.name}
+                    </p>
+                  </>
+                ) : (
+                  <select
+                    name="campaign_id"
+                    required
+                    defaultValue=""
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground"
+                  >
+                    <option value="" disabled>
+                      Conectar a una campaña
                     </option>
-                  ))}
-                </select>
+                    {(campaigns ?? []).map((campaign) => (
+                      <option key={campaign.id} value={campaign.id}>
+                        {campaign.name}{campaign.workflow_id ? " (reemplaza su flujo actual)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <button
                   type="submit"
                   className="w-full rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary-hover"

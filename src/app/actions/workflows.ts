@@ -55,7 +55,8 @@ export async function createWorkflow(formData: FormData) {
   }
 
   revalidatePath("/dashboard/admin/flujos");
-  redirect(`/dashboard/admin/flujos/${data.id}`);
+  const campaignContext = campaignId ? `?campaign_id=${encodeURIComponent(campaignId)}` : "";
+  redirect(`/dashboard/admin/flujos/${data.id}${campaignContext}`);
 }
 
 export async function createWorkflowFromTemplate(formData: FormData) {
