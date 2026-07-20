@@ -36,6 +36,33 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
 
   const assignedIds = new Set((members ?? []).map((m) => m.profile_id));
   const availableAgents = (agents ?? []).filter((a) => !assignedIds.has(a.id));
+  const setupItems = [
+    {
+      label: "Flujo productivo",
+      detail: campaign.workflow_id ? "Configurado" : "Crea o asigna el guion de gestión",
+      done: Boolean(campaign.workflow_id),
+      href: `/dashboard/admin/flujos?campaign_id=${campaign.id}`,
+    },
+    {
+      label: "Ejecutivos",
+      detail: (members ?? []).length > 0 ? `${members?.length} asignado(s)` : "Asigna al menos un ejecutivo",
+      done: (members ?? []).length > 0,
+      href: "#ejecutivos",
+    },
+    {
+      label: "Base de leads",
+      detail: (leadCount ?? 0) > 0 ? `${leadCount} lead(s) cargados` : "Carga la base de la campaña",
+      done: (leadCount ?? 0) > 0,
+      href: `/dashboard/leads/cargar?campaign_id=${campaign.id}`,
+    },
+    {
+      label: "Discador",
+      detail: dc ? (dc.is_active ? "Configurado y activo" : "Configurado, falta activarlo") : "Configura la cola y modo de discado",
+      done: Boolean(dc?.is_active),
+      href: "#discado",
+    },
+  ];
+  const pendingSetupCount = setupItems.filter((item) => !item.done).length;
 
   return (
     <div className="space-y-6">
@@ -141,7 +168,32 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
         </div>
       </div>
 
-      <div className="rounded-xl border border-border bg-surface p-5">
+      <section className="rounded-xl border border-border bg-surface p-5">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">Preparación de la campaña</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Completa estos pasos antes de iniciar la operación.
+            </p>
+          </div>
+          <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${pendingSetupCount === 0 ? "bg-success-bg text-success" : "bg-warning-bg text-warning"}`}>
+            {pendingSetupCount === 0 ? "Lista para operar" : `${pendingSetupCount} pendiente${pendingSetupCount === 1 ? "" : "s"}`}
+          </span>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {setupItems.map((item) => (
+            <Link key={item.label} href={item.href} className="rounded-lg border border-border bg-background p-3 transition-colors hover:border-primary">
+              <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${item.done ? "bg-success-bg text-success" : "bg-warning-bg text-warning"}`}>
+                {item.done ? "Listo" : "Pendiente"}
+              </span>
+              <p className="mt-2 text-sm font-medium text-foreground">{item.label}</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.detail}</p>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      <div id="ejecutivos" className="rounded-xl border border-border bg-surface p-5">
         <h2 className="mb-3 text-sm font-semibold text-foreground">Ejecutivos asignados</h2>
         <div className="divide-y divide-border">
           {(members ?? []).length === 0 && (
@@ -199,7 +251,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
         </form>
       </div>
 
-      <div className="rounded-xl border border-border bg-surface p-5">
+      <div id="discado" className="rounded-xl border border-border bg-surface p-5">
         <h2 className="mb-1 text-sm font-semibold text-foreground">Configuración de discado</h2>
         <p className="mb-4 text-xs text-muted-foreground">
           Define cómo el motor de discado maneja esta campaña. Los ejecutivos asignados arriba son los

@@ -142,7 +142,7 @@ const NAV_ITEMS: NavItem[] = [
     href: "/dashboard/ayuda",
     label: "Ayuda",
     icon: CircleHelp,
-    roles: ["supervisor", "admin"],
+    roles: ["agente", "supervisor", "admin"],
     sectionLabel: "Soporte",
   },
 ];

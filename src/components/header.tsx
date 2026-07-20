@@ -20,7 +20,7 @@ export function Header({ profile }: { profile: Profile }) {
       </div>
 
       <div className="flex items-center gap-3">
-        <QuickSearch />
+        <QuickSearch role={profile.role} />
         {profile.role === "agente" && <AgendaBell />}
         <ThemeToggle />
         <form action={signOut}>
