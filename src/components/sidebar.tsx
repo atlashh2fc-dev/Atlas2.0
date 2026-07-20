@@ -25,6 +25,7 @@ import {
   ChevronDown,
   PanelLeftClose,
   PanelLeftOpen,
+  CircleHelp,
 } from "lucide-react";
 
 interface NavItem {
@@ -135,6 +136,15 @@ const NAV_ITEMS: NavItem[] = [
     sectionLabel: "Administración",
   },
   { href: "/dashboard/admin/flujos", label: "Flujos", icon: Workflow, roles: ["admin"] },
+
+  // Ayuda: guía contextual para quienes configuran y supervisan la operación.
+  {
+    href: "/dashboard/ayuda",
+    label: "Ayuda",
+    icon: CircleHelp,
+    roles: ["supervisor", "admin"],
+    sectionLabel: "Soporte",
+  },
 ];
 
 const ROLE_LABEL: Record<AppRole, string> = {
