@@ -20,6 +20,7 @@ import {
   type NodeHandle,
   useReactFlow,
 } from "@xyflow/react";
+import { X } from "lucide-react";
 import "@xyflow/react/dist/style.css";
 import type { WorkflowFieldType, WorkflowStep, WorkflowStepBranch } from "@/lib/types";
 import { WORKFLOW_FIELD_TYPES } from "@/lib/types";
@@ -61,6 +62,7 @@ function stepRows(step: WorkflowStep): { id: string; label: string }[] {
 interface StepNodeData extends Record<string, unknown> {
   step: WorkflowStep;
   onSelect: (id: string) => void;
+  onDelete: (id: string) => void;
   selected: boolean;
 }
 
@@ -77,7 +79,7 @@ function StepNode({ data }: NodeProps<StepFlowNode>) {
   return (
     <div
       onClick={() => data.onSelect(step.id)}
-      className={`w-64 cursor-pointer rounded-xl border bg-surface shadow-sm transition-shadow ${
+      className={`group relative w-64 cursor-pointer rounded-xl border bg-surface shadow-sm transition-shadow ${
         data.selected ? "border-primary ring-2 ring-ring" : "border-border"
       }`}
     >
@@ -93,6 +95,22 @@ function StepNode({ data }: NodeProps<StepFlowNode>) {
         id="out"
         className="!h-3 !w-3 !border-2 !border-primary !bg-surface"
       />
+
+      <button
+        type="button"
+        aria-label={`Eliminar ${step.name}`}
+        title="Eliminar paso"
+        onMouseDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation();
+          data.onDelete(step.id);
+        }}
+        className={`nodrag nopan absolute right-2 top-2 z-10 grid size-6 place-items-center rounded-md border border-danger/30 bg-surface text-danger shadow-sm transition hover:bg-danger-bg focus:outline-none focus:ring-2 focus:ring-danger/40 ${
+          data.selected ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus:opacity-100"
+        }`}
+      >
+        <X className="size-3.5" aria-hidden="true" />
+      </button>
 
       <div className="border-b border-border px-3 py-2.5" style={{ height: HEADER_HEIGHT }}>
         <div className="flex items-center gap-1.5">
@@ -169,13 +187,18 @@ function buildHandles(step: WorkflowStep): NodeHandle[] {
   ];
 }
 
-function stepToNode(step: WorkflowStep, onSelect: (id: string) => void, selectedId: string | null): StepFlowNode {
+function stepToNode(
+  step: WorkflowStep,
+  onSelect: (id: string) => void,
+  onDelete: (id: string) => void,
+  selectedId: string | null
+): StepFlowNode {
   const height = HEADER_HEIGHT + stepRows(step).length * ROW_HEIGHT;
   return {
     id: step.id,
     type: "stepNode",
     position: { x: step.pos_x, y: step.pos_y },
-    data: { step, onSelect, selected: step.id === selectedId },
+    data: { step, onSelect, onDelete, selected: step.id === selectedId },
     draggable: true,
     width: NODE_WIDTH,
     height,
@@ -234,9 +257,33 @@ function WorkflowCanvasInner({
 
   const onSelect = useCallback((id: string) => setSelectedId(id), []);
 
+  const deleteStep = useCallback(
+    async (stepId: string) => {
+      try {
+        await deleteWorkflowStepNode({ stepId, workflowId });
+        setSteps((prev) => prev.filter((s) => s.id !== stepId));
+        setEdges((prev) => prev.filter((e) => e.source !== stepId && e.target !== stepId));
+        setSelectedId((selected) => (selected === stepId ? null : selected));
+      } catch (err) {
+        setErrorMsg(err instanceof Error ? err.message : "No se pudo eliminar el paso.");
+      }
+    },
+    [workflowId]
+  );
+
+  const requestDeleteStep = useCallback(
+    (stepId: string) => {
+      const step = steps.find((item) => item.id === stepId);
+      if (window.confirm(`¿Eliminar el paso “${step?.name ?? "sin nombre"}” y sus conexiones?`)) {
+        void deleteStep(stepId);
+      }
+    },
+    [deleteStep, steps]
+  );
+
   const nodes = useMemo(
-    () => steps.map((s) => stepToNode(s, onSelect, selectedId)),
-    [steps, selectedId, onSelect]
+    () => steps.map((s) => stepToNode(s, onSelect, requestDeleteStep, selectedId)),
+    [steps, selectedId, onSelect, requestDeleteStep]
   );
 
   // El prop declarativo `fitView` solo corre una vez al montar y puede
@@ -253,7 +300,7 @@ function WorkflowCanvasInner({
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
     setSteps((prev) => {
-      const asNodes = prev.map((s) => stepToNode(s, onSelect, selectedId));
+      const asNodes = prev.map((s) => stepToNode(s, onSelect, requestDeleteStep, selectedId));
       const updated = applyNodeChanges(changes, asNodes);
       return updated
         .map((n) => {
@@ -263,7 +310,7 @@ function WorkflowCanvasInner({
         })
         .filter((s): s is WorkflowStep => s !== null);
     });
-  }, [onSelect, selectedId]);
+  }, [onSelect, requestDeleteStep, selectedId]);
 
   const onNodeDragStop = useCallback((_: unknown, node: Node) => {
     updateWorkflowStepPosition({ stepId: node.id, posX: node.position.x, posY: node.position.y });
@@ -456,14 +503,7 @@ function WorkflowCanvasInner({
             }
           }}
           onDelete={async () => {
-            try {
-              await deleteWorkflowStepNode({ stepId: selectedStep.id, workflowId });
-              setSteps((prev) => prev.filter((s) => s.id !== selectedStep.id));
-              setEdges((prev) => prev.filter((e) => e.source !== selectedStep.id && e.target !== selectedStep.id));
-              setSelectedId(null);
-            } catch (err) {
-              setErrorMsg(err instanceof Error ? err.message : "No se pudo eliminar el paso.");
-            }
+            await deleteStep(selectedStep.id);
           }}
           onSave={async (patch) => {
             setSaving(true);
