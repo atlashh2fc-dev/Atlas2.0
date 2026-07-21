@@ -1,5 +1,6 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { resolveCampaignScope } from "@/lib/campaign-scope";
 import { assignLead, reassignAgenda } from "@/app/actions/admin";
 import { LEAD_STATUSES } from "@/lib/types";
 import Link from "next/link";
@@ -165,10 +166,11 @@ export default async function TeamPage({
 }) {
   const profile = await requireProfile(["supervisor"]);
   const { agent, campaign, status } = await searchParams;
+  const campaignScope = await resolveCampaignScope(campaign);
   const supabase = await createClient();
   const filters = {
     agent: agent || "",
-    campaign: campaign || "",
+    campaign: campaignScope || "",
     status: status || "",
   };
 

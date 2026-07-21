@@ -7,10 +7,10 @@ import Link from "next/link";
 export default async function WorkflowsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ campaign_id?: string }>;
+  searchParams: Promise<{ campaign_id?: string; error?: string }>;
 }) {
   await requireProfile(["admin"]);
-  const { campaign_id: campaignId } = await searchParams;
+  const { campaign_id: campaignId, error } = await searchParams;
   const supabase = await createClient();
 
   const { data: workflows } = await supabase
@@ -44,6 +44,11 @@ export default async function WorkflowsPage({
 
       <div className="rounded-xl border border-border bg-surface p-5">
         <h2 className="text-sm font-semibold text-foreground">Plantillas de campañas frecuentes</h2>
+        {error === "duplicate-name" && (
+          <p role="alert" className="mt-2 text-sm text-danger">
+            Ya existe un flujo con ese nombre.
+          </p>
+        )}
         <p className="mb-4 mt-1 text-xs text-muted-foreground">
           Empieza desde cero o desde un script ya armado y ajústalo en el editor visual.
         </p>

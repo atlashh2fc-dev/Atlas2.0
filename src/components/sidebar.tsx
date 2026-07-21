@@ -37,6 +37,8 @@ interface NavItem {
   sectionLabel?: string;
   /** Ítem secundario dentro de un grupo (p. ej. "Flujos" bajo "Campañas"): se muestra indentado y más sutil. */
   indent?: boolean;
+  /** Subcategoría silenciosa dentro de una sección, para no exponer integraciones como módulos principales. */
+  subsectionLabel?: string;
 }
 
 type NavGroup = { label: string; items: NavItem[] };
@@ -55,24 +57,24 @@ function buildGroups(items: NavItem[]): NavGroup[] {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  // Operación: lo que un ejecutivo usa día a día.
+  // Espacio de trabajo: lo que se usa a diario.
   {
     href: "/dashboard",
     label: "Inicio",
     icon: LayoutDashboard,
     roles: ["agente", "supervisor", "admin"],
-    sectionLabel: "Operación",
+    sectionLabel: "Espacio de trabajo",
   },
   { href: "/dashboard/leads", label: "Registros", icon: Users, roles: ["agente", "supervisor", "admin"] },
   { href: "/dashboard/agenda", label: "Mi agenda", icon: CalendarClock, roles: ["agente"] },
 
-  // Supervisión: monitoreo del equipo, en vivo e histórico.
+  // Operación: monitoreo y control del trabajo en curso.
   {
     href: "/dashboard/team",
     label: "Mi equipo",
     icon: UsersRound,
     roles: ["supervisor"],
-    sectionLabel: "Supervisión",
+    sectionLabel: "Operación",
   },
   {
     href: "/dashboard/supervision/monitor",
@@ -88,18 +90,17 @@ const NAV_ITEMS: NavItem[] = [
   },
   { href: "/dashboard/reportes", label: "Reportes de gestión", icon: BarChart3, roles: ["supervisor", "admin"] },
 
-  // Discador: todo lo que configura cómo se marca y quién atiende.
+  // Campañas: la configuración funcional de cada operación.
   {
     href: "/dashboard/admin/campanas",
     label: "Campañas",
     icon: Megaphone,
     roles: ["admin"],
-    sectionLabel: "Discador",
+    sectionLabel: "Campañas",
   },
-  { href: "/dashboard/admin/agentes-sip", label: "Extensiones SIP", icon: PhoneCall, roles: ["admin"], indent: true },
-  { href: "/dashboard/admin/estados-agente", label: "Estados de agente", icon: UserCog, roles: ["admin"], indent: true },
+  { href: "/dashboard/admin/flujos", label: "Flujos de gestión", icon: Workflow, roles: ["admin"], indent: true },
 
-  // Datos: carga e importación de bases y leads.
+  // Datos: carga y administración de las bases operativas.
   {
     href: "/dashboard/leads/nuevo",
     label: "Nuevo registro",
@@ -113,29 +114,42 @@ const NAV_ITEMS: NavItem[] = [
     icon: Upload,
     roles: ["admin"],
   },
+  { href: "/dashboard/mail", label: "Leads mail", icon: MailCheck, roles: ["supervisor", "admin"] },
+
+  // Configuración: ajustes transversales de la plataforma y del discador.
+  {
+    href: "/dashboard/admin/usuarios",
+    label: "Usuarios y equipos",
+    icon: ShieldCheck,
+    roles: ["admin"],
+    sectionLabel: "Configuración",
+  },
+  {
+    href: "/dashboard/admin/estados-agente",
+    label: "Estados de agente",
+    icon: UserCog,
+    roles: ["admin"],
+    indent: true,
+    subsectionLabel: "Discador",
+  },
+  { href: "/dashboard/admin/agentes-sip", label: "Extensiones SIP", icon: PhoneCall, roles: ["admin"], indent: true },
+
+  // Integraciones: capacidades que pertenecen a un proveedor, no al CRM base.
   {
     href: "/dashboard/admin/vocalcom",
-    label: "Cargar Vocalcom",
-    icon: PhoneCall,
+    label: "Importar gestión Vocalcom",
+    icon: Upload,
     roles: ["admin"],
+    sectionLabel: "Integraciones",
+    subsectionLabel: "Equifax",
   },
   {
     href: "/dashboard/admin/ejecutivos-historicos",
-    label: "Ejecutivos históricos",
+    label: "Historial de ejecutivos",
     icon: History,
     roles: ["admin"],
+    indent: true,
   },
-  { href: "/dashboard/mail", label: "Leads mail", icon: MailCheck, roles: ["supervisor", "admin"] },
-
-  // Administración: cuentas y configuración de flujos productivos.
-  {
-    href: "/dashboard/admin/usuarios",
-    label: "Usuarios",
-    icon: ShieldCheck,
-    roles: ["admin"],
-    sectionLabel: "Administración",
-  },
-  { href: "/dashboard/admin/flujos", label: "Flujos", icon: Workflow, roles: ["admin"] },
 
   // Ayuda: guía contextual para quienes configuran y supervisan la operación.
   {
@@ -165,7 +179,7 @@ export function Sidebar({ profile }: { profile: Profile }) {
   const groups = buildGroups(NAV_ITEMS.filter((item) => item.roles.includes(profile.role)));
 
   const [rail, setRail] = useState(false);
-  const [collapsed, setCollapsed] = useState<string[]>([]);
+  const [collapsed, setCollapsed] = useState<string[]>(["Integraciones"]);
   const toggleGroup = (label: string) =>
     setCollapsed((c) => (c.includes(label) ? c.filter((l) => l !== label) : [...c, label]));
 
@@ -175,7 +189,7 @@ export function Sidebar({ profile }: { profile: Profile }) {
   return (
     <aside
       className={`hidden flex-shrink-0 flex-col border-r border-border bg-surface transition-[width] duration-200 md:flex ${
-        rail ? "w-16" : "w-60"
+        rail ? "w-16" : "w-64"
       }`}
     >
       <div className={`flex h-16 items-center gap-2 border-b border-border ${rail ? "justify-center px-2" : "px-4"}`}>
@@ -218,7 +232,8 @@ export function Sidebar({ profile }: { profile: Profile }) {
 
       <nav className="flex-1 overflow-y-auto p-2">
         {groups.map((group) => {
-          const isCollapsed = collapsed.includes(group.label);
+          const hasActiveItem = group.items.some((item) => isActive(item.href));
+          const isCollapsed = collapsed.includes(group.label) && !hasActiveItem;
           return (
             <div key={group.label} className="mb-1">
               {rail ? (
@@ -242,30 +257,33 @@ export function Sidebar({ profile }: { profile: Profile }) {
                   const active = isActive(item.href);
                   const Icon = item.icon;
                   return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      title={rail ? item.label : undefined}
-                      className={`group relative flex items-center gap-3 rounded-md text-sm font-medium transition-colors ${
-                        rail ? "justify-center px-2 py-2" : item.indent ? "py-1.5 pl-6 pr-3 text-[13px]" : "px-3 py-1.5"
-                      } ${
-                        active
-                          ? "bg-primary/10 font-semibold text-primary"
-                          : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"
-                      }`}
-                    >
-                      {active && !rail && (
-                        <span className="absolute -left-2 top-1/2 h-5 w-1 -translate-y-1/2 rounded-full bg-primary" />
+                    <div key={item.href}>
+                      {!rail && item.subsectionLabel && (
+                        <p className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground/60">
+                          {item.subsectionLabel}
+                        </p>
                       )}
-                      <span
-                        className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors ${
-                          active ? "bg-primary/15 text-primary" : "text-muted-foreground group-hover:text-foreground"
+                      <Link
+                        href={item.href}
+                        title={rail ? item.label : undefined}
+                        className={`group flex items-center gap-3 rounded-lg text-sm font-medium transition-all duration-150 ${
+                          rail ? "justify-center px-2 py-2" : item.indent ? "py-2 pl-7 pr-3 text-[13px]" : "px-3 py-2"
+                        } ${
+                          active
+                            ? "bg-foreground/[0.08] text-foreground shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--foreground)_/_8%,transparent)]"
+                            : "text-muted-foreground hover:bg-foreground/[0.045] hover:text-foreground"
                         }`}
                       >
-                        <Icon size={16} />
-                      </span>
-                      {!rail && item.label}
-                    </Link>
+                        <span
+                          className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors ${
+                            active ? "bg-primary/12 text-primary" : "text-muted-foreground/80 group-hover:text-foreground"
+                          }`}
+                        >
+                          <Icon size={16} />
+                        </span>
+                        {!rail && item.label}
+                      </Link>
+                    </div>
                   );
                 })}
             </div>

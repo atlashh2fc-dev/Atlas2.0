@@ -12,6 +12,7 @@ import {
 import { SupervisorAgentMetricsTable } from "@/components/supervisor-agent-metrics-table";
 import { ChartDownloadButton } from "@/components/chart-download-button";
 import { Button, Card, PageHeader, Select } from "@/components/ui";
+import { resolveCampaignScope } from "@/lib/campaign-scope";
 
 type SupervisorReportKpis = {
   base_total: number;
@@ -205,6 +206,7 @@ export default async function ReportesPage({
 }) {
   const profile = await requireProfile(["supervisor", "admin"]);
   const { campaign: campaignParam } = await searchParams;
+  const campaignScope = await resolveCampaignScope(campaignParam);
   const supabase = await createClient();
   const dashboardTo = endOfDay(new Date());
   const dashboardFrom = startOfDay(addDays(dashboardTo, -(DASHBOARD_WINDOW_DAYS - 1)));
@@ -347,35 +349,34 @@ export default async function ReportesPage({
 
   const { data: campaignList } = await supabase.from("campaigns").select("id, name").order("name");
   const campaigns = campaignList ?? [];
-  const selectedCampaignId = campaignParam || campaigns[0]?.id || null;
+  const selectedCampaignId = campaigns.some((campaign) => campaign.id === campaignScope) ? campaignScope : null;
   const selectedCampaign = campaigns.find((c) => c.id === selectedCampaignId) ?? null;
   const loadedFrom = startOfDay(addDays(dashboardFrom, -DASHBOARD_WINDOW_DAYS));
   const previousTo = new Date(dashboardFrom.getTime() - 1);
 
   let dashboardSummary: CampaignDashboardSummaryData | null = null;
 
-  if (selectedCampaignId) {
-    const { data, error } = await supabase.rpc("get_campaign_dashboard_summary", {
-      p_campaign_id: selectedCampaignId,
-      p_from: dashboardFrom.toISOString(),
-      p_to: dashboardTo.toISOString(),
-      p_previous_from: loadedFrom.toISOString(),
-      p_previous_to: previousTo.toISOString(),
-    });
+  const { data, error } = await supabase.rpc("get_crm_dashboard_summary", {
+    p_from: dashboardFrom.toISOString(),
+    p_to: dashboardTo.toISOString(),
+    p_previous_from: loadedFrom.toISOString(),
+    p_previous_to: previousTo.toISOString(),
+    p_campaign_id: selectedCampaignId,
+  });
 
-    if (error) throw new Error(error.message);
-    dashboardSummary = data as CampaignDashboardSummaryData;
-  }
+  if (error) throw new Error(error.message);
+  dashboardSummary = data as CampaignDashboardSummaryData;
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Dashboard de campaña"
-        description="KPIs, embudo y seguimiento de la campaña seleccionada."
+        title={selectedCampaign ? `Dashboard — ${selectedCampaign.name}` : "Dashboard comercial"}
+        description={selectedCampaign ? "KPIs, embudo y seguimiento de la campaña seleccionada." : "KPIs consolidados de todas las campañas."}
         actions={
           campaigns.length > 0 ? (
             <form className="flex items-center gap-2">
               <Select name="campaign" defaultValue={selectedCampaignId ?? ""} className="w-auto">
+                <option value="">Todas las campañas</option>
                 {campaigns.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
@@ -394,7 +395,7 @@ export default async function ReportesPage({
         </Card>
       )}
 
-      {selectedCampaign && dashboardSummary && <CampaignDashboardSummary key={selectedCampaign.id} summary={dashboardSummary} />}
+      {dashboardSummary && <CampaignDashboardSummary key={selectedCampaignId ?? "all"} summary={dashboardSummary} />}
     </div>
   );
 }

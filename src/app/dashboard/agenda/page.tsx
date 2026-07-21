@@ -1,18 +1,27 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { resolveCampaignScope } from "@/lib/campaign-scope";
 import Link from "next/link";
 
-export default async function MyAgendaPage() {
+export default async function MyAgendaPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ campaign?: string }>;
+}) {
   const profile = await requireProfile(["agente", "admin"]);
+  const { campaign } = await searchParams;
+  const campaignScope = await resolveCampaignScope(campaign);
   const supabase = await createClient();
 
-  const { data: leads } = await supabase
+  const leadsQuery = supabase
     .from("leads")
-    .select("id, full_name, rut, phone, next_action_at, tipificacion_actual")
+    .select("id, full_name, rut, phone, next_action_at, tipificacion_actual, campaigns(name)")
     .eq("managed_by", profile.id)
     .not("next_action_at", "is", null)
     .order("next_action_at", { ascending: true })
     .limit(100);
+  if (campaignScope) leadsQuery.eq("campaign_id", campaignScope);
+  const { data: leads } = await leadsQuery;
 
   const now = new Date();
   const overdue = (leads ?? []).filter((l) => new Date(l.next_action_at!) <= now);
@@ -33,6 +42,7 @@ export default async function MyAgendaPage() {
             <tr className="border-b border-border text-left text-xs text-muted-foreground">
               <th className="px-5 py-3 font-medium">Lead</th>
               <th className="px-5 py-3 font-medium">RUT / Teléfono</th>
+              <th className="px-5 py-3 font-medium">Campaña</th>
               <th className="px-5 py-3 font-medium">Tipificación actual</th>
               <th className="px-5 py-3 font-medium">Agenda</th>
               <th className="px-5 py-3 font-medium"></th>
@@ -41,7 +51,7 @@ export default async function MyAgendaPage() {
           <tbody className="divide-y divide-border">
             {(leads ?? []).length === 0 && (
               <tr>
-                <td colSpan={5} className="px-5 py-6 text-center text-muted-foreground">
+                <td colSpan={6} className="px-5 py-6 text-center text-muted-foreground">
                   No tienes agendas pendientes.
                 </td>
               </tr>
@@ -52,6 +62,9 @@ export default async function MyAgendaPage() {
                 <tr key={l.id}>
                   <td className="px-5 py-3 font-medium text-foreground">{l.full_name}</td>
                   <td className="px-5 py-3 text-muted-foreground">{l.rut ?? l.phone ?? "—"}</td>
+                  <td className="px-5 py-3 text-muted-foreground">
+                    {Array.isArray(l.campaigns) ? l.campaigns[0]?.name ?? "Sin campaña" : "Sin campaña"}
+                  </td>
                   <td className="px-5 py-3 text-muted-foreground">{l.tipificacion_actual ?? "—"}</td>
                   <td className={`px-5 py-3 ${isOverdue ? "font-medium text-danger" : "text-foreground"}`}>
                     {isOverdue ? "Vencida: " : ""}

@@ -36,7 +36,14 @@ export async function createWorkflow(formData: FormData) {
     .select("id")
     .single();
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (error.code === "23505") {
+      const query = new URLSearchParams({ error: "duplicate-name" });
+      if (campaignId) query.set("campaign_id", campaignId);
+      redirect(`/dashboard/admin/flujos?${query.toString()}`);
+    }
+    throw new Error(error.message);
+  }
 
   if (campaignId) {
     const { error: campaignError } = await supabase
@@ -85,7 +92,12 @@ export async function createWorkflowFromTemplate(formData: FormData) {
     .select("id")
     .single();
 
-  if (workflowError) throw new Error(workflowError.message);
+  if (workflowError) {
+    if (workflowError.code === "23505") {
+      redirect("/dashboard/admin/flujos?error=duplicate-name");
+    }
+    throw new Error(workflowError.message);
+  }
   const workflowId = workflow.id as string;
 
   const stepRows = template.steps.map((s, index) => ({

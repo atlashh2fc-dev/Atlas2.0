@@ -3,6 +3,7 @@ import { requireProfile } from "@/lib/auth";
 import { Search } from "lucide-react";
 import Link from "next/link";
 import { LEAD_STATUSES } from "@/lib/types";
+import { resolveCampaignScope } from "@/lib/campaign-scope";
 import { LeadsQueue, type LeadQueueRow, type LeadQueueView } from "@/components/leads-queue";
 
 const QUEUE_VIEWS = ["prioridad", "vencidas", "hoy", "disponibles", "bloqueados", "gestionados"] as const;
@@ -46,6 +47,7 @@ export default async function LeadsPage({
 }) {
   const profile = await requireProfile();
   const { q, view: viewParam, agent, campaign, status } = await searchParams;
+  const campaignScope = await resolveCampaignScope(campaign);
   const view = parseView(viewParam);
   const supabase = await createClient();
   const copy = roleCopy(profile.role);
@@ -53,7 +55,7 @@ export default async function LeadsPage({
   const filters = {
     q: q?.trim() || "",
     agent: canFilterOperation ? agent || "" : "",
-    campaign: canFilterOperation ? campaign || "" : "",
+    campaign: campaignScope || "",
     status: canFilterOperation ? status || "" : "",
   };
   const agentSearchVisibilityFilter = profile.team_id

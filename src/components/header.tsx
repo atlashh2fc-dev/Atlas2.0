@@ -2,6 +2,7 @@ import type { Profile } from "@/lib/types";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { QuickSearch } from "@/components/quick-search";
 import { AgendaBell } from "@/components/agenda-reminder";
+import { CampaignScopeSwitcher } from "@/components/campaign-scope-switcher";
 import { signOut } from "@/app/actions/auth";
 import { LogOut } from "lucide-react";
 
@@ -11,7 +12,15 @@ const ROLE_LABEL: Record<Profile["role"], string> = {
   admin: "Administrador",
 };
 
-export function Header({ profile }: { profile: Profile }) {
+export function Header({
+  profile,
+  campaigns,
+  selectedCampaignId,
+}: {
+  profile: Profile;
+  campaigns: { id: string; name: string }[];
+  selectedCampaignId: string | null;
+}) {
   return (
     <header className="flex h-16 flex-shrink-0 items-center justify-between border-b border-border bg-surface px-6">
       <div>
@@ -20,6 +29,7 @@ export function Header({ profile }: { profile: Profile }) {
       </div>
 
       <div className="flex items-center gap-3">
+        <CampaignScopeSwitcher campaigns={campaigns} selectedCampaignId={selectedCampaignId} role={profile.role} />
         <QuickSearch role={profile.role} />
         {profile.role === "agente" && <AgendaBell />}
         <ThemeToggle />

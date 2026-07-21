@@ -18,8 +18,13 @@ import {
   Tr,
 } from "@/components/ui";
 
-export default async function CampaignsPage() {
+export default async function CampaignsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
   await requireProfile(["admin"]);
+  const { error } = await searchParams;
   const supabase = await createClient();
 
   const { data: campaigns } = await supabase
@@ -90,6 +95,11 @@ export default async function CampaignsPage() {
 
       <Card>
         <h2 className="mb-3 text-sm font-semibold text-foreground">Crear campaña</h2>
+        {error === "duplicate-name" && (
+          <p role="alert" className="mb-3 text-sm text-destructive">
+            Ya existe una campaña con ese nombre.
+          </p>
+        )}
         <form action={createCampaign} className="flex max-w-xl flex-col gap-3 sm:flex-row">
           <Input type="text" name="name" required placeholder="Nombre de la campaña" className="flex-1" />
           <Input type="text" name="description" placeholder="Descripción (opcional)" className="flex-1" />

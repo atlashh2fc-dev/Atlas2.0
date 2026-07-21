@@ -24,7 +24,12 @@ export async function createCampaign(formData: FormData) {
     .select("id")
     .single();
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (error.code === "23505") {
+      redirect("/dashboard/admin/campanas?error=duplicate-name");
+    }
+    throw new Error(error.message);
+  }
   revalidatePath("/dashboard/admin/campanas");
   redirect(`/dashboard/admin/campanas/${data.id}`);
 }

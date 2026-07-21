@@ -191,7 +191,7 @@ export function CampaignDashboardSummary({ summary }: Props) {
         </div>
 
         <div className="rounded-xl border border-border bg-surface p-5">
-          <h3 className="mb-3 text-sm font-semibold text-foreground">Mix de productos Equifax</h3>
+          <h3 className="mb-3 text-sm font-semibold text-foreground">Mix de productos comerciales</h3>
           <ResponsiveContainer width="100%" height={280}>
             <BarChart data={summary.products}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
