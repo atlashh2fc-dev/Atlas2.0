@@ -22,6 +22,17 @@ export async function createUserAccount(formData: FormData) {
   }
 
   const admin = createAdminClient();
+  const { data: existingProfile, error: existingProfileError } = await admin
+    .from("profiles")
+    .select("id")
+    .eq("email", email)
+    .maybeSingle();
+
+  if (existingProfileError) throw new Error(existingProfileError.message);
+  if (existingProfile) {
+    throw new Error("Ya existe una cuenta con este correo.");
+  }
+
   const { data, error } = await admin.auth.admin.createUser({
     email,
     password,
@@ -30,17 +41,36 @@ export async function createUserAccount(formData: FormData) {
     app_metadata: { role },
   });
 
-  if (error) throw new Error(error.message);
+  // GoTrue puede devolver un 500 después de haber confirmado la inserción. En
+  // ese caso el trigger ya dejó el perfil creado, por lo que recuperamos su ID
+  // y completamos la configuración en vez de mostrar una página de error.
+  let userId = data.user?.id;
+  if (error) {
+    if (error.status !== 500) throw new Error(error.message);
 
-  // El trigger on_auth_user_created crea el perfil con full_name desde
-  // user_metadata y role desde app_metadata. Si se especificó equipo, lo asignamos aquí.
-  if (teamId && data.user) {
-    const { error: teamError } = await admin
+    const { data: recoveredProfile, error: recoveryError } = await admin
       .from("profiles")
-      .update({ team_id: teamId })
-      .eq("id", data.user.id);
-    if (teamError) throw new Error(teamError.message);
+      .select("id")
+      .eq("email", email)
+      .maybeSingle();
+
+    if (recoveryError || !recoveredProfile) {
+      throw new Error(recoveryError?.message ?? error.message);
+    }
+
+    userId = recoveredProfile.id;
   }
+
+  if (!userId) throw new Error("No fue posible recuperar la cuenta creada.");
+
+  // El trigger crea el perfil, pero lo normalizamos explícitamente para que el
+  // rol y el equipo seleccionados queden consistentes incluso tras recuperarnos
+  // de una respuesta fallida de Auth.
+  const { error: profileError } = await admin
+    .from("profiles")
+    .update({ full_name: fullName, email, role, team_id: teamId })
+    .eq("id", userId);
+  if (profileError) throw new Error(profileError.message);
 
   revalidatePath("/dashboard/admin/usuarios");
 }
@@ -51,13 +81,33 @@ export async function updateUserRole(formData: FormData) {
   const role = formData.get("role") as AppRole;
   const teamId = (formData.get("team_id") as string) || null;
 
-  const supabase = await createClient();
-  const { error } = await supabase
+  if (!userId) throw new Error("No se identificó el usuario a actualizar.");
+  if (!(["agente", "supervisor", "admin"] as const).includes(role)) {
+    throw new Error("El rol seleccionado no es válido.");
+  }
+
+  // La modificación de roles es una operación administrativa. Usar el cliente
+  // de servicio evita que una política RLS desactualizada se convierta en un
+  // update de cero filas sin error. select().single() obliga además a verificar
+  // que el valor efectivamente quedó persistido.
+  const admin = createAdminClient();
+  const { data: profile, error: profileError } = await admin
     .from("profiles")
     .update({ role, team_id: teamId })
-    .eq("id", userId);
+    .eq("id", userId)
+    .select("id, role")
+    .single();
 
-  if (error) throw new Error(error.message);
+  if (profileError) throw new Error(profileError.message);
+  if (profile.role !== role) throw new Error("El rol no pudo guardarse.");
+
+  // El perfil es la fuente de permisos de la app, pero Auth también conserva
+  // el rol de alta. Mantenerlos alineados evita cuentas con roles contradictorios.
+  const { error: authError } = await admin.auth.admin.updateUserById(userId, {
+    app_metadata: { role },
+  });
+
+  if (authError) throw new Error(authError.message);
   revalidatePath("/dashboard/admin/usuarios");
 }
 
