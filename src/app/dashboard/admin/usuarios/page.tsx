@@ -1,5 +1,6 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { unstable_noStore as noStore } from "next/cache";
 import {
   toggleUserActive,
   createTeam,
@@ -28,6 +29,10 @@ import {
 const ROLES: AppRole[] = ["agente", "supervisor", "admin"];
 
 export default async function UsersAdminPage() {
+  // Los roles se administran en esta pantalla y deben leerse siempre desde
+  // Supabase. Una respuesta cacheada hacía que el guardado real volviera a
+  // mostrar el rol anterior hasta una recarga posterior.
+  noStore();
   await requireProfile(["admin"]);
   const supabase = await createClient();
 
