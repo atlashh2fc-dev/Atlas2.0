@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { updateUserRole } from "@/app/actions/admin";
 import type { AppRole } from "@/lib/types";
 import { Button, Select } from "@/components/ui";
@@ -21,7 +20,6 @@ export function UserRoleForm({
   initialTeamId: string | null;
   teams: TeamOption[];
 }) {
-  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -34,10 +32,10 @@ export function UserRoleForm({
       try {
         await updateUserRole(formData);
         setMessage("Guardado");
-        // Server Actions invalidan datos, pero el Router Cache del cliente puede
-        // seguir mostrando la fila anterior. Forzamos una lectura fresca antes
-        // de informar éxito para que el selector muestre el valor persistido.
-        router.refresh();
+        // El Router Cache puede conservar la lista anterior incluso después de
+        // revalidatePath. Una recarga completa obliga a consultar el rol que
+        // acaba de persistirse antes de volver a pintar la tabla.
+        window.location.reload();
       } catch (reason) {
         setError(reason instanceof Error ? reason.message : "No se pudo guardar el cambio.");
       }
