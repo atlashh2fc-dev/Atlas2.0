@@ -86,28 +86,25 @@ export async function updateUserRole(formData: FormData) {
     throw new Error("El rol seleccionado no es válido.");
   }
 
-  // La modificación de roles es una operación administrativa. Usar el cliente
-  // de servicio evita que una política RLS desactualizada se convierta en un
-  // update de cero filas sin error. select().single() obliga además a verificar
-  // que el valor efectivamente quedó persistido.
+  // `profiles.role` es la única fuente de permisos de Atlas: requireProfile,
+  // las políticas y las vistas de la aplicación consultan esa columna. No
+  // actualizamos app_metadata aquí porque Auth puede ejecutar sincronizaciones
+  // que vuelven a escribir el perfil con un valor anterior.
   const admin = createAdminClient();
+  // Usar el cliente de servicio evita que una política RLS desactualizada se
+  // convierta en un update de cero filas sin error. select().single() obliga
+  // además a verificar que el valor efectivamente quedó persistido.
   const { data: profile, error: profileError } = await admin
     .from("profiles")
     .update({ role, team_id: teamId })
     .eq("id", userId)
-    .select("id, role")
+    .select("id, role, team_id")
     .single();
 
   if (profileError) throw new Error(profileError.message);
-  if (profile.role !== role) throw new Error("El rol no pudo guardarse.");
-
-  // El perfil es la fuente de permisos de la app, pero Auth también conserva
-  // el rol de alta. Mantenerlos alineados evita cuentas con roles contradictorios.
-  const { error: authError } = await admin.auth.admin.updateUserById(userId, {
-    app_metadata: { role },
-  });
-
-  if (authError) throw new Error(authError.message);
+  if (profile.role !== role || profile.team_id !== teamId) {
+    throw new Error("El rol o el equipo no pudieron guardarse.");
+  }
   revalidatePath("/dashboard/admin/usuarios");
 }
 
