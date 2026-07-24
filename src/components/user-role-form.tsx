@@ -23,8 +23,6 @@ export function UserRoleForm({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [role, setRole] = useState<AppRole>(initialRole);
-  const [teamId, setTeamId] = useState(initialTeamId ?? "");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,8 +50,7 @@ export function UserRoleForm({
       <Select
         name="role"
         fieldSize="sm"
-        value={role}
-        onChange={(event) => setRole(event.target.value as AppRole)}
+        defaultValue={initialRole}
         disabled={isPending}
         className="w-auto"
       >
@@ -66,8 +63,7 @@ export function UserRoleForm({
       <Select
         name="team_id"
         fieldSize="sm"
-        value={teamId}
-        onChange={(event) => setTeamId(event.target.value)}
+        defaultValue={initialTeamId ?? ""}
         disabled={isPending}
         className="w-auto"
       >
