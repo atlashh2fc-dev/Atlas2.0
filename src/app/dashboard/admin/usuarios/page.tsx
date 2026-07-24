@@ -1,13 +1,13 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import {
-  updateUserRole,
   toggleUserActive,
   createTeam,
   createUserAccount,
   updateTeamSupervisor,
 } from "@/app/actions/admin";
 import type { AppRole } from "@/lib/types";
+import { UserRoleForm } from "@/components/user-role-form";
 import {
   Badge,
   Button,
@@ -102,27 +102,12 @@ export default async function UsersAdminPage() {
                 <Td strong>{u.full_name}</Td>
                 <Td muted>{u.email}</Td>
                 <Td>
-                  <form action={updateUserRole} className="flex items-center gap-2">
-                    <input type="hidden" name="user_id" value={u.id} />
-                    <Select name="role" fieldSize="sm" defaultValue={u.role} className="w-auto">
-                      {ROLES.map((r) => (
-                        <option key={r} value={r}>
-                          {r}
-                        </option>
-                      ))}
-                    </Select>
-                    <Select name="team_id" fieldSize="sm" defaultValue={u.team_id ?? ""} className="w-auto">
-                      <option value="">Sin equipo</option>
-                      {(teams ?? []).map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name}
-                        </option>
-                      ))}
-                    </Select>
-                    <Button type="submit" size="sm">
-                      Guardar
-                    </Button>
-                  </form>
+                  <UserRoleForm
+                    userId={u.id}
+                    initialRole={u.role}
+                    initialTeamId={u.team_id}
+                    teams={teams ?? []}
+                  />
                 </Td>
                 <Td muted>{teamOf(u.team_id)?.name ?? "—"}</Td>
                 <Td muted>
