@@ -80,6 +80,7 @@ export async function updateUserRole(formData: FormData) {
   const userId = formData.get("user_id") as string;
   const role = formData.get("role") as AppRole;
   const teamId = (formData.get("team_id") as string) || null;
+  const supervisorTeamIds = [...new Set(formData.getAll("supervisor_team_ids").map(String).filter(Boolean))];
 
   if (!userId) throw new Error("No se identificó el usuario a actualizar.");
   if (!(["agente", "supervisor", "admin"] as const).includes(role)) {
@@ -91,19 +92,39 @@ export async function updateUserRole(formData: FormData) {
   // actualizamos app_metadata aquí porque Auth puede ejecutar sincronizaciones
   // que vuelven a escribir el perfil con un valor anterior.
   const admin = createAdminClient();
+  if (role === "supervisor" && supervisorTeamIds.length > 0) {
+    const { data: validTeams, error: teamsError } = await admin
+      .from("teams")
+      .select("id")
+      .in("id", supervisorTeamIds);
+    if (teamsError || (validTeams?.length ?? 0) !== supervisorTeamIds.length) {
+      throw new Error(teamsError?.message ?? "Uno de los equipos seleccionados no existe.");
+    }
+  }
   // Usar el cliente de servicio evita que una política RLS desactualizada se
   // convierta en un update de cero filas sin error. select().single() obliga
   // además a verificar que el valor efectivamente quedó persistido.
   const { data: profile, error: profileError } = await admin
     .from("profiles")
-    .update({ role, team_id: teamId })
+    .update({ role, team_id: role === "supervisor" ? null : teamId })
     .eq("id", userId)
     .select("id, role, team_id")
     .single();
 
   if (profileError) throw new Error(profileError.message);
-  if (profile.role !== role || profile.team_id !== teamId) {
+  if (profile.role !== role || profile.team_id !== (role === "supervisor" ? null : teamId)) {
     throw new Error("El rol o el equipo no pudieron guardarse.");
+  }
+
+  const { error: clearError } = await admin.from("teams").update({ supervisor_id: null }).eq("supervisor_id", userId);
+  if (clearError) throw new Error(clearError.message);
+
+  if (role === "supervisor" && supervisorTeamIds.length > 0) {
+    const { error: assignError } = await admin
+      .from("teams")
+      .update({ supervisor_id: userId })
+      .in("id", supervisorTeamIds);
+    if (assignError) throw new Error(assignError.message);
   }
   revalidatePath("/dashboard/admin/usuarios");
 }

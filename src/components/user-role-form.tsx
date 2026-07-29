@@ -18,14 +18,18 @@ export function UserRoleForm({
   userId,
   initialRole,
   initialTeamId,
+  initialSupervisorTeamIds,
   teams,
 }: {
   userId: string;
   initialRole: AppRole;
   initialTeamId: string | null;
+  initialSupervisorTeamIds: string[];
   teams: TeamOption[];
 }) {
   const [isPending, startTransition] = useTransition();
+  const [role, setRole] = useState<AppRole>(initialRole);
+  const [supervisorTeamIds, setSupervisorTeamIds] = useState(() => new Set(initialSupervisorTeamIds));
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,6 +51,8 @@ export function UserRoleForm({
     });
   }
 
+  const isSupervisor = role === "supervisor";
+
   return (
     <form action={save} className="grid gap-3 sm:grid-cols-2">
       <input type="hidden" name="user_id" value={userId} />
@@ -55,7 +61,8 @@ export function UserRoleForm({
         <Select
           name="role"
           fieldSize="sm"
-          defaultValue={initialRole}
+          value={role}
+          onChange={(event) => setRole(event.target.value as AppRole)}
           disabled={isPending}
           aria-label="Rol de acceso"
         >
@@ -66,23 +73,43 @@ export function UserRoleForm({
           ))}
         </Select>
       </label>
-      <label className="flex min-w-0 flex-col gap-1">
-        <span className="text-xs font-medium text-foreground">Equipo base (agentes)</span>
-        <Select
-          name="team_id"
-          fieldSize="sm"
-          defaultValue={initialTeamId ?? ""}
-          disabled={isPending}
-          aria-label="Equipo"
-        >
-          <option value="">Sin equipo asignado</option>
-          {teams.map((team) => (
-            <option key={team.id} value={team.id}>
-              {team.name}
-            </option>
-          ))}
-        </Select>
-      </label>
+      {isSupervisor ? (
+        <fieldset className="min-w-0 sm:col-span-2">
+          <legend className="text-xs font-medium text-foreground">Equipos supervisados</legend>
+          <div className="mt-1.5 flex flex-wrap gap-2">
+            {teams.map((team) => {
+              const checked = supervisorTeamIds.has(team.id);
+              return (
+                <label key={team.id} className="flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground">
+                  <input
+                    type="checkbox"
+                    name="supervisor_team_ids"
+                    value={team.id}
+                    checked={checked}
+                    disabled={isPending}
+                    onChange={() => setSupervisorTeamIds((current) => {
+                      const next = new Set(current);
+                      if (next.has(team.id)) next.delete(team.id);
+                      else next.add(team.id);
+                      return next;
+                    })}
+                  />
+                  {team.name}
+                </label>
+              );
+            })}
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">Marca todos los equipos que este supervisor debe administrar.</p>
+        </fieldset>
+      ) : (
+        <label className="flex min-w-0 flex-col gap-1">
+          <span className="text-xs font-medium text-foreground">Equipo</span>
+          <Select name="team_id" fieldSize="sm" defaultValue={initialTeamId ?? ""} disabled={isPending} aria-label="Equipo">
+            <option value="">Sin equipo asignado</option>
+            {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
+          </Select>
+        </label>
+      )}
       <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
         <Button type="submit" size="sm" disabled={isPending}>
           {isPending ? "Guardando…" : "Guardar cambios"}

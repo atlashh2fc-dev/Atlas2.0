@@ -53,6 +53,14 @@ export default async function UsersAdminPage({
   const supervisorName = (id: string | null) =>
     supervisors.find((s) => s.id === id)?.full_name ?? "Sin supervisor";
   const teamOf = (teamId: string | null) => (teams ?? []).find((t) => t.id === teamId) ?? null;
+  const supervisedTeamIdsByUser = new Map<string, string[]>();
+  for (const team of teams ?? []) {
+    if (!team.supervisor_id) continue;
+    supervisedTeamIdsByUser.set(team.supervisor_id, [
+      ...(supervisedTeamIdsByUser.get(team.supervisor_id) ?? []),
+      team.id,
+    ]);
+  }
   const campaignIdsByAgent = new Map<string, string[]>();
   for (const membership of campaignMemberships ?? []) {
     campaignIdsByAgent.set(membership.profile_id, [
@@ -171,6 +179,7 @@ export default async function UsersAdminPage({
                       userId={u.id}
                       initialRole={u.role}
                       initialTeamId={u.team_id}
+                      initialSupervisorTeamIds={supervisedTeamIdsByUser.get(u.id) ?? []}
                       teams={teams ?? []}
                     />
                   </td>
