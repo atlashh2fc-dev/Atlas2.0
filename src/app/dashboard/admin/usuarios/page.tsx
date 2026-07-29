@@ -10,7 +10,7 @@ import {
 } from "@/app/actions/admin";
 import type { AppRole } from "@/lib/types";
 import { UserRoleForm } from "@/components/user-role-form";
-import { UserCampaignsForm } from "@/components/user-campaigns-form";
+import { AgentCampaignsDialog } from "@/components/agent-campaigns-dialog";
 import {
   Badge,
   Button,
@@ -65,6 +65,7 @@ export default async function UsersAdminPage({
         (user) => user.role === "agente" && (campaignIdsByAgent.get(user.id) ?? []).includes(selectedCampaign.id)
       )
     : users ?? [];
+  const campaignNameById = new Map((campaigns ?? []).map((campaign) => [campaign.id, campaign.name]));
 
   return (
     <div className="space-y-6">
@@ -139,8 +140,8 @@ export default async function UsersAdminPage({
         title={selectedCampaign ? `Ejecutivos de ${selectedCampaign.name}` : "Roles y equipos"}
         description={
           selectedCampaign
-            ? `${visibleUsers.length} ejecutivo(s) asignado(s). Ajusta los skills sin perder la campaña que estás revisando.`
-            : "Selecciona una campaña arriba para revisar asignaciones y skills sin mezclar toda la operación."
+            ? `${visibleUsers.length} ejecutivo(s) asignado(s). Usa “Asignar campañas” para administrar sus skills.`
+            : "Administra roles y equipos. Usa “Asignar campañas” sobre cualquier agente para configurar sus skills."
         }
       >
         <div className="overflow-x-auto">
@@ -149,8 +150,8 @@ export default async function UsersAdminPage({
               <tr>
                 <th className="px-4 py-2.5 font-semibold">Usuario</th>
                 <th className="min-w-80 px-4 py-2.5 font-semibold">Acceso y equipo</th>
-                {selectedCampaign && <th className="min-w-[22rem] px-4 py-2.5 font-semibold">Skills</th>}
                 <th className="px-4 py-2.5 font-semibold">Estado</th>
+                <th className="px-4 py-2.5 font-semibold">Campañas</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -173,16 +174,6 @@ export default async function UsersAdminPage({
                       teams={teams ?? []}
                     />
                   </td>
-                  {selectedCampaign && (
-                    <td className="px-4 py-3">
-                      <UserCampaignsForm
-                        userId={u.id}
-                        campaignIds={campaignIdsByAgent.get(u.id) ?? []}
-                        campaigns={campaigns ?? []}
-                        lockedCampaigns={[selectedCampaign]}
-                      />
-                    </td>
-                  )}
                   <td className="px-4 py-3">
                     <Badge tone={u.active ? "success" : "danger"}>{u.active ? "Activo" : "Inactivo"}</Badge>
                     <form action={toggleUserActive} className="mt-2">
@@ -193,11 +184,34 @@ export default async function UsersAdminPage({
                       </Button>
                     </form>
                   </td>
+                  <td className="px-4 py-3">
+                    {u.role === "agente" ? (
+                      <div className="space-y-2">
+                        <div className="flex max-w-56 flex-wrap gap-1">
+                          {(campaignIdsByAgent.get(u.id) ?? []).map((campaignId) => (
+                            <span key={campaignId} className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] text-primary">
+                              {campaignNameById.get(campaignId) ?? "Campaña"}
+                            </span>
+                          ))}
+                          {(campaignIdsByAgent.get(u.id) ?? []).length === 0 && (
+                            <span className="text-xs text-muted-foreground">Sin campañas</span>
+                          )}
+                        </div>
+                        <AgentCampaignsDialog
+                          agent={{ id: u.id, fullName: u.full_name, email: u.email }}
+                          campaignIds={campaignIdsByAgent.get(u.id) ?? []}
+                          campaigns={campaigns ?? []}
+                        />
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">No aplica</span>
+                    )}
+                  </td>
                 </tr>
               ))}
               {visibleUsers.length === 0 && (
                 <tr>
-                  <td colSpan={selectedCampaign ? 4 : 3} className="px-5 py-8 text-center text-sm text-muted-foreground">
+                  <td colSpan={4} className="px-5 py-8 text-center text-sm text-muted-foreground">
                     {selectedCampaign
                       ? "No hay ejecutivos asignados a esta campaña todavía."
                       : "No hay usuarios creados todavía."}
