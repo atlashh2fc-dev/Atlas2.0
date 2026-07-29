@@ -84,11 +84,16 @@ export async function getActiveCampaignConfigs(campaignIds: string[]) {
 }
 
 export async function countAvailableAgents(campaignId: string): Promise<number> {
+  // Un agente multiskill solo cuenta para esta cola dentro de su franja. Esto
+  // evita originar llamadas cuando la sincronización ya lo quitó de la cola.
+  const extensions = await getCampaignAgentExtensions(campaignId);
+  if (extensions.length === 0) return 0;
   const { count, error } = await supabase
     .from("dialer_agent_sessions")
     .select("id", { count: "exact", head: true })
     .eq("campaign_id", campaignId)
-    .eq("status", "available");
+    .eq("status", "available")
+    .in("extension", extensions);
   if (error) throw new Error(`dialer_agent_sessions: ${error.message}`);
   return count ?? 0;
 }
@@ -104,35 +109,17 @@ export async function countInFlightAttempts(campaignId: string): Promise<number>
 }
 
 /**
- * Extensiones activas de los agentes asignados a una campaña
- * (campaign_agents ∩ agent_sip_credentials activas). Es la fuente de verdad
- * para qué debe ser miembro de la queue de esa campaña — asignar/quitar un
- * agente desde /dashboard/admin/campanas/[id] alcanza para que el motor
- * actualice la cola en Asterisk, sin tocar nada a mano.
+ * Extensiones activas de los agentes asignados a una campaña dentro de su
+ * franja multiskill. Es la fuente de verdad para qué debe ser miembro de la
+ * queue — la asignación y sus horarios se sincronizan desde el CRM, sin tocar
+ * Asterisk a mano.
  */
 export async function getCampaignAgentExtensions(campaignId: string): Promise<string[]> {
-  // Dos consultas en vez de un embed PostgREST: campaign_agents y
-  // agent_sip_credentials no tienen una FK directa entre sí (ambas apuntan a
-  // profiles por separado), así que "agent_sip_credentials!inner(...)" no
-  // resuelve ("Could not find a relationship..."). Esto es más verboso pero
-  // no depende de que PostgREST adivine una relación que no existe.
-  const { data: members, error: membersError } = await supabase
-    .from("campaign_agents")
-    .select("profile_id")
-    .eq("campaign_id", campaignId);
-  if (membersError) throw new Error(`campaign_agents: ${membersError.message}`);
-
-  const profileIds = (members ?? []).map((m) => m.profile_id);
-  if (profileIds.length === 0) return [];
-
-  const { data: creds, error: credsError } = await supabase
-    .from("agent_sip_credentials")
-    .select("extension")
-    .in("profile_id", profileIds)
-    .eq("is_active", true);
-  if (credsError) throw new Error(`agent_sip_credentials: ${credsError.message}`);
-
-  return (creds ?? []).map((c) => c.extension);
+  const { data, error } = await supabase.rpc("get_active_campaign_agent_extensions", {
+    p_campaign_id: campaignId,
+  });
+  if (error) throw new Error(`get_active_campaign_agent_extensions: ${error.message}`);
+  return ((data ?? []) as { extension: string }[]).map((member) => member.extension);
 }
 
 /**

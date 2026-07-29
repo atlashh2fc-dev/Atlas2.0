@@ -6,10 +6,21 @@ import {
   setCampaignWorkflow,
   addCampaignAgent,
   removeCampaignAgent,
+  addCampaignAgentSchedule,
+  removeCampaignAgentSchedule,
   toggleCampaignActive,
 } from "@/app/actions/campaigns";
 import { upsertDialerCampaignConfig, toggleDialerCampaignActive } from "@/app/actions/dialer-config";
 import { DIAL_MODES, type DialerCampaignConfig } from "@/lib/types";
+
+type CampaignAgentSchedule = {
+  id: string;
+  campaign_agent_id: string;
+  days_of_week: number[];
+  start_time: string;
+  end_time: string;
+  timezone: string;
+};
 
 export default async function CampaignDetailPage({ params }: { params: Promise<{ id: string }> }) {
   await requireProfile(["admin"]);
@@ -24,7 +35,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
       supabase.from("workflows").select("id, name").order("name"),
       supabase
         .from("campaign_agents")
-        .select("id, profile_id, profiles(full_name, email)")
+        .select("id, profile_id, schedule_required, profiles(full_name, email)")
         .eq("campaign_id", id)
         .order("assigned_at", { ascending: true }),
       supabase.from("profiles").select("id, full_name, email").eq("role", "agente").order("full_name"),
@@ -32,10 +43,25 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
       supabase.from("dialer_campaign_configs").select("*").eq("campaign_id", id).maybeSingle(),
     ]);
 
+  const { data: schedules } = (members ?? []).length > 0
+    ? await supabase
+        .from("campaign_agent_schedules")
+        .select("id, campaign_agent_id, days_of_week, start_time, end_time, timezone")
+        .in("campaign_agent_id", (members ?? []).map((member) => member.id))
+        .order("start_time")
+    : { data: [] };
+
   const dc = dialerConfig as DialerCampaignConfig | null;
 
   const assignedIds = new Set((members ?? []).map((m) => m.profile_id));
   const availableAgents = (agents ?? []).filter((a) => !assignedIds.has(a.id));
+  const schedulesByMembership = new Map<string, CampaignAgentSchedule[]>();
+  for (const schedule of (schedules ?? []) as CampaignAgentSchedule[]) {
+    schedulesByMembership.set(schedule.campaign_agent_id, [
+      ...(schedulesByMembership.get(schedule.campaign_agent_id) ?? []),
+      schedule,
+    ]);
+  }
   const setupItems = [
     {
       label: "Flujo productivo",
@@ -194,7 +220,11 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
       </section>
 
       <div id="ejecutivos" className="rounded-xl border border-border bg-surface p-5">
-        <h2 className="mb-3 text-sm font-semibold text-foreground">Ejecutivos asignados</h2>
+        <h2 className="mb-1 text-sm font-semibold text-foreground">Ejecutivos asignados</h2>
+        <p className="mb-3 text-xs leading-5 text-muted-foreground">
+          Un ejecutivo puede pertenecer a varias campañas. En discado automático, define horarios sin traslape para
+          que reciba llamadas solo de la campaña que corresponde a su turno.
+        </p>
         <div className="divide-y divide-border">
           {(members ?? []).length === 0 && (
             <p className="py-3 text-sm text-muted-foreground">Sin ejecutivos asignados todavía.</p>
@@ -206,48 +236,88 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
               | null;
             const profile = Array.isArray(profileRaw) ? profileRaw[0] ?? null : profileRaw;
             return (
-              <div key={m.id} className="flex items-center justify-between py-2.5">
-                <div>
-                  <p className="text-sm font-medium text-foreground">{profile?.full_name ?? "—"}</p>
-                  <p className="text-xs text-muted-foreground">{profile?.email ?? "—"}</p>
+              <div key={m.id} className="py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{profile?.full_name ?? "—"}</p>
+                    <p className="text-xs text-muted-foreground">{profile?.email ?? "—"}</p>
+                  </div>
+                  <form action={removeCampaignAgent}>
+                    <input type="hidden" name="campaign_id" value={campaign.id} />
+                    <input type="hidden" name="membership_id" value={m.id} />
+                    <button
+                      type="submit"
+                      className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-foreground hover:bg-surface-muted"
+                    >
+                      Quitar
+                    </button>
+                  </form>
                 </div>
-                <form action={removeCampaignAgent}>
-                  <input type="hidden" name="campaign_id" value={campaign.id} />
-                  <input type="hidden" name="membership_id" value={m.id} />
-                  <button
-                    type="submit"
-                    className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-foreground hover:bg-surface-muted"
-                  >
-                    Quitar
-                  </button>
-                </form>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  {(schedulesByMembership.get(m.id) ?? []).map((schedule) => (
+                    <div key={schedule.id} className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-[11px] text-primary">
+                      {schedule.days_of_week.map((day) => ["Do", "Lu", "Ma", "Mi", "Ju", "Vi", "Sa"][day]).join(" · ")}
+                      {" "}{schedule.start_time.slice(0, 5)}–{schedule.end_time.slice(0, 5)}
+                      <form action={removeCampaignAgentSchedule}>
+                        <input type="hidden" name="campaign_id" value={campaign.id} />
+                        <input type="hidden" name="schedule_id" value={schedule.id} />
+                        <button type="submit" aria-label="Eliminar horario" className="font-semibold hover:text-danger">×</button>
+                      </form>
+                    </div>
+                  ))}
+                  {(schedulesByMembership.get(m.id) ?? []).length === 0 && (
+                    <span className="text-[11px] text-warning">
+                      {m.schedule_required ? "Sin horario: no recibirá llamadas automáticas." : "Sin horario: disponible siempre (configuración anterior)."}
+                    </span>
+                  )}
+                </div>
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-xs font-medium text-primary">Agregar horario de conexión</summary>
+                  <form action={addCampaignAgentSchedule} className="mt-2 flex flex-wrap items-end gap-2 rounded-lg bg-background p-2">
+                    <input type="hidden" name="campaign_id" value={campaign.id} />
+                    <input type="hidden" name="membership_id" value={m.id} />
+                    <fieldset className="flex gap-1" aria-label="Días de la semana">
+                      {["Do", "Lu", "Ma", "Mi", "Ju", "Vi", "Sa"].map((day, dayIndex) => (
+                        <label key={day} className="flex cursor-pointer flex-col items-center gap-0.5 text-[10px] text-muted-foreground">
+                          <input type="checkbox" name="days_of_week" value={dayIndex} className="accent-primary" />
+                          {day}
+                        </label>
+                      ))}
+                    </fieldset>
+                    <label className="text-[11px] text-muted-foreground">Desde<input required type="time" name="start_time" className="ml-1 rounded border border-border bg-surface px-1 py-0.5 text-xs text-foreground" /></label>
+                    <label className="text-[11px] text-muted-foreground">Hasta<input required type="time" name="end_time" className="ml-1 rounded border border-border bg-surface px-1 py-0.5 text-xs text-foreground" /></label>
+                    <button type="submit" className="rounded bg-primary px-2 py-1 text-xs font-medium text-primary-foreground hover:bg-primary-hover">Agregar</button>
+                  </form>
+                </details>
               </div>
             );
           })}
         </div>
-        <form action={addCampaignAgent} className="mt-4 flex max-w-md items-center gap-2">
+        <form action={addCampaignAgent} className="mt-4 max-w-xl">
           <input type="hidden" name="campaign_id" value={campaign.id} />
+          <label className="mb-1 block text-xs font-medium text-foreground">Agregar ejecutivos</label>
           <select
-            name="profile_id"
-            defaultValue=""
+            name="profile_ids"
+            multiple
+            size={Math.min(Math.max(availableAgents.length, 2), 6)}
             required
-            className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
           >
-            <option value="" disabled>
-              Selecciona un ejecutivo
-            </option>
             {availableAgents.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.full_name} ({a.email})
               </option>
             ))}
           </select>
-          <button
-            type="submit"
-            className="rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary-hover"
-          >
-            Agregar
-          </button>
+          <div className="mt-2 flex items-center gap-3">
+            <button
+              type="submit"
+              className="rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary-hover"
+            >
+              Agregar seleccionados
+            </button>
+            <span className="text-xs text-muted-foreground">Usa Ctrl/Cmd + clic para elegir varios.</span>
+          </div>
         </form>
       </div>
 

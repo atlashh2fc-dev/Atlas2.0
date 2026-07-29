@@ -9,6 +9,7 @@ import {
 } from "@/app/actions/admin";
 import type { AppRole } from "@/lib/types";
 import { UserRoleForm } from "@/components/user-role-form";
+import { UserCampaignsForm } from "@/components/user-campaigns-form";
 import {
   Badge,
   Button,
@@ -41,12 +42,23 @@ export default async function UsersAdminPage() {
     .select("*")
     .order("created_at", { ascending: true });
 
-  const { data: teams } = await supabase.from("teams").select("*").order("name");
+  const [{ data: teams }, { data: campaigns }, { data: campaignMemberships }] = await Promise.all([
+    supabase.from("teams").select("*").order("name"),
+    supabase.from("campaigns").select("id, name").eq("is_active", true).order("name"),
+    supabase.from("campaign_agents").select("profile_id, campaign_id"),
+  ]);
 
   const supervisors = (users ?? []).filter((u) => u.role === "supervisor");
   const supervisorName = (id: string | null) =>
     supervisors.find((s) => s.id === id)?.full_name ?? "Sin supervisor";
   const teamOf = (teamId: string | null) => (teams ?? []).find((t) => t.id === teamId) ?? null;
+  const campaignIdsByAgent = new Map<string, string[]>();
+  for (const membership of campaignMemberships ?? []) {
+    campaignIdsByAgent.set(membership.profile_id, [
+      ...(campaignIdsByAgent.get(membership.profile_id) ?? []),
+      membership.campaign_id,
+    ]);
+  }
 
   return (
     <div className="space-y-6">
@@ -98,6 +110,7 @@ export default async function UsersAdminPage() {
             <Th>Rol</Th>
             <Th>Equipo</Th>
             <Th>Supervisor</Th>
+            <Th>Campañas / skills</Th>
             <Th>Estado</Th>
             <Th />
           </Thead>
@@ -119,6 +132,17 @@ export default async function UsersAdminPage() {
                   {u.role === "agente" ? supervisorName(teamOf(u.team_id)?.supervisor_id ?? null) : "—"}
                 </Td>
                 <Td>
+                  {u.role === "agente" ? (
+                    <UserCampaignsForm
+                      userId={u.id}
+                      campaignIds={campaignIdsByAgent.get(u.id) ?? []}
+                      campaigns={campaigns ?? []}
+                    />
+                  ) : (
+                    <span className="text-sm text-muted-foreground">—</span>
+                  )}
+                </Td>
+                <Td>
                   <Badge tone={u.active ? "success" : "danger"}>{u.active ? "Activo" : "Inactivo"}</Badge>
                 </Td>
                 <Td align="right">
@@ -135,6 +159,11 @@ export default async function UsersAdminPage() {
           </Tbody>
         </Table>
       </SectionCard>
+
+      <p className="-mt-3 text-xs text-muted-foreground">
+        Puedes seleccionar varias campañas con Ctrl/Cmd + clic. Para evitar mezcla de llamadas automáticas,
+        configura turnos no superpuestos desde el detalle de cada campaña.
+      </p>
 
       <Card>
         <h2 className="mb-3 text-sm font-semibold text-foreground">Equipos</h2>
