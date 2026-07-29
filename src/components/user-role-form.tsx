@@ -6,6 +6,11 @@ import type { AppRole } from "@/lib/types";
 import { Button, Select } from "@/components/ui";
 
 const ROLES: AppRole[] = ["agente", "supervisor", "admin"];
+const ROLE_LABEL: Record<AppRole, string> = {
+  agente: "Agente",
+  supervisor: "Supervisor",
+  admin: "Administrador",
+};
 
 type TeamOption = { id: string; name: string };
 
@@ -43,42 +48,50 @@ export function UserRoleForm({
   }
 
   return (
-    <form action={save} className="flex items-center gap-2">
+    <form action={save} className="grid gap-3 sm:grid-cols-2">
       <input type="hidden" name="user_id" value={userId} />
-      <Select
-        name="role"
-        fieldSize="sm"
-        defaultValue={initialRole}
-        disabled={isPending}
-        className="w-auto"
-      >
-        {ROLES.map((item) => (
-          <option key={item} value={item}>
-            {item}
-          </option>
-        ))}
-      </Select>
-      <Select
-        name="team_id"
-        fieldSize="sm"
-        defaultValue={initialTeamId ?? ""}
-        disabled={isPending}
-        className="w-auto"
-      >
-        <option value="">Sin equipo</option>
-        {teams.map((team) => (
-          <option key={team.id} value={team.id}>
-            {team.name}
-          </option>
-        ))}
-      </Select>
-      <Button type="submit" size="sm" disabled={isPending}>
-        {isPending ? "Guardando…" : "Guardar"}
-      </Button>
-      <span aria-live="polite" className="text-xs">
-        {message && <span className="text-success">{message}</span>}
-        {error && <span className="text-danger">{error}</span>}
-      </span>
+      <label className="flex min-w-0 flex-col gap-1">
+        <span className="text-xs font-medium text-foreground">Rol de acceso</span>
+        <Select
+          name="role"
+          fieldSize="sm"
+          defaultValue={initialRole}
+          disabled={isPending}
+          aria-label="Rol de acceso"
+        >
+          {ROLES.map((item) => (
+            <option key={item} value={item}>
+              {ROLE_LABEL[item]}
+            </option>
+          ))}
+        </Select>
+      </label>
+      <label className="flex min-w-0 flex-col gap-1">
+        <span className="text-xs font-medium text-foreground">Equipo</span>
+        <Select
+          name="team_id"
+          fieldSize="sm"
+          defaultValue={initialTeamId ?? ""}
+          disabled={isPending}
+          aria-label="Equipo"
+        >
+          <option value="">Sin equipo asignado</option>
+          {teams.map((team) => (
+            <option key={team.id} value={team.id}>
+              {team.name}
+            </option>
+          ))}
+        </Select>
+      </label>
+      <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
+        <Button type="submit" size="sm" disabled={isPending}>
+          {isPending ? "Guardando…" : "Guardar cambios"}
+        </Button>
+        <span aria-live="polite" className="text-xs">
+          {message && <span className="text-success">{message}</span>}
+          {error && <span className="text-danger">{error}</span>}
+        </span>
+      </div>
     </form>
   );
 }

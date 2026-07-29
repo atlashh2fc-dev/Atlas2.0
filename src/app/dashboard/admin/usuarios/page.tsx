@@ -19,12 +19,6 @@ import {
   PageHeader,
   SectionCard,
   Select,
-  Table,
-  Tbody,
-  Td,
-  Th,
-  Thead,
-  Tr,
 } from "@/components/ui";
 
 const ROLES: AppRole[] = ["agente", "supervisor", "admin"];
@@ -102,67 +96,63 @@ export default async function UsersAdminPage() {
         </form>
       </Card>
 
-      <SectionCard>
-        <Table>
-          <Thead>
-            <Th>Nombre</Th>
-            <Th>Correo</Th>
-            <Th>Rol</Th>
-            <Th>Equipo</Th>
-            <Th>Supervisor</Th>
-            <Th>Campañas / skills</Th>
-            <Th>Estado</Th>
-            <Th />
-          </Thead>
-          <Tbody>
-            {(users ?? []).map((u) => (
-              <Tr key={u.id}>
-                <Td strong>{u.full_name}</Td>
-                <Td muted>{u.email}</Td>
-                <Td>
-                  <UserRoleForm
+      <SectionCard
+        title="Usuarios registrados"
+        description="Edita el rol, equipo y, para agentes, sus campañas habilitadas."
+      >
+        <div className="grid gap-3 p-4 xl:grid-cols-2">
+          {(users ?? []).map((u) => (
+            <article
+              key={u.id}
+              className={`rounded-xl border p-4 ${u.active ? "border-border bg-background" : "border-danger/30 bg-danger-bg/30"}`}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="truncate text-base font-semibold text-foreground">{u.full_name}</h3>
+                  <p className="mt-0.5 break-all text-sm text-muted-foreground">{u.email}</p>
+                </div>
+                <Badge tone={u.active ? "success" : "danger"}>{u.active ? "Activo" : "Inactivo"}</Badge>
+              </div>
+
+              <div className="mt-4 border-t border-border pt-4">
+                <UserRoleForm
+                  userId={u.id}
+                  initialRole={u.role}
+                  initialTeamId={u.team_id}
+                  teams={teams ?? []}
+                />
+              </div>
+
+              {u.role === "agente" && (
+                <div className="mt-4 border-t border-border pt-4">
+                  <p className="mb-2 text-xs text-muted-foreground">
+                    Supervisor: <span className="font-medium text-foreground">{supervisorName(teamOf(u.team_id)?.supervisor_id ?? null)}</span>
+                  </p>
+                  <UserCampaignsForm
                     userId={u.id}
-                    initialRole={u.role}
-                    initialTeamId={u.team_id}
-                    teams={teams ?? []}
+                    campaignIds={campaignIdsByAgent.get(u.id) ?? []}
+                    campaigns={campaigns ?? []}
                   />
-                </Td>
-                <Td muted>{teamOf(u.team_id)?.name ?? "—"}</Td>
-                <Td muted>
-                  {u.role === "agente" ? supervisorName(teamOf(u.team_id)?.supervisor_id ?? null) : "—"}
-                </Td>
-                <Td>
-                  {u.role === "agente" ? (
-                    <UserCampaignsForm
-                      userId={u.id}
-                      campaignIds={campaignIdsByAgent.get(u.id) ?? []}
-                      campaigns={campaigns ?? []}
-                    />
-                  ) : (
-                    <span className="text-sm text-muted-foreground">—</span>
-                  )}
-                </Td>
-                <Td>
-                  <Badge tone={u.active ? "success" : "danger"}>{u.active ? "Activo" : "Inactivo"}</Badge>
-                </Td>
-                <Td align="right">
-                  <form action={toggleUserActive}>
-                    <input type="hidden" name="user_id" value={u.id} />
-                    <input type="hidden" name="active" value={String(u.active)} />
-                    <Button type="submit" variant="secondary" size="sm">
-                      {u.active ? "Desactivar" : "Activar"}
-                    </Button>
-                  </form>
-                </Td>
-              </Tr>
-            ))}
-          </Tbody>
-        </Table>
+                </div>
+              )}
+
+              <div className="mt-4 flex justify-end border-t border-border pt-3">
+                <form action={toggleUserActive}>
+                  <input type="hidden" name="user_id" value={u.id} />
+                  <input type="hidden" name="active" value={String(u.active)} />
+                  <Button type="submit" variant="secondary" size="sm">
+                    {u.active ? "Desactivar usuario" : "Activar usuario"}
+                  </Button>
+                </form>
+              </div>
+            </article>
+          ))}
+          {(users ?? []).length === 0 && <p className="text-sm text-muted-foreground">No hay usuarios creados todavía.</p>}
+        </div>
       </SectionCard>
 
       <p className="-mt-3 text-xs text-muted-foreground">
-        Puedes seleccionar varias campañas con Ctrl/Cmd + clic. Para evitar mezcla de llamadas automáticas,
-        configura turnos no superpuestos desde el detalle de cada campaña.
+        Para evitar mezcla de llamadas automáticas, define turnos sin traslape en el detalle de cada campaña.
       </p>
 
       <Card>
