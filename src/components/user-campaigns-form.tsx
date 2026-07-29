@@ -10,10 +10,12 @@ export function UserCampaignsForm({
   userId,
   campaignIds,
   campaigns,
+  lockedCampaigns = [],
 }: {
   userId: string;
   campaignIds: string[];
   campaigns: CampaignOption[];
+  lockedCampaigns?: CampaignOption[];
 }) {
   const [isPending, startTransition] = useTransition();
   const [selectedCampaignIds, setSelectedCampaignIds] = useState(() => new Set(campaignIds));
@@ -37,12 +39,28 @@ export function UserCampaignsForm({
   return (
     <form action={save} className="space-y-2">
       <input type="hidden" name="profile_id" value={userId} />
+      {lockedCampaigns.map((campaign) => (
+        <input key={campaign.id} type="hidden" name="campaign_ids" value={campaign.id} />
+      ))}
       <div>
-        <p className="text-xs font-medium text-foreground">Campañas / skills</p>
-        <p className="mt-0.5 text-[11px] text-muted-foreground">Selecciona todas las campañas que puede operar.</p>
+        <p className="text-xs font-medium text-foreground">Skills habilitados</p>
+        <p className="mt-0.5 text-[11px] text-muted-foreground">
+          {lockedCampaigns.length > 0
+            ? "La campaña revisada queda asignada; agrega o quita los otros skills."
+            : "Selecciona todas las campañas que puede operar."}
+        </p>
       </div>
+      {lockedCampaigns.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {lockedCampaigns.map((campaign) => (
+            <span key={campaign.id} className="rounded-md bg-primary px-2 py-1 text-[11px] font-medium text-primary-foreground">
+              {campaign.name} · campaña revisada
+            </span>
+          ))}
+        </div>
+      )}
       <div className="flex flex-wrap gap-2">
-        {campaigns.map((campaign) => {
+        {campaigns.filter((campaign) => !lockedCampaigns.some((locked) => locked.id === campaign.id)).map((campaign) => {
           const selected = selectedCampaignIds.has(campaign.id);
           return (
             <label

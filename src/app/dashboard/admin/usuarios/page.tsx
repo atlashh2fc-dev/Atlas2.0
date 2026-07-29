@@ -1,6 +1,7 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { unstable_noStore as noStore } from "next/cache";
+import Link from "next/link";
 import {
   toggleUserActive,
   createTeam,
@@ -23,7 +24,11 @@ import {
 
 const ROLES: AppRole[] = ["agente", "supervisor", "admin"];
 
-export default async function UsersAdminPage() {
+export default async function UsersAdminPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ campaign?: string }>;
+}) {
   // Los roles se administran en esta pantalla y deben leerse siempre desde
   // Supabase. Una respuesta cacheada hacía que el guardado real volviera a
   // mostrar el rol anterior hasta una recarga posterior.
@@ -43,6 +48,8 @@ export default async function UsersAdminPage() {
   ]);
 
   const supervisors = (users ?? []).filter((u) => u.role === "supervisor");
+  const { campaign: requestedCampaignId } = await searchParams;
+  const selectedCampaign = (campaigns ?? []).find((campaign) => campaign.id === requestedCampaignId) ?? null;
   const supervisorName = (id: string | null) =>
     supervisors.find((s) => s.id === id)?.full_name ?? "Sin supervisor";
   const teamOf = (teamId: string | null) => (teams ?? []).find((t) => t.id === teamId) ?? null;
@@ -53,6 +60,11 @@ export default async function UsersAdminPage() {
       membership.campaign_id,
     ]);
   }
+  const visibleUsers = selectedCampaign
+    ? (users ?? []).filter(
+        (user) => user.role === "agente" && (campaignIdsByAgent.get(user.id) ?? []).includes(selectedCampaign.id)
+      )
+    : users ?? [];
 
   return (
     <div className="space-y-6">
@@ -96,64 +108,112 @@ export default async function UsersAdminPage() {
         </form>
       </Card>
 
+      <Card className="flex flex-wrap items-end justify-between gap-3">
+        <form className="flex flex-wrap items-end gap-2">
+          <Field label="Campaña a revisar" className="min-w-64">
+            <Select name="campaign" defaultValue={selectedCampaign?.id ?? ""}>
+              <option value="">Todos los usuarios · solo roles y equipos</option>
+              {(campaigns ?? []).map((campaign) => (
+                <option key={campaign.id} value={campaign.id}>{campaign.name}</option>
+              ))}
+            </Select>
+          </Field>
+          <Button type="submit">Revisar campaña</Button>
+          {selectedCampaign && (
+            <Link href="/dashboard/admin/usuarios" className="pb-2 text-xs font-medium text-primary hover:underline">
+              Limpiar filtro
+            </Link>
+          )}
+        </form>
+        {selectedCampaign && (
+          <Link
+            href={`/dashboard/admin/campanas/${selectedCampaign.id}#ejecutivos`}
+            className="text-xs font-medium text-primary hover:underline"
+          >
+            Gestionar ejecutivos de {selectedCampaign.name} →
+          </Link>
+        )}
+      </Card>
+
       <SectionCard
-        title="Usuarios registrados"
-        description="Edita el rol, equipo y, para agentes, sus campañas habilitadas."
+        title={selectedCampaign ? `Ejecutivos de ${selectedCampaign.name}` : "Roles y equipos"}
+        description={
+          selectedCampaign
+            ? `${visibleUsers.length} ejecutivo(s) asignado(s). Ajusta los skills sin perder la campaña que estás revisando.`
+            : "Selecciona una campaña arriba para revisar asignaciones y skills sin mezclar toda la operación."
+        }
       >
-        <div className="grid gap-3 p-4 xl:grid-cols-2">
-          {(users ?? []).map((u) => (
-            <article
-              key={u.id}
-              className={`rounded-xl border p-4 ${u.active ? "border-border bg-background" : "border-danger/30 bg-danger-bg/30"}`}
-            >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h3 className="truncate text-base font-semibold text-foreground">{u.full_name}</h3>
-                  <p className="mt-0.5 break-all text-sm text-muted-foreground">{u.email}</p>
-                </div>
-                <Badge tone={u.active ? "success" : "danger"}>{u.active ? "Activo" : "Inactivo"}</Badge>
-              </div>
-
-              <div className="mt-4 border-t border-border pt-4">
-                <UserRoleForm
-                  userId={u.id}
-                  initialRole={u.role}
-                  initialTeamId={u.team_id}
-                  teams={teams ?? []}
-                />
-              </div>
-
-              {u.role === "agente" && (
-                <div className="mt-4 border-t border-border pt-4">
-                  <p className="mb-2 text-xs text-muted-foreground">
-                    Supervisor: <span className="font-medium text-foreground">{supervisorName(teamOf(u.team_id)?.supervisor_id ?? null)}</span>
-                  </p>
-                  <UserCampaignsForm
-                    userId={u.id}
-                    campaignIds={campaignIdsByAgent.get(u.id) ?? []}
-                    campaigns={campaigns ?? []}
-                  />
-                </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] border-collapse text-sm">
+            <thead className="border-b border-border bg-surface-muted text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="px-4 py-2.5 font-semibold">Usuario</th>
+                <th className="min-w-80 px-4 py-2.5 font-semibold">Acceso y equipo</th>
+                {selectedCampaign && <th className="min-w-[22rem] px-4 py-2.5 font-semibold">Skills</th>}
+                <th className="px-4 py-2.5 font-semibold">Estado</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {visibleUsers.map((u) => (
+                <tr key={u.id} className="align-top hover:bg-surface-muted/40">
+                  <td className="px-4 py-3">
+                    <p className="font-medium text-foreground">{u.full_name}</p>
+                    <p className="mt-0.5 max-w-64 break-all text-xs text-muted-foreground">{u.email}</p>
+                    {u.role === "agente" && (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Supervisor: {supervisorName(teamOf(u.team_id)?.supervisor_id ?? null)}
+                      </p>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <UserRoleForm
+                      userId={u.id}
+                      initialRole={u.role}
+                      initialTeamId={u.team_id}
+                      teams={teams ?? []}
+                    />
+                  </td>
+                  {selectedCampaign && (
+                    <td className="px-4 py-3">
+                      <UserCampaignsForm
+                        userId={u.id}
+                        campaignIds={campaignIdsByAgent.get(u.id) ?? []}
+                        campaigns={campaigns ?? []}
+                        lockedCampaigns={[selectedCampaign]}
+                      />
+                    </td>
+                  )}
+                  <td className="px-4 py-3">
+                    <Badge tone={u.active ? "success" : "danger"}>{u.active ? "Activo" : "Inactivo"}</Badge>
+                    <form action={toggleUserActive} className="mt-2">
+                      <input type="hidden" name="user_id" value={u.id} />
+                      <input type="hidden" name="active" value={String(u.active)} />
+                      <Button type="submit" variant="secondary" size="sm">
+                        {u.active ? "Desactivar" : "Activar"}
+                      </Button>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+              {visibleUsers.length === 0 && (
+                <tr>
+                  <td colSpan={selectedCampaign ? 4 : 3} className="px-5 py-8 text-center text-sm text-muted-foreground">
+                    {selectedCampaign
+                      ? "No hay ejecutivos asignados a esta campaña todavía."
+                      : "No hay usuarios creados todavía."}
+                  </td>
+                </tr>
               )}
-
-              <div className="mt-4 flex justify-end border-t border-border pt-3">
-                <form action={toggleUserActive}>
-                  <input type="hidden" name="user_id" value={u.id} />
-                  <input type="hidden" name="active" value={String(u.active)} />
-                  <Button type="submit" variant="secondary" size="sm">
-                    {u.active ? "Desactivar usuario" : "Activar usuario"}
-                  </Button>
-                </form>
-              </div>
-            </article>
-          ))}
-          {(users ?? []).length === 0 && <p className="text-sm text-muted-foreground">No hay usuarios creados todavía.</p>}
+            </tbody>
+          </table>
         </div>
       </SectionCard>
 
-      <p className="-mt-3 text-xs text-muted-foreground">
-        Para evitar mezcla de llamadas automáticas, define turnos sin traslape en el detalle de cada campaña.
-      </p>
+      {selectedCampaign && (
+        <p className="-mt-3 text-xs text-muted-foreground">
+          Para evitar mezcla de llamadas automáticas, define turnos sin traslape en el detalle de cada campaña.
+        </p>
+      )}
 
       <Card>
         <h2 className="mb-3 text-sm font-semibold text-foreground">Equipos</h2>
