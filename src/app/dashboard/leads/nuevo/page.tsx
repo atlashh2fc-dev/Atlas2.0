@@ -34,8 +34,13 @@ export default async function NewLeadRecordPage() {
   const teamsQuery = supabase.from("teams").select("id, name").order("name");
 
   if (profile.role === "supervisor") {
-    agentsQuery.eq("team_id", profile.team_id);
-    teamsQuery.eq("id", profile.team_id);
+    const { data: supervisedTeams } = await supabase
+      .from("teams")
+      .select("id")
+      .eq("supervisor_id", profile.id);
+    const teamIds = (supervisedTeams ?? []).map((team) => team.id);
+    agentsQuery.in("team_id", teamIds.length ? teamIds : ["00000000-0000-0000-0000-000000000000"]);
+    teamsQuery.in("id", teamIds.length ? teamIds : ["00000000-0000-0000-0000-000000000000"]);
   }
 
   const [{ data: teams }, { data: agents }, { data: campaigns }] = await Promise.all([
@@ -72,9 +77,9 @@ export default async function NewLeadRecordPage() {
         </Link>
       </div>
 
-      {profile.role === "supervisor" && !profile.team_id ? (
+      {profile.role === "supervisor" && teamOptions.length === 0 ? (
         <div className="rounded-xl border border-danger/30 bg-danger-bg px-5 py-4 text-sm text-danger">
-          Tu usuario supervisor no tiene equipo asignado. Un administrador debe asociarte a un equipo antes de crear registros.
+          Tu usuario supervisor no tiene equipos asignados. Un administrador debe asignarte al menos uno antes de crear registros.
         </div>
       ) : (
         <ManualLeadRecordForm
@@ -82,7 +87,7 @@ export default async function NewLeadRecordPage() {
           teams={teamOptions}
           agents={agentOptions}
           campaigns={campaignOptions}
-          defaultTeamId={profile.team_id}
+          defaultTeamId={teamOptions[0]?.id ?? null}
         />
       )}
     </div>

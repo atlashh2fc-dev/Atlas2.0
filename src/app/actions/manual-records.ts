@@ -43,7 +43,7 @@ export async function createManualLeadRecord(input: ManualRecordInput): Promise<
       p_rut: rut,
       p_phone: phone,
       p_email: blankToNull(input.email),
-      p_team_id: profile.role === "admin" ? blankToNull(input.teamId) : null,
+      p_team_id: blankToNull(input.teamId),
       p_campaign_id: blankToNull(input.campaignId),
       p_assigned_to: blankToNull(input.assignedTo),
       p_notes: blankToNull(input.notes),

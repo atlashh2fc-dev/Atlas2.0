@@ -64,13 +64,8 @@ export default async function LeadsPage({
 
   const [{ data: agentOptions }, { data: campaignOptions }] = canFilterOperation
     ? await Promise.all([
-        profile.role === "supervisor" && profile.team_id
-          ? supabase
-              .from("profiles")
-              .select("id, full_name")
-              .eq("team_id", profile.team_id)
-              .eq("role", "agente")
-              .order("full_name")
+        profile.role === "supervisor"
+          ? supabase.from("profiles").select("id, full_name").eq("role", "agente").order("full_name")
           : supabase.from("profiles").select("id, full_name").eq("role", "agente").order("full_name"),
         supabase.from("campaigns").select("id, name").order("name"),
       ])
@@ -93,7 +88,6 @@ export default async function LeadsPage({
         .select(leadSelect)
         .in("id", ids);
       if (profile.role === "agente") matchedQuery.or(agentSearchVisibilityFilter);
-      if (profile.role === "supervisor" && profile.team_id) matchedQuery.eq("team_id", profile.team_id);
       if (filters.agent) matchedQuery.or(`assigned_to.eq.${filters.agent},managed_by.eq.${filters.agent}`);
       if (filters.campaign) matchedQuery.eq("campaign_id", filters.campaign);
       if (filters.status) matchedQuery.eq("status", filters.status);

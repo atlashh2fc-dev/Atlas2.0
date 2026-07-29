@@ -121,7 +121,7 @@ export function ManualLeadRecordForm({
           />
         </label>
 
-        {role === "admin" && (
+        {(role === "admin" || teams.length > 1) && (
           <label className="space-y-1.5">
             <span className="text-xs font-medium text-muted-foreground">Equipo</span>
             <select

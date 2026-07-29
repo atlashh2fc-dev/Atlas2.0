@@ -67,7 +67,7 @@ export function UserRoleForm({
         </Select>
       </label>
       <label className="flex min-w-0 flex-col gap-1">
-        <span className="text-xs font-medium text-foreground">Equipo</span>
+        <span className="text-xs font-medium text-foreground">Equipo base (agentes)</span>
         <Select
           name="team_id"
           fieldSize="sm"

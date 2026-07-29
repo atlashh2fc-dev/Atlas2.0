@@ -174,15 +174,6 @@ export default async function TeamPage({
     status: status || "",
   };
 
-  if (!profile.team_id) {
-    return (
-      <Callout tone="danger">
-        Tu usuario supervisor no tiene equipo asignado. Un administrador debe asociarte a un equipo antes de
-        usar esta vista.
-      </Callout>
-    );
-  }
-
   const reportTo = endOfDay(new Date());
   const reportFrom = startOfDay(addDays(reportTo, -(TEAM_REPORT_WINDOW_DAYS - 1)));
 
@@ -190,7 +181,6 @@ export default async function TeamPage({
     supabase
       .from("profiles")
       .select("id, full_name")
-      .eq("team_id", profile.team_id)
       .eq("role", "agente")
       .order("full_name"),
     supabase.from("campaigns").select("id, name").order("name"),
@@ -209,21 +199,18 @@ export default async function TeamPage({
   if (filters.agent) leadsQuery.eq("assigned_to", filters.agent);
   if (filters.campaign) leadsQuery.eq("campaign_id", filters.campaign);
   if (filters.status) leadsQuery.eq("status", filters.status);
-  const { data: leads } = profile.team_id
-    ? await leadsQuery.eq("team_id", profile.team_id)
-    : { data: [] };
+  const { data: leads } = await leadsQuery;
 
   const agendaQuery = supabase
     .from("leads")
     .select("id, full_name, rut, phone, status, campaign_id, next_action_at, managed_by, profiles!leads_managed_by_fkey(full_name)")
-    .eq("team_id", profile.team_id)
     .not("next_action_at", "is", null)
     .order("next_action_at", { ascending: true })
     .limit(100);
   if (filters.agent) agendaQuery.eq("managed_by", filters.agent);
   if (filters.campaign) agendaQuery.eq("campaign_id", filters.campaign);
   if (filters.status) agendaQuery.eq("status", filters.status);
-  const { data: agendaLeads } = profile.team_id ? await agendaQuery : { data: [] };
+  const { data: agendaLeads } = await agendaQuery;
 
   const now = new Date();
   const agendaRows = (agendaLeads ?? []) as AgendaLead[];

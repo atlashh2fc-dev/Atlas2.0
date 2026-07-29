@@ -232,8 +232,8 @@ export default async function UsersAdminPage({
       <Card>
         <h2 className="mb-3 text-sm font-semibold text-foreground">Equipos</h2>
         <p className="mb-3 text-xs text-muted-foreground">
-          El supervisor de un equipo define de quién dependen sus agentes (según el equipo asignado a cada
-          usuario arriba).
+          Un supervisor puede quedar asignado a varios equipos. Guarda el mismo supervisor en cada equipo que
+          deba supervisar; verá y administrará la operación de todos ellos.
         </p>
         <ul className="mb-4 space-y-2 text-sm">
           {(teams ?? []).map((t) => (

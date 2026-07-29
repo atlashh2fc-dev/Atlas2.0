@@ -12,8 +12,8 @@ export default async function BulkUploadPage({
   const supabase = await createClient();
 
   const teamsQuery = supabase.from("teams").select("id, name").order("name");
-  if (profile.role === "supervisor" && profile.team_id) {
-    teamsQuery.eq("id", profile.team_id);
+  if (profile.role === "supervisor") {
+    teamsQuery.eq("supervisor_id", profile.id);
   }
   const { data: teams } = await teamsQuery;
   const { data: workflows } = await supabase
