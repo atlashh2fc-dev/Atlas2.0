@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Bar, BarChart, Cell, Label, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import ReactGridLayout, { useContainerWidth, verticalCompactor, type Layout, type LayoutItem } from "react-grid-layout";
-import { LayoutDashboard, RotateCcw } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 import { getAgentLiveStatus, getQueueHealth } from "@/app/actions/supervision";
 import type { AgentLiveStatus, QueueHealth } from "@/lib/types";
 import { LEGAL_INTERCALL_BREAK_SECONDS } from "@/lib/intercall-break";
@@ -212,7 +212,7 @@ export function LiveMonitor() {
   const [campaign, setCampaign] = useState("");
   const [term, setTerm] = useState("");
   const [layout, setLayout] = usePersistentState<WidgetLayout[]>("atlas:live-monitor-layout:v2", DEFAULT_LAYOUT);
-  const { width, containerRef, mounted } = useContainerWidth({ measureBeforeMount: true });
+  const { width, containerRef } = useContainerWidth();
 
   useEffect(() => {
     let disposed = false;
@@ -363,37 +363,34 @@ export function LiveMonitor() {
 
   if (loading) return <LoadingState label="Estamos conectando el monitor en vivo" className="rounded-xl border border-border bg-surface px-5 py-4" />;
   if (error) return <p className="text-sm text-danger">Error: {error}</p>;
+  const safeLayout = layout.length === DEFAULT_LAYOUT.length && DEFAULT_LAYOUT.every((item) => layout.some((saved) => saved.i === item.i))
+    ? layout
+    : DEFAULT_LAYOUT;
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface-muted/60 px-4 py-3.5">
-        <div className="flex items-center gap-3">
-          <span className="inline-flex size-9 items-center justify-center rounded-lg bg-surface text-primary shadow-sm"><LayoutDashboard size={18} aria-hidden="true" /></span>
-          <div><p className="text-sm font-semibold text-foreground">Tu monitor, a tu manera</p><p className="text-xs text-muted-foreground">Arrastra cualquier tarjeta y toma su esquina inferior derecha para cambiar su tamaño.</p></div>
-        </div>
+      <div className="flex justify-end">
         <Button variant="secondary" size="sm" onClick={() => setLayout(DEFAULT_LAYOUT)} title="Restaurar orden y tamaños iniciales"><RotateCcw size={14} aria-hidden="true" />Restaurar vista</Button>
       </div>
       <div ref={containerRef}>
-        {mounted && (
-          <ReactGridLayout
-            className="atlas-live-grid"
-            layout={layout}
-            width={width}
-            gridConfig={{ cols: 12, rowHeight: 48, margin: [16, 16], containerPadding: [0, 0] }}
-            dragConfig={{ enabled: true, cancel: "input,textarea,button,select,a,[data-no-drag]" }}
-            resizeConfig={{ enabled: true, handles: ["se"] }}
-            compactor={verticalCompactor}
-            onLayoutChange={(nextLayout: Layout) => setLayout(nextLayout as WidgetLayout[])}
-          >
-            {layout.map((item) => (
-              <div key={item.i}>
-                <Card className="h-full overflow-hidden rounded-xl border-border bg-surface p-5 shadow-sm transition-shadow hover:shadow-md">
-                  {widgets[item.i]}
-                </Card>
-              </div>
-            ))}
-          </ReactGridLayout>
-        )}
+        <ReactGridLayout
+          className="atlas-live-grid"
+          layout={safeLayout}
+          width={width}
+          gridConfig={{ cols: 12, rowHeight: 48, margin: [16, 16], containerPadding: [0, 0] }}
+          dragConfig={{ enabled: true, cancel: "input,textarea,button,select,a,[data-no-drag]" }}
+          resizeConfig={{ enabled: true, handles: ["se"] }}
+          compactor={verticalCompactor}
+          onLayoutChange={(nextLayout: Layout) => setLayout(nextLayout as WidgetLayout[])}
+        >
+          {safeLayout.map((item) => (
+            <div key={item.i}>
+              <Card className="h-full overflow-hidden rounded-xl border-border bg-surface p-5 shadow-sm transition-shadow hover:shadow-md">
+                {widgets[item.i]}
+              </Card>
+            </div>
+          ))}
+        </ReactGridLayout>
       </div>
     </div>
   );
