@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { usePersistentState } from "@/lib/persistent-state";
 import { buttonClasses, type ButtonVariant } from "./button";
 import { InfoTooltip } from "./info-tooltip";
+import { LoadingState } from "./loading-state";
 import { metricDefinition, type MetricId } from "@/lib/metric-definitions";
 
 export type CellValue = string | number | null | undefined;
@@ -82,6 +83,7 @@ export function DataTable<T>({
   emptyDescription,
   emptyAction,
   loading = false,
+  loadingLabel = "Actualizando resultados",
   error,
   onRetry,
   page: serverPage,
@@ -104,6 +106,8 @@ export function DataTable<T>({
   emptyDescription?: ReactNode;
   emptyAction?: ReactNode;
   loading?: boolean;
+  /** Texto que explica qué información se está consultando mientras se muestra el skeleton. */
+  loadingLabel?: string;
   error?: string | null;
   onRetry?: () => void;
   page?: number;
@@ -309,6 +313,11 @@ export function DataTable<T>({
       )}
 
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+        {loading && (
+          <div className="border-b border-border bg-surface-muted/40 px-4 py-2.5">
+            <LoadingState label={loadingLabel} compact />
+          </div>
+        )}
         <table
           className={cn(
             "w-full border-collapse text-sm tabular-nums",

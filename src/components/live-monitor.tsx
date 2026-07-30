@@ -10,6 +10,7 @@ import {
   Field,
   InfoTooltip,
   Input,
+  LoadingState,
   MetricCard,
   SectionCard,
   Select,
@@ -267,7 +268,7 @@ export function LiveMonitor() {
   );
 
   if (loading) {
-    return <p className="text-sm text-muted-foreground">Cargando monitor…</p>;
+    return <LoadingState label="Estamos conectando el monitor en vivo" className="rounded-xl border border-border bg-surface px-5 py-4" />;
   }
 
   if (error) {

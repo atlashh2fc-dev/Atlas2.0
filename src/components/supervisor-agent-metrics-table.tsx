@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CalendarClock, ExternalLink, FileText, Loader2, Mail, Phone, ShoppingCart, X } from "lucide-react";
-import { Input, Select, buttonClasses } from "@/components/ui";
+import { CalendarClock, ExternalLink, FileText, Mail, Phone, ShoppingCart, X } from "lucide-react";
+import { Input, LoadingState, Select, buttonClasses } from "@/components/ui";
 
 export type SupervisorAgentMetric = {
   agent_id: string;
@@ -469,9 +469,8 @@ export function SupervisorAgentMetricsTable({
             <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[380px_1fr]">
               <div className="min-h-0 overflow-y-auto border-b border-border lg:border-b-0 lg:border-r">
                 {loading && (
-                  <div className="flex h-48 items-center justify-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                    Cargando detalle...
+                  <div className="flex h-48 items-center justify-center">
+                    <LoadingState label="Estamos preparando el detalle de gestiones" />
                   </div>
                 )}
                 {loadError && <div className="p-5 text-sm text-danger">{loadError}</div>}

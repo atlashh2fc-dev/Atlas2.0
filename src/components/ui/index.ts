@@ -14,3 +14,4 @@ export { Table, Thead, Th, Tbody, Tr, Td, TableEmpty } from "./table";
 export { StatCard } from "./stat-card";
 export { ToastProvider, useToast, type ToastTone } from "./toast";
 export { ActionForm } from "./action-form";
+export { LoadingState } from "./loading-state";

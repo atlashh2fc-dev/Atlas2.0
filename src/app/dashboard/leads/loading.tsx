@@ -1,10 +1,13 @@
+import { LoadingState } from "@/components/ui";
+
 function Bar({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded-md bg-surface-muted ${className}`} />;
 }
 
 export default function LeadsLoading() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" aria-busy="true">
+      <LoadingState label="Estamos preparando tus leads" className="rounded-xl border border-border bg-surface px-5 py-4" />
       <div className="space-y-2">
         <Bar className="h-6 w-32" />
         <Bar className="h-4 w-64" />

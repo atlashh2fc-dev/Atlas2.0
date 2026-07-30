@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
 import { createClient } from "@/lib/supabase/client";
+import { LoadingState } from "@/components/ui";
 import {
   VOCALCOM_CHUNK_SIZE,
   buildVocalcomImportRows,
@@ -150,7 +151,7 @@ export function VocalcomUploadForm() {
             onChange={handleFileChange}
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-60"
           />
-          {parsing && <p className="mt-1 text-xs text-muted-foreground">Leyendo y clasificando...</p>}
+          {parsing && <LoadingState label="Estamos leyendo y clasificando el archivo" compact className="mt-2" />}
         </div>
 
         {buildResult && file && (
@@ -192,15 +193,14 @@ export function VocalcomUploadForm() {
 
         {pending && (
           <div>
+            <LoadingState label={progressLabel || "Estamos preparando la carga"} compact />
             <div className="h-2 w-full overflow-hidden rounded-full bg-surface-muted">
               <div
                 className="h-full bg-primary transition-[width] duration-150"
                 style={{ width: `${progress}%` }}
               />
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {progressLabel} {progress > 0 ? `(${progress}%)` : ""}
-            </p>
+            <p className="mt-1 text-xs text-muted-foreground">Avance real: {progress > 0 ? `${progress}%` : "iniciando"}</p>
           </div>
         )}
 
@@ -209,7 +209,7 @@ export function VocalcomUploadForm() {
           disabled={busy || !canSubmit}
           className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
         >
-          {pending ? "Procesando..." : "Cargar Vocalcom"}
+          {pending ? "Carga en curso…" : "Cargar Vocalcom"}
         </button>
       </form>
 

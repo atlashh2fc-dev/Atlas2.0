@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
 import { createClient } from "@/lib/supabase/client";
+import { LoadingState } from "@/components/ui";
 import {
   buildCandidates,
   chunk,
@@ -346,7 +347,7 @@ export function BulkUploadForm({
             onChange={handleFileChange}
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-60"
           />
-          {parsing && <p className="mt-1 text-xs text-muted-foreground">Leyendo encabezados...</p>}
+          {parsing && <LoadingState label="Estamos leyendo el archivo" compact className="mt-2" />}
         </div>
 
         {headers && rows && (
@@ -487,15 +488,14 @@ export function BulkUploadForm({
 
         {pending && (
           <div>
+            <LoadingState label={progressLabel || "Estamos preparando la carga"} compact />
             <div className="h-2 w-full overflow-hidden rounded-full bg-surface-muted">
               <div
                 className="h-full bg-primary transition-[width] duration-150"
                 style={{ width: `${progress}%` }}
               />
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {progressLabel} {progress > 0 ? `(${progress}%)` : ""}
-            </p>
+            <p className="mt-1 text-xs text-muted-foreground">Avance real: {progress > 0 ? `${progress}%` : "iniciando"}</p>
           </div>
         )}
 
@@ -541,7 +541,7 @@ export function BulkUploadForm({
           disabled={busy || !rows || !mapping.full_name}
           className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
         >
-          {pending ? "Procesando..." : `Cargar ${(rows ?? []).length.toLocaleString("es-CL")} filas`}
+          {pending ? "Carga en curso…" : `Cargar ${(rows ?? []).length.toLocaleString("es-CL")} filas`}
         </button>
       </form>
 

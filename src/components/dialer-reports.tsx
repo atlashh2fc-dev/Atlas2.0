@@ -14,6 +14,7 @@ import {
   Field,
   InfoTooltip,
   Input,
+  LoadingState,
   MetricCard,
   SectionCard,
   Select,
@@ -297,7 +298,7 @@ export function DialerReports() {
         </Field>
 
         <Button onClick={() => applyRange({ from: pendingFrom, to: pendingTo })}>Aplicar</Button>
-        {loading && <span className="text-xs text-muted-foreground">Cargando…</span>}
+        {loading && <LoadingState label="Actualizando el reporte" compact />}
       </Card>
 
       {error && (
@@ -338,6 +339,7 @@ export function DialerReports() {
             storageKey="reportes-discador-llamadas"
             exportFilename="metricas-de-llamadas"
             loading={loading}
+            loadingLabel="Estamos calculando las métricas de llamadas"
             emptyTitle="Sin llamadas en el rango seleccionado"
             emptyDescription="Prueba con otro período o revisa que la campaña haya tenido discado activo."
           />
@@ -365,6 +367,7 @@ export function DialerReports() {
             storageKey="reportes-discador-agentes"
             exportFilename="actividad-por-ejecutivo"
             loading={loading}
+            loadingLabel="Estamos preparando la actividad del equipo"
             emptyTitle="Sin actividad en el rango seleccionado"
             emptyDescription="No hay sesiones de ejecutivos registradas en estas fechas."
           />

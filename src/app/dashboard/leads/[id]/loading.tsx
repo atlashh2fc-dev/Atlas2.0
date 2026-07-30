@@ -1,10 +1,14 @@
+import { LoadingState } from "@/components/ui";
+
 function Bar({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded-md bg-surface-muted ${className}`} />;
 }
 
 export default function LeadDetailLoading() {
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+    <div className="space-y-5" aria-busy="true">
+      <LoadingState label="Estamos preparando la ficha del cliente" className="rounded-xl border border-border bg-surface px-5 py-4" />
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
       <div className="space-y-6 lg:col-span-1">
         <div className="rounded-xl border border-border bg-surface p-5">
           <div className="flex items-center justify-between gap-2">
@@ -46,6 +50,7 @@ export default function LeadDetailLoading() {
         <div className="rounded-xl border border-border bg-surface p-5">
           <Bar className="h-9 w-40" />
         </div>
+      </div>
       </div>
     </div>
   );
