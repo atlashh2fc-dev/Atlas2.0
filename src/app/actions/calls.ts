@@ -22,6 +22,16 @@ async function requireAgent() {
   return { supabase, userId: user.id };
 }
 
+/** La interrupción termina cuando la gestión queda cerrada. */
+async function clearLegalIntercallBreak(userId: string) {
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("profiles")
+    .update({ intercall_break_until: null })
+    .eq("id", userId);
+  if (error) throw new Error(error.message);
+}
+
 async function releaseAgentFromWrapUp(userId: string, campaignId: string | null) {
   if (!campaignId) return;
   const admin = createAdminClient();
@@ -52,15 +62,87 @@ async function getLeadCampaignId(
   return data.campaign_id;
 }
 
+/**
+ * Marca el inicio de la interrupción legal en el servidor. Antes vivía solo en
+ * `localStorage`, así que se saltaba borrando una clave del navegador.
+ */
+export async function startLegalIntercallBreak(): Promise<void> {
+  const { userId } = await requireAgent();
+  const admin = createAdminClient();
+  const until = new Date(Date.now() + LEGAL_INTERCALL_BREAK_MS).toISOString();
+  const { error } = await admin
+    .from("profiles")
+    .update({ intercall_break_until: until })
+    .eq("id", userId);
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Deja constancia de una llamada marcada a mano desde el CTI. Antes no quedaba
+ * ningún rastro: no había forma de auditar a quién se llamó ni de exigir la
+ * tipificación de esa gestión.
+ */
+export async function registerManualCall(input: {
+  phone: string;
+  leadId?: string | null;
+  contactName?: string | null;
+}): Promise<void> {
+  const { userId } = await requireAgent();
+  const admin = createAdminClient();
+
+  const { error } = await admin.from("sensitive_access_log").insert({
+    actor_id: userId,
+    action: "cti.manual_call",
+    target_profile_id: null,
+    metadata: {
+      phone: input.phone,
+      lead_id: input.leadId ?? null,
+      contact_name: input.contactName ?? null,
+    },
+  });
+  if (error) throw new Error(error.message);
+
+  // Si la llamada es sobre un registro conocido, además queda en su historial.
+  if (input.leadId) {
+    const { error: eventError } = await admin.from("call_events").insert({
+      lead_id: input.leadId,
+      agent_id: userId,
+      event_type: "cti.manual_call",
+      payload: { phone: input.phone, source: "cti" },
+    });
+    if (eventError) throw new Error(eventError.message);
+  }
+}
+
 async function assertIntercallBreakCompleted(params: {
   userId: string;
   campaignId: string | null;
   requireCallEnded?: boolean;
 }) {
   const { userId, campaignId, requireCallEnded = false } = params;
+  const admin = createAdminClient();
+
+  // Vale para toda llamada, tenga campaña o no: es una obligación del
+  // ejecutivo, no de la campaña.
+  const { data: profile, error: profileError } = await admin
+    .from("profiles")
+    .select("intercall_break_until")
+    .eq("id", userId)
+    .maybeSingle();
+  if (profileError) throw new Error(profileError.message);
+
+  const breakUntil = profile?.intercall_break_until
+    ? new Date(profile.intercall_break_until).getTime()
+    : 0;
+  if (breakUntil > Date.now()) {
+    const remaining = Math.max(1, Math.ceil((breakUntil - Date.now()) / 1000));
+    throw new Error(
+      `Interrupción legal en curso. Espera ${remaining} segundo${remaining === 1 ? "" : "s"} antes de continuar.`
+    );
+  }
+
   if (!campaignId) return;
 
-  const admin = createAdminClient();
   const { data: session, error } = await admin
     .from("dialer_agent_sessions")
     .select("status, last_state_change_at")
@@ -390,6 +472,7 @@ export async function closeCall(input: {
     p_equifax_recipient_email: equifax_recipient_email,
   });
   if (closeError) throw new Error(closeError.message);
+  await clearLegalIntercallBreak(userId);
   await releaseAgentFromWrapUp(userId, lead.campaign_id);
 
   revalidatePath(`/dashboard/leads/${leadId}`);
@@ -438,6 +521,7 @@ export async function discardCallTechnicalError(input: { callId: string; leadId:
     payload: { reason },
   });
 
+  await clearLegalIntercallBreak(userId);
   await releaseAgentFromWrapUp(userId, lead.campaign_id);
 
   revalidatePath(`/dashboard/leads/${leadId}`);

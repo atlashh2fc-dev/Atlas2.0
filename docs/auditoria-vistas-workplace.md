@@ -438,13 +438,18 @@ correcciones verificadas con funcionalidad que no podía operar. Se corrigieron 
 
 ### Qué queda pendiente (con nombre y apellido)
 
+### Los tres puntos de cumplimiento, cerrados (2026-07-30)
+
+| Qué | Cómo quedó |
+|---|---|
+| **Interrupción legal exigible en el servidor** | `profiles.intercall_break_until` la persiste el servidor al colgar (`startLegalIntercallBreak`) y `assertIntercallBreakCompleted` la valida **siempre**, con campaña o sin ella. Borrar la clave del navegador ya no sirve: el `localStorage` solo alimenta el contador visual. Al cerrar la gestión se limpia. |
+| **Llamadas manuales con registro** | `registerManualCall` deja constancia de toda llamada marcada desde el teclado del CTI en `sensitive_access_log`, y además en el historial del registro (`call_events`) cuando el número corresponde a un contacto conocido. |
+| **Contraseñas SIP** | La política de lectura pasó de "el dueño **o cualquier supervisor/admin**" a solo el dueño. Los administradores siguen pudiendo revelarlas desde Extensiones SIP, pero ese camino ahora corre con la clave de servicio, exige rol admin y **deja registro de quién la miró y cuándo** en `sensitive_access_log`. El listado de extensiones nunca selecciona la contraseña. |
+
 | Pendiente | Dónde | Por qué no se hizo |
 |---|---|---|
 | KPI sin drill-down | `mail/page.tsx` (6 + 4), `campaign-dashboard-summary.tsx` (5), `dialer-reports.tsx` (5), `live-monitor.tsx` | Requiere definir a qué vista filtrada lleva cada uno |
-| La pausa legal y la tipificación no son exigibles en servidor | `lib/intercall-break.ts` (solo `localStorage`), `actions/calls.ts` (dos `return` tempranos que la saltan para leads sin campaña) | Decisión de producto: dónde se persiste el fin de la interrupción |
-| Las llamadas manuales del CTI no dejan registro ni obligan a tipificar | `cti-bar.tsx` (`handleCall`) | Ídem: define si toda llamada manual crea gestión |
-| "Descartar por error técnico" libera el cierre sin tipificar | `actions/calls.ts` | Falta catálogo cerrado de motivos y control por turno |
-| Credenciales SIP legibles por cualquier supervisor | política `agent_sip_credentials_select` (fila, no columna) | Cambio de seguridad con impacto operativo: conviene coordinarlo |
+| "Descartar por error técnico" libera el cierre sin tipificar | `actions/calls.ts` | Falta un catálogo cerrado de motivos y un tope por turno: es una regla de negocio, no un arreglo técnico |
 | Polling de 2 s por ejecutivo con `service_role` | `cti-bar.tsx` | Debería ser realtime; con 50 ejecutivos son ~125 consultas/s |
 | Recargar el navegador en llamada no avisa | `cti-bar.tsx` (sin `beforeunload`) | — |
 | Códec `alaw` no aplica a las extensiones ya creadas | `dialer-engine/src/asterisk/configSync.ts` | Hay que recrear 6010/6011 a mano |

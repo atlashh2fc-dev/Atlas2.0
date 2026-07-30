@@ -35,6 +35,7 @@ import {
   setMyCurrentStatus,
   heartbeat,
 } from "@/app/actions/agent-status";
+import { registerManualCall, startLegalIntercallBreak } from "@/app/actions/calls";
 import { StatusDot, Input, Select, type BadgeTone } from "@/components/ui";
 import {
   beginLegalIntercallBreak,
@@ -753,7 +754,14 @@ export function CtiBar({ profile }: { profile: Profile }) {
             attachRemoteAudio(invitation);
             break;
           case SessionState.Terminated:
-            if (wasEstablished) beginLegalIntercallBreak();
+            if (wasEstablished) {
+        beginLegalIntercallBreak();
+        // El servidor es el que manda: en el navegador solo sirve para que el
+        // contador se vea al instante.
+        void startLegalIntercallBreak().catch((err) =>
+          console.error("CTI: no se pudo registrar la interrupción legal", err)
+        );
+      }
             detachRemoteAudio();
             setCallState("idle");
             setCallStartedAt(null);
@@ -806,6 +814,14 @@ export function CtiBar({ profile }: { profile: Profile }) {
       setCallError(null);
       setCallState("calling");
       startLocalRingback();
+
+      // Toda llamada marcada a mano queda registrada: antes no había forma de
+      // auditar a quién se llamó desde el teclado del CTI.
+      void registerManualCall({
+        phone: target,
+        leadId: contacts.find((contact) => subscriberFromPhone(contact.phone) === subscriber)?.id ?? null,
+        contactName: selectedName,
+      }).catch((err) => console.error("CTI: no se pudo registrar la llamada manual", err));
       const { Inviter, SessionState, UserAgent } = await import("sip.js");
       if (callAttemptRef.current !== callAttempt) return;
       const targetUri = UserAgent.makeURI(`sip:${target}@${SIP_DOMAIN}`);
@@ -834,7 +850,14 @@ export function CtiBar({ profile }: { profile: Profile }) {
             attachRemoteAudio(inviter);
             break;
           case SessionState.Terminated:
-            if (wasEstablished) beginLegalIntercallBreak();
+            if (wasEstablished) {
+        beginLegalIntercallBreak();
+        // El servidor es el que manda: en el navegador solo sirve para que el
+        // contador se vea al instante.
+        void startLegalIntercallBreak().catch((err) =>
+          console.error("CTI: no se pudo registrar la interrupción legal", err)
+        );
+      }
             stopLocalRingback();
             detachRemoteAudio();
             setCallState("idle");
@@ -894,7 +917,14 @@ export function CtiBar({ profile }: { profile: Profile }) {
       // El contador se incrementa recién acá: hacerlo antes anulaba los
       // listeners de estado y se perdía el desenlace real de la sesión.
       callAttemptRef.current += 1;
-      if (wasEstablished) beginLegalIntercallBreak();
+      if (wasEstablished) {
+        beginLegalIntercallBreak();
+        // El servidor es el que manda: en el navegador solo sirve para que el
+        // contador se vea al instante.
+        void startLegalIntercallBreak().catch((err) =>
+          console.error("CTI: no se pudo registrar la interrupción legal", err)
+        );
+      }
       stopLocalRingback();
       detachRemoteAudio();
       setCallState("idle");

@@ -76,9 +76,13 @@ export async function listAgentSipRows(): Promise<AgentSipRow[]> {
   await requireProfile(["admin"]);
   const supabase = await createClient();
 
+  // La lista de extensiones (sin contraseña) sigue siendo visible para el
+  // administrador; la política de la tabla ya solo permite leer la fila propia,
+  // así que este listado usa la clave de servicio y nunca selecciona la clave.
+  const service = createAdminClient();
   const [{ data: profiles, error: profilesError }, { data: creds, error: credsError }] = await Promise.all([
     supabase.from("profiles").select("id, full_name, email, role").eq("role", "agente").order("full_name"),
-    supabase.from("agent_sip_credentials").select("profile_id, extension, is_active"),
+    service.from("agent_sip_credentials").select("profile_id, extension, is_active"),
   ]);
 
   if (profilesError) throw new Error(profilesError.message);
@@ -152,16 +156,30 @@ export async function provisionAgentExtension(formData: FormData) {
  * el motor necesita la clave a mano).
  */
 export async function revealAgentSipCredential(profileId: string): Promise<{ extension: string; sip_password: string } | null> {
-  await requireProfile(["admin"]);
-  const supabase = await createClient();
+  const admin = await requireProfile(["admin"]);
 
-  const { data, error } = await supabase
+  // La política de lectura ahora deja la contraseña solo en manos del dueño,
+  // así que este acceso pasa por la clave de servicio y queda registrado: con
+  // la clave de otro se puede llamar desde un softphone externo, sin grabación
+  // ni tipificación.
+  const service = createAdminClient();
+
+  const { data, error } = await service
     .from("agent_sip_credentials")
     .select("extension, sip_password")
     .eq("profile_id", profileId)
     .maybeSingle();
 
   if (error) throw new Error(error.message);
+
+  const { error: logError } = await service.from("sensitive_access_log").insert({
+    actor_id: admin.id,
+    action: "sip_credential.reveal",
+    target_profile_id: profileId,
+    metadata: { found: Boolean(data) },
+  });
+  if (logError) throw new Error(logError.message);
+
   return data ?? null;
 }
 
