@@ -1,6 +1,10 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { MailEngagementQueue, type MailQueueRow } from "@/components/mail-engagement-queue";
+import {
+  MailControlCenter,
+  type MailControlBucket,
+  type MailQueueRow,
+} from "@/components/mail-control-center";
 import {
   Badge,
   Button,
@@ -126,9 +130,20 @@ function CampaignFilterForm({
   );
 }
 
-const MAIL_PAGE_SIZE = 100;
+const MAIL_PAGE_SIZE = 25;
+const MAIL_BUCKETS = new Set([
+  "all",
+  "overdue",
+  "unassigned",
+  "clicked_uncontacted",
+  "opened_uncontacted",
+  "next_action",
+  "managed",
+  "monitor",
+]);
 
 type MailCursor = {
+  workRank: number;
   priorityRank: number;
   lastEventAt: string;
   leadId: string;
@@ -139,6 +154,7 @@ function decodeCursor(value: string | undefined): MailCursor | null {
   try {
     const cursor = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as MailCursor;
     if (
+      !Number.isInteger(cursor.workRank) ||
       !Number.isInteger(cursor.priorityRank) ||
       Number.isNaN(new Date(cursor.lastEventAt).getTime()) ||
       !/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(cursor.leadId)
@@ -153,43 +169,60 @@ function decodeCursor(value: string | undefined): MailCursor | null {
 
 function encodeCursor(row: MailQueueRow): string {
   return Buffer.from(
-    JSON.stringify({ priorityRank: row.priority_rank, lastEventAt: row.last_event_at, leadId: row.lead_id })
+    JSON.stringify({
+      workRank: row.work_rank ?? 70,
+      priorityRank: row.priority_rank,
+      lastEventAt: row.last_event_at,
+      leadId: row.lead_id,
+    })
   ).toString("base64url");
 }
 
-function mailHref(mailCampaignId: string | null, cursor?: string): string {
+function mailHref(mailCampaignId: string | null, bucket = "all", cursor?: string): string {
   const params = new URLSearchParams();
   if (mailCampaignId) params.set("mailCampaign", mailCampaignId);
+  if (bucket !== "all") params.set("queue", bucket);
   if (cursor) params.set("cursor", cursor);
   const query = params.toString();
   return query ? `/dashboard/mail?${query}` : "/dashboard/mail";
 }
 
-async function fetchMailEngagementPage(
+async function fetchMailOperationalPage(
   supabase: Awaited<ReturnType<typeof createClient>>,
   selectedMailCampaignId: string | null,
+  bucket: string,
   cursor: MailCursor | null
 ) {
-  const { data, error } = await supabase.rpc("get_mail_engagement_page", {
+  const { data, error } = await supabase.rpc("get_mail_operational_queue_page", {
     p_mail_campaign_id: selectedMailCampaignId,
     p_campaign_id: null,
+    p_bucket: bucket,
     p_limit: MAIL_PAGE_SIZE + 1,
+    p_after_work_rank: cursor?.workRank ?? null,
     p_after_priority_rank: cursor?.priorityRank ?? null,
     p_after_last_event_at: cursor?.lastEventAt ?? null,
     p_after_lead_id: cursor?.leadId ?? null,
   });
   if (error) throw new Error(error.message);
-  return (data ?? []) as MailQueueRow[];
+  const rows = (data ?? []) as Array<MailQueueRow & { work_bucket?: string; priority_reason?: string }>;
+  return rows.map((item) => {
+    return {
+      ...item,
+      queue_bucket: item.work_bucket ?? "monitor",
+      attention_reason: item.priority_reason,
+    };
+  }) as MailQueueRow[];
 }
 
 export default async function MailDashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ mailCampaign?: string; cursor?: string }>;
+  searchParams: Promise<{ mailCampaign?: string; queue?: string; cursor?: string }>;
 }) {
   const profile = await requireProfile(["supervisor", "admin"]);
-  const { mailCampaign, cursor: cursorParam } = await searchParams;
+  const { mailCampaign, queue: queueParam, cursor: cursorParam } = await searchParams;
   const selectedMailCampaignId = mailCampaign || null;
+  const activeBucket = queueParam && MAIL_BUCKETS.has(queueParam) ? queueParam : "all";
   const cursor = decodeCursor(cursorParam);
   const supabase = await createClient();
 
@@ -209,6 +242,7 @@ export default async function MailDashboardPage({
     { data: mailCampaigns },
     { data: reportData, error: reportError },
     { data: agentSummaryData, error: agentSummaryError },
+    { data: bucketData, error: bucketError },
     queueData,
     { data: agents },
   ] =
@@ -226,18 +260,31 @@ export default async function MailDashboardPage({
         p_mail_campaign_id: selectedMailCampaignId,
         p_campaign_id: null,
       }),
-      fetchMailEngagementPage(supabase, selectedMailCampaignId, cursor),
+      supabase.rpc("get_mail_operational_bucket_summary", {
+        p_mail_campaign_id: selectedMailCampaignId,
+        p_campaign_id: null,
+      }),
+      fetchMailOperationalPage(supabase, selectedMailCampaignId, activeBucket, cursor),
       agentsQuery,
     ]);
 
   if (reportError) throw new Error(reportError.message);
   if (agentSummaryError) throw new Error(agentSummaryError.message);
+  if (bucketError) throw new Error(bucketError.message);
 
   const campaigns = (mailCampaigns ?? []) as MailCampaign[];
   const reports = (reportData ?? []) as MailReportRow[];
   const queue = queueData.slice(0, MAIL_PAGE_SIZE);
   const hasMoreQueue = queueData.length > MAIL_PAGE_SIZE;
   const agentSummary = (agentSummaryData ?? []) as MailAgentSummary[];
+  const bucketSummary = (bucketData ?? []) as Array<{
+    bucket: string;
+    label: string;
+    sort_order: number;
+    lead_count: number;
+    oldest_event_at: string | null;
+    nearest_action_at: string | null;
+  }>;
   const agentOptions = (agents ?? []) as AgentOption[];
   const agentSummaryById = new Map(agentSummary.map((row) => [row.agent_id, row]));
   const activeAgentIds = new Set(agentOptions.map((agent) => agent.id));
@@ -285,18 +332,44 @@ export default async function MailDashboardPage({
     },
     { sent: 0, opened: 0, clicked: 0, hot: 0, assigned: 0, managed: 0 }
   );
-  const selectedCampaign = campaigns.find((campaign) => campaign.id === selectedMailCampaignId) ?? null;
-  const selectedDetail = selectedMailCampaignId ? reports[0] ?? null : null;
-  const latestReportEventAt = reports.reduce<string | null>((latest, row) => {
-    if (!row.last_event_at) return latest;
-    if (!latest || new Date(row.last_event_at) > new Date(latest)) return row.last_event_at;
-    return latest;
-  }, null);
   const totalPrioritized = selectedMailCampaignId ? reports[0]?.hot_leads ?? 0 : totals.hot;
-  const totalAssignedPrioritized = selectedMailCampaignId ? reports[0]?.assigned_hot_leads ?? 0 : totals.assigned;
-  const unassignedHotLeads = Math.max(0, totalPrioritized - totalAssignedPrioritized);
-  const nextQueueHref = hasMoreQueue && queue.length > 0 ? mailHref(selectedMailCampaignId, encodeCursor(queue[queue.length - 1])) : null;
-  const resetQueueHref = mailHref(selectedMailCampaignId);
+  const nextQueueHref = hasMoreQueue && queue.length > 0
+    ? mailHref(selectedMailCampaignId, activeBucket, encodeCursor(queue[queue.length - 1]))
+    : null;
+  const resetQueueHref = mailHref(selectedMailCampaignId, activeBucket);
+  const bucketTone: Record<string, MailControlBucket["tone"]> = {
+    overdue: "danger",
+    unassigned: "warning",
+    clicked_uncontacted: "warning",
+    opened_uncontacted: "info",
+    next_action: "info",
+    managed: "success",
+    monitor: "neutral",
+  };
+  const buckets: MailControlBucket[] = [
+    {
+      id: "all",
+      label: "Toda la cola",
+      count: totalPrioritized,
+      description: "Visión completa, ordenada por urgencia",
+      href: mailHref(selectedMailCampaignId),
+      tone: "info",
+    },
+    ...bucketSummary
+      .sort((left, right) => left.sort_order - right.sort_order)
+      .map((bucket) => ({
+        id: bucket.bucket,
+        label: bucket.label,
+        count: bucket.lead_count,
+        description: bucket.nearest_action_at
+          ? `Próxima acción ${formatDate(bucket.nearest_action_at)}`
+          : bucket.oldest_event_at
+            ? `Señal más antigua ${formatDate(bucket.oldest_event_at)}`
+            : "Sin oportunidades en esta prioridad",
+        href: mailHref(selectedMailCampaignId, bucket.bucket),
+        tone: bucketTone[bucket.bucket] ?? "neutral",
+      })),
+  ];
   const agentTotals = agentSummary.reduce(
     (acc, row) => {
       acc.assigned += row.assigned_leads;
@@ -365,186 +438,53 @@ export default async function MailDashboardPage({
         </div>
       </SectionCard>
 
-      <section className="rounded-xl border border-border bg-surface">
-        <div className="border-b border-border px-5 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-semibold text-foreground">Leads con apertura o click</h2>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {selectedCampaign ? selectedCampaign.name : "Todas las campañas mail Equifax"}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2 text-xs">
-              <span className="rounded-full border border-border bg-background px-3 py-1 text-muted-foreground">
-                {formatNumber(totalPrioritized)} priorizados
-              </span>
-              <span className={`rounded-full border px-3 py-1 ${unassignedHotLeads > 0 ? "border-warning/30 bg-warning-bg text-warning" : "border-success/30 bg-success-bg text-success"}`}>
-                {formatNumber(unassignedHotLeads)} sin asignar
-              </span>
-              <span className="rounded-full border border-border bg-background px-3 py-1 text-muted-foreground">
-                Última señal {formatDate(selectedDetail?.last_event_at ?? latestReportEventAt)}
-              </span>
-            </div>
+      <MailControlCenter
+        rows={queue}
+        agents={agentOptions}
+        buckets={buckets}
+        activeBucket={activeBucket}
+        total={totalPrioritized}
+        nextHref={nextQueueHref}
+        resetHref={resetQueueHref}
+      />
+
+      <SectionCard
+        title="Control por ejecutivo"
+        description="Carga actual, seguimiento y agendas de los leads priorizados por mail."
+        actions={
+          <div className="flex flex-wrap justify-end gap-2 text-xs text-muted-foreground">
+            <span className="rounded-full border border-border bg-background px-2.5 py-1">{formatNumber(agentOptions.length)} activos</span>
+            <span className="rounded-full border border-border bg-background px-2.5 py-1">{formatNumber(agentTotals.assigned)} con carga</span>
           </div>
+        }
+      >
+        <div className="grid gap-3 border-b border-border bg-background/40 p-4 sm:grid-cols-2 xl:grid-cols-4">
+          <MetricCard label="Contactados" value={formatNumber(agentTotals.contacted)} detail={`${percent(agentTotals.contacted, agentTotals.assigned)} de asignados`} />
+          <MetricCard label="Clicks sin gestión" value={formatNumber(agentTotals.clickedUncontacted)} detail="Requieren priorización" />
+          <MetricCard label="Sin próxima acción" value={formatNumber(agentTotals.noNextAction)} detail="Revisar seguimiento" />
+          <MetricCard label="Agendas vencidas" value={formatNumber(agentTotals.overdue)} detail={agentTotals.overdue > 0 ? "Prioridad de recuperación" : "Sin atraso operativo"} />
         </div>
-
-        <div className="border-t border-border bg-background/40 px-5 py-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">Control por ejecutivo</h3>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Seguimiento de leads Atlas mail gestionados o asignados{selectedCampaign ? ` en ${selectedCampaign.name}` : " en todas las campañas"}.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2 text-xs">
-              <span className="rounded-full border border-border bg-surface px-3 py-1 text-muted-foreground">
-                {formatNumber(agentOptions.length)} ejecutivo{agentOptions.length === 1 ? "" : "s"} activo{agentOptions.length === 1 ? "" : "s"}
-              </span>
-              <span className="rounded-full border border-border bg-surface px-3 py-1 text-muted-foreground">
-                {formatNumber(agentSummary.length)} con carga mail
-              </span>
-              {historicalAgentRows.length > 0 && (
-                <span className="rounded-full border border-border bg-surface px-3 py-1 text-muted-foreground">
-                  {formatNumber(historicalAgentRows.length)} histórico{historicalAgentRows.length === 1 ? "" : "s"}
-                </span>
-              )}
-              <span className="rounded-full border border-border bg-surface px-3 py-1 text-muted-foreground">
-                {formatNumber(agentTotals.assigned)} gestionados/asignados
-              </span>
-              <span className={`rounded-full border px-3 py-1 ${agentTotals.clickedUncontacted > 0 ? "border-warning/30 bg-warning-bg text-warning" : "border-success/30 bg-success-bg text-success"}`}>
-                {formatNumber(agentTotals.clickedUncontacted)} clicks sin contacto
-              </span>
-              <span className={`rounded-full border px-3 py-1 ${unassignedHotLeads > 0 ? "border-warning/30 bg-warning-bg text-warning" : "border-success/30 bg-success-bg text-success"}`}>
-                {formatNumber(unassignedHotLeads)} sin asignar
-              </span>
-            </div>
-          </div>
-
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-lg border border-border bg-surface p-4">
-              <p className="text-xs text-muted-foreground">Contactados</p>
-              <p className="mt-1 text-2xl font-semibold text-foreground">{formatNumber(agentTotals.contacted)}</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {percent(agentTotals.contacted, agentTotals.assigned)} de asignados · {formatNumber(agentTotals.uncontacted)} sin contacto
-              </p>
-            </div>
-            <div className="rounded-lg border border-border bg-surface p-4">
-              <p className="text-xs text-muted-foreground">Gestiones CRM</p>
-              <p className="mt-1 text-2xl font-semibold text-foreground">{formatNumber(agentTotals.interactions)}</p>
-              <p className="mt-1 text-xs text-muted-foreground">Interacciones registradas sobre leads mail</p>
-            </div>
-            <div className="rounded-lg border border-border bg-surface p-4">
-              <p className="text-xs text-muted-foreground">Agendas pendientes</p>
-              <p className="mt-1 text-2xl font-semibold text-foreground">{formatNumber(agentTotals.pending)}</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {formatNumber(agentTotals.noNextAction)} asignados sin próxima acción
-              </p>
-            </div>
-            <div className={`rounded-lg border p-4 ${agentTotals.overdue > 0 ? "border-danger/30 bg-danger-bg" : "border-success/30 bg-success-bg"}`}>
-              <p className={`text-xs ${agentTotals.overdue > 0 ? "text-danger" : "text-success"}`}>Agendas vencidas</p>
-              <p className={`mt-1 text-2xl font-semibold ${agentTotals.overdue > 0 ? "text-danger" : "text-success"}`}>
-                {formatNumber(agentTotals.overdue)}
-              </p>
-              <p className={`mt-1 text-xs ${agentTotals.overdue > 0 ? "text-danger" : "text-success"}`}>
-                {agentTotals.overdue > 0 ? "Prioridad de recuperación" : "Sin atraso operativo"}
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-4 overflow-x-auto rounded-lg border border-border bg-surface">
-            <Table>
-              <Thead>
-                <Th>Ejecutivo</Th>
-                <Th>Leads mail</Th>
-                <Th>Señales</Th>
-                <Th>Contactos</Th>
-                <Th>Agendas</Th>
-                <Th>Seguimiento</Th>
-              </Thead>
-              <Tbody>
-                {agentSummaryForDisplay.length === 0 && (
-                  <TableEmpty colSpan={6}>
-                    No hay ejecutivos con gestión mail para este filtro.
-                  </TableEmpty>
-                )}
-                {agentSummaryForDisplay.map((row) => {
-                  const contactRate = row.assigned_leads > 0 ? row.contacted_leads / row.assigned_leads : 0;
-                  const attentionLabel =
-                    row.assigned_leads === 0
-                      ? "Sin asignación mail"
-                      : row.overdue_agendas > 0
-                        ? "Agendas vencidas"
-                        : row.clicked_uncontacted_leads > 0
-                          ? "Clicks sin contacto"
-                          : contactRate < 0.5
-                            ? "Bajo contacto"
-                            : row.no_next_action_leads > 0
-                              ? "Sin próxima acción"
-                              : "En seguimiento";
-                  const needsAttention = attentionLabel !== "En seguimiento" && attentionLabel !== "Sin asignación mail";
-                  return (
-                    <Tr key={row.agent_id}>
-                      <Td>
-                        <p className="font-medium text-foreground">{row.agent_name}</p>
-                        <p className="text-xs text-muted-foreground">Última señal mail: {formatDate(row.last_event_at)}</p>
-                        <p className="text-xs text-muted-foreground">Última gestión CRM: {formatDate(row.last_interaction_at)}</p>
-                      </Td>
-                      <Td>
-                        <p className="font-semibold text-foreground">{formatNumber(row.assigned_leads)}</p>
-                        <p className="text-xs text-muted-foreground">{percent(row.assigned_leads, agentTotals.assigned)} de asignados</p>
-                      </Td>
-                      <Td>
-                        <div className="flex flex-wrap gap-1.5">
-                          <Badge tone="success">{formatNumber(row.clicked_leads)} clicks</Badge>
-                          <Badge tone="warning">{formatNumber(row.opened_only_leads)} aperturas sin click</Badge>
-                        </div>
-                      </Td>
-                      <Td>
-                        <p className="font-semibold text-foreground">{formatNumber(row.contacted_leads)}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {formatNumber(row.interactions)} gestiones · {percent(row.contacted_leads, row.assigned_leads)}
-                        </p>
-                        {row.clicked_uncontacted_leads > 0 && (
-                          <p className="text-xs font-medium text-warning">{formatNumber(row.clicked_uncontacted_leads)} clicks sin contacto</p>
-                        )}
-                      </Td>
-                      <Td>
-                        <p className="font-semibold text-foreground">{formatNumber(row.pending_agendas)} pendientes</p>
-                        <p className={row.overdue_agendas > 0 ? "text-xs font-medium text-danger" : "text-xs text-muted-foreground"}>
-                          {formatNumber(row.overdue_agendas)} vencidas · próxima {formatDate(row.next_agenda_at)}
-                        </p>
-                        {row.no_next_action_leads > 0 && (
-                          <p className="text-xs text-muted-foreground">{formatNumber(row.no_next_action_leads)} sin próxima acción</p>
-                        )}
-                      </Td>
-                      <Td>
-                        <Badge
-                          tone={
-                            attentionLabel === "Sin asignación mail"
-                              ? "neutral"
-                              : needsAttention
-                                ? "warning"
-                                : "success"
-                          }
-                        >
-                          {attentionLabel}
-                        </Badge>
-                      </Td>
-                    </Tr>
-                  );
-                })}
-              </Tbody>
-            </Table>
-          </div>
+        <div className="overflow-x-auto">
+          <Table>
+            <Thead><Th>Ejecutivo</Th><Th>Leads mail</Th><Th>Contactos</Th><Th>Agendas</Th><Th>Seguimiento</Th></Thead>
+            <Tbody>
+              {agentSummaryForDisplay.length === 0 && <TableEmpty colSpan={5}>No hay ejecutivos con gestión mail para este filtro.</TableEmpty>}
+              {agentSummaryForDisplay.map((row) => {
+                const attention = row.overdue_agendas > 0 ? "Agendas vencidas" : row.clicked_uncontacted_leads > 0 ? "Clicks sin gestión" : row.no_next_action_leads > 0 ? "Sin próxima acción" : "En seguimiento";
+                return (
+                  <Tr key={row.agent_id}>
+                    <Td><p className="font-medium text-foreground">{row.agent_name}</p><p className="text-xs text-muted-foreground">Última gestión: {formatDate(row.last_interaction_at)}</p></Td>
+                    <Td><p className="font-semibold text-foreground">{formatNumber(row.assigned_leads)}</p><p className="text-xs text-muted-foreground">{formatNumber(row.clicked_leads)} clicks</p></Td>
+                    <Td><p className="font-semibold text-foreground">{formatNumber(row.contacted_leads)}</p><p className="text-xs text-muted-foreground">{formatNumber(row.interactions)} gestiones</p></Td>
+                    <Td><p className="font-semibold text-foreground">{formatNumber(row.pending_agendas)} pendientes</p><p className={row.overdue_agendas > 0 ? "text-xs font-medium text-danger" : "text-xs text-muted-foreground"}>{formatNumber(row.overdue_agendas)} vencidas · próxima {formatDate(row.next_agenda_at)}</p></Td>
+                    <Td><Badge tone={attention === "En seguimiento" ? "success" : attention === "Sin próxima acción" ? "neutral" : "warning"}>{attention}</Badge></Td>
+                  </Tr>
+                );
+              })}
+            </Tbody>
+          </Table>
         </div>
-        <MailEngagementQueue
-          rows={queue}
-          agents={agentOptions}
-          total={totalPrioritized}
-          nextHref={nextQueueHref}
-          resetHref={resetQueueHref}
-        />
-      </section>
+      </SectionCard>
     </div>
   );
 }
