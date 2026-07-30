@@ -29,6 +29,10 @@ el razonamiento completo de por qué vive aparte y cómo se integra.
   (`PJSIP/1001`, etc.).
 - Troncal saliente (`DIAL_TRUNK` en `.env`) con contexto de dialplan que
   permita `Originate` hacia el número marcado.
+- Para Siptel Chile, el AOR de salida debe usar únicamente `sbc01.siptel.cl` y
+  el endpoint debe conservar el ANI `56965906926`; consulta
+  [`docs/siptel-403-resuelto.md`](../docs/siptel-403-resuelto.md) antes de
+  modificar el troncal.
 
 ## Setup local
 
@@ -53,6 +57,11 @@ Ver `.env.example`. Las críticas:
   dos fuentes de verdad.
 - `DIALER_CAMPAIGN_IDS`: solo las campañas con discado outbound activo pasan
   por el loop de pacing.
+- `DIAL_PREFIX`: prefijo que el carrier requiere delante del destino. Para
+  Siptel Chile es `85848994`. El motor elimina separadores y el signo `+` del
+  teléfono antes de armar el Request-URI, por lo que los leads deben estar en
+  formato internacional (`+56...` o `56...`), no solamente nacional
+  (`9...`). Déjalo vacío para carriers que no usan prefijo.
 
 ## Despliegue en AWS
 

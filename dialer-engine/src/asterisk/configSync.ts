@@ -26,11 +26,20 @@ export function amiAction(
 }
 
 async function getExistingCategories(ami: AmiClient, filename: string): Promise<Set<string>> {
-  const res = await amiAction(ami, { Action: "GetConfig", Filename: filename });
+  // Asterisk excluye las categorías template de GetConfig por defecto. Sin
+  // este filtro el motor cree que faltan y trata de recrearlas en cada ciclo.
+  const res = await amiAction(ami, {
+    Action: "GetConfig",
+    Filename: filename,
+    Filter: "TEMPLATES=include",
+  });
   const names = new Set<string>();
   for (const [key, value] of Object.entries(res)) {
     if (key.toLowerCase().startsWith("category-") && typeof value === "string") {
-      names.add(value);
+      // GetConfig conserva el sufijo de herencia/template del encabezado
+      // (`[nombre](!)` / `[nombre](base)`). Para idempotencia necesitamos
+      // comparar la categoría real, no su declaración completa.
+      names.add(value.replace(/\([^)]*\)$/, "").trim());
     }
   }
   return names;
@@ -38,7 +47,13 @@ async function getExistingCategories(ami: AmiClient, filename: string): Promise<
 
 function buildUpdateConfigAction(
   filename: string,
-  lines: { action: "NewCat" | "Append" | "Update"; cat: string; varName?: string; value?: string }[]
+  lines: {
+    action: "NewCat" | "Append" | "Update";
+    cat: string;
+    varName?: string;
+    value?: string;
+    options?: string;
+  }[]
 ): Record<string, string> {
   const action: Record<string, string> = {
     Action: "UpdateConfig",
@@ -52,17 +67,99 @@ function buildUpdateConfigAction(
     action[`Cat-${i}`] = line.cat;
     if (line.varName !== undefined) action[`Var-${i}`] = line.varName;
     if (line.value !== undefined) action[`Value-${i}`] = line.value;
+    if (line.options !== undefined) action[`Options-${i}`] = line.options;
   });
   return action;
 }
 
+const AGENT_ENDPOINT_TEMPLATE = "atlas-agent-endpoint-template";
+const AGENT_AOR_TEMPLATE = "atlas-agent-aor-template";
+
+async function ensureAgentTemplates(
+  ami: AmiClient,
+  existing: Set<string>
+): Promise<boolean> {
+  if (existing.has(AGENT_ENDPOINT_TEMPLATE) && existing.has(AGENT_AOR_TEMPLATE)) {
+    return true;
+  }
+
+  const lines: {
+    action: "NewCat" | "Append";
+    cat: string;
+    varName?: string;
+    value?: string;
+    options?: string;
+  }[] = [];
+
+  if (!existing.has(AGENT_ENDPOINT_TEMPLATE)) {
+    lines.push(
+      { action: "NewCat", cat: AGENT_ENDPOINT_TEMPLATE, options: "template" },
+      { action: "Append", cat: AGENT_ENDPOINT_TEMPLATE, varName: "type", value: "endpoint" },
+      { action: "Append", cat: AGENT_ENDPOINT_TEMPLATE, varName: "context", value: "agents-outbound" },
+      { action: "Append", cat: AGENT_ENDPOINT_TEMPLATE, varName: "disallow", value: "all" },
+      // Siptel negocia PCMA/alaw en la pata PSTN. Chrome/SIP.js también
+      // soporta PCMA, por lo que fijarlo aquí mantiene audio nativo extremo
+      // a extremo y evita la traducción defectuosa de Asterisk 18.10.
+      { action: "Append", cat: AGENT_ENDPOINT_TEMPLATE, varName: "allow", value: "alaw" },
+      { action: "Append", cat: AGENT_ENDPOINT_TEMPLATE, varName: "transport", value: "transport-wss" },
+      { action: "Append", cat: AGENT_ENDPOINT_TEMPLATE, varName: "webrtc", value: "yes" },
+      { action: "Append", cat: AGENT_ENDPOINT_TEMPLATE, varName: "direct_media", value: "no" },
+      { action: "Append", cat: AGENT_ENDPOINT_TEMPLATE, varName: "use_avpf", value: "yes" },
+      {
+        action: "Append",
+        cat: AGENT_ENDPOINT_TEMPLATE,
+        varName: "media_use_received_transport",
+        value: "yes",
+      },
+      { action: "Append", cat: AGENT_ENDPOINT_TEMPLATE, varName: "rtp_symmetric", value: "yes" },
+      { action: "Append", cat: AGENT_ENDPOINT_TEMPLATE, varName: "force_rport", value: "yes" },
+      { action: "Append", cat: AGENT_ENDPOINT_TEMPLATE, varName: "rewrite_contact", value: "yes" },
+      { action: "Append", cat: AGENT_ENDPOINT_TEMPLATE, varName: "ice_support", value: "yes" },
+      {
+        action: "Append",
+        cat: AGENT_ENDPOINT_TEMPLATE,
+        varName: "dtls_auto_generate_cert",
+        value: "yes",
+      },
+      { action: "Append", cat: AGENT_ENDPOINT_TEMPLATE, varName: "language", value: "es" }
+    );
+  }
+
+  if (!existing.has(AGENT_AOR_TEMPLATE)) {
+    lines.push(
+      { action: "NewCat", cat: AGENT_AOR_TEMPLATE, options: "template" },
+      { action: "Append", cat: AGENT_AOR_TEMPLATE, varName: "type", value: "aor" },
+      { action: "Append", cat: AGENT_AOR_TEMPLATE, varName: "max_contacts", value: "3" }
+    );
+  }
+
+  for (const line of lines) {
+    if (
+      line.action === "Append" &&
+      (line.cat === AGENT_ENDPOINT_TEMPLATE || line.cat === AGENT_AOR_TEMPLATE)
+    ) {
+      line.options = 'catfilter="TEMPLATES=restrict"';
+    }
+  }
+
+  try {
+    await amiAction(ami, buildUpdateConfigAction("pjsip.conf", lines));
+    existing.add(AGENT_ENDPOINT_TEMPLATE);
+    existing.add(AGENT_AOR_TEMPLATE);
+    logger.info("Templates PJSIP de agentes verificados");
+    return true;
+  } catch (err) {
+    logger.error({ err }, "No se pudieron crear los templates PJSIP de agentes");
+    return false;
+  }
+}
+
 /**
  * Crea (si falta) el endpoint PJSIP WebRTC de un agente: aor + auth +
- * endpoint. La categoría del endpoint es exactamente la extensión (para que
- * el chequeo de existencia sea simple y para que Dial(PJSIP/<ext>) siga
- * funcionando); aor/auth van en categorías separadas ("<ext>-aor",
- * "<ext>-auth") justamente para no depender de categorías duplicadas con el
- * mismo nombre, que son imposibles de distinguir vía GetConfig.
+ * endpoint. Endpoint y AOR comparten la extensión, tal como requiere el
+ * registro dinámico de PJSIP; son objetos distintos y heredan templates
+ * separados. El auth vive en "<ext>-auth". Así REGISTER y
+ * Dial(PJSIP/<ext>) usan el mismo identificador.
  */
 export async function ensureAgentEndpoints(
   ami: AmiClient,
@@ -78,48 +175,37 @@ export async function ensureAgentEndpoints(
     return;
   }
 
+  if (!(await ensureAgentTemplates(ami, existing))) return;
+
   for (const agent of agents) {
     if (existing.has(agent.extension)) continue;
 
-    const aorCat = `${agent.extension}-aor`;
     const authCat = `${agent.extension}-auth`;
 
-    const lines: { action: "NewCat" | "Append"; cat: string; varName?: string; value?: string }[] = [
-      { action: "NewCat", cat: aorCat },
+    const lines: {
+      action: "NewCat" | "Append";
+      cat: string;
+      varName?: string;
+      value?: string;
+      options?: string;
+    }[] = [
       { action: "NewCat", cat: authCat },
-      { action: "NewCat", cat: agent.extension },
-      { action: "Append", cat: aorCat, varName: "type", value: "aor" },
-      { action: "Append", cat: aorCat, varName: "max_contacts", value: "3" },
       { action: "Append", cat: authCat, varName: "type", value: "auth" },
       { action: "Append", cat: authCat, varName: "auth_type", value: "userpass" },
       { action: "Append", cat: authCat, varName: "username", value: agent.extension },
       { action: "Append", cat: authCat, varName: "password", value: agent.sipPassword },
-      { action: "Append", cat: agent.extension, varName: "type", value: "endpoint" },
-      { action: "Append", cat: agent.extension, varName: "context", value: "agents-outbound" },
-      { action: "Append", cat: agent.extension, varName: "disallow", value: "all" },
-      // Solo ulaw: la troncal de Twilio es ulaw-only y este Asterisk no tiene
-      // el módulo codec_opus (transcodificación en tiempo real de Opus es un
-      // módulo pago de Sangoma que nunca instalamos). Si el navegador llega a
-      // negociar Opus con el agente, Asterisk no puede transcodificar hacia
-      // la pata de Twilio y corta la llamada silenciosamente
-      // ("No path to translate" / "Had to drop call" en el log) — pasó en
-      // producción el 2026-07-03. Opus tampoco aporta nada acá: el otro
-      // extremo real siempre termina siendo PSTN vía Twilio en ulaw, así que
-      // no hay ninguna llamada donde Opus end-to-end sea posible de todos
-      // modos.
-      { action: "Append", cat: agent.extension, varName: "allow", value: "ulaw" },
-      { action: "Append", cat: agent.extension, varName: "aors", value: aorCat },
+      {
+        action: "NewCat",
+        cat: agent.extension,
+        options: `inherit="${AGENT_ENDPOINT_TEMPLATE}"`,
+      },
+      { action: "Append", cat: agent.extension, varName: "aors", value: agent.extension },
       { action: "Append", cat: agent.extension, varName: "auth", value: authCat },
-      { action: "Append", cat: agent.extension, varName: "transport", value: "transport-wss" },
-      { action: "Append", cat: agent.extension, varName: "webrtc", value: "yes" },
-      { action: "Append", cat: agent.extension, varName: "use_avpf", value: "yes" },
-      { action: "Append", cat: agent.extension, varName: "media_use_received_transport", value: "yes" },
-      { action: "Append", cat: agent.extension, varName: "rtp_symmetric", value: "yes" },
-      { action: "Append", cat: agent.extension, varName: "force_rport", value: "yes" },
-      { action: "Append", cat: agent.extension, varName: "rewrite_contact", value: "yes" },
-      { action: "Append", cat: agent.extension, varName: "ice_support", value: "yes" },
-      { action: "Append", cat: agent.extension, varName: "dtls_auto_generate_cert", value: "yes" },
-      { action: "Append", cat: agent.extension, varName: "language", value: "es" },
+      {
+        action: "NewCat",
+        cat: agent.extension,
+        options: `allowdups,inherit="${AGENT_AOR_TEMPLATE}"`,
+      },
     ];
 
     try {

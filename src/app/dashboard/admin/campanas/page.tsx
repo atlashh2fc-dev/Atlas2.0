@@ -9,6 +9,7 @@ import { CampaignCreatePanel } from "@/components/campaign-create-panel";
 import {
   Badge,
   Button,
+  Callout,
   InfoTooltip,
   PageHeader,
   SectionCard,
@@ -30,7 +31,7 @@ export default async function CampaignsPage({
   const { error } = await searchParams;
   const supabase = await createClient();
 
-  const { data: campaigns } = await supabase
+  const { data: campaigns, error: campaignsError } = await supabase
     .from("campaigns")
     .select("*, workflows(name)")
     .order("created_at", { ascending: true });
@@ -71,6 +72,12 @@ export default async function CampaignsPage({
         description="Cada campaña tiene su base, sus ejecutivos, su flujo de gestión y su configuración de discado."
         actions={<CampaignCreatePanel duplicateName={error === "duplicate-name"} />}
       />
+
+      {campaignsError && (
+        <Callout tone="danger">
+          No se pudieron cargar las campañas: {campaignsError.message}
+        </Callout>
+      )}
 
       <SectionCard>
         <Table>

@@ -80,7 +80,7 @@ export function AgentPerformanceChart({ agents }: { agents: AgentPerformance[] }
   const top = agents.slice(0, 10).map((a) => ({
     name: a.full_name,
     Gestiones: a.total_interactions,
-    "Leads gestionados": a.leads_managed,
+    "Registros gestionados": a.leads_managed,
     Conversiones: a.conversions,
   }));
 
@@ -101,7 +101,7 @@ export function AgentPerformanceChart({ agents }: { agents: AgentPerformance[] }
         <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => fmtInt(Number(value))} />
         <Legend wrapperStyle={{ fontSize: 12 }} />
         <Bar dataKey="Gestiones" fill="var(--primary)" radius={[0, 4, 4, 0]} />
-        <Bar dataKey="Leads gestionados" fill="var(--accent)" radius={[0, 4, 4, 0]} />
+        <Bar dataKey="Registros gestionados" fill="var(--accent)" radius={[0, 4, 4, 0]} />
         <Bar dataKey="Conversiones" fill="var(--foreground)" radius={[0, 4, 4, 0]} />
       </BarChart>
     </ResponsiveContainer>

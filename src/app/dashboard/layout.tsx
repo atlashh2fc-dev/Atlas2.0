@@ -29,15 +29,34 @@ export default async function DashboardLayout({
   const requestedScope = await resolveCampaignScope();
   const selectedCampaignId = campaigns.some((campaign) => campaign.id === requestedScope) ? requestedScope : null;
 
+  // Contador del menú: las agendas vencidas del ejecutivo. Es una cuenta con
+  // `head: true`, no trae filas.
+  const { count: overdueCount } =
+    profile.role === "agente"
+      ? await supabase
+          .from("leads")
+          .select("id", { count: "exact", head: true })
+          .eq("managed_by", profile.id)
+          .not("next_action_at", "is", null)
+          .lte("next_action_at", new Date().toISOString())
+      : { count: null };
+
+  const badges = { "overdue-agenda": overdueCount ?? 0 };
+
   return (
     <ToastProvider>
       <div className="flex h-screen w-full overflow-hidden bg-background">
         <DialerListener userId={profile.id} />
-        <Sidebar profile={profile} />
+        <Sidebar profile={profile} badges={badges} />
         <div className="flex flex-1 flex-col overflow-hidden">
           {showAgendaReminder ? (
             <AgendaProvider userId={profile.id}>
-              <Header profile={profile} campaigns={campaigns} selectedCampaignId={selectedCampaignId} />
+              <Header
+                profile={profile}
+                campaigns={campaigns}
+                selectedCampaignId={selectedCampaignId}
+                badges={badges}
+              />
               <AgendaBanner />
             </AgendaProvider>
           ) : (

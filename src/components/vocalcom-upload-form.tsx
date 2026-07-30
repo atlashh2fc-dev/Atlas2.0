@@ -163,15 +163,21 @@ export function VocalcomUploadForm() {
               <Stat label="Recorridos" value={buildResult.validRows} highlight />
               <Stat label="Conecta" value={buildResult.connected} />
               <Stat label="No conecta" value={buildResult.notConnected} />
-              <Stat label="Dudoso" value={buildResult.indeterminate} />
+              <Stat label="Sin determinar" value={buildResult.indeterminate} />
               <Stat label="Omitidas" value={buildResult.skippedRows} />
             </div>
             <p className="mt-3 text-xs text-muted-foreground">
-              Recorrido cuenta todo lo que viene tocado por Vocalcom. Conecta/no conecta se deriva
-              desde `Stats_StatusText`, `Stats_StatusCode` y duración.
+              Recorrido cuenta todo lo que el proveedor marcó como tocado. Conecta y no conecta se
+              deducen del resultado y la duración que informa el archivo.
             </p>
             {buildResult.errors.length > 0 && (
-              <ul className="mt-3 max-h-32 space-y-1 overflow-y-auto text-xs text-muted-foreground">
+              <>
+                <p className="mt-3 text-xs font-medium text-warning">
+                  {buildResult.errors.length > 20
+                    ? `Primeras 20 de ${buildResult.errors.length.toLocaleString("es-CL")} filas con detalle:`
+                    : `${buildResult.errors.length} fila(s) con detalle:`}
+                </p>
+              <ul className="mt-1 max-h-32 space-y-1 overflow-y-auto text-xs text-muted-foreground">
                 {buildResult.errors.slice(0, 20).map((item, idx) => (
                   <li key={idx}>
                     {item.row > 0 ? `Fila ${item.row}: ` : ""}
@@ -179,6 +185,7 @@ export function VocalcomUploadForm() {
                   </li>
                 ))}
               </ul>
+              </>
             )}
           </div>
         )}

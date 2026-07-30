@@ -134,7 +134,7 @@ export function LiveDashboard({
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <h2 className="text-sm font-semibold text-foreground">Gestiones recientes</h2>
           <Link href="/dashboard/leads" className="text-sm text-primary hover:underline">
-            Ver leads
+            Ver registros
           </Link>
         </div>
         <ul className="divide-y divide-border">

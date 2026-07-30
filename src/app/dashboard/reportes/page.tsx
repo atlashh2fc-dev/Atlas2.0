@@ -11,7 +11,9 @@ import {
 } from "@/components/reportes-charts";
 import { SupervisorAgentMetricsTable } from "@/components/supervisor-agent-metrics-table";
 import { ChartDownloadButton } from "@/components/chart-download-button";
-import { Button, Card, Select } from "@/components/ui";
+import Link from "next/link";
+import { Button, Card, InfoTooltip, Select } from "@/components/ui";
+import { metricDefinition, type MetricId } from "@/lib/metric-definitions";
 import { resolveCampaignScope } from "@/lib/campaign-scope";
 
 type SupervisorReportKpis = {
@@ -111,18 +113,26 @@ function percent(part: number | null | undefined, total: number | null | undefin
   return (Number(part ?? 0) / denominator) * 100;
 }
 
+/**
+ * Tarjeta local del tablero de gestión: agrega definición del glosario y enlace
+ * al detalle sobre el mismo diseño del sistema.
+ */
 function MetricCard({
   label,
   value,
   detail,
   tone = "default",
   progress,
+  metric,
+  href,
 }: {
   label: string;
   value: string;
   detail?: string;
   tone?: "default" | "good" | "warn" | "danger";
   progress?: number;
+  metric?: MetricId;
+  href?: string;
 }) {
   const toneClass =
     tone === "good"
@@ -143,9 +153,13 @@ function MetricCard({
           ? "bg-danger"
           : "bg-primary";
 
-  return (
-    <div className={`rounded-lg border ${toneClass} bg-surface p-4 shadow-sm`}>
-      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+  const definition = metric ? metricDefinition(metric) : null;
+  const body = (
+    <>
+      <p className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+        {definition && <InfoTooltip text={definition.definition} formula={definition.formula} />}
+      </p>
       <p className="mt-1.5 text-2xl font-semibold tabular-nums text-foreground">{value}</p>
       {detail && <p className="mt-1.5 text-xs text-muted-foreground">{detail}</p>}
       {clampedProgress !== null && (
@@ -153,7 +167,18 @@ function MetricCard({
           <div className={`h-full rounded-full ${barClass}`} style={{ width: `${clampedProgress}%` }} />
         </div>
       )}
-    </div>
+      {href && (
+        <span className="mt-2 block text-xs font-medium text-primary">Ver detalle →</span>
+      )}
+    </>
+  );
+
+  const base = `block rounded-lg border ${toneClass} bg-surface p-4 shadow-sm`;
+  if (!href) return <div className={base}>{body}</div>;
+  return (
+    <Link href={href} className={`${base} transition-colors hover:bg-surface-muted/50`}>
+      {body}
+    </Link>
   );
 }
 
@@ -260,7 +285,8 @@ export default async function ReportesPage({
 
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <MetricCard
-            label="Base equipo"
+            label="Base del equipo"
+            href="/dashboard/leads"
             value={formatNumber(kpis.base_total)}
             detail={`${formatNumber(kpis.asignados)} asignados`}
             progress={percent(kpis.asignados, kpis.base_total)}
@@ -273,13 +299,15 @@ export default async function ReportesPage({
           />
           <MetricCard
             label="Contactados"
+            metric="contactabilidad"
+            href="/dashboard/leads?view=gestionados"
             value={formatNumber(kpis.contactados)}
             detail={`Contactabilidad ${formatPercent(kpis.contactabilidad)} · ${formatNumber(kpis.vocalcom_contactados)} Vocalcom`}
             tone="good"
             progress={kpis.contactabilidad ?? 0}
           />
           <MetricCard
-            label="CRM tipificado"
+            label="Gestiones tipificadas"
             value={formatNumber(kpis.crm_gestiones)}
             detail={`${formatNumber(kpis.llamadas_cerradas)} llamadas cerradas`}
             progress={percent(kpis.crm_gestiones, kpis.llamadas_cerradas)}
@@ -293,18 +321,25 @@ export default async function ReportesPage({
           />
           <MetricCard
             label="Agendas creadas"
+            href="/dashboard/leads?view=hoy"
             value={formatNumber(kpis.agendas_creadas)}
             detail={`${formatNumber(kpis.agendas_pendientes)} pendientes`}
             progress={percent(kpis.agendas_pendientes, kpis.agendas_creadas)}
           />
           <MetricCard
             label="Agendas vencidas"
+            href="/dashboard/leads?view=vencidas"
             value={formatNumber(kpis.agendas_vencidas)}
             detail="Compromisos pendientes de recuperar"
             tone={kpis.agendas_vencidas > 0 ? "danger" : "default"}
             progress={percent(kpis.agendas_vencidas, kpis.agendas_creadas)}
           />
-          <MetricCard label="TMO" value={formatDuration(kpis.tmo_seconds)} detail="Promedio llamadas cerradas" />
+          <MetricCard
+            label="TMO"
+            metric="tmo"
+            value={formatDuration(kpis.tmo_seconds)}
+            detail="Promedio de llamadas cerradas"
+          />
           <MetricCard
             label="Cotizaciones"
             value={formatNumber(kpis.cotizaciones)}
@@ -316,7 +351,7 @@ export default async function ReportesPage({
             tone="good"
             progress={percent(kpis.ventas, kpis.cotizaciones)}
           />
-          <MetricCard label="UF comercial" value={formatUf(kpis.uf)} />
+          <MetricCard label="UF comercial" metric="uf" value={formatUf(kpis.uf)} />
           <MetricCard label="Ejecutivos reportados" value={formatNumber(report.agents.length)} />
         </section>
 
@@ -326,7 +361,7 @@ export default async function ReportesPage({
         </section>
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          <ChartPanel title="Tipificaciones" filename="tipificaciones-equipo.xlsx" rows={tipificationRows}>
+          <ChartPanel title="Tipificaciones · top 10" filename="tipificaciones-equipo.xlsx" rows={tipificationRows}>
             <SupervisorTipificationsChart tipifications={report.tipifications} />
           </ChartPanel>
 
@@ -338,7 +373,7 @@ export default async function ReportesPage({
             <SupervisorPipelineChart kpis={kpis} />
           </ChartPanel>
 
-          <ChartPanel title="Foco por ejecutivo" filename="foco-ejecutivo-equipo.xlsx" rows={agentFocusRows}>
+          <ChartPanel title="Foco por ejecutivo · top 10" filename="foco-ejecutivo-equipo.xlsx" rows={agentFocusRows}>
             <SupervisorAgentFocusChart agents={report.agents} />
           </ChartPanel>
         </div>

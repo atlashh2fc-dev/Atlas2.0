@@ -191,8 +191,8 @@ const GUIDES: Guide[] = [
     screenTitle: "Campañas",
     screenControls: ["Tabla de campañas", "Bloque Crear campaña", "Botón Crear y configurar"],
     steps: [
-      { title: "Crea la ficha", do: "En Crear campaña escribe Nombre de la campaña, agrega descripción si aporta contexto y pulsa Crear y configurar.", verify: "Se abre la ficha de la campaña recién creada." },
-      { title: "Asigna o crea el flujo", do: "En Flujo productivo abre el selector. Si no existe, usa Crear un flujo desde cero; al guardarlo volverás a esta campaña con el flujo conectado.", verify: "El selector muestra el nombre del flujo y al guardar queda asignado." },
+      { title: "Crea la ficha", do: "En Nueva campaña escribe Nombre de la campaña, agrega descripción si aporta contexto y pulsa Crear y configurar.", verify: "Se abre la ficha de la campaña recién creada." },
+      { title: "Asigna o crea el flujo", do: "En Flujo asignado abre el selector. Si no existe, usa Crear un flujo desde cero; al guardarlo volverás a esta campaña con el flujo conectado.", verify: "El selector muestra el nombre del flujo y al guardar queda asignado." },
       { title: "Completa el checklist", do: "Asigna ejecutivos, carga leads y configura cola/modo de discado desde los bloques de la ficha.", verify: "Los pendientes de configuración pasan a Configurado." },
       { title: "Activa con evidencia", do: "Activa solo después de validar que el flujo, la base, los ejecutivos y el discador estén listos.", verify: "La campaña aparece Activa y el checklist no tiene bloqueadores." },
     ],
@@ -276,7 +276,7 @@ const GUIDES: Guide[] = [
     screenControls: ["Crear o editar extensión", "Agente asociado", "Credenciales/estado de extensión", "Estados de agente"],
     steps: [
       { title: "Provisiona la extensión", do: "En Extensiones SIP crea o edita la extensión y asóciala al ejecutivo correcto.", verify: "El agente aparece vinculado a una extensión activa." },
-      { title: "Configura pausas", do: "Desde Discador > Estados de agente define las razones de pausa disponibles y sus nombres operativos.", verify: "Los estados permiten distinguir motivos y no son etiquetas ambiguas." },
+      { title: "Configura pausas", do: "Desde Administración > Operación > Estados de agente define las razones de pausa disponibles y sus nombres operativos.", verify: "Los estados permiten distinguir motivos y no son etiquetas ambiguas." },
       { title: "Valida disponibilidad", do: "Confirma con el agente que puede iniciar sesión y cambiar entre disponible y pausas autorizadas.", verify: "El monitor en vivo refleja el estado esperado del ejecutivo." },
     ],
   },

@@ -1,5 +1,6 @@
 import type { Profile } from "@/lib/types";
 import { MobileNav } from "@/components/mobile-nav";
+import type { NavBadgeCounts } from "@/components/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { QuickSearch } from "@/components/quick-search";
 import { AgendaBell } from "@/components/agenda-reminder";
@@ -11,15 +12,17 @@ export function Header({
   profile,
   campaigns,
   selectedCampaignId,
+  badges,
 }: {
   profile: Profile;
   campaigns: { id: string; name: string }[];
   selectedCampaignId: string | null;
+  badges?: NavBadgeCounts;
 }) {
   return (
     <header className="flex h-16 flex-shrink-0 items-center justify-between border-b border-border bg-surface px-6">
       {/* La identidad del usuario vive en el pie del sidebar; aquí solo el menú móvil. */}
-      <MobileNav profile={profile} />
+      <MobileNav profile={profile} badges={badges} />
 
       <div className="flex items-center gap-3">
         <CampaignScopeSwitcher campaigns={campaigns} selectedCampaignId={selectedCampaignId} role={profile.role} />

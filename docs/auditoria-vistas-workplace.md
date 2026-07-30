@@ -413,23 +413,46 @@ Las 13 migraciones de esta tanda están en `supabase/migrations/` con el mismo t
 9. **Rango de paginación corrido** ("46–95" en vez de "51–100") y orden por columna que solo ordenaba la página cargada.
 10. Más: `rejected_count` contaba errores que no eran filas, la vista previa mostraba el estado sin normalizar, el error del refresco del Inicio del agente se silenciaba, y el clic en un icono de ayuda dentro de un `<label>` activaba el control.
 
+### Cierre de pendientes y auditoría del motor y del CTI (2026-07-30, segunda tanda)
+
+**Motor de discado (`dialer-engine/`).** Los cambios que estaban sin publicar mezclaban dos
+correcciones verificadas con funcionalidad que no podía operar. Se corrigieron antes de subirlos:
+
+- La **pausa de cola dejaba al ejecutivo atrapado**: se mapeaba a `wrap_up` y la guarda que impide sacar a alguien de wrap-up hacía que, al volver de AUX, se quedara sin llamadas y con el selector bloqueado hasta tipificar cualquier gestión. Ahora existe el estado `paused` (migración + RPC + motor + CTI).
+- `call_events.call_id` era `NOT NULL`, así que **todo evento anterior al bridge fallaba en silencio** (originando, timbrando, screen-pop). Se permite nulo.
+- El nuevo cálculo de capacidad **podía dejar el discador en cero**: tres llamadas sin cerrar de hace un mes bloqueaban a sus ejecutivos para siempre. Ahora solo cuentan las llamadas abiertas de las últimas 4 horas.
+- Con la cola en `ringall`, `AgentCalled` llega una vez por ejecutivo timbrado: **abría la ficha del cliente en la pantalla de todos**. Ahora el intento se asigna al primero que lo toma y los efectos van por separado (`allSettled`).
+- Los teléfonos en formato nacional (≈3.600 registros, 6,5 %) generaban un destino inválido al anteponer el prefijo del carrier. Se normalizan a formato internacional antes de marcar.
+
+**Barra CTI (`cti-bar.tsx`).** Auditada por fin. Corregido:
+
+- Colgar mientras timbra podía dejar una **llamada zombi con el cliente al aire**: el contador de intento se incrementaba antes de terminar la sesión y anulaba los listeners. Ahora se incrementa al final y, si falla, se fuerza el cierre.
+- Un fallo al originar dejaba la referencia de sesión apuntando a una sesión muerta y **el ejecutivo dejaba de recibir llamadas** el resto del turno, sin aviso.
+- La barra decía **"Disponible" sin estar registrada**: el discador entregaba llamadas a una extensión muerta. Ahora solo se declara disponible con el teléfono registrado.
+- El estado de error de registro nunca se usaba: tras tres intentos fallidos ahora dice qué hacer, y el backoff se reinicia al recuperarse.
+- Cambiar de estado fallaba en silencio y la barra mostraba un estado distinto al de la base; ahora se revierte y se avisa.
+- El selector ya no se bloquea del todo mientras cierra la gestión: el ejecutivo siempre puede irse a AUX.
+- Sin extensión asignada, la barra ya no desaparece sin explicación.
+
+**Pendientes de la primera auditoría, cerrados:** creación de flujos en panel lateral, badges del menú con contador real, TMO/UF/AUX/SLA en el glosario, drill-down en los KPI del tablero de gestión, `loading.tsx` en las cinco pantallas pesadas, error visible en Campañas, Usuarios y Flujos, topes declarados en los paneles de top 10 y en la importación, y terminología unificada ("registro", "ejecutivo").
+
 ### Qué queda pendiente (con nombre y apellido)
 
-| Pendiente | Dónde |
-|---|---|
-| Formulario de creación incrustado en la lista | `admin/flujos/page.tsx` (plantillas + "crear desde cero") |
-| KPI sin drill-down | `reportes/page.tsx` (12), `mail/page.tsx` (6 + 4), `campaign-dashboard-summary.tsx` (5), `dialer-reports.tsx` (5), `live-monitor.tsx` (barra agregada) |
-| `MetricCard` local duplicando el del sistema | `reportes/page.tsx`, `mail/page.tsx` |
-| Siglas sin definición | "TMO" (mismo concepto que AHT), "UF", "AUX", "SLA", "pipeline" en `reportes/page.tsx`, `supervisor-agent-metrics-table.tsx`, `campaign-dashboard-summary.tsx`, `cti-bar.tsx` |
-| `error` de Supabase descartado sin mostrarlo | ~14 páginas de administración y reportes |
-| Sin `loading.tsx` | `team`, `reportes`, `mail`, `admin/campanas`, `admin/usuarios` |
-| Cortes de tabla sin declarar | `team` (asignación y agendas), `reportes-charts.tsx` (top 10), `vocalcom-upload-form.tsx` |
-| Badges del menú sin contador | `dashboard/layout.tsx` no pasa `badges` al `Sidebar` |
-| Rutas del Centro de ayuda escritas a mano | `help-center.tsx` (cuarta lista, hoy correcta salvo un grupo extinto) |
-| "lead" vs "registro" y "agente" vs "ejecutivo" | `mail`, `team`, `flujos`, `quick-search`, `help-center` |
-| Desfase de zona horaria latente | `leads-query.ts` calcula el día en la TZ de Node y la RPC en UTC |
-| Deriva de 3 migraciones antiguas | timestamps locales ≠ remotos (anterior a esta tanda) |
-| El CTI (1.527 líneas) sin auditar | `cti-bar.tsx` |
+| Pendiente | Dónde | Por qué no se hizo |
+|---|---|---|
+| KPI sin drill-down | `mail/page.tsx` (6 + 4), `campaign-dashboard-summary.tsx` (5), `dialer-reports.tsx` (5), `live-monitor.tsx` | Requiere definir a qué vista filtrada lleva cada uno |
+| La pausa legal y la tipificación no son exigibles en servidor | `lib/intercall-break.ts` (solo `localStorage`), `actions/calls.ts` (dos `return` tempranos que la saltan para leads sin campaña) | Decisión de producto: dónde se persiste el fin de la interrupción |
+| Las llamadas manuales del CTI no dejan registro ni obligan a tipificar | `cti-bar.tsx` (`handleCall`) | Ídem: define si toda llamada manual crea gestión |
+| "Descartar por error técnico" libera el cierre sin tipificar | `actions/calls.ts` | Falta catálogo cerrado de motivos y control por turno |
+| Credenciales SIP legibles por cualquier supervisor | política `agent_sip_credentials_select` (fila, no columna) | Cambio de seguridad con impacto operativo: conviene coordinarlo |
+| Polling de 2 s por ejecutivo con `service_role` | `cti-bar.tsx` | Debería ser realtime; con 50 ejecutivos son ~125 consultas/s |
+| Recargar el navegador en llamada no avisa | `cti-bar.tsx` (sin `beforeunload`) | — |
+| Códec `alaw` no aplica a las extensiones ya creadas | `dialer-engine/src/asterisk/configSync.ts` | Hay que recrear 6010/6011 a mano |
+| Tres llamadas abiertas de hace un mes | tabla `calls` | Son datos de operación: no los toqué |
+| `error` de Supabase descartado | ~10 páginas restantes | Se cubrieron las cuatro donde el fallo deja la pantalla vacía |
+| Desfase de zona horaria latente | `leads-query.ts` calcula el día en la TZ de Node y la RPC en UTC | Hoy son 0 filas en esa ventana |
+| Deriva de 3 migraciones antiguas | timestamps locales ≠ remotos | Anterior a esta tanda; se arregla con `supabase migration repair` |
+| Rutas del Centro de ayuda escritas a mano | `help-center.tsx` | Corregidas las obsoletas; falta derivarlas de `nav.config.ts` |
 
 ### Verificación de cierre
 

@@ -1,6 +1,11 @@
 import type AmiClient from "asterisk-manager";
 import { logger } from "../logger";
-import { registerDialEvent, updateAgentDialerStatus } from "../supabaseClient";
+import {
+  assignDialAttemptAgent,
+  emitIncomingDialEvent,
+  registerDialEvent,
+  updateAgentDialerStatus,
+} from "../supabaseClient";
 import { getProfileIdForExtension } from "../dialer/agentDirectory";
 
 // uniqueid del canal saliente (la pata que originamos) -> dial_attempt_id.
@@ -27,6 +32,20 @@ function extensionFromInterface(iface: unknown): string | null {
   if (typeof iface !== "string") return null;
   const match = iface.match(/\/(\d+)/);
   return match ? match[1] : null;
+}
+
+function attemptIdFromEvent(evt: Record<string, unknown>): string | undefined {
+  for (const value of [
+    evt.uniqueid,
+    evt.linkedid,
+    evt.bridgeduniqueid,
+    evt.destuniqueid,
+  ]) {
+    const id = String(value ?? "");
+    const attemptId = attemptByUniqueId.get(id);
+    if (attemptId) return attemptId;
+  }
+  return undefined;
 }
 
 function hangupCauseToStatus(cause: unknown): "no_answer" | "busy" | "failed" | "completed" {
@@ -94,8 +113,7 @@ export function registerEventRouter(ami: AmiClient, campaignIdByQueue: Map<strin
 
       case "agentconnect": {
         // El agente quedó bridgeado con la llamada saliente que dejamos en la Queue.
-        const uniqueId = String(evt.uniqueid ?? evt.bridgeduniqueid ?? "");
-        const dialAttemptId = attemptByUniqueId.get(uniqueId);
+        const dialAttemptId = attemptIdFromEvent(evt);
         const extension = extensionFromInterface(evt.interface ?? evt.membername);
         const profileId = extension ? getProfileIdForExtension(extension) : undefined;
         if (!dialAttemptId) return;
@@ -110,6 +128,71 @@ export function registerEventRouter(ami: AmiClient, campaignIdByQueue: Map<strin
           agentId: profileId ?? null,
           payload: { queue: evt.queue ?? null, extension },
         }).catch((err) => logger.error({ err, evt }, "register_dial_event (bridged) falló"));
+
+        const campaignId = campaignIdByQueue.get(String(evt.queue ?? ""));
+        if (campaignId && extension && profileId) {
+          updateAgentDialerStatus({
+            profileId,
+            campaignId,
+            extension,
+            status: "on_call",
+          }).catch((err) =>
+            logger.error({ err, evt }, "update_agent_dialer_status (on_call) falló")
+          );
+        }
+        return;
+      }
+
+      case "agentcalled": {
+        const dialAttemptId = attemptIdFromEvent(evt);
+        const queue = String(evt.queue ?? "");
+        const campaignId = campaignIdByQueue.get(queue);
+        const extension = extensionFromInterface(
+          evt.interface ?? evt.membername ?? evt.agentcalled ?? evt.destchannel
+        );
+        const profileId = extension ? getProfileIdForExtension(extension) : undefined;
+        if (!dialAttemptId || !campaignId || !extension || !profileId) return;
+
+        // Con estrategia `ringall` este evento llega una vez por cada miembro
+        // timbrado: solo el primero se queda con el intento, para no abrir la
+        // ficha del mismo cliente en la pantalla de todo el equipo.
+        void (async () => {
+          const claimed = await assignDialAttemptAgent(dialAttemptId, profileId).catch((err) => {
+            logger.error({ err, evt }, "assign_dial_attempt_agent falló");
+            return false;
+          });
+          if (!claimed) return;
+
+          // Se ejecutan por separado: si el screen-pop falla, el estado del
+          // ejecutivo igual tiene que quedar en "timbrando".
+          const results = await Promise.allSettled([
+            emitIncomingDialEvent(dialAttemptId, profileId),
+            updateAgentDialerStatus({ profileId, campaignId, extension, status: "ringing" }),
+          ]);
+          for (const result of results) {
+            if (result.status === "rejected") {
+              logger.error({ err: result.reason, evt }, "efecto de AgentCalled falló");
+            }
+          }
+        })();
+        return;
+      }
+
+      case "agentcomplete": {
+        const queue = String(evt.queue ?? "");
+        const campaignId = campaignIdByQueue.get(queue);
+        const extension = extensionFromInterface(evt.interface ?? evt.membername);
+        const profileId = extension ? getProfileIdForExtension(extension) : undefined;
+        if (!campaignId || !extension || !profileId) return;
+
+        updateAgentDialerStatus({
+          profileId,
+          campaignId,
+          extension,
+          status: "wrap_up",
+        }).catch((err) =>
+          logger.error({ err, evt }, "update_agent_dialer_status (wrap_up) falló")
+        );
         return;
       }
 
@@ -174,8 +257,12 @@ export function registerEventRouter(ami: AmiClient, campaignIdByQueue: Map<strin
         const profileId = extension ? getProfileIdForExtension(extension) : undefined;
         if (!campaignId || !extension || !profileId) return;
 
+        // Una pausa de cola NO es cierre de llamada. Marcarla como `wrap_up`
+        // dejaba al ejecutivo atrapado: al volver de AUX el motor intentaba
+        // ponerlo disponible, la guarda de wrap-up lo impedía y se quedaba sin
+        // llamadas y con el selector bloqueado hasta tipificar algo.
         const paused = String(evt.paused ?? "0") === "1";
-        const status = paused ? "wrap_up" : "available";
+        const status = paused ? "paused" : "available";
 
         updateAgentDialerStatus({ profileId, campaignId, extension, status }).catch((err) =>
           logger.error({ err, evt }, "update_agent_dialer_status falló")

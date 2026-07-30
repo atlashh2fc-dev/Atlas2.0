@@ -41,14 +41,37 @@ export const AMD_CONTEXT = "dialer-amd-out";
  * mapeo uniqueid -> dial_attempt_id que arma el event router al recibir la
  * respuesta.
  */
+/**
+ * Deja el número en formato internacional sin '+'. El prefijo del carrier
+ * espera código de país: un número nacional de 9 dígitos (22..., 9...) se
+ * concatenaba tal cual y Siptel lo rechazaba o lo enrutaba mal. En la base hay
+ * ~3.600 registros en ese formato.
+ */
+export function toInternational(phone: string, countryCode = "56"): string {
+  const digits = phone.replace(/[^0-9]/g, "");
+  if (!digits) return "";
+  if (digits.startsWith(countryCode) && digits.length >= 11) return digits;
+  if (digits.length === 9) return `${countryCode}${digits}`;
+  // 8 dígitos: fijo antiguo sin el 2 inicial de Santiago.
+  if (digits.length === 8) return `${countryCode}2${digits}`;
+  return digits;
+}
+
 export function originateCall(params: OriginateParams): Promise<void> {
   const { ami, target, queueName, callerId, trunkContext, abandonTimeoutSeconds, amdEnabled } = params;
-  const channel = `${config.dialTech}/${target.phone}@${trunkContext}`;
+  // El carrier (Siptel) exige el prefijo de marcación antepuesto al destino en
+  // el Request-URI: DIAL_PREFIX + código de país + número nacional, sin '+'.
+  // Se limpian separadores y el '+' para no romper el URI.
+  const dialNumber = `${config.dialPrefix}${toInternational(target.phone)}`;
+  const channel = `${config.dialTech}/${dialNumber}@${trunkContext}`;
   const queueData = abandonTimeoutSeconds ? `${queueName},,,,${abandonTimeoutSeconds}` : queueName;
 
   const action: Record<string, string> = {
     Action: "Originate",
-    ActionID: target.dial_attempt_id,
+    // `asterisk-manager` solo respeta esta clave en minúsculas. Con
+    // `ActionID` generaba un timestamp propio y rompía la correlación con el
+    // UUID de dial_attempts aunque la llamada sí se cursara.
+    actionid: target.dial_attempt_id,
     Channel: channel,
     Async: "true",
     Timeout: "30000",

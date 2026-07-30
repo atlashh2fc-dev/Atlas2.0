@@ -186,7 +186,7 @@ export function QuickSearch({ role }: { role: AppRole }) {
                 goToLead(results[activeIndex]);
               }
             }}
-            placeholder="Buscar lead por RUT, teléfono o nombre..."
+            placeholder="Buscar por RUT, teléfono o nombre…"
             className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
           />
           <kbd className="rounded border border-border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">Esc</kbd>
@@ -250,7 +250,7 @@ export function QuickSearch({ role }: { role: AppRole }) {
           </ul>
         )}
 
-        {notFound && term.trim() && !loading && <p className="px-4 py-6 text-center text-sm text-muted-foreground">No se encontró ningún lead para &ldquo;{term.trim()}&rdquo;.</p>}
+        {notFound && term.trim() && !loading && <p className="px-4 py-6 text-center text-sm text-muted-foreground">No se encontró ningún registro para &ldquo;{term.trim()}&rdquo;.</p>}
       </div>
     </div>
   );

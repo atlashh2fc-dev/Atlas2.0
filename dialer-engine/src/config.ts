@@ -16,6 +16,13 @@ const envSchema = z.object({
 
   DIAL_TECH: z.string().default("PJSIP"),
   DIAL_TRUNK: z.string().min(1),
+  /** Prefijo de marcación que exige el carrier antepuesto al destino en el
+   * Request-URI (Siptel Chile: 85848994 + 56 + número nacional). Vacío = sin
+   * prefijo, comportamiento previo. */
+  DIAL_PREFIX: z
+    .string()
+    .regex(/^\d*$/, "DIAL_PREFIX solo puede contener dígitos")
+    .default(""),
 
   AGENT_EXTENSION_MAP: z.string().default("{}"),
   DIALER_CAMPAIGN_IDS: z.string().default(""),
@@ -53,6 +60,7 @@ export const config = {
 
   dialTech: env.DIAL_TECH,
   dialTrunk: env.DIAL_TRUNK,
+  dialPrefix: env.DIAL_PREFIX,
 
   // extension -> profile_id
   agentExtensionMap,

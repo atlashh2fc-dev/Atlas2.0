@@ -4,8 +4,8 @@ import { getAgentPauseStates } from "../supabaseClient";
 import { amiAction } from "../asterisk/configSync";
 
 /**
- * Sincroniza el estado de pausa del agente (Disponible/Auxiliar/Baño/
- * Capacitación, elegido desde la barra CTI) hacia Asterisk via AMI
+ * Sincroniza el estado del agente (Disponible o un motivo AUX concreto,
+ * elegido desde la barra CTI) hacia Asterisk via AMI
  * QueuePause. No se especifica Queue en la acción: Asterisk pausa/despausa
  * al Interface en TODAS las colas de las que sea miembro, así no hace falta
  * saber a qué campañas está asignado el agente en este módulo.

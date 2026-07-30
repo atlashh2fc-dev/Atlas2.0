@@ -14,6 +14,13 @@ import { config } from "./config";
  * crear el cliente y en Node < 22 no hay WebSocket global — hay que
  * inyectarlo explícitamente via `ws` o el cliente revienta al arrancar.
  */
+/**
+ * Ventana para considerar "en curso" una llamada sin cerrar. Más allá de esto
+ * la fila es huérfana (caída del navegador o del proceso) y no debe seguir
+ * consumiendo la capacidad del ejecutivo.
+ */
+const OPEN_CALL_MAX_AGE_MS = 4 * 60 * 60 * 1000;
+
 export const supabase = createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {
   auth: { persistSession: false, autoRefreshToken: false },
   realtime: { transport: WebSocket as unknown as never },
@@ -58,12 +65,78 @@ export async function registerDialEvent(params: {
   if (error) throw new Error(`register_dial_event: ${error.message}`);
 }
 
+/**
+ * AgentCalled ocurre antes de que el navegador reciba el INVITE de Queue.
+ * Asociar el intento en ese punto permite que el CTI cargue la ficha exacta
+ * mientras contesta automáticamente, sin adivinar por teléfono o campaña.
+ */
+/**
+ * Asigna el intento al primer ejecutivo que lo tome. Devuelve `false` si otro
+ * ya se lo quedó: con la cola en `ringall`, AgentCalled llega una vez por cada
+ * miembro timbrado y solo uno debe ganar.
+ */
+export async function assignDialAttemptAgent(dialAttemptId: string, agentId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("dial_attempts")
+    .update({
+      agent_id: agentId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", dialAttemptId)
+    .is("agent_id", null)
+    .select("id");
+  if (error) throw new Error(`dial_attempts (assign agent): ${error.message}`);
+  return (data ?? []).length > 0;
+}
+
+/**
+ * Evento de screen-pop consumido por DialerListener en el layout de Atlas.
+ * Se emite cuando Queue selecciona al agente, antes del bridge, para abrir
+ * la ficha y la tipificación mientras el CTI contesta el INVITE.
+ */
+export async function emitIncomingDialEvent(dialAttemptId: string, agentId: string) {
+  const { data: attempt, error: attemptError } = await supabase
+    .from("dial_attempts")
+    .select("lead_id, campaign_id, phone")
+    .eq("id", dialAttemptId)
+    .single();
+  if (attemptError) throw new Error(`dial_attempts (screen-pop): ${attemptError.message}`);
+
+  const { error } = await supabase.from("call_events").insert({
+    call_id: null,
+    lead_id: attempt.lead_id,
+    agent_id: agentId,
+    event_type: "dialer.incoming_call",
+    payload: {
+      dial_attempt_id: dialAttemptId,
+      campaign_id: attempt.campaign_id,
+      phone: attempt.phone,
+      source: "asterisk_engine",
+    },
+  });
+  if (error) throw new Error(`call_events (screen-pop): ${error.message}`);
+}
+
 export async function updateAgentDialerStatus(params: {
   profileId: string;
   campaignId: string;
   extension: string;
-  status: "offline" | "available" | "ringing" | "on_call" | "wrap_up";
+  status: "offline" | "available" | "ringing" | "on_call" | "wrap_up" | "paused";
 }) {
+  // Los eventos genéricos de QueueMember pueden informar "disponible"
+  // después de AgentComplete. No deben sacar al ejecutivo de wrap-up: esa
+  // transición la hace Atlas únicamente al guardar/cerrar la tipificación.
+  if (params.status === "available") {
+    const { data: current, error: currentError } = await supabase
+      .from("dialer_agent_sessions")
+      .select("status")
+      .eq("profile_id", params.profileId)
+      .eq("campaign_id", params.campaignId)
+      .maybeSingle();
+    if (currentError) throw new Error(`dialer_agent_sessions (current): ${currentError.message}`);
+    if (current?.status === "wrap_up") return;
+  }
+
   const { error } = await supabase.rpc("update_agent_dialer_status", {
     p_profile_id: params.profileId,
     p_campaign_id: params.campaignId,
@@ -88,14 +161,37 @@ export async function countAvailableAgents(campaignId: string): Promise<number> 
   // evita originar llamadas cuando la sincronización ya lo quitó de la cola.
   const extensions = await getCampaignAgentExtensions(campaignId);
   if (extensions.length === 0) return 0;
-  const { count, error } = await supabase
+  const { data: availableSessions, error } = await supabase
     .from("dialer_agent_sessions")
-    .select("id", { count: "exact", head: true })
+    .select("profile_id, extension")
     .eq("campaign_id", campaignId)
     .eq("status", "available")
     .in("extension", extensions);
   if (error) throw new Error(`dialer_agent_sessions: ${error.message}`);
-  return count ?? 0;
+  if (!availableSessions || availableSessions.length === 0) return 0;
+
+  // Defensa adicional contra carreras entre Hangup/AgentComplete: mientras
+  // exista una llamada abierta para tipificar, ese agente no tiene capacidad
+  // aunque una sesión atrasada todavía diga "available".
+  // Solo llamadas abiertas recientes: una fila que quedó sin cerrar por una
+  // caída dejaba al ejecutivo sin capacidad para siempre y, con todos en esa
+  // situación, el discador se quedaba en cero llamadas.
+  const openCallsSince = new Date(Date.now() - OPEN_CALL_MAX_AGE_MS).toISOString();
+  const { data: openCalls, error: openCallsError } = await supabase
+    .from("calls")
+    .select("agent_id")
+    .in(
+      "agent_id",
+      availableSessions.map((session) => session.profile_id)
+    )
+    .is("ended_at", null)
+    .gte("started_at", openCallsSince);
+  if (openCallsError) throw new Error(`calls (open by agent): ${openCallsError.message}`);
+
+  const agentsWithOpenCalls = new Set((openCalls ?? []).map((call) => call.agent_id));
+  return availableSessions.filter(
+    (session) => !agentsWithOpenCalls.has(session.profile_id)
+  ).length;
 }
 
 export async function countInFlightAttempts(campaignId: string): Promise<number> {
@@ -103,7 +199,7 @@ export async function countInFlightAttempts(campaignId: string): Promise<number>
     .from("dial_attempts")
     .select("id", { count: "exact", head: true })
     .eq("campaign_id", campaignId)
-    .in("status", ["queued", "originating", "ringing", "answered"]);
+    .in("status", ["queued", "originating", "ringing", "answered", "bridged"]);
   if (error) throw new Error(`dial_attempts: ${error.message}`);
   return count ?? 0;
 }
@@ -206,10 +302,31 @@ export type AgentPauseState = { extension: string; paused: boolean; reasonLabel:
  * PostgREST funciona en una sola consulta.
  */
 export async function getAgentPauseStates(): Promise<AgentPauseState[]> {
+  const { data: activeCampaigns, error: campaignError } = await supabase
+    .from("dialer_campaign_configs")
+    .select("campaign_id")
+    .eq("is_active", true);
+  if (campaignError) throw new Error(`dialer_campaign_configs: ${campaignError.message}`);
+  if (!activeCampaigns || activeCampaigns.length === 0) return [];
+
+  const { data: assignments, error: assignmentError } = await supabase
+    .from("campaign_agents")
+    .select("profile_id")
+    .in(
+      "campaign_id",
+      activeCampaigns.map((campaign) => campaign.campaign_id)
+    );
+  if (assignmentError) throw new Error(`campaign_agents: ${assignmentError.message}`);
+  const assignedProfileIds = Array.from(
+    new Set((assignments ?? []).map((assignment) => assignment.profile_id))
+  );
+  if (assignedProfileIds.length === 0) return [];
+
   const { data: creds, error: credsError } = await supabase
     .from("agent_sip_credentials")
     .select("profile_id, extension")
-    .eq("is_active", true);
+    .eq("is_active", true)
+    .in("profile_id", assignedProfileIds);
   if (credsError) throw new Error(`agent_sip_credentials: ${credsError.message}`);
   if (!creds || creds.length === 0) return [];
 

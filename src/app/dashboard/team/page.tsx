@@ -132,7 +132,7 @@ function AgendaTable({
     <SectionCard title={title} description={description}>
       <Table>
         <Thead>
-          <Th>Lead</Th>
+          <Th>Registro</Th>
           <Th>Ejecutivo</Th>
           <Th>Agenda</Th>
           <Th>Reagendar</Th>
@@ -268,7 +268,7 @@ export default async function TeamPage({
     <div className="space-y-6">
       <PageHeader
         title="Mi equipo"
-        description="Asigna leads, corrige agendas vencidas y monitorea la carga de tus ejecutivos."
+        description="Reparte registros, corrige agendas vencidas y vigila la carga de tus ejecutivos."
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">

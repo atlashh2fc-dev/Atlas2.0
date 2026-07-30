@@ -48,6 +48,8 @@ const SIP_WSS_SERVER =
   process.env.NEXT_PUBLIC_SIP_WSS_SERVER ?? `wss://${SIP_DOMAIN}:8089/ws`;
 const MOBILE_SUBSCRIBER_DIGITS = 8;
 const MAX_RECONNECT_DELAY_MS = 15_000;
+/** Reintentos silenciosos antes de avisarle al ejecutivo que su teléfono no conecta. */
+const MAX_SILENT_RECONNECT_ATTEMPTS = 3;
 
 type RegState = "idle" | "connecting" | "registered" | "error";
 type CallState = "idle" | "calling" | "ringing" | "in_call" | "ending";
@@ -171,6 +173,8 @@ export function CtiBar({ profile }: { profile: Profile }) {
   >(undefined);
   const [regState, setRegState] = useState<RegState>("idle");
   const [registrationAttempt, setRegistrationAttempt] = useState(0);
+  /** Espejo síncrono de `regState === "registered"` para los efectos. */
+  const registeredRef = useRef(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [callState, setCallState] = useState<CallState>("idle");
   const [subscriber, setSubscriber] = useState("");
@@ -199,6 +203,8 @@ export function CtiBar({ profile }: { profile: Profile }) {
   const [statusReasons, setStatusReasons] = useState<AgentStatusReason[]>([]);
   const [currentReasonId, setCurrentReasonId] = useState<string | null>(null);
   const [savingStatus, setSavingStatus] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [loadingCredential, setLoadingCredential] = useState(true);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const uaRef = useRef<any>(null);
@@ -217,10 +223,14 @@ export function CtiBar({ profile }: { profile: Profile }) {
 
   useEffect(() => {
     getMySipCredentials()
-      .then(setCredential)
+      .then((value) => {
+        setCredential(value);
+        setLoadingCredential(false);
+      })
       .catch((err) => {
         console.error("CTI: fallo al obtener credenciales SIP propias", err);
         setCredential(null);
+        setLoadingCredential(false);
       });
   }, []);
 
@@ -305,9 +315,10 @@ export function CtiBar({ profile }: { profile: Profile }) {
         setStatusReasons(reasons);
         setCurrentReasonId(selected?.id ?? null);
 
-        // El login siempre inicia el servicio en Disponible. Esto también
-        // reemplaza el estado de sistema "Desconectado" dejado por el logout.
-        if (!currentIsSelectable && available) {
+        // Solo se declara Disponible cuando el teléfono está realmente
+        // registrado: marcarlo antes hacía que el discador entregara llamadas
+        // a una extensión muerta y el cliente contestaba en el vacío.
+        if (!currentIsSelectable && available && registeredRef.current) {
           await setMyCurrentStatus(available.id);
         }
       })
@@ -334,12 +345,17 @@ export function CtiBar({ profile }: { profile: Profile }) {
   }, [profile.role]);
 
   async function handleStatusChange(reasonId: string) {
+    const previous = currentReasonId;
     setCurrentReasonId(reasonId);
     setSavingStatus(true);
+    setStatusError(null);
     try {
       await setMyCurrentStatus(reasonId);
     } catch (err) {
-      console.error("CTI: fallo al guardar estado de agente", err);
+      // Sin esto la barra mostraba el estado nuevo mientras la base seguía con
+      // el anterior, y el discador actuaba según la base.
+      setCurrentReasonId(previous);
+      setStatusError(err instanceof Error ? err.message : "No se pudo guardar el estado.");
     } finally {
       setSavingStatus(false);
     }
@@ -384,8 +400,17 @@ export function CtiBar({ profile }: { profile: Profile }) {
 
     function scheduleReconnect() {
       if (disposed || reconnectTimer) return;
-      setRegState("connecting");
-      setConnectionError("Restableciendo automáticamente la conexión con la central.");
+      // Tras varios intentos fallidos el estado deja de ser "conectando" y pasa
+      // a error: antes el ejecutivo veía un spinner indefinido sin saber que
+      // tenía que avisar a soporte.
+      const failing = registrationAttempt >= MAX_SILENT_RECONNECT_ATTEMPTS;
+      setRegState(failing ? "error" : "connecting");
+      registeredRef.current = false;
+      setConnectionError(
+        failing
+          ? "No se pudo conectar el teléfono. Avisa a tu supervisor: no recibirás llamadas."
+          : "Restableciendo automáticamente la conexión con la central."
+      );
       const delay = Math.min(
         MAX_RECONNECT_DELAY_MS,
         2_000 * 2 ** Math.min(registrationAttempt, 3)
@@ -433,6 +458,10 @@ export function CtiBar({ profile }: { profile: Profile }) {
           if (disposed) return;
           if (state === RegistererState.Registered) {
             setRegState("registered");
+            registeredRef.current = true;
+            // Sin esto el backoff quedaba pegado en el máximo aunque el
+            // registro se hubiera recuperado.
+            setRegistrationAttempt(0);
             setConnectionError(null);
           } else if (
             state === RegistererState.Unregistered ||
@@ -823,6 +852,9 @@ export function CtiBar({ profile }: { profile: Profile }) {
       console.error("CTI: fallo al originar llamada", err);
       stopLocalRingback();
       detachRemoteAudio();
+      // Sin limpiar la referencia, el CTI creía tener una llamada viva y
+      // rechazaba en silencio todas las entrantes por el resto del turno.
+      sessionRef.current = null;
       setCallState("idle");
       setCallError("No se pudo iniciar la llamada. Reintenta en unos segundos.");
     }
@@ -831,10 +863,10 @@ export function CtiBar({ profile }: { profile: Profile }) {
   async function handleHangup() {
     const session = sessionRef.current;
     const wasEstablished = callState === "in_call";
-    callAttemptRef.current += 1;
     stopLocalRingback();
     detachRemoteAudio();
     if (!session) {
+      callAttemptRef.current += 1;
       setCallState("idle");
       return;
     }
@@ -849,8 +881,19 @@ export function CtiBar({ profile }: { profile: Profile }) {
         await session.cancel();
       }
     } catch (err) {
+      // Si terminar la sesión falla (carrera típica al colgar justo cuando el
+      // remoto contesta), se fuerza el cierre: antes la interfaz volvía al
+      // teclado y la llamada podía seguir viva con el cliente al aire.
       console.error("CTI: fallo al colgar", err);
+      try {
+        session.dispose?.();
+      } catch {
+        // La sesión ya puede estar liberada.
+      }
     } finally {
+      // El contador se incrementa recién acá: hacerlo antes anulaba los
+      // listeners de estado y se perdía el desenlace real de la sesión.
+      callAttemptRef.current += 1;
       if (wasEstablished) beginLegalIntercallBreak();
       stopLocalRingback();
       detachRemoteAudio();
@@ -930,7 +973,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
   const operationalStatusValue = inAutomaticWrapUp ? "__acw" : currentReasonId ?? "";
   const operationalStatusLabel = inLegalIntercallBreak
     ? `Interrupción legal · ${legalBreakRemaining}s`
-    : "ACW · tipificación pendiente";
+    : "Cerrando gestión · falta tipificar";
   const validNumber = subscriber.length === MOBILE_SUBSCRIBER_DIGITS;
   const activeCall =
     callState === "in_call" || callState === "calling" || callState === "ringing";
@@ -962,7 +1005,9 @@ export function CtiBar({ profile }: { profile: Profile }) {
             fieldSize="sm"
             value={operationalStatusValue}
             onChange={(event) => handleStatusChange(event.target.value)}
-            disabled={savingStatus || inAutomaticWrapUp}
+            // Nunca se bloquea del todo: aunque esté cerrando la gestión, el
+            // ejecutivo tiene que poder irse a AUX (baño, colación).
+            disabled={savingStatus}
             className="border-0 bg-surface-muted font-semibold"
             aria-label="Estado del agente"
           >
@@ -984,10 +1029,25 @@ export function CtiBar({ profile }: { profile: Profile }) {
               </optgroup>
             )}
           </Select>
+
+          {statusError && (
+            <span role="alert" className="text-xs text-danger">
+              {statusError}
+            </span>
+          )}
         </div>
       )}
 
-      {!credential ? null : (
+      {!credential ? (
+        // Antes esta barra simplemente no aparecía: el ejecutivo sin extensión
+        // no tenía forma de saber por qué no tiene teléfono.
+        loadingCredential ? null : (
+          <div className="border-t border-border bg-surface px-5 py-3 text-xs text-muted-foreground">
+            Aún no tienes una extensión telefónica asignada. Avísale a tu supervisor para poder
+            recibir y hacer llamadas.
+          </div>
+        )
+      ) : (
         <>
           <button
             type="button"

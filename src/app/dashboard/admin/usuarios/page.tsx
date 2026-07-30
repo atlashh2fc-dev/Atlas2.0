@@ -4,7 +4,7 @@ import { unstable_noStore as noStore } from "next/cache";
 import Link from "next/link";
 import type { AppRole } from "@/lib/types";
 import { UsersTable, type UserRow } from "@/components/users-table";
-import { Field, FilterBar, Select } from "@/components/ui";
+import { Callout, Field, FilterBar, Select } from "@/components/ui";
 
 const ROLE_OPTIONS: { value: AppRole; label: string }[] = [
   { value: "agente", label: "Agente" },
@@ -24,7 +24,8 @@ export default async function UsersAdminPage({
   const supabase = await createClient();
   const { campaign: requestedCampaignId, role: roleFilter, active: activeFilter } = await searchParams;
 
-  const [{ data: users }, { data: teams }, { data: campaigns }, { data: campaignMemberships }] = await Promise.all([
+  const [{ data: users, error: usersError }, { data: teams }, { data: campaigns }, { data: campaignMemberships }] =
+    await Promise.all([
     supabase.from("profiles").select("*").order("created_at", { ascending: true }),
     supabase.from("teams").select("*").order("name"),
     supabase.from("campaigns").select("id, name").eq("is_active", true).order("name"),
@@ -129,7 +130,11 @@ export default async function UsersAdminPage({
         </p>
       )}
 
-      <UsersTable rows={rows} teams={teams ?? []} campaigns={campaigns ?? []} />
+      {usersError ? (
+        <Callout tone="danger">No se pudieron cargar los usuarios: {usersError.message}</Callout>
+      ) : (
+        <UsersTable rows={rows} teams={teams ?? []} campaigns={campaigns ?? []} />
+      )}
     </div>
   );
 }

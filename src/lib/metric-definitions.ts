@@ -77,6 +77,29 @@ export const METRIC_DEFINITIONS = {
     label: "Base disponible",
     definition: "Registros de la campaña que aún se pueden marcar hoy, según reintentos y ventanas horarias.",
   },
+  tmo: {
+    label: "TMO",
+    definition:
+      "Tiempo medio de operación: lo mismo que AHT, la duración promedio de la atención completa de una llamada.",
+    formula: "(tiempo en conversación + tiempo de cierre) ÷ llamadas atendidas",
+  },
+  aux: {
+    label: "AUX",
+    definition:
+      "Estado en que el ejecutivo sale de la cola por un motivo declarado (colación, baño, capacitación). No recibe llamadas y el tiempo resta adherencia.",
+  },
+  sla: {
+    label: "SLA",
+    definition: "Compromiso de servicio acordado: el plazo dentro del cual una gestión o una llamada debe atenderse.",
+  },
+  uf: {
+    label: "UF",
+    definition: "Unidad de Fomento: la unidad reajustable en que se expresan los montos comerciales.",
+  },
+  pipeline: {
+    label: "Embudo comercial",
+    definition: "Suma de las oportunidades abiertas que todavía no se ganan ni se pierden.",
+  },
 } as const satisfies Record<string, MetricDefinition>;
 
 export type MetricId = keyof typeof METRIC_DEFINITIONS;

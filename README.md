@@ -1,36 +1,74 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Atlas 2.0
 
-## Getting Started
+CRM para la operación de call center: centraliza la gestión de leads, llamadas, campañas, agentes y supervisión. Se conecta a Supabase para autenticación, datos y tiempo real; el discado automático se ejecuta en un proceso independiente.
 
-First, run the development server:
+## Módulos
+
+- Dashboard operativo, agenda y gestión de llamadas.
+- Leads: búsqueda, ficha 360°, alta manual y carga masiva CSV/XLSX.
+- Campañas, asignación de leads y flujos de trabajo.
+- Administración de usuarios, ejecutivos y credenciales SIP.
+- Supervisión en vivo, reportes y métricas por campaña/equipo.
+- Importación y seguimiento de resultados de mail y Vocalcom.
+
+Las cargas masivas de leads aceptan solicitudes de hasta **20 MB**.
+
+## Arquitectura
+
+El CRM es una aplicación de **Next.js 16** con **React 19**. Supabase provee autenticación, base de datos, RLS, RPCs y Realtime; los cambios de esquema se versionan en [`supabase/migrations/`](./supabase/migrations/).
+
+El motor de discado está aislado en [`dialer-engine/`](./dialer-engine/): es un servicio Node.js/TypeScript con conexión AMI persistente a Asterisk y no forma parte del proceso Next.js. Consulta su [README](./dialer-engine/README.md) y la [arquitectura del motor](./docs/dialer-engine-architecture.md).
+
+## Requisitos e instalación
+
+Se necesita Node.js con npm y un proyecto Supabase con las migraciones aplicadas.
 
 ```bash
+cp .env.example .env.local
+# Completa las variables de Supabase en .env.local
+npm ci
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+La aplicación queda disponible en `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Variables de entorno
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Usa [`.env.example`](./.env.example) como referencia. El CRM requiere:
 
-## Learn More
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY` (solo servidor; no debe exponerse al cliente)
 
-To learn more about Next.js, take a look at the following resources:
+## Scripts raíz
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Comando | Uso |
+| --- | --- |
+| `npm run dev` | Inicia Next.js en desarrollo. |
+| `npm run build` | Genera la compilación de producción. |
+| `npm run start` | Inicia la compilación de producción. |
+| `npm run lint` | Ejecuta ESLint. Actualmente presenta incidencias conocidas; revísalas antes de usarlo como validación de aprobación. |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Migraciones
 
-## Deploy on Vercel
+Las migraciones SQL viven en [`supabase/migrations/`](./supabase/migrations/) y deben aplicarse al proyecto Supabase correspondiente, por ejemplo con la CLI:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+supabase db push
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+No edites una migración ya aplicada: agrega una nueva migración para cada cambio de esquema.
+
+## Despliegue
+
+El CRM y el motor de discado se despliegan por separado:
+
+- **CRM:** despliega la aplicación Next.js con sus variables de Supabase.
+- **Motor de discado:** despliega [`dialer-engine/`](./dialer-engine/) como proceso persistente con conectividad privada hacia Asterisk; no en un entorno serverless de vida corta.
+
+## Documentación relacionada
+
+- [Estrategia de Atlas 2.0](./docs/atlas-2-strategy.md)
+- [Arquitectura de integraciones externas](./docs/external-integrations-architecture.md)
+- [Arquitectura del motor de discado](./docs/dialer-engine-architecture.md)
+- [README del motor de discado](./dialer-engine/README.md)

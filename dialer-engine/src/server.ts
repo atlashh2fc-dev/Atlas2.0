@@ -36,14 +36,17 @@ async function main() {
   // Cada refresh también aprovisiona en Asterisk (vía AMI) cualquier
   // extensión nueva que un admin haya generado desde el CRM.
   await refreshAgentDirectory(config.agentExtensionMap);
+  await ensureAgentEndpoints(ami, getActiveCredentials()).catch((err) =>
+    logger.error({ err }, "Sync inicial de extensiones PJSIP falló")
+  );
   setInterval(() => {
     refreshAgentDirectory(config.agentExtensionMap)
       .then(() => ensureAgentEndpoints(ami, getActiveCredentials()))
       .catch((err) => logger.error({ err }, "Sync de directorio de agentes falló"));
   }, AGENT_DIRECTORY_REFRESH_MS);
 
-  // Estado de pausa del agente (Disponible/Auxiliar/Baño/Capacitación,
-  // elegido desde la barra CTI): se sincroniza a QueuePause en Asterisk sin
+  // Estado del agente (Disponible o un motivo AUX concreto, elegido desde la
+  // barra CTI): se sincroniza a QueuePause en Asterisk sin
   // esperar al tick de campaña, para que la pausa/despausa sea casi
   // inmediata sin importar en qué campaña esté el agente.
   setInterval(() => {
