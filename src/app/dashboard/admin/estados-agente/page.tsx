@@ -2,8 +2,9 @@ import { requireProfile } from "@/lib/auth";
 import { listAllStatusReasons, createStatusReason, toggleStatusReasonActive } from "@/app/actions/agent-status";
 import { CreatePanel } from "@/components/create-panel";
 import {
+  ActionForm,
+  ActionSubmit,
   Badge,
-  Button,
   Field,
   InfoTooltip,
   Input,
@@ -34,6 +35,7 @@ export default async function EstadosAgentePage() {
             description="Aparecerá en el CTI del ejecutivo y sacará su extensión de las colas mientras esté activo."
             action={createStatusReason}
             submitLabel="Crear motivo"
+            successLabel="Motivo creado"
           >
             <Field label="Código">
               <Input name="code" required placeholder="almuerzo" data-autofocus />
@@ -116,13 +118,16 @@ export default async function EstadosAgentePage() {
                   </Badge>
                 </Td>
                 <Td align="right">
-                  <form action={toggleStatusReasonActive}>
+                  <ActionForm
+                    action={toggleStatusReasonActive}
+                    success={reason.is_active ? "Motivo desactivado" : "Motivo activado"}
+                  >
                     <input type="hidden" name="id" value={reason.id} />
                     <input type="hidden" name="active" value={String(reason.is_active)} />
-                    <Button type="submit" variant="secondary" size="sm">
+                    <ActionSubmit variant="secondary" size="sm" pendingLabel="…">
                       {reason.is_active ? "Desactivar" : "Activar"}
-                    </Button>
-                  </form>
+                    </ActionSubmit>
+                  </ActionForm>
                 </Td>
               </Tr>
             ))}

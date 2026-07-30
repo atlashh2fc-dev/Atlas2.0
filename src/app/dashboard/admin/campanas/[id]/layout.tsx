@@ -6,7 +6,7 @@ import { ArrowLeft, Play, Square } from "lucide-react";
 import { toggleCampaignActive } from "@/app/actions/campaigns";
 import { setDialerCampaignActive } from "@/app/actions/dialer-config";
 import type { DialerCampaignConfig } from "@/lib/types";
-import { Badge, Button, NavTabs, PageHeader } from "@/components/ui";
+import { ActionForm, ActionSubmit, Badge, NavTabs, PageHeader } from "@/components/ui";
 
 /**
  * Detalle de campaña en pestañas. Antes era una sola página de 500 líneas con
@@ -55,13 +55,16 @@ export default async function CampaignDetailLayout({
             </Badge>
 
             {dialer && usesSiptel && (
-              <form action={setDialerCampaignActive}>
+              <ActionForm
+                action={setDialerCampaignActive}
+                success={dialer.is_active ? "Discado detenido" : "Discado iniciado"}
+              >
                 <input type="hidden" name="campaign_id" value={id} />
                 <input type="hidden" name="desired_active" value={String(!dialer.is_active)} />
-                <Button
-                  type="submit"
+                <ActionSubmit
                   variant={dialer.is_active ? "danger" : "primary"}
                   size="sm"
+                  pendingLabel={dialer.is_active ? "Deteniendo…" : "Iniciando…"}
                   title={
                     dialer.is_active
                       ? "Detener nuevas marcaciones; no corta llamadas conectadas"
@@ -74,17 +77,20 @@ export default async function CampaignDetailLayout({
                     <Play className="h-3.5 w-3.5" fill="currentColor" />
                   )}
                   {dialer.is_active ? "Detener discado" : "Iniciar discado"}
-                </Button>
-              </form>
+                </ActionSubmit>
+              </ActionForm>
             )}
 
-            <form action={toggleCampaignActive}>
+            <ActionForm
+              action={toggleCampaignActive}
+              success={campaign.is_active ? "Campaña deshabilitada" : "Campaña habilitada"}
+            >
               <input type="hidden" name="campaign_id" value={id} />
               <input type="hidden" name="active" value={String(campaign.is_active)} />
-              <Button type="submit" variant="secondary" size="sm">
+              <ActionSubmit variant="secondary" size="sm" pendingLabel="Guardando…">
                 {campaign.is_active ? "Deshabilitar" : "Habilitar"}
-              </Button>
-            </form>
+              </ActionSubmit>
+            </ActionForm>
           </div>
         }
       />

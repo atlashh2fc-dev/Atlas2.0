@@ -3,8 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { activateHistoricalAgent } from "@/app/actions/admin";
 import type { AppRole } from "@/lib/types";
 import {
+  ActionForm,
+  ActionSubmit,
   Badge,
-  Button,
   Field,
   Input,
   SectionCard,
@@ -93,8 +94,9 @@ export default async function HistoricalAgentsAdminPage() {
                         <summary className="cursor-pointer text-xs font-medium text-primary">
                           Activar ejecutivo
                         </summary>
-                        <form
+                        <ActionForm
                           action={activateHistoricalAgent}
+                          success="Cuenta creada y ejecutivo activado"
                           className="mt-3 flex flex-wrap items-end gap-2 rounded-lg border border-border bg-background p-3"
                         >
                           <input type="hidden" name="historical_agent_id" value={a.id} />
@@ -129,8 +131,8 @@ export default async function HistoricalAgentsAdminPage() {
                               ))}
                             </Select>
                           </Field>
-                          <Button type="submit">Crear cuenta y activar</Button>
-                        </form>
+                          <ActionSubmit pendingLabel="Creando…">Crear cuenta y activar</ActionSubmit>
+                        </ActionForm>
                       </details>
                     )}
                   </Td>

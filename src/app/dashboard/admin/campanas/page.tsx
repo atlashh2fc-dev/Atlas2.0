@@ -7,8 +7,9 @@ import Link from "next/link";
 import { Play, Settings2, Square } from "lucide-react";
 import { CampaignCreatePanel } from "@/components/campaign-create-panel";
 import {
+  ActionForm,
+  ActionSubmit,
   Badge,
-  Button,
   Callout,
   InfoTooltip,
   PageHeader,
@@ -158,13 +159,16 @@ export default async function CampaignsPage({
                   <Td align="right">
                     <div className="flex items-center justify-end gap-2">
                       {dialer && usesSiptel ? (
-                        <form action={setDialerCampaignActive}>
+                        <ActionForm
+                          action={setDialerCampaignActive}
+                          success={dialer.is_active ? "Discado detenido" : "Discado iniciado"}
+                        >
                           <input type="hidden" name="campaign_id" value={campaign.id} />
                           <input type="hidden" name="desired_active" value={String(!dialer.is_active)} />
-                          <Button
-                            type="submit"
+                          <ActionSubmit
                             variant={dialer.is_active ? "danger" : "primary"}
                             size="sm"
+                            pendingLabel="…"
                             title={
                               dialer.is_active
                                 ? "Detener nuevas marcaciones; no corta llamadas conectadas"
@@ -177,8 +181,8 @@ export default async function CampaignsPage({
                               <Play className="h-3.5 w-3.5" fill="currentColor" />
                             )}
                             {dialer.is_active ? "Detener" : "Iniciar"}
-                          </Button>
-                        </form>
+                          </ActionSubmit>
+                        </ActionForm>
                       ) : (
                         <Link
                           href={`/dashboard/admin/campanas/${campaign.id}/discado`}
@@ -188,18 +192,21 @@ export default async function CampaignsPage({
                           {dialer ? "Revisar ruta" : "Configurar"}
                         </Link>
                       )}
-                      <form action={toggleCampaignActive}>
+                      <ActionForm
+                        action={toggleCampaignActive}
+                        success={campaign.is_active ? "Campaña deshabilitada" : "Campaña habilitada"}
+                      >
                         <input type="hidden" name="campaign_id" value={campaign.id} />
                         <input type="hidden" name="active" value={String(campaign.is_active)} />
-                        <Button
-                          type="submit"
+                        <ActionSubmit
                           variant="secondary"
                           size="sm"
+                          pendingLabel="…"
                           title="Habilita o deshabilita la campaña completa"
                         >
                           {campaign.is_active ? "Deshabilitar" : "Habilitar"}
-                        </Button>
-                      </form>
+                        </ActionSubmit>
+                      </ActionForm>
                     </div>
                   </Td>
                 </Tr>

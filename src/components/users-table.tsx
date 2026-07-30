@@ -6,7 +6,15 @@ import { bulkSetUserActive, toggleUserActive } from "@/app/actions/admin";
 import type { AppRole } from "@/lib/types";
 import { UserRoleForm } from "@/components/user-role-form";
 import { AgentCampaignsDialog } from "@/components/agent-campaigns-dialog";
-import { Badge, Button, DataTable, useToast, type BulkAction, type Column } from "@/components/ui";
+import {
+  ActionForm,
+  ActionSubmit,
+  Badge,
+  DataTable,
+  useToast,
+  type BulkAction,
+  type Column,
+} from "@/components/ui";
 
 const ROLE_LABEL: Record<AppRole, string> = {
   agente: "Agente",
@@ -112,13 +120,16 @@ export function UsersTable({
         cell: (row) => (
           <span className="block space-y-2">
             <Badge tone={row.active ? "success" : "danger"}>{row.active ? "Activo" : "Inactivo"}</Badge>
-            <form action={toggleUserActive}>
+            <ActionForm
+              action={toggleUserActive}
+              success={row.active ? "Usuario desactivado" : "Usuario activado"}
+            >
               <input type="hidden" name="user_id" value={row.id} />
               <input type="hidden" name="active" value={String(row.active)} />
-              <Button type="submit" variant="secondary" size="sm">
+              <ActionSubmit variant="secondary" size="sm" pendingLabel="Guardando…">
                 {row.active ? "Desactivar" : "Activar"}
-              </Button>
-            </form>
+              </ActionSubmit>
+            </ActionForm>
           </span>
         ),
       },

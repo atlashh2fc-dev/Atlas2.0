@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { Plus } from "lucide-react";
-import { Button, SlideOver, buttonClasses } from "@/components/ui";
+import { ActionForm, ActionSubmit, Button, SlideOver, buttonClasses } from "@/components/ui";
 
 /**
  * Botón primario + panel lateral para los formularios de creación simples.
@@ -17,6 +17,7 @@ export function CreatePanel({
   description,
   action,
   submitLabel = "Crear",
+  successLabel,
   children,
 }: {
   /** Texto del botón que abre el panel. */
@@ -26,6 +27,8 @@ export function CreatePanel({
   /** Server action que recibe el FormData del panel. */
   action: (formData: FormData) => void | Promise<void>;
   submitLabel?: string;
+  /** Mensaje del toast al crear. Por defecto se deriva del título. */
+  successLabel?: string;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -38,15 +41,20 @@ export function CreatePanel({
       </button>
 
       <SlideOver open={open} onClose={() => setOpen(false)} title={title} description={description}>
-        <form action={action} className="space-y-4">
+        <ActionForm
+          action={action}
+          success={successLabel ?? `${title} creado`}
+          onSuccess={() => setOpen(false)}
+          className="space-y-4"
+        >
           {children}
           <div className="flex items-center justify-end gap-2 pt-2">
             <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
               Cancelar
             </Button>
-            <Button type="submit">{submitLabel}</Button>
+            <ActionSubmit pendingLabel="Creando…">{submitLabel}</ActionSubmit>
           </div>
-        </form>
+        </ActionForm>
       </SlideOver>
     </>
   );

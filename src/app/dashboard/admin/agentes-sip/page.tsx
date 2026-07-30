@@ -1,6 +1,7 @@
 import { requireProfile } from "@/lib/auth";
 import { listAgentSipRows, provisionAgentExtension, setAgentExtensionActive } from "@/app/actions/agent-sip";
 import { RevealSipCredentialButton } from "@/components/reveal-sip-credential-button";
+import { ActionForm, ActionSubmit } from "@/components/ui";
 
 export default async function AgentesSipPage() {
   await requireProfile(["admin"]);
@@ -38,27 +39,24 @@ export default async function AgentesSipPage() {
                       Ext. {row.extension} · {row.is_active ? "Activa" : "Inactiva"}
                     </span>
                     <RevealSipCredentialButton profileId={row.profile_id} />
-                    <form action={setAgentExtensionActive}>
+                    <ActionForm
+                      action={setAgentExtensionActive}
+                      success={row.is_active ? "Extensión desactivada" : "Extensión activada"}
+                    >
                       <input type="hidden" name="profile_id" value={row.profile_id} />
                       <input type="hidden" name="active" value={String(row.is_active)} />
-                      <button
-                        type="submit"
-                        className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-foreground hover:bg-surface-muted"
-                      >
+                      <ActionSubmit variant="secondary" size="sm" pendingLabel="Guardando…">
                         {row.is_active ? "Desactivar" : "Activar"}
-                      </button>
-                    </form>
+                      </ActionSubmit>
+                    </ActionForm>
                   </>
                 ) : (
-                  <form action={provisionAgentExtension}>
+                  <ActionForm action={provisionAgentExtension} success="Extensión generada">
                     <input type="hidden" name="profile_id" value={row.profile_id} />
-                    <button
-                      type="submit"
-                      className="rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary-hover"
-                    >
+                    <ActionSubmit size="sm" pendingLabel="Generando…">
                       Generar extensión
-                    </button>
-                  </form>
+                    </ActionSubmit>
+                  </ActionForm>
                 )}
               </div>
             </div>

@@ -8,7 +8,7 @@ import type {
   CampaignDashboardSummary as CampaignDashboardSummaryData,
   DialerCampaignConfig,
 } from "@/lib/types";
-import { Button, Card, Field, SectionCard, Select } from "@/components/ui";
+import { ActionForm, ActionSubmit, Card, Field, SectionCard, Select } from "@/components/ui";
 
 const DASHBOARD_WINDOW_DAYS = 30;
 
@@ -146,7 +146,11 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
         title="Flujo de gestión"
         description="Es el guion que los ejecutivos siguen al atender los registros de esta campaña."
       >
-        <form action={setCampaignWorkflow} className="flex flex-wrap items-end gap-3 p-4">
+        <ActionForm
+          action={setCampaignWorkflow}
+          success="Flujo asignado"
+          className="flex flex-wrap items-end gap-3 p-4"
+        >
           <input type="hidden" name="campaign_id" value={id} />
           <Field label="Flujo asignado" className="w-72">
             <Select name="workflow_id" defaultValue={campaign.workflow_id ?? ""}>
@@ -158,14 +162,14 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
               ))}
             </Select>
           </Field>
-          <Button type="submit">Guardar</Button>
+          <ActionSubmit pendingLabel="Guardando…">Guardar</ActionSubmit>
           <Link
             href={`/dashboard/admin/flujos?campaign_id=${id}`}
             className="pb-2 text-xs font-medium text-primary hover:underline"
           >
             Editar o crear un flujo
           </Link>
-        </form>
+        </ActionForm>
       </SectionCard>
 
       {summaryError ? (

@@ -7,7 +7,7 @@ import { WorkflowCanvas } from "@/components/workflow-canvas";
 import type { WorkflowStep, WorkflowStepBranch } from "@/lib/types";
 import { validateWorkflow, workflowStatus } from "@/lib/workflow-validation";
 import { setWorkflowStatus } from "@/app/actions/workflows";
-import { Badge, Button, PageHeader, SectionCard } from "@/components/ui";
+import { ActionForm, ActionSubmit, Badge, PageHeader, SectionCard } from "@/components/ui";
 
 export default async function WorkflowDetailPage({
   params,
@@ -66,13 +66,16 @@ export default async function WorkflowDetailPage({
             <Badge tone={status.tone === "danger" ? "danger" : status.tone === "warning" ? "warning" : "success"}>
               {status.label}
             </Badge>
-            <form action={setWorkflowStatus}>
+            <ActionForm
+              action={setWorkflowStatus}
+              success={workflow.status === "published" ? "Flujo devuelto a borrador" : "Flujo publicado"}
+            >
               <input type="hidden" name="workflow_id" value={id} />
               <input type="hidden" name="status" value={workflow.status === "published" ? "draft" : "published"} />
-              <Button
-                type="submit"
+              <ActionSubmit
                 variant={workflow.status === "published" ? "secondary" : "primary"}
                 size="sm"
+                pendingLabel="Guardando…"
                 title={
                   workflow.status === "published"
                     ? "Volver a borrador para editarlo sin afectar la operación"
@@ -80,8 +83,8 @@ export default async function WorkflowDetailPage({
                 }
               >
                 {workflow.status === "published" ? "Volver a borrador" : "Publicar"}
-              </Button>
-            </form>
+              </ActionSubmit>
+            </ActionForm>
           </div>
         }
       />

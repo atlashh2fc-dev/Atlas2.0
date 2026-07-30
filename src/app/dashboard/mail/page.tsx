@@ -4,6 +4,8 @@ import { assignMailEngagementLead } from "@/app/actions/mail";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import {
+  ActionForm,
+  ActionSubmit,
   Badge,
   Button,
   PageHeader,
@@ -559,7 +561,11 @@ export default async function MailDashboardPage({
                   </Td>
                   <Td muted>{row.assigned_to_name ?? "Sin asignar"}</Td>
                   <Td>
-                    <form action={assignMailEngagementLead} className="flex min-w-72 items-center gap-2">
+                    <ActionForm
+                      action={assignMailEngagementLead}
+                      success="Registro asignado"
+                      className="flex min-w-72 items-center gap-2"
+                    >
                       <input type="hidden" name="lead_id" value={row.lead_id} />
                       <input type="hidden" name="mail_campaign_id" value={row.mail_campaign_id ?? ""} />
                       <Select
@@ -578,10 +584,10 @@ export default async function MailDashboardPage({
                           </option>
                         ))}
                       </Select>
-                      <Button type="submit" size="sm">
+                      <ActionSubmit size="sm" pendingLabel="Asignando…">
                         Asignar
-                      </Button>
-                    </form>
+                      </ActionSubmit>
+                    </ActionForm>
                   </Td>
                 </Tr>
               ))}

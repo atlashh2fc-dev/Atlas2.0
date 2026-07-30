@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { WorkflowStep, WorkflowStepBranch } from "@/lib/types";
 import { validateWorkflow, workflowStatus } from "@/lib/workflow-validation";
 import { WorkflowCreatePanel } from "@/components/workflow-create-panel";
-import { Badge, Button, Callout, PageHeader, SectionCard, Table, Tbody, Td, Th, Thead, TableEmpty, Tr } from "@/components/ui";
+import { ActionForm, ActionSubmit, Badge, Callout, PageHeader, SectionCard, Table, Tbody, Td, Th, Thead, TableEmpty, Tr } from "@/components/ui";
 
 export default async function WorkflowsPage({
   searchParams,
@@ -131,13 +131,16 @@ export default async function WorkflowsPage({
                     <Badge tone={w.is_active ? "success" : "danger"}>{w.is_active ? "Activo" : "Inactivo"}</Badge>
                   </Td>
                   <Td align="right">
-                    <form action={toggleWorkflowActive}>
+                    <ActionForm
+                      action={toggleWorkflowActive}
+                      success={w.is_active ? "Flujo desactivado" : "Flujo activado"}
+                    >
                       <input type="hidden" name="workflow_id" value={w.id} />
                       <input type="hidden" name="active" value={String(w.is_active)} />
-                      <Button type="submit" variant="secondary" size="sm">
+                      <ActionSubmit variant="secondary" size="sm" pendingLabel="…">
                         {w.is_active ? "Desactivar" : "Activar"}
-                      </Button>
-                    </form>
+                      </ActionSubmit>
+                    </ActionForm>
                   </Td>
                 </Tr>
               );

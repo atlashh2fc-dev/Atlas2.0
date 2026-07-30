@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { unstable_noStore as noStore } from "next/cache";
 import { createTeam, updateTeamSupervisor } from "@/app/actions/admin";
 import { CreatePanel } from "@/components/create-panel";
-import { Button, Field, Input, SectionCard, Select, Table, Tbody, Td, Th, Thead, TableEmpty, Tr } from "@/components/ui";
+import { ActionForm, ActionSubmit, Field, Input, SectionCard, Select, Table, Tbody, Td, Th, Thead, TableEmpty, Tr } from "@/components/ui";
 
 export default async function TeamsAdminPage() {
   noStore();
@@ -34,6 +34,7 @@ export default async function TeamsAdminPage() {
             description="Los ejecutivos se asignan después, desde la pestaña Usuarios."
             action={createTeam}
             submitLabel="Crear equipo"
+            successLabel="Equipo creado"
           >
             <Field label="Nombre del equipo">
               <Input name="name" required placeholder="Ventas Hogar" data-autofocus />
@@ -66,7 +67,7 @@ export default async function TeamsAdminPage() {
                   {agentsByTeam.get(team.id) ?? 0}
                 </Td>
                 <Td>
-                  <form action={updateTeamSupervisor} className="flex items-center gap-2">
+                  <ActionForm action={updateTeamSupervisor} success="Supervisor actualizado" className="flex items-center gap-2">
                     <input type="hidden" name="team_id" value={team.id} />
                     <Select
                       name="supervisor_id"
@@ -81,10 +82,10 @@ export default async function TeamsAdminPage() {
                         </option>
                       ))}
                     </Select>
-                    <Button type="submit" size="sm">
+                    <ActionSubmit size="sm" pendingLabel="Guardando…">
                       Guardar
-                    </Button>
-                  </form>
+                    </ActionSubmit>
+                  </ActionForm>
                 </Td>
               </Tr>
             ))}

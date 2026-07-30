@@ -507,13 +507,36 @@ de administración:
 - `SubmitButton` (nuevo, sobre `useFormStatus`) resuelve solo el doble envío sin
   obligar a convertir la página a cliente. Es la vía para los formularios cuyo
   action **redirige**, que no pueden usar `ActionForm`.
-- Migrados: `user-create-panel` (a `ActionForm`, su action no redirige),
-  `campaign-create-panel` y `workflow-create-panel` (a `SubmitButton`, porque
-  `createCampaign` y `createWorkflow` sí redirigen).
+**Barrido completo.** Se revisaron los 25 formularios. La regla que decide el
+tratamiento es **si el action redirige**, porque `redirect()` es incompatible con
+el `catch` de `ActionForm`:
 
-**Pendiente:** quedan ~20 `<form action={...}>` crudos con el mismo defecto, sobre
-todo en `src/app/dashboard/admin/**`. Antes de migrar cada uno hay que mirar si su
-action redirige: eso decide si va `ActionForm` o `SubmitButton`.
+| Caso | Tratamiento | Cuántos |
+| --- | --- | --- |
+| Action que lanza y no redirige | `ActionForm` + `ActionSubmit` | 20 |
+| Action que redirige | `SubmitButton` (solo corta el doble envío) | 3 |
+| Formulario que ya gestionaba error y pending por su cuenta | sin cambios | 3 |
+| Cerrar sesión | sin cambios | 1 |
+
+Migrados a `ActionForm`: extensiones SIP (activar, generar), campañas (habilitar,
+iniciar/detener discado, asignar flujo, configuración de discado), ejecutivos de
+campaña (agregar, quitar, horarios), flujos (publicar, activar), estados de
+agente, equipos (crear, supervisor), usuarios (crear, activar), mail (asignar) y
+activación de ejecutivos históricos. `CreatePanel` se migró una vez y arregló
+sus dos pantallas de golpe.
+
+Con `SubmitButton`: `campaign-create-panel` y las dos formas de
+`workflow-create-panel`, porque `createCampaign`, `createWorkflow` y
+`createWorkflowFromTemplate` redirigen.
+
+Sin tocar, porque ya estaban bien: `user-role-form`, `user-campaigns-form` y
+`manual-lead-record-form` traen su propio `useTransition`, capturan el error y
+deshabilitan el botón. El de cerrar sesión queda como está: es idempotente,
+redirige y tiene estilo propio de ícono.
+
+**Verificación:** un script recorre los `.tsx`, extrae el `action={…}` de cada
+`<ActionForm>` y comprueba contra `src/app/actions/**` que ninguno contenga
+`redirect(` — 20 actions, ninguno redirige. `tsc --noEmit` y `eslint src` limpios.
 
 ---
 

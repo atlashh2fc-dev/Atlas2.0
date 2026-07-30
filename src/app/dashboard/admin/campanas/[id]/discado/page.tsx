@@ -2,7 +2,7 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { upsertDialerCampaignConfig } from "@/app/actions/dialer-config";
 import { DIAL_MODES, type DialerCampaignConfig } from "@/lib/types";
-import { Button, Callout, Field, InfoTooltip, Input, SectionCard, Select } from "@/components/ui";
+import { ActionForm, ActionSubmit, Callout, Field, InfoTooltip, Input, SectionCard, Select } from "@/components/ui";
 
 /** Etiqueta con la explicación al lado: esta es la pantalla más técnica del producto. */
 function LabelWithHelp({ label, help }: { label: string; help: string }) {
@@ -49,7 +49,11 @@ export default async function CampaignDialerPage({ params }: { params: Promise<{
         title="Configuración de discado"
         description="Define cómo el motor maneja esta campaña. Los ejecutivos asignados en la pestaña Ejecutivos son los que se sincronizan como miembros de la cola."
       >
-        <form action={upsertDialerCampaignConfig} className="grid gap-4 p-4 sm:grid-cols-2">
+        <ActionForm
+          action={upsertDialerCampaignConfig}
+          success="Configuración de discado guardada"
+          className="grid gap-4 p-4 sm:grid-cols-2"
+        >
           <input type="hidden" name="campaign_id" value={id} />
 
           <Field
@@ -263,12 +267,12 @@ export default async function CampaignDialerPage({ params }: { params: Promise<{
           </Field>
 
           <div className="sm:col-span-2 flex items-center gap-3">
-            <Button type="submit">Guardar configuración</Button>
+            <ActionSubmit pendingLabel="Guardando…">Guardar configuración</ActionSubmit>
             <p className="text-xs text-muted-foreground">
               {DIAL_MODES.find((item) => item.value === mode)?.description}
             </p>
           </div>
-        </form>
+        </ActionForm>
       </SectionCard>
     </div>
   );

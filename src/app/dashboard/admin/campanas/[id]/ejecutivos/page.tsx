@@ -6,7 +6,7 @@ import {
   removeCampaignAgent,
   removeCampaignAgentSchedule,
 } from "@/app/actions/campaigns";
-import { Button, SectionCard } from "@/components/ui";
+import { ActionForm, ActionSubmit, SectionCard } from "@/components/ui";
 
 type CampaignAgentSchedule = {
   id: string;
@@ -84,13 +84,13 @@ export default async function CampaignAgentsPage({ params }: { params: Promise<{
                     <p className="text-sm font-medium text-foreground">{profile?.full_name ?? "—"}</p>
                     <p className="text-xs text-muted-foreground">{profile?.email ?? "—"}</p>
                   </div>
-                  <form action={removeCampaignAgent}>
+                  <ActionForm action={removeCampaignAgent} success="Ejecutivo quitado de la campaña">
                     <input type="hidden" name="campaign_id" value={id} />
                     <input type="hidden" name="membership_id" value={member.id} />
-                    <Button type="submit" variant="secondary" size="sm">
+                    <ActionSubmit variant="secondary" size="sm" pendingLabel="Quitando…">
                       Quitar
-                    </Button>
-                  </form>
+                    </ActionSubmit>
+                  </ActionForm>
                 </div>
 
                 <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -101,13 +101,13 @@ export default async function CampaignAgentsPage({ params }: { params: Promise<{
                     >
                       {schedule.days_of_week.map((day) => DAY_LABELS[day]).join(" · ")}{" "}
                       {schedule.start_time.slice(0, 5)}–{schedule.end_time.slice(0, 5)}
-                      <form action={removeCampaignAgentSchedule}>
+                      <ActionForm action={removeCampaignAgentSchedule} success="Horario eliminado">
                         <input type="hidden" name="campaign_id" value={id} />
                         <input type="hidden" name="schedule_id" value={schedule.id} />
                         <button type="submit" aria-label="Eliminar horario" className="font-semibold hover:text-danger">
                           ×
                         </button>
-                      </form>
+                      </ActionForm>
                     </span>
                   ))}
 
@@ -124,8 +124,9 @@ export default async function CampaignAgentsPage({ params }: { params: Promise<{
                   <summary className="cursor-pointer text-xs font-medium text-primary">
                     Agregar horario de conexión
                   </summary>
-                  <form
+                  <ActionForm
                     action={addCampaignAgentSchedule}
+                    success="Horario agregado"
                     className="mt-2 flex flex-wrap items-end gap-2 rounded-lg bg-background p-2"
                   >
                     <input type="hidden" name="campaign_id" value={id} />
@@ -159,10 +160,10 @@ export default async function CampaignAgentsPage({ params }: { params: Promise<{
                         className="ml-1 rounded border border-border bg-surface px-1 py-0.5 text-xs text-foreground"
                       />
                     </label>
-                    <Button type="submit" size="sm">
+                    <ActionSubmit size="sm" pendingLabel="Agregando…">
                       Agregar
-                    </Button>
-                  </form>
+                    </ActionSubmit>
+                  </ActionForm>
                 </details>
               </div>
             );
@@ -178,7 +179,7 @@ export default async function CampaignAgentsPage({ params }: { params: Promise<{
             : "Todos los ejecutivos activos ya están en esta campaña."
         }
       >
-        <form action={addCampaignAgent} className="max-w-xl p-4">
+        <ActionForm action={addCampaignAgent} success="Ejecutivos agregados" className="max-w-xl p-4">
           <input type="hidden" name="campaign_id" value={id} />
           <select
             name="profile_ids"
@@ -194,10 +195,10 @@ export default async function CampaignAgentsPage({ params }: { params: Promise<{
               </option>
             ))}
           </select>
-          <Button type="submit" className="mt-3" disabled={availableAgents.length === 0}>
+          <ActionSubmit className="mt-3" disabled={availableAgents.length === 0} pendingLabel="Agregando…">
             Agregar seleccionados
-          </Button>
-        </form>
+          </ActionSubmit>
+        </ActionForm>
       </SectionCard>
     </div>
   );
