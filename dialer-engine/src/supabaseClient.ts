@@ -76,17 +76,15 @@ export async function registerDialEvent(params: {
  * miembro timbrado y solo uno debe ganar.
  */
 export async function assignDialAttemptAgent(dialAttemptId: string, agentId: string): Promise<boolean> {
-  const { data, error } = await supabase
-    .from("dial_attempts")
-    .update({
-      agent_id: agentId,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", dialAttemptId)
-    .is("agent_id", null)
-    .select("id");
-  if (error) throw new Error(`dial_attempts (assign agent): ${error.message}`);
-  return (data ?? []).length > 0;
+  // Una sola operación en la base: sin esto quedaba un instante con el intento
+  // tomado y el registro todavía en manos de otro ejecutivo, que era justo la
+  // ventana en que el screen-pop y la tipificación se bloqueaban.
+  const { data, error } = await supabase.rpc("claim_dial_attempt_for_agent", {
+    p_dial_attempt_id: dialAttemptId,
+    p_agent_id: agentId,
+  });
+  if (error) throw new Error(`claim_dial_attempt_for_agent: ${error.message}`);
+  return data === true;
 }
 
 /**
