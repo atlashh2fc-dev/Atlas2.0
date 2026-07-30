@@ -63,6 +63,23 @@ export async function upsertDialerCampaignConfig(formData: FormData) {
 
   const amdEnabled = formData.get("amd_enabled") === "true";
 
+  // Política de compromisos agendados: a la hora acordada la llamada le entra
+  // al ejecutivo que la agendó, no al pool.
+  const personalCallbackEnabled = formData.get("personal_callback_enabled") === "true";
+  const personalCallbackWindow = Number(formData.get("personal_callback_window_minutes"));
+  const personalCallbackRetry = Number(formData.get("personal_callback_retry_seconds"));
+  const personalCallbackOnExpiry =
+    formData.get("personal_callback_on_expiry") === "release_to_pool" ? "release_to_pool" : "keep_in_agenda";
+
+  if (personalCallbackEnabled) {
+    if (!Number.isFinite(personalCallbackWindow) || personalCallbackWindow < 1 || personalCallbackWindow > 480) {
+      throw new Error("La ventana de entrega del compromiso debe estar entre 1 y 480 minutos.");
+    }
+    if (!Number.isFinite(personalCallbackRetry) || personalCallbackRetry < 30 || personalCallbackRetry > 3600) {
+      throw new Error("El reintento debe estar entre 30 y 3600 segundos.");
+    }
+  }
+
   const supabase = await createClient();
   const { error } = await supabase.from("dialer_campaign_configs").upsert(
     {
@@ -78,6 +95,10 @@ export async function upsertDialerCampaignConfig(formData: FormData) {
       abandon_timeout_seconds: abandonTimeoutSeconds,
       target_abandonment_rate: targetAbandonmentRate,
       amd_enabled: amdEnabled,
+      personal_callback_enabled: personalCallbackEnabled,
+      personal_callback_window_minutes: Number.isFinite(personalCallbackWindow) ? personalCallbackWindow : 30,
+      personal_callback_retry_seconds: Number.isFinite(personalCallbackRetry) ? personalCallbackRetry : 120,
+      personal_callback_on_expiry: personalCallbackOnExpiry,
       updated_at: new Date().toISOString(),
     },
     { onConflict: "campaign_id" }

@@ -1,7 +1,7 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { resolveCampaignScope } from "@/lib/campaign-scope";
-import { PageHeader } from "@/components/ui";
+import { Callout, PageHeader } from "@/components/ui";
 import { AgendaTable, type AgendaRow } from "@/components/agenda-table";
 
 export default async function MyAgendaPage({
@@ -19,7 +19,9 @@ export default async function MyAgendaPage({
   // PGRST201, lo que dejaba esta pantalla siempre vacía sin avisar.
   const leadsQuery = supabase
     .from("leads")
-    .select("id, full_name, rut, phone, next_action_at, tipificacion_actual, campaigns!leads_campaign_id_fkey(name)")
+    .select(
+      "id, full_name, rut, phone, next_action_at, tipificacion_actual, callback_mode, callback_attempts, workflow_status, campaigns!leads_campaign_id_fkey(name)"
+    )
     .eq("managed_by", profile.id)
     .not("next_action_at", "is", null)
     .order("next_action_at", { ascending: true })
@@ -41,6 +43,10 @@ export default async function MyAgendaPage({
       tipificacion: lead.tipificacion_actual ?? "—",
       next_action_at: lead.next_action_at!,
       overdue: new Date(lead.next_action_at!).getTime() <= now,
+      // Un compromiso personal te llega solo: el discador marca al cliente a la
+      // hora acordada y la llamada te entra a ti.
+      auto: lead.workflow_status === "callback" && (lead.callback_mode ?? "personal") === "personal",
+      attempts: lead.callback_attempts ?? 0,
     };
   });
 
@@ -54,10 +60,16 @@ export default async function MyAgendaPage({
         title="Mi agenda"
         description={
           overdueCount > 0
-            ? `Tus próximas llamadas agendadas. Tienes ${overdueCount} ${overdueCount === 1 ? "vencida" : "vencidas"} por recuperar.`
-            : "Tus próximas llamadas agendadas, vencidas primero."
+            ? `Tus compromisos con clientes. Tienes ${overdueCount} ${overdueCount === 1 ? "vencido" : "vencidos"} por recuperar.`
+            : "Tus compromisos con clientes, los más urgentes primero."
         }
       />
+
+      <Callout tone="info">
+        A la hora que agendaste, el sistema llama al cliente y la llamada te entra a ti. Para que ocurra tienes que
+        estar conectado y en Disponible; si estás en llamada o en pausa, se reintenta durante los minutos siguientes.
+        También puedes llamar antes con el botón de cada fila.
+      </Callout>
       {error ? (
         <p className="rounded-lg border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger">
           No se pudo cargar tu agenda: {error.message}

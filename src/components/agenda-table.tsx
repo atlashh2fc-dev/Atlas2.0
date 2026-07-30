@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { DataTable, buttonClasses, type Column } from "@/components/ui";
+import { Badge, DataTable, buttonClasses, type Column } from "@/components/ui";
 
 export type AgendaRow = {
   id: string;
@@ -11,6 +11,9 @@ export type AgendaRow = {
   tipificacion: string;
   next_action_at: string;
   overdue: boolean;
+  /** El sistema marcará al cliente a la hora acordada y te pasará la llamada. */
+  auto: boolean;
+  attempts: number;
 };
 
 function formatDateTime(iso: string): string {
@@ -43,6 +46,24 @@ const COLUMNS: Column<AgendaRow>[] = [
         {formatDateTime(row.next_action_at)}
       </span>
     ),
+  },
+  {
+    id: "entrega",
+    header: "Entrega",
+    value: (row) => (row.auto ? "Automática" : "Manual"),
+    cell: (row) =>
+      row.auto ? (
+        <span className="inline-flex flex-col gap-0.5">
+          <Badge tone="info">Te entra sola</Badge>
+          {row.attempts > 0 && (
+            <span className="text-xs text-muted-foreground">
+              {row.attempts} {row.attempts === 1 ? "intento" : "intentos"} de entrega
+            </span>
+          )}
+        </span>
+      ) : (
+        <Badge tone="neutral">La llamas tú</Badge>
+      ),
   },
   {
     id: "accion",

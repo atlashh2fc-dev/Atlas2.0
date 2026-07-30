@@ -231,9 +231,8 @@ export default async function TeamPage({
     )
     .eq("workflow_status", "callback")
     .not("next_action_at", "is", null)
-    .lte("next_action_at", new Date().toISOString())
     .order("next_action_at", { ascending: true })
-    .limit(200);
+    .limit(300);
 
   const now = new Date();
   const agendaRows = (agendaLeads ?? []) as AgendaLead[];
@@ -282,12 +281,11 @@ export default async function TeamPage({
       next_action_at: lead.next_action_at!,
       attempts: lead.callback_attempts ?? 0,
       mode: (lead.callback_mode ?? "personal") as "personal" | "campaign",
-      overdue_minutes: Math.max(
-        0,
-        Math.floor((nowMs - new Date(lead.next_action_at!).getTime()) / 60000)
-      ),
+      overdue_minutes: Math.floor((nowMs - new Date(lead.next_action_at!).getTime()) / 60000),
     };
   });
+
+  const overdueCallbacks = callbacks.filter((row) => row.overdue_minutes > 0).length;
 
   const assignmentRows: TeamLeadRow[] = (leads ?? []).map((lead) => ({
     id: lead.id,
@@ -407,8 +405,12 @@ export default async function TeamPage({
       />
 
       <SectionCard
-        title={`Compromisos vencidos (${callbacks.length})`}
-        description="Agendas que pasaron su hora. Reagéndalas, tráspasalas a otro ejecutivo o derívalas al discador para que las tome el primero disponible."
+        title="Compromisos con clientes"
+        description={
+          overdueCallbacks > 0
+            ? `${overdueCallbacks} vencidos y ${callbacks.length - overdueCallbacks} por venir. Reagéndalos, tráspasalos a otro ejecutivo o derívalos al discador para que los tome el primero disponible.`
+            : `${callbacks.length} agendados, ninguno vencido. Acá puedes reagendar, traspasar a otro ejecutivo o derivar al discador.`
+        }
       >
         <div className="p-4">
           <CallbacksPanel rows={callbacks} agents={activeAgents} />

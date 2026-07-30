@@ -105,11 +105,28 @@ export function CallbacksPanel({
         cell: (row) => (
           <span className="block">
             {formatDateTime(row.next_action_at)}
-            <span className="mt-0.5 block text-xs text-danger">
-              vencido hace {formatDelay(row.overdue_minutes)}
-            </span>
+            {row.overdue_minutes > 0 ? (
+              <span className="mt-0.5 block text-xs text-danger">
+                vencido hace {formatDelay(row.overdue_minutes)}
+              </span>
+            ) : (
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                en {formatDelay(Math.abs(row.overdue_minutes))}
+              </span>
+            )}
           </span>
         ),
+      },
+      {
+        id: "estado",
+        header: "Estado",
+        value: (row) => (row.overdue_minutes > 0 ? "Vencido" : "Por venir"),
+        cell: (row) =>
+          row.overdue_minutes > 0 ? (
+            <Badge tone="danger">Vencido</Badge>
+          ) : (
+            <Badge tone="neutral">Por venir</Badge>
+          ),
       },
       {
         id: "intentos",
@@ -151,8 +168,8 @@ export function CallbacksPanel({
         bulkActions={bulkActions}
         storageKey="compromisos"
         exportFilename="compromisos-vencidos"
-        emptyTitle="No hay compromisos vencidos"
-        emptyDescription="Cuando una agenda pase su hora sin cumplirse, aparecerá acá para que decidas qué hacer."
+        emptyTitle="No hay compromisos agendados"
+        emptyDescription="Cuando un ejecutivo agende una llamada con un cliente, aparecerá acá."
       />
 
       <SlideOver

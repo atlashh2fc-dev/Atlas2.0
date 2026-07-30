@@ -232,6 +232,11 @@ export interface DialerCampaignConfig {
   abandon_timeout_seconds: number;
   target_abandonment_rate: number;
   amd_enabled: boolean;
+  /** Entregar los compromisos agendados a su ejecutivo a la hora acordada. */
+  personal_callback_enabled: boolean;
+  personal_callback_window_minutes: number;
+  personal_callback_retry_seconds: number;
+  personal_callback_on_expiry: "keep_in_agenda" | "release_to_pool";
   created_at: string;
   updated_at: string;
 }

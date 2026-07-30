@@ -190,6 +190,78 @@ export default async function CampaignDialerPage({ params }: { params: Promise<{
             Campaña activa para el motor de discado
           </label>
 
+          <div className="sm:col-span-2 border-t border-border pt-4">
+            <p className="text-sm font-medium text-foreground">Compromisos agendados</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Cuando un ejecutivo agenda una llamada, ese compromiso es suyo. A la hora acordada el discador marca al
+              cliente y la llamada le entra a él, nunca al resto del equipo.
+            </p>
+          </div>
+
+          <label className="flex items-center gap-2 text-sm text-foreground sm:col-span-2">
+            <input
+              type="checkbox"
+              name="personal_callback_enabled"
+              value="true"
+              defaultChecked={config?.personal_callback_enabled ?? true}
+              className="accent-primary"
+            />
+            Entregar los compromisos automáticamente a su ejecutivo
+            <InfoTooltip text="Si lo desactivas, las agendas quedan solo en Mi agenda y el ejecutivo llama a mano." />
+          </label>
+
+          <Field
+            label={
+              <LabelWithHelp
+                label="Ventana de entrega (minutos)"
+                help="Cuánto se sigue intentando entregar el compromiso mientras el ejecutivo no esté disponible. Pasado ese tiempo se da por vencido."
+              />
+            }
+          >
+            <Input
+              type="number"
+              name="personal_callback_window_minutes"
+              min="1"
+              max="480"
+              defaultValue={config?.personal_callback_window_minutes ?? 30}
+            />
+          </Field>
+
+          <Field
+            label={
+              <LabelWithHelp
+                label="Reintento (segundos)"
+                help="Cada cuánto se vuelve a intentar mientras el ejecutivo esté en llamada o en pausa."
+              />
+            }
+          >
+            <Input
+              type="number"
+              name="personal_callback_retry_seconds"
+              min="30"
+              max="3600"
+              defaultValue={config?.personal_callback_retry_seconds ?? 120}
+            />
+          </Field>
+
+          <Field
+            label={
+              <LabelWithHelp
+                label="Si vence la ventana"
+                help="Qué pasa con el compromiso que no se pudo entregar: queda vencido en la agenda de su ejecutivo para que el supervisor decida, o se suelta al pool para que lo atienda el primero disponible."
+              />
+            }
+            className="sm:col-span-2"
+          >
+            <Select
+              name="personal_callback_on_expiry"
+              defaultValue={config?.personal_callback_on_expiry ?? "keep_in_agenda"}
+            >
+              <option value="keep_in_agenda">Queda en la agenda de su ejecutivo</option>
+              <option value="release_to_pool">Se suelta al pool de la campaña</option>
+            </Select>
+          </Field>
+
           <div className="sm:col-span-2 flex items-center gap-3">
             <Button type="submit">Guardar configuración</Button>
             <p className="text-xs text-muted-foreground">
