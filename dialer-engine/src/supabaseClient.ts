@@ -144,6 +144,45 @@ export async function updateAgentDialerStatus(params: {
   if (error) throw new Error(`update_agent_dialer_status: ${error.message}`);
 }
 
+export type DuePersonalCallback = {
+  dial_attempt_id: string;
+  lead_id: string;
+  phone: string;
+  full_name: string;
+  rut: string | null;
+  agent_id: string;
+  agent_extension: string;
+};
+
+/**
+ * Compromisos agendados que ya vencieron y cuyo ejecutivo está conectado y
+ * libre. El intento nace reservado a esa persona: ningún otro puede tomarlo.
+ */
+export async function claimDuePersonalCallbacks(
+  campaignId: string,
+  limit: number
+): Promise<DuePersonalCallback[]> {
+  if (limit <= 0) return [];
+  const { data, error } = await supabase.rpc("claim_due_personal_callbacks", {
+    p_campaign_id: campaignId,
+    p_limit: limit,
+  });
+  if (error) throw new Error(`claim_due_personal_callbacks: ${error.message}`);
+  return (data ?? []) as DuePersonalCallback[];
+}
+
+/**
+ * Compromisos que se pasaron de la ventana de entrega. Según la política de la
+ * campaña quedan vencidos en la agenda del ejecutivo o se sueltan al pool.
+ */
+export async function expirePersonalCallbacks(campaignId: string): Promise<number> {
+  const { data, error } = await supabase.rpc("expire_personal_callbacks", {
+    p_campaign_id: campaignId,
+  });
+  if (error) throw new Error(`expire_personal_callbacks: ${error.message}`);
+  return typeof data === "number" ? data : 0;
+}
+
 export async function getActiveCampaignConfigs(campaignIds: string[]) {
   const { data, error } = await supabase
     .from("dialer_campaign_configs")

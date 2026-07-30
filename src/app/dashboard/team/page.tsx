@@ -21,6 +21,7 @@ import {
   TableEmpty,
   Tr,
 } from "@/components/ui";
+import { CallbacksPanel, type CallbackRow } from "@/components/callbacks-panel";
 import {
   TeamAgentsTable,
   TeamLeadsAssignment,
@@ -222,6 +223,18 @@ export default async function TeamPage({
   // traer decenas de miles de filas y dejaba los números incompletos.
   const { data: loadRows, error: loadError } = await supabase.rpc("get_team_agent_load");
 
+  // Compromisos vencidos: agendas que pasaron su hora sin cumplirse.
+  const { data: callbackRows } = await supabase
+    .from("leads")
+    .select(
+      "id, full_name, phone, next_action_at, callback_mode, callback_attempts, managed_by, assigned_to, campaigns!leads_campaign_id_fkey(name), profiles!leads_managed_by_fkey(full_name)"
+    )
+    .eq("workflow_status", "callback")
+    .not("next_action_at", "is", null)
+    .lte("next_action_at", new Date().toISOString())
+    .order("next_action_at", { ascending: true })
+    .limit(200);
+
   const now = new Date();
   const agendaRows = (agendaLeads ?? []) as AgendaLead[];
   const overdueAgenda = agendaRows.filter((lead) => new Date(lead.next_action_at!) <= now);
@@ -254,6 +267,27 @@ export default async function TeamPage({
     today: Number(row.today),
     overdue: Number(row.overdue),
   }));
+
+  const nowMs = now.getTime();
+  const callbacks: CallbackRow[] = (callbackRows ?? []).map((lead) => {
+    const owner = one(lead.profiles as ProfileEmbed);
+    const campaign = one(lead.campaigns as { name: string } | { name: string }[] | null);
+    return {
+      id: lead.id,
+      full_name: lead.full_name,
+      phone: lead.phone,
+      campaign: campaign?.name ?? null,
+      owner_id: lead.managed_by ?? lead.assigned_to ?? null,
+      owner_name: owner?.full_name ?? "Sin responsable",
+      next_action_at: lead.next_action_at!,
+      attempts: lead.callback_attempts ?? 0,
+      mode: (lead.callback_mode ?? "personal") as "personal" | "campaign",
+      overdue_minutes: Math.max(
+        0,
+        Math.floor((nowMs - new Date(lead.next_action_at!).getTime()) / 60000)
+      ),
+    };
+  });
 
   const assignmentRows: TeamLeadRow[] = (leads ?? []).map((lead) => ({
     id: lead.id,
@@ -371,6 +405,15 @@ export default async function TeamPage({
         overdue={false}
         emptyText="No hay próximas agendas con estos filtros."
       />
+
+      <SectionCard
+        title={`Compromisos vencidos (${callbacks.length})`}
+        description="Agendas que pasaron su hora. Reagéndalas, tráspasalas a otro ejecutivo o derívalas al discador para que las tome el primero disponible."
+      >
+        <div className="p-4">
+          <CallbacksPanel rows={callbacks} agents={activeAgents} />
+        </div>
+      </SectionCard>
 
       <SectionCard
         title="Asignación de registros"

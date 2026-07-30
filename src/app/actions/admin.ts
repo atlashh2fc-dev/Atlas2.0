@@ -315,3 +315,62 @@ export async function reassignAgenda(formData: FormData) {
   revalidatePath("/dashboard/leads");
   revalidatePath(`/dashboard/leads/${leadId}`);
 }
+
+export type CallbackBulkResult = { ok: number; error: string | null };
+
+/**
+ * Reagenda compromisos en lote: "el ejecutivo no vino, muevo sus 30 agendas".
+ * Opcionalmente los traspasa a otro ejecutivo. La validación de equipo y la
+ * auditoría viven en la función `reschedule_callbacks`.
+ */
+export async function rescheduleCallbacks(
+  leadIds: string[],
+  nextActionAt: string,
+  agentId?: string | null
+): Promise<CallbackBulkResult> {
+  await requireProfile(["supervisor", "admin"]);
+  const ids = [...new Set(leadIds)];
+  if (ids.length === 0) return { ok: 0, error: "No hay compromisos seleccionados." };
+
+  const when = new Date(nextActionAt);
+  if (Number.isNaN(when.getTime())) return { ok: 0, error: "La fecha no es válida." };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("reschedule_callbacks", {
+    p_lead_ids: ids,
+    p_next_action_at: when.toISOString(),
+    p_agent_id: agentId || null,
+  });
+  if (error) return { ok: 0, error: error.message };
+
+  revalidatePath("/dashboard/team");
+  revalidatePath("/dashboard/leads");
+  revalidatePath("/dashboard/agenda");
+  return { ok: typeof data === "number" ? data : ids.length, error: null };
+}
+
+/**
+ * Deriva compromisos al pool del discador: dejan de ser de una persona y los
+ * atiende el primer ejecutivo disponible. Con `keepSchedule` se conserva la hora
+ * comprometida; sin él, el registro vuelve a la cola normal de la campaña.
+ */
+export async function releaseCallbacksToPool(
+  leadIds: string[],
+  keepSchedule = false
+): Promise<CallbackBulkResult> {
+  await requireProfile(["supervisor", "admin"]);
+  const ids = [...new Set(leadIds)];
+  if (ids.length === 0) return { ok: 0, error: "No hay compromisos seleccionados." };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("release_callbacks_to_pool", {
+    p_lead_ids: ids,
+    p_keep_schedule: keepSchedule,
+  });
+  if (error) return { ok: 0, error: error.message };
+
+  revalidatePath("/dashboard/team");
+  revalidatePath("/dashboard/leads");
+  revalidatePath("/dashboard/agenda");
+  return { ok: typeof data === "number" ? data : ids.length, error: null };
+}

@@ -2,9 +2,12 @@ import type AmiClient from "asterisk-manager";
 import { logger } from "../logger";
 import { computeDialCapacity, computeEffectiveRatio } from "./pacing";
 import { originateCall } from "../ami/originate";
+import { originatePersonalCallback } from "../ami/originatePersonalCallback";
 import { ensureQueue, syncQueueMembers } from "../asterisk/configSync";
 import {
+  claimDuePersonalCallbacks,
   claimNextDialTargets,
+  expirePersonalCallbacks,
   countAvailableAgents,
   countInFlightAttempts,
   getActiveCampaignConfigs,
@@ -13,6 +16,8 @@ import {
 } from "../supabaseClient";
 
 const MAX_BATCH_PER_TICK = 10;
+/** Entregas de compromisos por ciclo: van aparte del pacing del pool. */
+const MAX_CALLBACKS_PER_TICK = 5;
 const ABANDONMENT_WINDOW_MINUTES = 15;
 
 type CampaignConfig = {
@@ -28,6 +33,10 @@ type CampaignConfig = {
   abandon_timeout_seconds: number;
   target_abandonment_rate: number;
   amd_enabled: boolean;
+  personal_callback_enabled: boolean;
+  personal_callback_window_minutes: number;
+  personal_callback_retry_seconds: number;
+  personal_callback_on_expiry: string;
 };
 
 /**
@@ -93,6 +102,35 @@ export async function runCampaignTick(ami: AmiClient, campaignIds: string[], que
           { campaignId: cfg.campaign_id, measuredAbandonmentRate, effectiveRatio, targetAbandonmentRate: cfg.target_abandonment_rate },
           "Ratio predictivo ajustado"
         );
+      }
+
+      // Los compromisos agendados van PRIMERO y no consumen la capacidad del
+      // pool: un cliente al que se le prometió una llamada a las 15:00 no
+      // puede quedar detrás de la marcación masiva.
+      if (cfg.personal_callback_enabled !== false) {
+        try {
+          const callbacks = await claimDuePersonalCallbacks(cfg.campaign_id, MAX_CALLBACKS_PER_TICK);
+          for (const callback of callbacks) {
+            await originatePersonalCallback({
+              ami,
+              target: callback,
+              callerId: cfg.caller_id,
+              trunkContext: cfg.trunk_context,
+            }).catch((err) =>
+              logger.error({ err, callback }, "No se pudo entregar un compromiso agendado")
+            );
+          }
+
+          const released = await expirePersonalCallbacks(cfg.campaign_id);
+          if (released > 0) {
+            logger.info(
+              { campaignId: cfg.campaign_id, released },
+              "Compromisos vencidos liberados al pool de la campaña"
+            );
+          }
+        } catch (err) {
+          logger.error({ err, campaignId: cfg.campaign_id }, "Fallo el ciclo de compromisos agendados");
+        }
       }
 
       const capacity = computeDialCapacity({
