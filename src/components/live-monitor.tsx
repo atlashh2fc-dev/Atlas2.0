@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState, type DragEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Bar, BarChart, Cell, Label, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ChevronRight, Eye, EyeOff, GripVertical, LayoutDashboard, Radio, RotateCcw, Sparkles } from "lucide-react";
+import ReactGridLayout, { useContainerWidth, verticalCompactor, type Layout, type LayoutItem } from "react-grid-layout";
+import { LayoutDashboard, RotateCcw } from "lucide-react";
 import { getAgentLiveStatus, getQueueHealth } from "@/app/actions/supervision";
 import type { AgentLiveStatus, QueueHealth } from "@/lib/types";
 import { LEGAL_INTERCALL_BREAK_SECONDS } from "@/lib/intercall-break";
@@ -33,7 +34,6 @@ const THRESHOLDS = {
 };
 
 type AgentGroup = "available" | "on_call" | "wrap_up" | "paused" | "offline";
-type WidgetSize = "small" | "medium" | "wide" | "full";
 type WidgetId =
   | "occupancy"
   | "connected"
@@ -52,7 +52,7 @@ type WidgetId =
   | "queues"
   | "agents";
 
-type WidgetConfig = { id: WidgetId; size: WidgetSize; visible: boolean };
+type WidgetLayout = LayoutItem & { i: WidgetId };
 
 const GROUP_LABEL: Record<AgentGroup, string> = {
   available: "Disponibles",
@@ -70,57 +70,24 @@ const STATUS_COLORS: Record<AgentGroup, string> = {
   offline: "var(--muted-foreground)",
 };
 
-const WIDGET_LABEL: Record<WidgetId, string> = {
-  occupancy: "Ocupación del equipo",
-  connected: "Equipo conectado",
-  available: "Disponibles",
-  "on-call": "En llamada",
-  "wrap-up": "En cierre",
-  paused: "En pausa",
-  alerts: "Alertas operativas",
-  campaigns: "Campañas activas",
-  answered: "Contestadas hoy",
-  completed: "Completadas hoy",
-  "abandon-rate": "Abandono hoy",
-  "no-answer-rate": "Sin respuesta hoy",
-  "status-chart": "Distribución del equipo",
-  "campaign-chart": "Actividad por campaña",
-  queues: "Salud de las colas",
-  agents: "Ejecutivos",
-};
-
-const DEFAULT_LAYOUT: WidgetConfig[] = [
-  { id: "occupancy", size: "small", visible: true },
-  { id: "connected", size: "small", visible: true },
-  { id: "available", size: "small", visible: true },
-  { id: "on-call", size: "small", visible: true },
-  { id: "wrap-up", size: "small", visible: true },
-  { id: "paused", size: "small", visible: true },
-  { id: "alerts", size: "small", visible: true },
-  { id: "campaigns", size: "small", visible: true },
-  { id: "answered", size: "medium", visible: true },
-  { id: "completed", size: "medium", visible: true },
-  { id: "abandon-rate", size: "medium", visible: true },
-  { id: "no-answer-rate", size: "medium", visible: true },
-  { id: "status-chart", size: "wide", visible: true },
-  { id: "campaign-chart", size: "wide", visible: true },
-  { id: "queues", size: "full", visible: true },
-  { id: "agents", size: "full", visible: true },
+const DEFAULT_LAYOUT: WidgetLayout[] = [
+  { i: "occupancy", x: 0, y: 0, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "connected", x: 3, y: 0, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "available", x: 6, y: 0, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "on-call", x: 9, y: 0, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "wrap-up", x: 0, y: 3, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "paused", x: 3, y: 3, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "alerts", x: 6, y: 3, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "campaigns", x: 9, y: 3, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "answered", x: 0, y: 6, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "completed", x: 3, y: 6, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "abandon-rate", x: 6, y: 6, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "no-answer-rate", x: 9, y: 6, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "status-chart", x: 0, y: 9, w: 6, h: 6, minW: 4, minH: 5 },
+  { i: "campaign-chart", x: 6, y: 9, w: 6, h: 6, minW: 4, minH: 5 },
+  { i: "queues", x: 0, y: 15, w: 12, h: 6, minW: 6, minH: 3 },
+  { i: "agents", x: 0, y: 21, w: 12, h: 10, minW: 6, minH: 6 },
 ];
-
-const SIZE_CLASS: Record<WidgetSize, string> = {
-  small: "md:col-span-3",
-  medium: "md:col-span-4",
-  wide: "md:col-span-6",
-  full: "md:col-span-12",
-};
-
-const SIZE_LABEL: Record<WidgetSize, string> = {
-  small: "Compacta",
-  medium: "Mediana",
-  wide: "Ancha",
-  full: "Completa",
-};
 
 const WIDGET_KICKER: Record<WidgetId, string> = {
   occupancy: "CAPACIDAD",
@@ -235,33 +202,6 @@ function QueueNumber({ label, value }: { label: string; value: number }) {
   return <div><p className="text-xl font-semibold tabular-nums tracking-tight text-foreground">{formatInt(value)}</p><p className="mt-0.5 text-[10px] uppercase tracking-[0.1em] text-muted-foreground">{label}</p></div>;
 }
 
-function DashboardWidget({ config, editing, onSizeChange, onToggleVisible, onDragStart, onDrop, children }: { config: WidgetConfig; editing: boolean; onSizeChange: (size: WidgetSize) => void; onToggleVisible: () => void; onDragStart: (event: DragEvent<HTMLButtonElement>) => void; onDrop: (event: DragEvent<HTMLDivElement>) => void; children: ReactNode }) {
-  return (
-    <div className={cn("group/widget min-w-0", SIZE_CLASS[config.size])} onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
-      <Card className={cn("relative h-full overflow-hidden rounded-2xl border-border/90 p-5 shadow-[0_14px_35px_-26px_rgba(24,49,55,0.45)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_22px_44px_-26px_rgba(24,49,55,0.55)]", editing && "ring-2 ring-primary/25")}>
-        {!editing && <div className="absolute left-0 top-5 h-8 w-0.5 rounded-r-full bg-primary opacity-0 transition-opacity group-hover/widget:opacity-100" />}
-        {editing && (
-          <div className="mb-4 flex items-center justify-between gap-2 border-b border-border pb-3">
-            <span className="min-w-0 truncate text-[10px] font-semibold tracking-[0.14em] text-primary">{WIDGET_KICKER[config.id]} · {WIDGET_LABEL[config.id]}</span>
-            <div className="flex items-center gap-1">
-              <select aria-label={`Tamaño de ${WIDGET_LABEL[config.id]}`} value={config.size} onChange={(event) => onSizeChange(event.target.value as WidgetSize)} className="h-7 rounded border border-border bg-surface px-1 text-[11px] text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
-                {(Object.keys(SIZE_LABEL) as WidgetSize[]).map((size) => <option key={size} value={size}>{SIZE_LABEL[size]}</option>)}
-              </select>
-              <button type="button" draggable onDragStart={onDragStart} aria-label={`Arrastrar ${WIDGET_LABEL[config.id]}`} title="Arrastra para reordenar" className="inline-flex size-7 cursor-grab items-center justify-center rounded-md text-muted-foreground hover:bg-surface-muted hover:text-foreground active:cursor-grabbing">
-                <GripVertical size={15} aria-hidden="true" />
-              </button>
-              <button type="button" onClick={onToggleVisible} aria-label={`Ocultar ${WIDGET_LABEL[config.id]}`} title="Ocultar" className="inline-flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-surface-muted hover:text-foreground">
-                <EyeOff size={15} aria-hidden="true" />
-              </button>
-            </div>
-          </div>
-        )}
-        {children}
-      </Card>
-    </div>
-  );
-}
-
 export function LiveMonitor() {
   const [agents, setAgents] = useState<AgentLiveStatus[]>([]);
   const [queues, setQueues] = useState<QueueHealth[]>([]);
@@ -271,9 +211,8 @@ export function LiveMonitor() {
   const [group, setGroup] = useState<AgentGroup | "">("");
   const [campaign, setCampaign] = useState("");
   const [term, setTerm] = useState("");
-  const [editing, setEditing] = useState(false);
-  const [draggedId, setDraggedId] = useState<WidgetId | null>(null);
-  const [layout, setLayout] = usePersistentState<WidgetConfig[]>("atlas:live-monitor-layout:v1", DEFAULT_LAYOUT);
+  const [layout, setLayout] = usePersistentState<WidgetLayout[]>("atlas:live-monitor-layout:v2", DEFAULT_LAYOUT);
+  const { width, containerRef, mounted } = useContainerWidth({ measureBeforeMount: true });
 
   useEffect(() => {
     let disposed = false;
@@ -327,9 +266,6 @@ export function LiveMonitor() {
     { id: "estado", header: "Estado", value: (row) => agentDisplay(row, now).label, cell: (row) => { const { label, tone } = agentDisplay(row, now); return <span className="inline-flex items-center gap-2"><StatusDot tone={tone} />{label}</span>; } },
     { id: "tiempo", header: "Tiempo en estado", align: "right", value: (row) => elapsedSeconds(agentDisplay(row, now).since, now) ?? -1, cell: (row) => { const { since, alert } = agentDisplay(row, now); return <span className={alert ? "font-medium text-danger" : "tabular-nums"}>{formatElapsed(elapsedSeconds(since, now))}{alert && " ⚠"}</span>; } },
   ], [now]);
-
-  function updateWidget(id: WidgetId, patch: Partial<WidgetConfig>) { setLayout((current) => current.map((widget) => widget.id === id ? { ...widget, ...patch } : widget)); }
-  function reorder(targetId: WidgetId) { if (!draggedId || draggedId === targetId) return; setLayout((current) => { const next = [...current]; const from = next.findIndex((widget) => widget.id === draggedId); const to = next.findIndex((widget) => widget.id === targetId); const [moved] = next.splice(from, 1); next.splice(to, 0, moved); return next; }); setDraggedId(null); }
 
   const widgets: Record<WidgetId, ReactNode> = {
     occupancy: <MetricWidget kicker={WIDGET_KICKER.occupancy} label="Ocupación del equipo" metric="ocupacion" value={`${occupancy}%`} hint={`${connected} conectados · objetivo operativo 85%`} tone={occupancy >= 85 ? "warn" : "default"} />,
@@ -427,55 +363,38 @@ export function LiveMonitor() {
 
   if (loading) return <LoadingState label="Estamos conectando el monitor en vivo" className="rounded-xl border border-border bg-surface px-5 py-4" />;
   if (error) return <p className="text-sm text-danger">Error: {error}</p>;
-  const visibleWidgets = layout.filter((widget) => widget.visible);
-  const hiddenWidgets = layout.filter((widget) => !widget.visible);
 
   return (
-    <div className="space-y-5">
-      <section className="relative overflow-hidden rounded-2xl bg-[#262523] px-5 py-5 text-[#f2f2f2] shadow-[0_20px_45px_-28px_rgba(24,49,55,0.9)] sm:px-6 sm:py-6">
-        <div className="absolute -right-10 -top-14 size-48 rounded-full border border-[#f2f2f2]/10" />
-        <div className="absolute right-10 top-7 size-20 rounded-full border border-[#f2f2f2]/10" />
-        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#f2f2f2]/15 bg-[#f2f2f2]/5 px-2.5 py-1 text-[10px] font-semibold tracking-[0.16em] text-accent">
-              <Radio size={12} aria-hidden="true" /> SEÑAL EN VIVO
-            </div>
-            <h2 className="mt-4 text-2xl font-semibold tracking-[-0.045em] text-[#f2f2f2] sm:text-3xl">Centro de control operacional</h2>
-            <p className="mt-2 max-w-xl text-sm leading-relaxed text-[#f2f2f2]/65">Una lectura clara de la capacidad, carga y riesgo del equipo. Se actualiza cada {POLL_MS / 1000} segundos.</p>
-          </div>
-          <div className="grid grid-cols-3 divide-x divide-[#f2f2f2]/10 rounded-xl border border-[#f2f2f2]/10 bg-[#f2f2f2]/5">
-            <div className="px-4 py-3"><p className="text-[9px] font-semibold tracking-[0.14em] text-[#f2f2f2]/50">CONECTADOS</p><p className="mt-1 font-mono text-xl font-semibold tabular-nums text-[#f2f2f2]">{connected}</p></div>
-            <div className="px-4 py-3"><p className="text-[9px] font-semibold tracking-[0.14em] text-[#f2f2f2]/50">EN CURSO</p><p className="mt-1 font-mono text-xl font-semibold tabular-nums text-[#f2f2f2]">{totals.inFlight}</p></div>
-            <div className="px-4 py-3"><p className="text-[9px] font-semibold tracking-[0.14em] text-[#f2f2f2]/50">ALERTAS</p><p className={cn("mt-1 font-mono text-xl font-semibold tabular-nums", alerts ? "text-danger" : "text-accent")}>{alerts}</p></div>
-          </div>
-        </div>
-      </section>
-
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-surface px-4 py-3.5 shadow-[0_12px_30px_-25px_rgba(24,49,55,0.6)]">
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface-muted/60 px-4 py-3.5">
         <div className="flex items-center gap-3">
-          <span className="inline-flex size-9 items-center justify-center rounded-xl bg-surface-muted text-primary"><LayoutDashboard size={18} aria-hidden="true" /></span>
-          <div><p className="text-sm font-semibold text-foreground">Tu mesa de supervisión</p><p className="text-xs text-muted-foreground">Compón el tablero según lo que necesites vigilar.</p></div>
+          <span className="inline-flex size-9 items-center justify-center rounded-lg bg-surface text-primary shadow-sm"><LayoutDashboard size={18} aria-hidden="true" /></span>
+          <div><p className="text-sm font-semibold text-foreground">Tu monitor, a tu manera</p><p className="text-xs text-muted-foreground">Arrastra cualquier tarjeta y toma su esquina inferior derecha para cambiar su tamaño.</p></div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={() => setLayout(DEFAULT_LAYOUT)} title="Restaurar orden y tamaños iniciales"><RotateCcw size={14} aria-hidden="true" />Restaurar</Button>
-          <Button variant={editing ? "primary" : "secondary"} size="sm" onClick={() => setEditing((value) => !value)}>{editing ? "Guardar vista" : "Personalizar"}<ChevronRight size={14} aria-hidden="true" /></Button>
-        </div>
+        <Button variant="secondary" size="sm" onClick={() => setLayout(DEFAULT_LAYOUT)} title="Restaurar orden y tamaños iniciales"><RotateCcw size={14} aria-hidden="true" />Restaurar vista</Button>
       </div>
-
-      {editing && (
-        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-dashed border-primary/40 bg-primary/5 px-4 py-3.5">
-          <span className="inline-flex items-center gap-2 pr-2 text-xs font-medium text-foreground"><Sparkles size={14} className="text-primary" aria-hidden="true" />Modo composición: usa el control lateral para arrastrar y ajusta el tamaño aquí mismo.</span>
-          {hiddenWidgets.map((widget) => <button key={widget.id} type="button" onClick={() => updateWidget(widget.id, { visible: true })} className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-2.5 py-1 text-xs text-foreground transition-colors hover:border-primary/40 hover:bg-surface-muted"><Eye size={13} aria-hidden="true" />Mostrar {WIDGET_LABEL[widget.id]}</button>)}
-          {hiddenWidgets.length === 0 && <span className="text-xs text-muted-foreground">Todos los módulos están visibles.</span>}
-        </div>
-      )}
-      {visibleWidgets.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border bg-surface p-8 text-center text-sm text-muted-foreground">No hay paneles visibles. Activa uno desde el modo Personalizar.</div>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-12">
-          {visibleWidgets.map((widget) => <DashboardWidget key={widget.id} config={widget} editing={editing} onSizeChange={(size) => updateWidget(widget.id, { size })} onToggleVisible={() => updateWidget(widget.id, { visible: false })} onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; setDraggedId(widget.id); }} onDrop={() => reorder(widget.id)}>{widgets[widget.id]}</DashboardWidget>)}
-        </div>
-      )}
+      <div ref={containerRef}>
+        {mounted && (
+          <ReactGridLayout
+            className="atlas-live-grid"
+            layout={layout}
+            width={width}
+            gridConfig={{ cols: 12, rowHeight: 48, margin: [16, 16], containerPadding: [0, 0] }}
+            dragConfig={{ enabled: true, cancel: "input,textarea,button,select,a,[data-no-drag]" }}
+            resizeConfig={{ enabled: true, handles: ["se"] }}
+            compactor={verticalCompactor}
+            onLayoutChange={(nextLayout: Layout) => setLayout(nextLayout as WidgetLayout[])}
+          >
+            {layout.map((item) => (
+              <div key={item.i}>
+                <Card className="h-full overflow-hidden rounded-xl border-border bg-surface p-5 shadow-sm transition-shadow hover:shadow-md">
+                  {widgets[item.i]}
+                </Card>
+              </div>
+            ))}
+          </ReactGridLayout>
+        )}
+      </div>
     </div>
   );
 }

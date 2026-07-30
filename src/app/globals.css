@@ -95,3 +95,47 @@ body {
   background: var(--accent);
   color: var(--accent-foreground);
 }
+
+/* Monitor en vivo: interacción directa de tarjetas (arrastrar y redimensionar). */
+.atlas-live-grid .react-grid-item {
+  transition: transform 180ms ease, width 180ms ease, height 180ms ease;
+}
+
+.atlas-live-grid .react-grid-item.react-draggable-dragging {
+  z-index: 30;
+  transition: none;
+}
+
+.atlas-live-grid .react-grid-placeholder {
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--primary) 65%, var(--border));
+  opacity: 1;
+}
+
+.atlas-live-grid .react-resizable-handle {
+  right: 9px;
+  bottom: 9px;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  background-image: none;
+  opacity: 0.38;
+  transition: opacity 160ms ease;
+}
+
+.atlas-live-grid .react-grid-item:hover .react-resizable-handle,
+.atlas-live-grid .react-grid-item.react-resizable-resizing .react-resizable-handle {
+  opacity: 1;
+}
+
+.atlas-live-grid .react-resizable-handle::after {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 8px;
+  height: 8px;
+  content: "";
+  border-right: 2px solid var(--primary);
+  border-bottom: 2px solid var(--primary);
+}
