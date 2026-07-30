@@ -70,24 +70,44 @@ para no violar `react-hooks/set-state-in-effect`), foco automático en el correo
 Mayús vía `getModifierState`, error con `role="alert"` y `aria-live`, `<main>` y
 `metadata.title` por pantalla.
 
-## Configuración pendiente en Supabase
+## Configuración aplicada en Supabase
 
-Nada de esto se puede hacer desde el repo:
+Proyecto `atlas-crm` (`lxdclavsycdidmzlbaid`). Aplicado el 2026-07-30 desde el
+dashboard; nada de esto se puede versionar en el repo.
 
-1. **SMTP.** Sin un proveedor configurado en Authentication → Emails, el correo
-   de recuperación no sale (el SMTP de cortesía de Supabase tiene un límite muy
-   bajo y no sirve para producción).
-2. **Redirect URLs.** Agregar `https://<dominio>/auth/callback` en Authentication
-   → URL Configuration. Sin esto Supabase rechaza el `redirectTo`.
-3. **Plantilla de recuperación.** Conviene cambiarla al formato `token_hash`:
+**URL Configuration**
 
-   ```
-   {{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=recovery&next=/reset-password
-   ```
+| Campo | Valor |
+| --- | --- |
+| Site URL | `https://atlascrm.geimser.cl` (antes `http://localhost:3000`) |
+| Redirect URLs | `https://atlascrm.geimser.cl/auth/callback` y `http://localhost:3000/auth/callback` |
 
-   El enlace PKCE por defecto solo funciona en el mismo navegador que lo pidió;
-   si el ejecutivo pide el enlace en el computador y lo abre en el teléfono,
-   falla. El callback acepta ambos formatos.
+**SMTP** — el correo de geimser.cl no está en Google ni Microsoft: hay servidor
+propio en `mail.geimser.cl` (190.107.177.31), con 465 y 587 abiertos y el 25
+filtrado.
+
+| Campo | Valor |
+| --- | --- |
+| Host / puerto | `mail.geimser.cl` : `465` |
+| Usuario y sender | `no-reply@geimser.cl` |
+| Sender name | `Atlas` |
+| Intervalo mínimo | 60 s por usuario |
+
+**Plantilla "Reset password"** — asunto "Recupera tu contraseña de Atlas", cuerpo
+en español y el enlace en formato `token_hash`:
+
+```
+{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=recovery&next=/reset-password
+```
+
+El enlace PKCE por defecto solo funciona en el mismo navegador que lo pidió: si
+el ejecutivo pide el enlace en el computador y lo abre en el teléfono, falla. El
+callback acepta ambos formatos, pero la plantilla ahora usa el que sirve siempre.
+
+> Al abrir el formulario de SMTP, Chrome autocompletó una credencial personal
+> (`hugo@admin.cl` + contraseña guardada) en los campos Username y Password. Se
+> limpiaron antes de guardar. Si alguien vuelve a tocar esta pantalla, conviene
+> verificar el Username antes de grabar.
 
 ## Variables de entorno nuevas (todas opcionales)
 
@@ -104,4 +124,10 @@ Nada de esto se puede hacer desde el repo:
 `tsc --noEmit` y `eslint` limpios. `next build` y el recorrido real del correo de
 recuperación no se pudieron ejecutar en el entorno de trabajo (sin memoria para
 el build, sin loopback para levantar el dev server) — quedan para la máquina
-local, junto con la configuración de SMTP de arriba.
+local.
+
+**Prueba de humo pendiente**, una vez desplegado en `atlascrm.geimser.cl`: pedir
+el enlace desde `/forgot-password` con un correo real, confirmar que llega desde
+`no-reply@geimser.cl`, abrirlo **en otro dispositivo** (ahí se comprueba que el
+formato `token_hash` funciona) y cambiar la contraseña. Si el correo no sale, el
+lugar donde mirar es Authentication → Logs en el dashboard.
