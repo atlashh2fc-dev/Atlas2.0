@@ -2,6 +2,7 @@
 
 import { randomBytes } from "crypto";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 import { requireProfile } from "@/lib/auth";
 
@@ -14,6 +15,57 @@ export type AgentSipRow = {
   role: string;
   extension: string | null;
   is_active: boolean | null;
+};
+
+export type DialerContact = {
+  id: string;
+  name: string;
+  phone: string;
+  rut: string | null;
+};
+
+export type IncomingDialContext = {
+  dial_attempt_id: string;
+  lead_id: string;
+  campaign_id: string;
+  campaign_name: string;
+  phone: string;
+  full_name: string;
+  rut: string | null;
+  email: string | null;
+  extra: Record<string, unknown>;
+};
+
+export type AgentDialerSessionStatus =
+  | "offline"
+  | "available"
+  | "ringing"
+  | "on_call"
+  | "wrap_up";
+
+export type AgentDialerOperatingMode = {
+  mode: "manual" | "automatic";
+  campaigns: Array<{
+    id: string;
+    name: string;
+    dial_mode: "manual" | "preview" | "progressive" | "predictive";
+    wrapup_seconds: number;
+  }>;
+  session: {
+    campaign_id: string;
+    status: AgentDialerSessionStatus;
+    since: string;
+  } | null;
+};
+
+export type AgentDialerHistoryItem = {
+  id: string;
+  lead_id: string;
+  name: string;
+  phone: string;
+  status: string;
+  started_at: string;
+  ended_at: string | null;
 };
 
 /**
@@ -146,4 +198,207 @@ export async function getMySipCredentials(): Promise<{ extension: string; sip_pa
 
   if (error) throw new Error(error.message);
   return data ?? null;
+}
+
+/**
+ * Agenda liviana del teléfono Atlas. Para agentes se acota explícitamente a
+ * sus leads; supervisores/admin conservan el alcance que ya les entrega RLS.
+ */
+export async function listMyDialerContacts(): Promise<DialerContact[]> {
+  const profile = await requireProfile();
+  const supabase = await createClient();
+
+  let query = supabase
+    .from("leads")
+    .select("id, full_name, phone, rut")
+    .not("phone", "is", null)
+    .order("updated_at", { ascending: false })
+    .limit(80);
+
+  if (profile.role === "agente") {
+    query = query.eq("assigned_to", profile.id);
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+
+  return (data ?? [])
+    .filter((row): row is typeof row & { phone: string } => Boolean(row.phone?.trim()))
+    .map((row) => ({
+      id: row.id,
+      name: row.full_name,
+      phone: row.phone,
+      rut: row.rut,
+    }));
+}
+
+/**
+ * La barra CTI se adapta a la operación real del agente. Si participa en al
+ * menos una campaña automática activa, el teclado manual desaparece: el
+ * motor es quien origina y entrega las llamadas. El modo manual solo queda
+ * disponible cuando no existe una asignación automática activa.
+ */
+export async function getMyDialerOperatingMode(): Promise<AgentDialerOperatingMode> {
+  const profile = await requireProfile(["agente"]);
+  const admin = createAdminClient();
+
+  const { data: memberships, error: membershipsError } = await admin
+    .from("campaign_agents")
+    .select("campaign_id")
+    .eq("profile_id", profile.id);
+
+  if (membershipsError) throw new Error(membershipsError.message);
+
+  const campaignIds = [...new Set((memberships ?? []).map((row) => row.campaign_id))];
+  if (campaignIds.length === 0) {
+    return { mode: "manual", campaigns: [], session: null };
+  }
+
+  const [{ data: configs, error: configsError }, { data: campaigns, error: campaignsError }] =
+    await Promise.all([
+      admin
+        .from("dialer_campaign_configs")
+        .select("campaign_id, dial_mode, wrapup_seconds")
+        .in("campaign_id", campaignIds)
+        .eq("is_active", true),
+      admin
+        .from("campaigns")
+        .select("id, name")
+        .in("id", campaignIds)
+        .eq("is_active", true),
+    ]);
+
+  if (configsError) throw new Error(configsError.message);
+  if (campaignsError) throw new Error(campaignsError.message);
+
+  const activeCampaignNames = new Map((campaigns ?? []).map((row) => [row.id, row.name]));
+  const activeConfigs = (configs ?? [])
+    .filter((config) => activeCampaignNames.has(config.campaign_id))
+    .map((config) => ({
+      id: config.campaign_id,
+      name: activeCampaignNames.get(config.campaign_id) ?? "Campaña",
+      dial_mode: config.dial_mode as AgentDialerOperatingMode["campaigns"][number]["dial_mode"],
+      wrapup_seconds: config.wrapup_seconds,
+    }));
+
+  const automaticCampaignIds = activeConfigs
+    .filter((config) => config.dial_mode !== "manual")
+    .map((config) => config.id);
+
+  const { data: session, error: sessionError } =
+    automaticCampaignIds.length > 0
+      ? await admin
+          .from("dialer_agent_sessions")
+          .select("campaign_id, status, last_state_change_at")
+          .eq("profile_id", profile.id)
+          .in("campaign_id", automaticCampaignIds)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      : { data: null, error: null };
+
+  if (sessionError) throw new Error(sessionError.message);
+
+  return {
+    mode: automaticCampaignIds.length > 0 ? "automatic" : "manual",
+    campaigns: activeConfigs,
+    session: session
+      ? {
+          campaign_id: session.campaign_id,
+          status: session.status as AgentDialerSessionStatus,
+          since: session.last_state_change_at,
+        }
+      : null,
+  };
+}
+
+/**
+ * Historial operacional del discador, acotado siempre al agente autenticado.
+ * Se consulta con service_role porque los intentos recién asignados pueden
+ * atravesar estados del motor antes de quedar visibles por las políticas RLS.
+ */
+export async function listMyAutomaticDialHistory(): Promise<AgentDialerHistoryItem[]> {
+  const profile = await requireProfile(["agente"]);
+  const admin = createAdminClient();
+
+  const { data: attempts, error: attemptsError } = await admin
+    .from("dial_attempts")
+    .select("id, lead_id, phone, status, created_at, originated_at, ended_at")
+    .eq("agent_id", profile.id)
+    .order("created_at", { ascending: false })
+    .limit(25);
+
+  if (attemptsError) throw new Error(attemptsError.message);
+  if (!attempts?.length) return [];
+
+  const leadIds = [...new Set(attempts.map((attempt) => attempt.lead_id))];
+  const { data: leads, error: leadsError } = await admin
+    .from("leads")
+    .select("id, full_name")
+    .in("id", leadIds);
+
+  if (leadsError) throw new Error(leadsError.message);
+  const leadNames = new Map((leads ?? []).map((lead) => [lead.id, lead.full_name]));
+
+  return attempts.map((attempt) => ({
+    id: attempt.id,
+    lead_id: attempt.lead_id,
+    name: leadNames.get(attempt.lead_id) ?? "Contacto",
+    phone: attempt.phone,
+    status: attempt.status,
+    started_at: attempt.originated_at ?? attempt.created_at,
+    ended_at: attempt.ended_at,
+  }));
+}
+
+/**
+ * Screen-pop de una llamada automática. Se usa service_role únicamente en el
+ * servidor y se acota al perfil autenticado, de modo que un agente nunca puede
+ * consultar el intento asignado a otro ejecutivo.
+ */
+export async function getMyIncomingDialContext(): Promise<IncomingDialContext | null> {
+  const profile = await requireProfile(["agente"]);
+  const admin = createAdminClient();
+  const recentCutoff = new Date(Date.now() - 2 * 60_000).toISOString();
+
+  const { data: attempt, error: attemptError } = await admin
+    .from("dial_attempts")
+    .select("id, lead_id, campaign_id, phone")
+    .eq("agent_id", profile.id)
+    .in("status", ["ringing", "answered", "bridged"])
+    .gte("updated_at", recentCutoff)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (attemptError) throw new Error(attemptError.message);
+  if (!attempt) return null;
+
+  const [{ data: lead, error: leadError }, { data: campaign, error: campaignError }] =
+    await Promise.all([
+      admin
+        .from("leads")
+        .select("id, full_name, phone, rut, email, extra")
+        .eq("id", attempt.lead_id)
+        .single(),
+      admin.from("campaigns").select("name").eq("id", attempt.campaign_id).single(),
+    ]);
+
+  if (leadError) throw new Error(leadError.message);
+  if (campaignError) throw new Error(campaignError.message);
+
+  return {
+    dial_attempt_id: attempt.id,
+    lead_id: lead.id,
+    campaign_id: attempt.campaign_id,
+    campaign_name: campaign.name,
+    phone: lead.phone ?? attempt.phone,
+    full_name: lead.full_name,
+    rut: lead.rut,
+    email: lead.email,
+    extra:
+      lead.extra && typeof lead.extra === "object" && !Array.isArray(lead.extra)
+        ? (lead.extra as Record<string, unknown>)
+        : {},
+  };
 }

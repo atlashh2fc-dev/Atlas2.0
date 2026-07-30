@@ -1,171 +1,72 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { AppRole, Profile } from "@/lib/types";
 import {
-  LayoutDashboard,
-  Users,
-  UsersRound,
-  ShieldCheck,
-  BarChart3,
-  LineChart,
-  Workflow,
-  Megaphone,
-  History,
-  CalendarClock,
-  Upload,
-  UserPlus,
-  PhoneCall,
-  MailCheck,
-  UserCog,
-  Activity,
+  HELP_HREF,
+  ROLE_LABEL,
+  isItemActive,
+  navLabel,
+  spaceForPath,
+  visibleSections,
+  type NavBadge,
+  type NavItem,
+  type NavSection,
+} from "@/lib/nav.config";
+import {
+  ArrowLeft,
   ChevronDown,
+  CircleHelp,
   PanelLeftClose,
   PanelLeftOpen,
-  CircleHelp,
+  Settings,
 } from "lucide-react";
 
-interface NavItem {
-  href: string;
-  label: string;
-  icon: React.ComponentType<{ size?: number }>;
-  roles: AppRole[];
-  /** Etiqueta de sección que se muestra justo antes de este ítem (agrupa visualmente sin sub-menú). */
-  sectionLabel?: string;
-  /** Ítem secundario dentro de un grupo (p. ej. "Flujos" bajo "Campañas"): se muestra indentado y más sutil. */
-  indent?: boolean;
-  /** Subcategoría silenciosa dentro de una sección, para no exponer integraciones como módulos principales. */
-  subsectionLabel?: string;
-}
+const COLLAPSED_KEY = "atlas.nav.collapsed";
 
-type NavGroup = { label: string; items: NavItem[] };
+export type NavBadgeCounts = Partial<Record<NavBadge, number>>;
 
-/** Agrupa los ítems visibles por su `sectionLabel` (cada label inicia un grupo). */
-function buildGroups(items: NavItem[]): NavGroup[] {
-  const groups: NavGroup[] = [];
-  for (const item of items) {
-    if (item.sectionLabel || groups.length === 0) {
-      groups.push({ label: item.sectionLabel ?? "General", items: [item] });
-    } else {
-      groups[groups.length - 1].items.push(item);
-    }
+/**
+ * Preferencia de secciones colapsadas, persistida por usuario y compartida
+ * entre el sidebar y el drawer móvil. Nada viene colapsado por defecto.
+ */
+const NONE: string[] = [];
+const listeners = new Set<() => void>();
+let cache: { raw: string | null; value: string[] } = { raw: null, value: NONE };
+
+function readCollapsed(): string[] {
+  try {
+    const raw = window.localStorage.getItem(COLLAPSED_KEY);
+    if (raw !== cache.raw) cache = { raw, value: raw ? (JSON.parse(raw) as string[]) : NONE };
+    return cache.value;
+  } catch {
+    return NONE;
   }
-  return groups;
 }
 
-const NAV_ITEMS: NavItem[] = [
-  // Espacio de trabajo: lo que se usa a diario.
-  {
-    href: "/dashboard",
-    label: "Inicio",
-    icon: LayoutDashboard,
-    roles: ["agente", "supervisor", "admin"],
-    sectionLabel: "Espacio de trabajo",
-  },
-  { href: "/dashboard/leads", label: "Registros", icon: Users, roles: ["agente", "supervisor", "admin"] },
-  { href: "/dashboard/agenda", label: "Mi agenda", icon: CalendarClock, roles: ["agente"] },
+function subscribeCollapsed(onChange: () => void) {
+  listeners.add(onChange);
+  return () => listeners.delete(onChange);
+}
 
-  // Operación: monitoreo y control del trabajo en curso.
-  {
-    href: "/dashboard/team",
-    label: "Mi equipo",
-    icon: UsersRound,
-    roles: ["supervisor"],
-    sectionLabel: "Operación",
-  },
-  {
-    href: "/dashboard/supervision/monitor",
-    label: "Monitor en vivo",
-    icon: Activity,
-    roles: ["supervisor", "admin"],
-  },
-  {
-    href: "/dashboard/supervision/reportes",
-    label: "Reportes de discador",
-    icon: LineChart,
-    roles: ["supervisor", "admin"],
-  },
-  { href: "/dashboard/reportes", label: "Reportes de gestión", icon: BarChart3, roles: ["supervisor", "admin"] },
+function writeCollapsed(next: string[]) {
+  try {
+    window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify(next));
+  } catch {
+    /* la preferencia es opcional: no bloquear la navegación si el storage falla */
+  }
+  listeners.forEach((listener) => listener());
+}
 
-  // Campañas: la configuración funcional de cada operación.
-  {
-    href: "/dashboard/admin/campanas",
-    label: "Campañas",
-    icon: Megaphone,
-    roles: ["admin"],
-    sectionLabel: "Campañas",
-  },
-  { href: "/dashboard/admin/flujos", label: "Flujos de gestión", icon: Workflow, roles: ["admin"], indent: true },
-
-  // Datos: carga y administración de las bases operativas.
-  {
-    href: "/dashboard/leads/nuevo",
-    label: "Nuevo registro",
-    icon: UserPlus,
-    roles: ["supervisor", "admin"],
-    sectionLabel: "Datos",
-  },
-  {
-    href: "/dashboard/leads/cargar",
-    label: "Cargar leads",
-    icon: Upload,
-    roles: ["admin"],
-  },
-  { href: "/dashboard/mail", label: "Leads mail", icon: MailCheck, roles: ["supervisor", "admin"] },
-
-  // Configuración: ajustes transversales de la plataforma y del discador.
-  {
-    href: "/dashboard/admin/usuarios",
-    label: "Usuarios y equipos",
-    icon: ShieldCheck,
-    roles: ["admin"],
-    sectionLabel: "Configuración",
-  },
-  {
-    href: "/dashboard/admin/estados-agente",
-    label: "Estados de agente",
-    icon: UserCog,
-    roles: ["admin"],
-    indent: true,
-    subsectionLabel: "Discador",
-  },
-  { href: "/dashboard/admin/agentes-sip", label: "Extensiones SIP", icon: PhoneCall, roles: ["admin"], indent: true },
-
-  // Integraciones: capacidades que pertenecen a un proveedor, no al CRM base.
-  {
-    href: "/dashboard/admin/vocalcom",
-    label: "Importar gestión Vocalcom",
-    icon: Upload,
-    roles: ["admin"],
-    sectionLabel: "Integraciones",
-    subsectionLabel: "Equifax",
-  },
-  {
-    href: "/dashboard/admin/ejecutivos-historicos",
-    label: "Historial de ejecutivos",
-    icon: History,
-    roles: ["admin"],
-    indent: true,
-  },
-
-  // Ayuda: guía contextual para quienes configuran y supervisan la operación.
-  {
-    href: "/dashboard/ayuda",
-    label: "Ayuda",
-    icon: CircleHelp,
-    roles: ["agente", "supervisor", "admin"],
-    sectionLabel: "Soporte",
-  },
-];
-
-const ROLE_LABEL: Record<AppRole, string> = {
-  agente: "Agente",
-  supervisor: "Supervisor",
-  admin: "Administrador",
-};
+function useCollapsedSections(): [string[], (id: string) => void] {
+  const collapsed = useSyncExternalStore(subscribeCollapsed, readCollapsed, () => NONE);
+  const toggle = (id: string) =>
+    writeCollapsed(collapsed.includes(id) ? collapsed.filter((value) => value !== id) : [...collapsed, id]);
+  return [collapsed, toggle];
+}
 
 function initials(fullName: string): string {
   const parts = fullName.trim().split(/\s+/).filter(Boolean);
@@ -174,20 +75,219 @@ function initials(fullName: string): string {
   return (parts[0][0] + parts[1][0]).toUpperCase();
 }
 
-export function Sidebar({ profile }: { profile: Profile }) {
+/** Un encabezado de sección solo se paga desde 3 ítems (docs/arquitectura-navegacion.md §4.5). */
+function showsHeader(section: NavSection): boolean {
+  return Boolean(section.label) && section.items.length >= 3;
+}
+
+function NavLink({
+  item,
+  role,
+  active,
+  rail,
+  badge,
+  onNavigate,
+}: {
+  item: NavItem;
+  role: AppRole;
+  active: boolean;
+  rail: boolean;
+  badge?: number;
+  onNavigate?: () => void;
+}) {
+  const Icon = item.icon;
+  const label = navLabel(item, role);
+
+  return (
+    <Link
+      href={item.href}
+      onClick={onNavigate}
+      aria-current={active ? "page" : undefined}
+      className={`group relative flex items-center gap-3 rounded-lg text-sm font-medium transition-colors duration-150 ${
+        rail ? "justify-center px-2 py-2" : "px-3 py-2"
+      } ${
+        active
+          ? "bg-foreground/[0.08] text-foreground"
+          : "text-muted-foreground hover:bg-foreground/[0.045] hover:text-foreground"
+      }`}
+    >
+      <span
+        className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors ${
+          active ? "bg-primary/12 text-primary" : "text-muted-foreground/80 group-hover:text-foreground"
+        }`}
+      >
+        <Icon size={16} />
+      </span>
+
+      {!rail && <span className="truncate">{label}</span>}
+
+      {!rail && badge !== undefined && badge > 0 && (
+        <span className="ml-auto rounded-full bg-primary/12 px-1.5 py-0.5 text-[11px] font-semibold text-primary">
+          {badge}
+        </span>
+      )}
+
+      {rail && (
+        <>
+          {badge !== undefined && badge > 0 && (
+            <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary" />
+          )}
+          <span
+            role="tooltip"
+            className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-surface px-2 py-1 text-xs font-medium text-foreground opacity-0 shadow-md transition-opacity group-hover:opacity-100"
+          >
+            {label}
+          </span>
+        </>
+      )}
+    </Link>
+  );
+}
+
+/** Árbol de navegación compartido por el sidebar de escritorio y el drawer móvil. */
+export function NavTree({
+  profile,
+  pathname,
+  rail = false,
+  badges,
+  onNavigate,
+}: {
+  profile: Profile;
+  pathname: string;
+  rail?: boolean;
+  badges?: NavBadgeCounts;
+  onNavigate?: () => void;
+}) {
+  const space = spaceForPath(pathname);
+  const sections = visibleSections(space, profile.role);
+
+  const [collapsed, toggleSection] = useCollapsedSections();
+
+  return (
+    <>
+      {sections.map((section) => {
+        const withHeader = showsHeader(section) && !rail;
+        const hasActive = section.items.some((item) => isItemActive(item, pathname));
+        const isCollapsed = withHeader && collapsed.includes(section.id) && !hasActive;
+
+        return (
+          <div key={section.id} className="mb-1">
+            {withHeader && (
+              <button
+                type="button"
+                onClick={() => toggleSection(section.id)}
+                aria-expanded={!isCollapsed}
+                className="flex w-full items-center gap-1.5 px-3 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 transition-colors hover:text-muted-foreground"
+              >
+                <span>{section.label}</span>
+                <ChevronDown size={13} className={`ml-auto transition-transform ${isCollapsed ? "-rotate-90" : ""}`} />
+              </button>
+            )}
+
+            {!isCollapsed && (
+              <div className="space-y-0.5">
+                {section.items.map((item) => (
+                  <NavLink
+                    key={item.id}
+                    item={item}
+                    role={profile.role}
+                    active={isItemActive(item, pathname)}
+                    rail={rail}
+                    badge={item.badge ? badges?.[item.badge] : undefined}
+                    onNavigate={onNavigate}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+/** Pie del menú: cambio de espacio, ayuda y perfil. Idéntico en escritorio y móvil. */
+export function NavFooter({
+  profile,
+  pathname,
+  rail = false,
+  onNavigate,
+}: {
+  profile: Profile;
+  pathname: string;
+  rail?: boolean;
+  onNavigate?: () => void;
+}) {
+  const inAdmin = spaceForPath(pathname) === "admin";
+  const helpActive = pathname.startsWith(HELP_HREF);
+
+  return (
+    <div className="border-t border-border p-2">
+      {profile.role === "admin" && !inAdmin && (
+        <Link
+          href="/dashboard/admin/campanas"
+          onClick={onNavigate}
+          title={rail ? "Administración" : undefined}
+          className={`group relative flex items-center gap-3 rounded-lg text-sm font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.045] hover:text-foreground ${
+            rail ? "justify-center px-2 py-2" : "px-3 py-2"
+          }`}
+        >
+          <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground/80 group-hover:text-foreground">
+            <Settings size={16} />
+          </span>
+          {!rail && "Administración"}
+        </Link>
+      )}
+
+      <Link
+        href={HELP_HREF}
+        onClick={onNavigate}
+        title={rail ? "Ayuda" : undefined}
+        aria-current={helpActive ? "page" : undefined}
+        className={`group relative flex items-center gap-3 rounded-lg text-sm font-medium transition-colors ${
+          rail ? "justify-center px-2 py-2" : "px-3 py-2"
+        } ${
+          helpActive
+            ? "bg-foreground/[0.08] text-foreground"
+            : "text-muted-foreground hover:bg-foreground/[0.045] hover:text-foreground"
+        }`}
+      >
+        <span
+          className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors ${
+            helpActive ? "bg-primary/12 text-primary" : "text-muted-foreground/80 group-hover:text-foreground"
+          }`}
+        >
+          <CircleHelp size={16} />
+        </span>
+        {!rail && "Ayuda"}
+      </Link>
+
+      <div className={`mt-1 flex items-center gap-2.5 border-t border-border pt-3 ${rail ? "justify-center" : "px-1"}`}>
+        <div className="relative flex-shrink-0">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+            {initials(profile.full_name)}
+          </div>
+          <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-success ring-2 ring-surface" />
+        </div>
+        {!rail && (
+          <div className="min-w-0">
+            <p className="truncate text-xs font-medium text-foreground">{profile.full_name}</p>
+            <p className="truncate text-[11px] text-muted-foreground">{ROLE_LABEL[profile.role]}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function Sidebar({ profile, badges }: { profile: Profile; badges?: NavBadgeCounts }) {
   const pathname = usePathname();
-  const groups = buildGroups(NAV_ITEMS.filter((item) => item.roles.includes(profile.role)));
-
+  const inAdmin = spaceForPath(pathname) === "admin";
   const [rail, setRail] = useState(false);
-  const [collapsed, setCollapsed] = useState<string[]>(["Integraciones"]);
-  const toggleGroup = (label: string) =>
-    setCollapsed((c) => (c.includes(label) ? c.filter((l) => l !== label) : [...c, label]));
-
-  const isActive = (href: string) =>
-    pathname === href || (href !== "/dashboard" && pathname.startsWith(href + "/"));
 
   return (
     <aside
+      aria-label="Navegación principal"
       className={`hidden flex-shrink-0 flex-col border-r border-border bg-surface transition-[width] duration-200 md:flex ${
         rail ? "w-16" : "w-64"
       }`}
@@ -205,7 +305,9 @@ export function Sidebar({ profile }: { profile: Profile }) {
           <>
             <div className="leading-none">
               <span className="text-sm font-semibold text-foreground">Atlas</span>
-              <p className="mt-0.5 text-[10px] text-muted-foreground">Consola · {ROLE_LABEL[profile.role]}</p>
+              <p className="mt-0.5 text-[10px] text-muted-foreground">
+                {inAdmin ? "Administración" : `Consola · ${ROLE_LABEL[profile.role]}`}
+              </p>
             </div>
             <button
               type="button"
@@ -230,81 +332,24 @@ export function Sidebar({ profile }: { profile: Profile }) {
         </button>
       )}
 
-      <nav className="flex-1 overflow-y-auto p-2">
-        {groups.map((group) => {
-          const hasActiveItem = group.items.some((item) => isActive(item.href));
-          const isCollapsed = collapsed.includes(group.label) && !hasActiveItem;
-          return (
-            <div key={group.label} className="mb-1">
-              {rail ? (
-                <div className="mx-2 my-1.5 border-t border-border/60" />
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => toggleGroup(group.label)}
-                  className="flex w-full items-center gap-1.5 px-3 pb-1 pt-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 transition-colors hover:text-muted-foreground"
-                >
-                  <span>{group.label}</span>
-                  <ChevronDown
-                    size={13}
-                    className={`ml-auto transition-transform ${isCollapsed ? "-rotate-90" : ""}`}
-                  />
-                </button>
-              )}
+      {inAdmin && (
+        <Link
+          href="/dashboard"
+          title={rail ? "Volver a la Consola" : undefined}
+          className={`group mx-2 mt-2 flex items-center gap-2 rounded-lg py-2 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.045] hover:text-foreground ${
+            rail ? "justify-center px-2" : "px-3"
+          }`}
+        >
+          <ArrowLeft size={16} className="flex-shrink-0" />
+          {!rail && "Volver a la Consola"}
+        </Link>
+      )}
 
-              {!isCollapsed &&
-                group.items.map((item) => {
-                  const active = isActive(item.href);
-                  const Icon = item.icon;
-                  return (
-                    <div key={item.href}>
-                      {!rail && item.subsectionLabel && (
-                        <p className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground/60">
-                          {item.subsectionLabel}
-                        </p>
-                      )}
-                      <Link
-                        href={item.href}
-                        title={rail ? item.label : undefined}
-                        className={`group flex items-center gap-3 rounded-lg text-sm font-medium transition-all duration-150 ${
-                          rail ? "justify-center px-2 py-2" : item.indent ? "py-2 pl-7 pr-3 text-[13px]" : "px-3 py-2"
-                        } ${
-                          active
-                            ? "bg-foreground/[0.08] text-foreground shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--foreground)_/_8%,transparent)]"
-                            : "text-muted-foreground hover:bg-foreground/[0.045] hover:text-foreground"
-                        }`}
-                      >
-                        <span
-                          className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors ${
-                            active ? "bg-primary/12 text-primary" : "text-muted-foreground/80 group-hover:text-foreground"
-                          }`}
-                        >
-                          <Icon size={16} />
-                        </span>
-                        {!rail && item.label}
-                      </Link>
-                    </div>
-                  );
-                })}
-            </div>
-          );
-        })}
+      <nav className="flex-1 overflow-y-auto p-2">
+        <NavTree profile={profile} pathname={pathname} rail={rail} badges={badges} />
       </nav>
 
-      <div className={`flex items-center gap-2.5 border-t border-border p-3 ${rail ? "justify-center" : ""}`}>
-        <div className="relative flex-shrink-0">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-            {initials(profile.full_name)}
-          </div>
-          <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-success ring-2 ring-surface" />
-        </div>
-        {!rail && (
-          <div className="min-w-0">
-            <p className="truncate text-xs font-medium text-foreground">{profile.full_name}</p>
-            <p className="truncate text-[11px] text-muted-foreground">{ROLE_LABEL[profile.role]}</p>
-          </div>
-        )}
-      </div>
+      <NavFooter profile={profile} pathname={pathname} rail={rail} />
     </aside>
   );
 }

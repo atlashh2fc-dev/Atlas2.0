@@ -98,8 +98,8 @@ export async function getMyCurrentStatus(): Promise<{ reason: AgentStatusReason 
 }
 
 /**
- * El agente cambia su propio estado (Disponible/Auxiliar/Baño/Capacitación,
- * etc.). Se guarda en agent_current_status; el motor de discado lo lee
+ * El agente cambia su propio estado (Disponible o un motivo AUX concreto).
+ * Se guarda en agent_current_status; el motor de discado lo lee
  * (poll ~10s) y sincroniza QueuePause en Asterisk para todas las colas en
  * las que el agente sea miembro — no hace falta tocar el servidor a mano.
  */
@@ -131,7 +131,6 @@ export async function createStatusReason(formData: FormData) {
   await requireProfile(["admin"]);
   const code = (formData.get("code") as string)?.trim();
   const label = (formData.get("label") as string)?.trim();
-  const isPause = formData.get("is_pause") === "on";
   const sortOrder = Number(formData.get("sort_order") ?? 0);
   if (!code || !label) throw new Error("Falta código o etiqueta");
 
@@ -139,7 +138,7 @@ export async function createStatusReason(formData: FormData) {
   const { error } = await supabase.from("agent_status_reasons").insert({
     code,
     label,
-    is_pause: isPause,
+    is_pause: true,
     sort_order: Number.isFinite(sortOrder) ? sortOrder : 0,
   });
   if (error) throw new Error(error.message);

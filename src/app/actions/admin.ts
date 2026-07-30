@@ -144,6 +144,23 @@ export async function toggleUserActive(formData: FormData) {
   revalidatePath("/dashboard/admin/usuarios");
 }
 
+/** Activa o desactiva varias cuentas de una vez desde la tabla de usuarios. */
+export async function bulkSetUserActive(
+  userIds: string[],
+  active: boolean
+): Promise<{ ok: number; error: string | null }> {
+  await requireProfile(["admin"]);
+  const ids = [...new Set(userIds)];
+  if (ids.length === 0) return { ok: 0, error: "No hay usuarios seleccionados." };
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("profiles").update({ active }).in("id", ids);
+  if (error) return { ok: 0, error: error.message };
+
+  revalidatePath("/dashboard/admin/usuarios");
+  return { ok: ids.length, error: null };
+}
+
 export async function createTeam(formData: FormData) {
   await requireProfile(["admin"]);
   const name = formData.get("name") as string;
@@ -242,7 +259,7 @@ export async function activateHistoricalAgent(formData: FormData) {
     .eq("historical_agent_id", historicalAgentId);
   if (interactionsError) throw new Error(interactionsError.message);
 
-  revalidatePath("/dashboard/admin/ejecutivos-historicos");
+  revalidatePath("/dashboard/admin/integraciones/historial");
   revalidatePath("/dashboard/admin/usuarios");
 }
 

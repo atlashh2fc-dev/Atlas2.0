@@ -29,8 +29,10 @@ export async function upsertDialerCampaignConfig(formData: FormData) {
   }
 
   const wrapupSeconds = Number(formData.get("wrapup_seconds"));
-  if (!Number.isInteger(wrapupSeconds) || wrapupSeconds < 0 || wrapupSeconds > 600) {
-    throw new Error("El tiempo entre llamadas debe ser un entero entre 0 y 600 segundos");
+  if (!Number.isInteger(wrapupSeconds) || wrapupSeconds < 10 || wrapupSeconds > 600) {
+    throw new Error(
+      "El tiempo entre llamadas debe ser un entero entre 10 y 600 segundos"
+    );
   }
 
   const callerId = (formData.get("caller_id") as string)?.trim() || null;
@@ -38,7 +40,10 @@ export async function upsertDialerCampaignConfig(formData: FormData) {
   const queueName = (formData.get("queue_name") as string)?.trim();
   if (!queueName) throw new Error("El nombre de la cola es obligatorio");
 
-  const trunkContext = (formData.get("trunk_context") as string)?.trim() || "twilio";
+  const trunkContext = (formData.get("trunk_context") as string)?.trim() || "siptel";
+  if (trunkContext !== "siptel") {
+    throw new Error("La única ruta saliente habilitada es Siptel");
+  }
   const isActive = formData.get("is_active") === "true";
 
   const maxRedialAttempts = Number(formData.get("max_redial_attempts"));
@@ -79,29 +84,49 @@ export async function upsertDialerCampaignConfig(formData: FormData) {
   );
 
   if (error) throw new Error(error.message);
+  revalidatePath("/dashboard/admin/campanas");
   revalidatePath(`/dashboard/admin/campanas/${campaignId}`);
 }
 
 /**
- * Pausa/reanuda SOLO el discado automático de la campaña (is_active de
- * dialer_campaign_configs), sin tocar el resto de la config. Antes la única
- * forma de pausar era reenviar el formulario completo — mal para un botón
- * de "frená el discador ya" en medio de un incidente, donde re-tipear el
- * ratio/cola a las apuradas es justo el tipo de error que no querés cometer.
- * El motor lee dialer_campaign_configs en cada tick (pocos segundos), así
- * que el efecto es casi inmediato.
+ * Inicia o detiene SOLO nuevas marcaciones automáticas de una campaña.
+ * El estado deseado viene explícito para que un doble envío nunca invierta
+ * accidentalmente la orden. Las llamadas que ya están conectadas continúan.
  */
-export async function toggleDialerCampaignActive(formData: FormData) {
+export async function setDialerCampaignActive(formData: FormData) {
   await requireProfile(["admin"]);
   const campaignId = formData.get("campaign_id") as string;
   if (!campaignId) throw new Error("Falta campaign_id");
-  const currentlyActive = formData.get("currently_active") === "true";
+
+  const desiredActiveValue = formData.get("desired_active");
+  if (desiredActiveValue !== "true" && desiredActiveValue !== "false") {
+    throw new Error("Estado de discado inválido");
+  }
+  const desiredActive = desiredActiveValue === "true";
 
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data: config, error: configError } = await supabase
     .from("dialer_campaign_configs")
-    .update({ is_active: !currentlyActive, updated_at: new Date().toISOString() })
-    .eq("campaign_id", campaignId);
-  if (error) throw new Error(error.message);
+    .select("is_active, trunk_context")
+    .eq("campaign_id", campaignId)
+    .maybeSingle();
+
+  if (configError) throw new Error(configError.message);
+  if (!config) {
+    throw new Error("Configura el discador de la campaña antes de iniciarlo");
+  }
+  if (desiredActive && config.trunk_context !== "siptel") {
+    throw new Error("No se puede iniciar: la campaña debe usar la ruta Siptel");
+  }
+
+  if (config.is_active !== desiredActive) {
+    const { error } = await supabase
+      .from("dialer_campaign_configs")
+      .update({ is_active: desiredActive, updated_at: new Date().toISOString() })
+      .eq("campaign_id", campaignId);
+    if (error) throw new Error(error.message);
+  }
+
+  revalidatePath("/dashboard/admin/campanas");
   revalidatePath(`/dashboard/admin/campanas/${campaignId}`);
 }

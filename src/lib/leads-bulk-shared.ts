@@ -12,7 +12,23 @@ export interface BulkUploadResult {
   duplicatesInFile: number;
   /** Filas que ya existían en la base (misma campaña/bolsa) según rut o teléfono. */
   duplicatesInDb: number;
+  /** Filas cuyo estado venía con un valor que la base no acepta y se cargaron como "nuevo". */
+  normalizedStatus: number;
   errors: { row: number; message: string }[];
+}
+
+/**
+ * Estados que acepta `bulk_insert_leads`. Cualquier otro valor hacía que la
+ * fila se descartara en la base y la interfaz la reportaba como "duplicada",
+ * es decir: pérdida silenciosa de datos con un contador que mentía.
+ */
+export const INSERTABLE_STATUSES = ["nuevo", "en_gestion", "convertido", "descartado"] as const;
+
+export function normalizeStatus(value: string): { status: string; changed: boolean } {
+  const trimmed = value.trim();
+  if (!trimmed) return { status: "nuevo", changed: false };
+  const match = INSERTABLE_STATUSES.find((status) => status === trimmed.toLowerCase());
+  return match ? { status: match, changed: false } : { status: "nuevo", changed: true };
 }
 
 export const REQUIRED_HEADERS = ["full_name"];
@@ -81,6 +97,7 @@ export function buildCandidates(
     inserted: 0,
     duplicatesInFile: 0,
     duplicatesInDb: 0,
+    normalizedStatus: 0,
     errors: [],
   };
 
@@ -118,7 +135,8 @@ export function buildCandidates(
     const rut = String(row.rut ?? "").trim() || null;
     const phone = String(row.phone ?? "").trim() || null;
     const email = String(row.email ?? "").trim() || null;
-    const status = String(row.status ?? "").trim() || "nuevo";
+    const { status, changed: statusChanged } = normalizeStatus(String(row.status ?? ""));
+    if (statusChanged) result.normalizedStatus += 1;
 
     if (!rut && !phone) {
       result.errors.push({

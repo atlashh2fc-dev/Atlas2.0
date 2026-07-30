@@ -1,40 +1,42 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
-import { Search } from "lucide-react";
+import { Plus, Search, Upload } from "lucide-react";
 import Link from "next/link";
 import { LEAD_STATUSES } from "@/lib/types";
 import { resolveCampaignScope } from "@/lib/campaign-scope";
-import { LeadsQueue, type LeadQueueRow, type LeadQueueView } from "@/components/leads-queue";
+import {
+  PAGE_SIZE_DEFAULT,
+  fetchLeadsPage,
+  parseLeadView,
+  type LeadFilters,
+} from "@/lib/leads-query";
+import { LeadsQueue, type LeadQueueRow } from "@/components/leads-queue";
+import { Field, FilterBar, Input, PageHeader, Select, buttonClasses } from "@/components/ui";
 
-const QUEUE_VIEWS = ["prioridad", "vencidas", "hoy", "disponibles", "bloqueados", "gestionados"] as const;
+type FilterOption = { id: string; full_name?: string; name?: string };
 
-type FilterOption = {
-  id: string;
-  full_name?: string;
-  name?: string;
-};
-
-function parseView(value: string | undefined): LeadQueueView {
-  return QUEUE_VIEWS.includes(value as LeadQueueView) ? (value as LeadQueueView) : "prioridad";
-}
-
+/**
+ * El título coincide exactamente con el label del sidebar (nav.config.ts):
+ * "Registros" para supervisor y admin, "Mis registros" para el ejecutivo.
+ * Lo que cambia por rol es el alcance, y eso va en la descripción.
+ */
 function roleCopy(role: string) {
   if (role === "supervisor") {
     return {
-      title: "Registros del equipo",
+      title: "Registros",
       description: "Leads visibles de tu equipo, filtrados por prioridad, ejecutivo y campaña.",
       action: "Revisar",
     };
   }
   if (role === "admin") {
     return {
-      title: "Registros globales",
+      title: "Registros",
       description: "Vista global de leads para auditoría, búsqueda y control operacional.",
       action: "Abrir",
     };
   }
   return {
-    title: "Mis registros de gestión",
+    title: "Mis registros",
     description: "Tus próximas gestiones ordenadas por urgencia.",
     action: "Gestionar",
   };
@@ -43,154 +45,145 @@ function roleCopy(role: string) {
 export default async function LeadsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; view?: string; agent?: string; campaign?: string; status?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    view?: string;
+    agent?: string;
+    campaign?: string;
+    status?: string;
+    page?: string;
+  }>;
 }) {
   const profile = await requireProfile();
-  const { q, view: viewParam, agent, campaign, status } = await searchParams;
+  const { q, view: viewParam, agent, campaign, status, page: pageParam } = await searchParams;
   const campaignScope = await resolveCampaignScope(campaign);
-  const view = parseView(viewParam);
+  const view = parseLeadView(viewParam);
   const supabase = await createClient();
   const copy = roleCopy(profile.role);
-  const canFilterOperation = profile.role === "supervisor" || profile.role === "admin";
-  const filters = {
-    q: q?.trim() || "",
-    agent: canFilterOperation ? agent || "" : "",
-    campaign: campaignScope || "",
-    status: canFilterOperation ? status || "" : "",
-  };
-  const agentSearchVisibilityFilter = profile.team_id
-    ? `assigned_to.eq.${profile.id},managed_by.eq.${profile.id},and(assigned_to.is.null,managed_by.is.null,team_id.eq.${profile.team_id})`
-    : `assigned_to.eq.${profile.id},managed_by.eq.${profile.id}`;
+  const canManage = profile.role === "supervisor" || profile.role === "admin";
 
-  const [{ data: agentOptions }, { data: campaignOptions }] = canFilterOperation
+  const filters: LeadFilters = {
+    q: q?.trim() || "",
+    agent: canManage ? agent || "" : "",
+    campaign: campaignScope || "",
+    status: canManage ? status || "" : "",
+  };
+
+  const [{ data: agentOptions }, { data: campaignOptions }] = canManage
     ? await Promise.all([
-        profile.role === "supervisor"
-          ? supabase.from("profiles").select("id, full_name").eq("role", "agente").order("full_name")
-          : supabase.from("profiles").select("id, full_name").eq("role", "agente").order("full_name"),
+        supabase.from("profiles").select("id, full_name").eq("role", "agente").eq("active", true).order("full_name"),
         supabase.from("campaigns").select("id, name").order("name"),
       ])
     : [{ data: [] }, { data: [] }];
 
-  let leads: LeadQueueRow[] = [];
-  let error: { message: string } | null = null;
+  const result = await fetchLeadsPage<LeadQueueRow>(supabase, {
+    role: profile.role,
+    filters,
+    view,
+    page: Number(pageParam) || 1,
+    pageSize: PAGE_SIZE_DEFAULT,
+  });
 
-  const leadSelect =
-    "id, full_name, rut, phone, status, assigned_to, managed_by, team_id, campaign_id, updated_at, next_action_at, tipificacion_actual, assignment_status, workflow_status, managed_at";
-
-  if (filters.q) {
-    const { data: matches, error: searchError } = await supabase.rpc("search_leads_quick", { p_term: filters.q });
-    error = searchError;
-
-    const ids = ((matches ?? []) as { id: string }[]).map((lead) => lead.id);
-    if (!error && ids.length > 0) {
-      const matchedQuery = supabase
-        .from("leads")
-        .select(leadSelect)
-        .in("id", ids);
-      if (profile.role === "agente") matchedQuery.or(agentSearchVisibilityFilter);
-      if (filters.agent) matchedQuery.or(`assigned_to.eq.${filters.agent},managed_by.eq.${filters.agent}`);
-      if (filters.campaign) matchedQuery.eq("campaign_id", filters.campaign);
-      if (filters.status) matchedQuery.eq("status", filters.status);
-
-      const { data: matchedLeads, error: leadsError } = await matchedQuery;
-      leads = (matchedLeads ?? []) as LeadQueueRow[];
-      error = leadsError;
-    }
-  } else {
-    const { data: records, error: recordsError } = await supabase.rpc("get_lead_records", {
-      p_agent: filters.agent || null,
-      p_campaign: filters.campaign || null,
-      p_status: filters.status || null,
-      p_limit: profile.role === "admin" ? 300 : 200,
-    });
-    leads = (records ?? []) as LeadQueueRow[];
-    error = recordsError;
-  }
+  // Estados presentes en la base + el que esté filtrado, con etiqueta legible
+  // cuando el valor pertenece al catálogo del producto.
+  const statusOptions = [...new Set([...result.statuses, filters.status].filter(Boolean))]
+    .map((value) => ({
+      value,
+      label: LEAD_STATUSES.find((status) => status.value === value)?.label ?? value,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label, "es"));
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">{copy.title}</h1>
-          <p className="text-sm text-muted-foreground">
-            Hola, {profile.full_name.split(" ")[0]}. {copy.description}
-          </p>
-        </div>
-        {(profile.role === "supervisor" || profile.role === "admin") && (
-          <Link
-            href="/dashboard/leads/nuevo"
-            className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
-          >
-            Nuevo registro
-          </Link>
-        )}
-      </div>
+    <div className="space-y-5">
+      {/* Las acciones son botones de la página, no ítems de menú (docs/arquitectura-navegacion.md §4.3). */}
+      <PageHeader
+        title={copy.title}
+        description={`Hola, ${profile.full_name.split(" ")[0]}. ${copy.description}`}
+        actions={
+          canManage ? (
+            <div className="flex items-center gap-2">
+              {profile.role === "admin" && (
+                <Link href="/dashboard/admin/cargas" className={buttonClasses({ variant: "secondary" })}>
+                  <Upload size={16} />
+                  Importar
+                </Link>
+              )}
+              <Link href="/dashboard/leads/nuevo" className={buttonClasses()}>
+                <Plus size={16} />
+                Nuevo registro
+              </Link>
+            </div>
+          ) : undefined
+        }
+      />
 
-      <form className="grid gap-3 rounded-xl border border-border bg-surface p-4 lg:grid-cols-[minmax(240px,1fr)_repeat(3,minmax(160px,220px))_auto]">
-        <div className="relative">
-          <Search
-            size={16}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-          />
-          <input
-            type="text"
-            name="q"
-            defaultValue={filters.q}
-            placeholder="RUT, teléfono o nombre..."
-            className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          />
-        </div>
+      <FilterBar storageKey="registros">
+        <Field label="Buscar" className="min-w-64 flex-1">
+          <span className="relative block">
+            <Search
+              size={15}
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input name="q" defaultValue={filters.q} placeholder="RUT, teléfono o nombre" className="pl-8" />
+          </span>
+        </Field>
 
-        {canFilterOperation && (
+        {canManage && (
           <>
-            <select
-              name="agent"
-              defaultValue={filters.agent}
-              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <option value="">Todos los ejecutivos</option>
-              {((agentOptions ?? []) as FilterOption[]).map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.full_name}
-                </option>
-              ))}
-            </select>
-            <select
-              name="campaign"
-              defaultValue={filters.campaign}
-              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <option value="">Todas las campañas</option>
-              {((campaignOptions ?? []) as FilterOption[]).map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.name}
-                </option>
-              ))}
-            </select>
-            <select
-              name="status"
-              defaultValue={filters.status}
-              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <option value="">Todos los estados</option>
-              {LEAD_STATUSES.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <Field label="Ejecutivo" className="w-48">
+              <Select name="agent" defaultValue={filters.agent}>
+                <option value="">Todos</option>
+                {((agentOptions ?? []) as FilterOption[]).map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.full_name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+
+            <Field label="Campaña" className="w-48">
+              <Select name="campaign" defaultValue={filters.campaign}>
+                <option value="">Todas</option>
+                {((campaignOptions ?? []) as FilterOption[]).map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+
+            {/* Los estados salen de lo que existe en la base: el catálogo fijo
+                ofrecía seis valores sin resultados y omitía el que tiene el 90 %
+                de los registros. */}
+            <Field label="Estado" className="w-52">
+              <Select name="status" defaultValue={filters.status}>
+                <option value="">Todos</option>
+                {statusOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
           </>
         )}
 
-        <button
-          type="submit"
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
-        >
-          Filtrar
-        </button>
-      </form>
+        <input type="hidden" name="view" value={view} />
+      </FilterBar>
 
-      <LeadsQueue leads={leads} initialView={view} copy={copy} errorMessage={error?.message ?? null} />
+      <LeadsQueue
+        leads={result.rows}
+        view={view}
+        counts={result.counts}
+        page={result.page}
+        pageCount={result.pageCount}
+        total={result.total}
+        pageSize={result.pageSize}
+        action={copy.action}
+        agents={(agentOptions ?? []).map((option) => ({ id: option.id, full_name: option.full_name ?? "Sin nombre" }))}
+        canManage={canManage}
+        errorMessage={result.error}
+      />
     </div>
   );
 }

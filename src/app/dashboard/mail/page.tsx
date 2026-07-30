@@ -303,8 +303,8 @@ export default async function MailDashboardPage({
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Leads de campañas mail"
-        description="Contenedor operativo Equifax: solo leads con apertura o click, listos para asignación manual."
+        title="Bandeja mail"
+        description="Leads con apertura o click, listos para asignación manual."
         actions={<CampaignFilterForm campaigns={campaigns} selectedMailCampaignId={selectedMailCampaignId} />}
       />
 

@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { AlertCircle, CalendarClock, CheckCircle2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { AlertCircle, CalendarClock, CheckCircle2, Clock3 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import type { Call, Lead } from "@/lib/types";
 import {
   CALL_REASONS,
@@ -16,6 +17,11 @@ import {
   type CallStatus,
 } from "@/lib/call-typification";
 import { closeCall, discardCallTechnicalError, saveCallAgenda, saveCallProgress } from "@/app/actions/calls";
+import {
+  INTERCALL_BREAK_EVENT,
+  INTERCALL_BREAK_STORAGE_KEY,
+  readLegalIntercallBreakUntil,
+} from "@/lib/intercall-break";
 
 function isoToLocalInput(iso: string | null): string {
   if (!iso) return "";
@@ -50,6 +56,7 @@ export function CallTypificationForm({
   call: Call;
   reasonCatalog?: CallReasonConfig[];
 }) {
+  const router = useRouter();
   const catalog = reasonCatalog && reasonCatalog.length > 0 ? reasonCatalog : CALL_REASONS;
   const initialReason = getReasonConfigFrom(catalog, call.reason);
   const [selectedState, setSelectedState] = useState(initialReason?.stateLabel ?? "");
@@ -67,6 +74,37 @@ export function CallTypificationForm({
   const [attemptedClose, setAttemptedClose] = useState(false);
   const [pending, setPending] = useState<PendingAction>(null);
   const [message, setMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
+  const [legalBreakUntil, setLegalBreakUntil] = useState(() =>
+    readLegalIntercallBreakUntil()
+  );
+  const [clockNow, setClockNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    function handleBreak(event: Event) {
+      setLegalBreakUntil((event as CustomEvent<number>).detail);
+      setClockNow(Date.now());
+    }
+
+    function handleStorage(event: StorageEvent) {
+      if (event.key !== INTERCALL_BREAK_STORAGE_KEY) return;
+      const until = Number(event.newValue);
+      setLegalBreakUntil(Number.isFinite(until) ? until : 0);
+      setClockNow(Date.now());
+    }
+
+    window.addEventListener(INTERCALL_BREAK_EVENT, handleBreak);
+    window.addEventListener("storage", handleStorage);
+    return () => {
+      window.removeEventListener(INTERCALL_BREAK_EVENT, handleBreak);
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (legalBreakUntil <= clockNow) return;
+    const id = setInterval(() => setClockNow(Date.now()), 250);
+    return () => clearInterval(id);
+  }, [legalBreakUntil, clockNow]);
 
   const stateOptions = useMemo(() => getCascadeStateOptionsFrom(catalog), [catalog]);
   const resultOptions = useMemo(() => getCascadeResultOptionsFrom(catalog, selectedState), [catalog, selectedState]);
@@ -78,6 +116,11 @@ export function CallTypificationForm({
   const showAgendaBlock = reasonConfig?.agenda === "required" || reasonConfig?.agenda === "optional";
   const showEquifaxBlock = reason === "COTIZACION ENVIADA" || outcome === "sale";
   const inferredNextActionWindow = localInputToWindow(nextActionAt);
+  const legalBreakRemaining = Math.max(
+    0,
+    Math.ceil((legalBreakUntil - clockNow) / 1000)
+  );
+  const legalBreakActive = legalBreakRemaining > 0;
 
   const pendingIssues = useMemo(
     () =>
@@ -191,6 +234,8 @@ export function CallTypificationForm({
         equifax_uf_amount: equifaxUf ? Number(equifaxUf) : null,
         equifax_recipient_email: equifaxEmail || null,
       });
+      router.push("/dashboard/leads");
+      router.refresh();
     } catch (e) {
       setMessage({ type: "error", text: e instanceof Error ? e.message : "Error al cerrar gestion." });
     } finally {
@@ -207,6 +252,8 @@ export function CallTypificationForm({
     setMessage(null);
     try {
       await discardCallTechnicalError({ callId: call.id, leadId: lead.id, reason: discardReason.trim() });
+      router.push("/dashboard/leads");
+      router.refresh();
     } catch (e) {
       setMessage({ type: "error", text: e instanceof Error ? e.message : "Error al descartar la llamada." });
     } finally {
@@ -216,7 +263,25 @@ export function CallTypificationForm({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-border bg-surface p-5">
+      {legalBreakActive && (
+        <div className="flex items-center gap-3 rounded-xl border border-warning/30 bg-warning-bg px-4 py-3 text-warning">
+          <Clock3 className="shrink-0" size={20} />
+          <div>
+            <p className="text-sm font-semibold">
+              Interrupción legal · {legalBreakRemaining}s
+            </p>
+            <p className="mt-0.5 text-xs">
+              La tipificación se habilitará al completar los 10 segundos de descanso efectivo.
+            </p>
+          </div>
+        </div>
+      )}
+
+      <fieldset
+        disabled={legalBreakActive}
+        className="space-y-4 border-0 p-0 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <div className="rounded-xl border border-border bg-surface p-5">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold text-foreground">Tipificacion rapida Equifax</h2>
@@ -387,7 +452,7 @@ export function CallTypificationForm({
         </div>
       </div>
 
-      <div className="rounded-xl border border-border bg-surface p-5">
+        <div className="rounded-xl border border-border bg-surface p-5">
         {attemptedClose && pendingIssues.length > 0 && (
           <ul className="mb-3 space-y-1 rounded-lg bg-warning-bg p-3 text-xs text-warning">
             {pendingIssues.map((issue) => (
@@ -459,7 +524,8 @@ export function CallTypificationForm({
             </div>
           </div>
         )}
-      </div>
+        </div>
+      </fieldset>
     </div>
   );
 }

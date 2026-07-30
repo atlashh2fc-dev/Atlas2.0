@@ -4,7 +4,14 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
 import { createClient } from "@/lib/supabase/client";
-import { buildCandidates, chunk, CHUNK_SIZE, normalizeHeader, type BulkUploadResult } from "@/lib/leads-bulk-shared";
+import {
+  buildCandidates,
+  chunk,
+  CHUNK_SIZE,
+  normalizeHeader,
+  normalizeStatus,
+  type BulkUploadResult,
+} from "@/lib/leads-bulk-shared";
 
 interface Option {
   id: string;
@@ -252,6 +259,36 @@ export function BulkUploadForm({
       }
 
       partialResult.inserted = totalInserted;
+
+      // Queda constancia del archivo procesado: qué entró y qué se descartó.
+      const { error: historyError } = await supabase.from("lead_uploads").insert({
+        file_name: fileName ?? "archivo sin nombre",
+        campaign_id: campaignId || null,
+        team_id: teamId || null,
+        workflow_id: effectiveWorkflowId,
+        total_rows: partialResult.totalRows,
+        inserted_count: partialResult.inserted,
+        duplicates_in_file: partialResult.duplicatesInFile,
+        duplicates_in_db: partialResult.duplicatesInDb,
+        // Solo filas: los errores con row 0 son fallos de lote, no registros.
+        rejected_count: partialResult.errors.filter((issue) => issue.row > 0).length,
+        uploaded_by: user.id,
+      });
+
+      if (historyError) {
+        partialResult.errors.push({
+          row: 0,
+          message: `Los registros se cargaron, pero no se pudo guardar el archivo en el historial de cargas: ${historyError.message}`,
+        });
+      }
+
+      if (partialResult.normalizedStatus > 0) {
+        partialResult.errors.push({
+          row: 0,
+          message: `${partialResult.normalizedStatus} fila(s) traían un estado que la base no acepta y se cargaron como "nuevo".`,
+        });
+      }
+
       setResult(partialResult);
       if (partialResult.errors.length === 0) {
         setRows(null);
@@ -266,6 +303,31 @@ export function BulkUploadForm({
       setPending(false);
     }
   }
+
+  /**
+   * Descarga las filas que no entraron, con su motivo y sus datos originales.
+   * Sin esto, corregir un archivo de 20.000 filas era adivinar.
+   */
+  function downloadRejected() {
+    if (!result || result.errors.length === 0) return;
+    const sheetRows = result.errors.map((issue) => {
+      const original = issue.row > 1 ? rows?.[issue.row - 2] : undefined;
+      return { Fila: issue.row > 0 ? issue.row : "—", Motivo: issue.message, ...(original ?? {}) };
+    });
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(sheetRows), "Rechazadas");
+    XLSX.writeFile(workbook, `filas-rechazadas-${fileName?.replace(/\.[^.]+$/, "") ?? "carga"}.xlsx`);
+  }
+
+  /** Primeras filas tal como quedarán guardadas, según el mapeo elegido. */
+  const previewRows = (rows ?? []).slice(0, 5).map((row) => ({
+    full_name: mapping.full_name ? String(row[mapping.full_name] ?? "") : "",
+    rut: mapping.rut ? String(row[mapping.rut] ?? "") : "",
+    phone: firstNonEmpty(row, mapping.phone),
+    email: firstNonEmpty(row, mapping.email),
+    // Se muestra el estado ya normalizado: es el que quedará guardado.
+    status: normalizeStatus(mapping.status ? String(row[mapping.status] ?? "") : "").status,
+  }));
 
   const busy = pending || parsing;
 
@@ -437,12 +499,49 @@ export function BulkUploadForm({
           </div>
         )}
 
+        {previewRows.length > 0 && (
+          <div className="rounded-xl border border-border bg-background p-4">
+            <p className="text-xs font-medium text-foreground">
+              Vista previa · {(rows ?? []).length.toLocaleString("es-CL")} filas en el archivo
+            </p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              Así quedarán guardadas las primeras {previewRows.length} filas con el mapeo actual.
+            </p>
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full min-w-[560px] text-left text-xs">
+                <thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="py-1.5 pr-3 font-semibold">Nombre</th>
+                    <th className="py-1.5 pr-3 font-semibold">RUT</th>
+                    <th className="py-1.5 pr-3 font-semibold">Teléfono</th>
+                    <th className="py-1.5 pr-3 font-semibold">Correo</th>
+                    <th className="py-1.5 font-semibold">Estado</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {previewRows.map((row, index) => (
+                    <tr key={index}>
+                      <td className="py-1.5 pr-3 text-foreground">{row.full_name || "—"}</td>
+                      <td className="py-1.5 pr-3 text-muted-foreground">{row.rut || "—"}</td>
+                      <td className={`py-1.5 pr-3 ${row.phone ? "text-muted-foreground" : "text-danger"}`}>
+                        {row.phone || "sin teléfono"}
+                      </td>
+                      <td className="py-1.5 pr-3 text-muted-foreground">{row.email || "—"}</td>
+                      <td className="py-1.5 text-muted-foreground">{row.status || "nuevo"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         <button
           type="submit"
           disabled={busy || !rows || !mapping.full_name}
           className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
         >
-          {pending ? "Procesando..." : "Cargar leads"}
+          {pending ? "Procesando..." : `Cargar ${(rows ?? []).length.toLocaleString("es-CL")} filas`}
         </button>
       </form>
 
@@ -463,9 +562,18 @@ export function BulkUploadForm({
           </div>
           {result.errors.length > 0 && (
             <div className="mt-3">
-              <p className="mb-1 text-xs font-medium text-warning">
-                {result.errors.length} fila(s) con detalle:
-              </p>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-medium text-warning">
+                  {result.errors.length.toLocaleString("es-CL")} fila(s) no entraron
+                </p>
+                <button
+                  type="button"
+                  onClick={downloadRejected}
+                  className="rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-medium text-foreground hover:bg-surface-muted"
+                >
+                  Descargar rechazadas
+                </button>
+              </div>
               <ul className="max-h-48 space-y-1 overflow-y-auto text-xs text-muted-foreground">
                 {result.errors.map((e, idx) => (
                   <li key={idx}>

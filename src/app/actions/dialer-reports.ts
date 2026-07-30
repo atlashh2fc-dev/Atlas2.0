@@ -27,18 +27,24 @@ export async function getCallMetricsReport(
 }
 
 /**
- * Reporte histórico de actividad por agente (AHT, ocupación, adherencia),
+ * Reporte histórico de actividad por ejecutivo (AHT, ocupación, adherencia),
  * combinando segmentos cerrados de historial con el segmento en curso.
+ *
+ * Con `campaignId` se filtran solo las métricas de llamada: el tiempo conectado
+ * y las pausas son de la jornada completa, así que la función devuelve nulo en
+ * esas columnas en vez de un número que no cuadra con el filtro en pantalla.
  */
 export async function getAgentActivityReport(
   dateFrom: string,
-  dateTo: string
+  dateTo: string,
+  campaignId?: string | null
 ): Promise<AgentActivityReportRow[]> {
   await requireProfile(["admin", "supervisor"]);
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("get_agent_activity_report", {
     p_date_from: dateFrom,
     p_date_to: dateTo,
+    p_campaign_id: campaignId ?? null,
   });
   if (error) throw new Error(error.message);
   return (data ?? []) as AgentActivityReportRow[];

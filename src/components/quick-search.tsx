@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowUpRight, Clock3, Loader2, Search, Zap } from "lucide-react";
+import { ArrowUpRight, Clock3, Loader2, Search } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { AppRole } from "@/lib/types";
+import { allItemsForRole, navLabel } from "@/lib/nav.config";
 
 interface QuickResult {
   id: string;
@@ -16,9 +17,18 @@ interface QuickResult {
 }
 
 type RecentLead = Omit<QuickResult, "match_type">;
-type QuickAction = { label: string; description: string; href: string };
 
 const RECENT_LEADS_KEY = "atlas:quick-search:recent-leads";
+
+function readRecentLeads(): RecentLead[] {
+  try {
+    const stored = window.localStorage.getItem(RECENT_LEADS_KEY);
+    return stored ? (JSON.parse(stored) as RecentLead[]) : [];
+  } catch {
+    window.localStorage.removeItem(RECENT_LEADS_KEY);
+    return [];
+  }
+}
 
 const MATCH_LABEL: Record<QuickResult["match_type"], string> = {
   rut: "RUT",
@@ -26,30 +36,10 @@ const MATCH_LABEL: Record<QuickResult["match_type"], string> = {
   name: "Nombre",
 };
 
-const QUICK_ACTIONS: Record<AppRole, QuickAction[]> = {
-  agente: [
-    { label: "Mis registros", description: "Gestionar leads asignados", href: "/dashboard/leads" },
-    { label: "Mi agenda", description: "Seguimientos de hoy y vencidos", href: "/dashboard/agenda" },
-    { label: "Centro de ayuda", description: "Guías para tu operación", href: "/dashboard/ayuda" },
-  ],
-  supervisor: [
-    { label: "Mi equipo", description: "Carga y registros del equipo", href: "/dashboard/team" },
-    { label: "Monitor en vivo", description: "Disponibilidad de ejecutivos", href: "/dashboard/supervision/monitor" },
-    { label: "Reportes de gestión", description: "Indicadores y desempeño", href: "/dashboard/reportes" },
-    { label: "Leads mail", description: "Entrada y asignación de correos", href: "/dashboard/mail" },
-  ],
-  admin: [
-    { label: "Crear campaña", description: "Configurar una nueva operación", href: "/dashboard/admin/campanas" },
-    { label: "Cargar leads", description: "Importar una base de datos", href: "/dashboard/leads/cargar" },
-    { label: "Crear flujo", description: "Diseñar el guion de gestión", href: "/dashboard/admin/flujos" },
-    { label: "Usuarios y equipos", description: "Roles, equipos y supervisores", href: "/dashboard/admin/usuarios" },
-  ],
-};
-
 /**
- * Buscador global de leads y lanzador de acciones frecuentes. La búsqueda
- * respeta las políticas de visibilidad de la RPC; los accesos rápidos se
- * filtran por el rol del usuario que abrió el dashboard.
+ * Buscador global de leads y salto a destinos. La búsqueda respeta las
+ * políticas de visibilidad de la RPC; los destinos se derivan de
+ * `nav.config.ts`, así el menú y la paleta nunca divergen.
  */
 export function QuickSearch({ role }: { role: AppRole }) {
   const [open, setOpen] = useState(false);
@@ -62,6 +52,12 @@ export function QuickSearch({ role }: { role: AppRole }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const router = useRouter();
+  const destinations = useMemo(() => allItemsForRole(role), [role]);
+
+  const openPalette = useCallback(() => {
+    setRecentLeads(readRecentLeads());
+    setOpen(true);
+  }, []);
 
   const close = useCallback(() => {
     setOpen(false);
@@ -106,22 +102,16 @@ export function QuickSearch({ role }: { role: AppRole }) {
     function onKeyDown(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        setOpen(true);
+        openPalette();
       }
       if (event.key === "Escape") close();
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [close]);
+  }, [close, openPalette]);
 
   useEffect(() => {
     if (!open) return;
-    try {
-      const stored = window.localStorage.getItem(RECENT_LEADS_KEY);
-      if (stored) setRecentLeads(JSON.parse(stored) as RecentLead[]);
-    } catch {
-      window.localStorage.removeItem(RECENT_LEADS_KEY);
-    }
     requestAnimationFrame(() => inputRef.current?.focus());
   }, [open]);
 
@@ -164,7 +154,7 @@ export function QuickSearch({ role }: { role: AppRole }) {
   if (!open) {
     return (
       <button
-        onClick={() => setOpen(true)}
+        onClick={openPalette}
         className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground"
       >
         <Search size={15} />
@@ -204,18 +194,21 @@ export function QuickSearch({ role }: { role: AppRole }) {
 
         {isEmpty && (
           <div className="max-h-[26rem] overflow-y-auto p-3">
-            <p className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Acciones frecuentes</p>
+            <p className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Ir a</p>
             <div className="space-y-1">
-              {QUICK_ACTIONS[role].map((action) => (
-                <button key={action.href} onClick={() => goToAction(action.href)} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-surface-muted">
-                  <span className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary"><Zap size={15} /></span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-medium text-foreground">{action.label}</span>
-                    <span className="block text-xs text-muted-foreground">{action.description}</span>
-                  </span>
-                  <ArrowUpRight size={15} className="text-muted-foreground" />
-                </button>
-              ))}
+              {destinations.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <button key={item.id} onClick={() => goToAction(item.href)} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-surface-muted">
+                    <span className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary"><Icon size={15} /></span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-foreground">{navLabel(item, role)}</span>
+                      <span className="block text-xs text-muted-foreground">{item.description}</span>
+                    </span>
+                    <ArrowUpRight size={15} className="text-muted-foreground" />
+                  </button>
+                );
+              })}
             </div>
 
             {recentLeads.length > 0 && (

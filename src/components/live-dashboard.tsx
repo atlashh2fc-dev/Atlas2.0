@@ -12,6 +12,7 @@ export function LiveDashboard({
 }) {
   const [summary, setSummary] = useState(initialSummary);
   const [live, setLive] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Se actualiza desde un efecto (nunca durante el render) para decidir qué
   // agendas ya están vencidas, sin llamar a Date.now() de forma impura.
@@ -26,7 +27,14 @@ export function LiveDashboard({
     const supabase = createClient();
     const { data, error } = await supabase.rpc("get_home_dashboard_summary");
 
-    if (!error && data) {
+    if (error) {
+      // Antes el fallo del refresco quedaba en silencio y la pantalla mostraba
+      // datos viejos como si estuvieran al día.
+      setRefreshError(error.message);
+      return;
+    }
+    if (data) {
+      setRefreshError(null);
       setSummary(data as HomeDashboardSummary);
     }
   }, []);
@@ -62,9 +70,22 @@ export function LiveDashboard({
           className={`inline-flex h-2 w-2 rounded-full ${live ? "bg-success" : "bg-muted-foreground"}`}
         />
         <span className="text-xs text-muted-foreground">
-          {live ? "Datos en vivo" : "Conectando..."}
+          {live ? "Datos en vivo" : "Conectando…"}
         </span>
       </div>
+
+      {refreshError && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger">
+          <span>No se pudo actualizar: {refreshError}</span>
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            className="font-medium underline underline-offset-2"
+          >
+            Reintentar
+          </button>
+        </div>
+      )}
 
       <div className="rounded-xl border border-border bg-surface">
         <div className="flex items-center justify-between border-b border-border px-5 py-4">

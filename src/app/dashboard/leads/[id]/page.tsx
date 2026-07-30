@@ -2,17 +2,20 @@ import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ArrowLeft, CalendarClock } from "lucide-react";
 import { LEAD_STATUSES } from "@/lib/types";
 import { getOrCreateOpenCall } from "@/app/actions/calls";
 import { CallTypificationForm } from "@/components/call-typification-form";
 import { CallTimer } from "@/components/call-timer";
+import { LeadTimeline, type TimelineEntry } from "@/components/lead-timeline";
 import { buildCallReasonCatalogFromWorkflow, getReasonConfig } from "@/lib/call-typification";
+import { metricDefinition } from "@/lib/metric-definitions";
 import type { Campaign, Lead, Profile, Team, Workflow, WorkflowStep, WorkflowStepBranch } from "@/lib/types";
-import { Badge, Card, SectionCard, buttonClasses } from "@/components/ui";
+import { Badge, Card, InfoTooltip, PageHeader, buttonClasses } from "@/components/ui";
 import type { ReactNode } from "react";
 
-/** Fila etiqueta/valor para las fichas de detalle (dt/dd alineados). */
-function InfoRow({ label, children }: { label: string; children: ReactNode }) {
+/** Fila etiqueta/valor de la columna de identidad. */
+function InfoRow({ label, children }: { label: ReactNode; children: ReactNode }) {
   return (
     <div className="flex justify-between gap-3">
       <dt className="text-muted-foreground">{label}</dt>
@@ -58,11 +61,23 @@ type Lead360 = {
   timeline: LeadTimelineItem[];
 };
 
-export default async function LeadDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+/** Los valores técnicos de la etapa del flujo no se muestran crudos. */
+const WORKFLOW_STAGE_LABEL: Record<string, string> = {
+  pending: "Sin iniciar",
+  in_progress: "En gestión",
+  managed: "Gestionado",
+  completed: "Completado",
+  blocked: "Bloqueado",
+};
+
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short" });
+}
+
+export default async function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const profile = await requireProfile();
   const { id } = await params;
   const supabase = await createClient();
@@ -76,6 +91,12 @@ export default async function LeadDetailPage({
   const assignedProfile = record.assigned_profile;
   const team = record.team;
   const contacts = record.contacts ?? [];
+  const campaignData = Object.entries(lead.extra ?? {}).filter(
+    ([key, value]) =>
+      key.toLowerCase() !== "source" &&
+      !key.startsWith("_") &&
+      (typeof value === "string" || typeof value === "number" || typeof value === "boolean")
+  );
 
   const effectiveWorkflowId = lead.workflow_id ?? campaign?.workflow_id ?? null;
   const workflow = record.workflow;
@@ -94,16 +115,15 @@ export default async function LeadDetailPage({
     (workflowBranches ?? []) as WorkflowStepBranch[]
   );
 
-  // Solo agentes pueden abrir/crear una llamada: la política RLS de
-  // `calls` no permite INSERT a supervisores, así que para ellos esta ficha
-  // es de solo lectura y nunca se intenta crear una llamada en su nombre.
+  // Solo los ejecutivos pueden abrir una llamada: la política RLS de `calls` no
+  // permite INSERT a supervisión, así que para ellos la ficha es de lectura.
   const canManageCall = profile.role === "agente";
-  const isSupervisorView = profile.role === "supervisor";
-  const isAdminView = profile.role === "admin";
+  const canReassign = profile.role === "supervisor" || profile.role === "admin";
   const call = canManageCall ? await getOrCreateOpenCall(id) : null;
 
-  const history = (record.timeline ?? []).map((item) => ({
+  const entries: TimelineEntry[] = (record.timeline ?? []).map((item) => ({
     key: `${item.source}-${item.id}`,
+    source: item.source,
     date: item.occurred_at,
     title: getReasonConfig(item.title)?.label ?? item.title ?? "Gestión",
     notes: item.notes,
@@ -111,180 +131,147 @@ export default async function LeadDetailPage({
     agent: item.agent_name,
   }));
 
+  const statusLabel = LEAD_STATUSES.find((status) => status.value === lead.status)?.label ?? lead.status;
+  const overdue = lead.next_action_at ? new Date(lead.next_action_at).getTime() <= new Date().getTime() : false;
+
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-      {/* Cliente, contexto de campana e historial */}
-      <div
-        className={`space-y-6 ${
-          call ? "lg:col-span-1" : isSupervisorView || isAdminView ? "lg:col-span-2" : "lg:col-span-3"
-        }`}
+    <div className="space-y-5">
+      <Link
+        href="/dashboard/leads"
+        className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary"
       >
-        <Card>
-          <div className="flex items-center justify-between gap-2">
-            <h1 className="text-xl font-semibold text-foreground">{lead.full_name}</h1>
+        <ArrowLeft size={13} />
+        Registros
+      </Link>
+
+      <PageHeader
+        title={lead.full_name}
+        description={
+          <span className="flex flex-wrap items-center gap-2">
+            <Badge tone="neutral">{statusLabel}</Badge>
+            {campaign?.name && <span className="text-sm text-muted-foreground">{campaign.name}</span>}
+            {lead.tipificacion_actual && (
+              <span className="text-sm text-muted-foreground">· {lead.tipificacion_actual}</span>
+            )}
+          </span>
+        }
+        className="border-b-0 pb-0"
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
             {call && <CallTimer startedAt={call.started_at} endedAt={call.ended_at} />}
-          </div>
-          <dl className="mt-4 space-y-2 text-sm">
-            <InfoRow label="RUT">{lead.rut ?? "—"}</InfoRow>
-            <InfoRow label="Teléfono">{lead.phone ?? "—"}</InfoRow>
-            <InfoRow label="Correo">{lead.email ?? "—"}</InfoRow>
-            <InfoRow label="Estado">
-              {LEAD_STATUSES.find((s) => s.value === lead.status)?.label ?? lead.status}
-            </InfoRow>
-            <InfoRow label="Tipificación actual">{lead.tipificacion_actual ?? "—"}</InfoRow>
-            {lead.next_action_at && (
-              <InfoRow label="Próxima agenda">
-                {new Date(lead.next_action_at).toLocaleString("es-CL")}
-              </InfoRow>
+            {canReassign && (
+              <Link href="/dashboard/team" className={buttonClasses({ variant: "secondary" })}>
+                Reasignar
+              </Link>
             )}
-          </dl>
-        </Card>
+            {campaign?.id && profile.role === "admin" && (
+              <Link
+                href={`/dashboard/admin/campanas/${campaign.id}`}
+                className={buttonClasses({ variant: "secondary" })}
+              >
+                Abrir campaña
+              </Link>
+            )}
+          </div>
+        }
+      />
 
-        <Card>
-          <h2 className="mb-3 text-sm font-semibold text-foreground">Contactos</h2>
-          <div className="space-y-2 text-sm">
-            {contacts.length === 0 && <p className="text-muted-foreground">Sin contactos registrados.</p>}
-            {contacts.map((contact) => (
-              <div key={contact.id} className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-foreground">{contact.value}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {contact.contact_type === "phone" ? "Teléfono" : "Correo"}
-                    {contact.label ? ` · ${contact.label}` : ""}
-                    {contact.is_primary ? " · Principal" : ""}
-                  </p>
-                </div>
-                {contact.is_valid === false && <Badge tone="danger">inválido</Badge>}
+      <div className="grid gap-5 lg:grid-cols-[minmax(240px,280px)_minmax(0,1fr)]">
+        {/* Zona 1: identidad y contexto */}
+        <aside className="space-y-4">
+          <Card>
+            <h2 className="mb-3 text-sm font-semibold text-foreground">Datos de contacto</h2>
+            <dl className="space-y-2 text-sm">
+              <InfoRow label="RUT">{lead.rut ?? "—"}</InfoRow>
+              <InfoRow label="Teléfono">{lead.phone ?? "—"}</InfoRow>
+              <InfoRow label="Correo">{lead.email ?? "—"}</InfoRow>
+            </dl>
+
+            {contacts.length > 0 && (
+              <div className="mt-4 space-y-2 border-t border-border pt-3 text-sm">
+                {contacts.map((contact) => (
+                  <div key={contact.id} className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-foreground">{contact.value}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {contact.contact_type === "phone" ? "Teléfono" : "Correo"}
+                        {contact.label ? ` · ${contact.label}` : ""}
+                        {contact.is_primary ? " · Principal" : ""}
+                      </p>
+                    </div>
+                    {contact.is_valid === false && <Badge tone="danger">Inválido</Badge>}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </Card>
-
-        <Card>
-          <h2 className="mb-3 text-sm font-semibold text-foreground">Campaña y flujo</h2>
-          <dl className="space-y-2 text-sm">
-            <InfoRow label="Campaña">{campaign?.name ?? "Sin campaña"}</InfoRow>
-            <InfoRow label="Flujo">{workflow?.name ?? "Equifax"}</InfoRow>
-          </dl>
-        </Card>
-
-        <SectionCard title="Historial de gestiones">
-          <ul className="max-h-96 divide-y divide-border overflow-y-auto">
-            {history.length === 0 && (
-              <li className="px-5 py-6 text-center text-sm text-muted-foreground">Sin gestiones registradas todavía.</li>
             )}
-            {history.map((h) => (
-              <li key={h.key} className="px-5 py-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-foreground">{h.title}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {h.date ? new Date(h.date).toLocaleString("es-CL") : "—"}
-                  </span>
-                </div>
-                <p className="mt-0.5 text-xs text-muted-foreground">Gestionado por: {h.agent}</p>
-                {h.notes && <p className="mt-1 text-sm text-muted-foreground">{h.notes}</p>}
-                {h.agenda && (
-                  <p className="mt-1 text-xs text-accent-foreground">
-                    Agenda: {new Date(h.agenda).toLocaleString("es-CL")}
-                  </p>
-                )}
-              </li>
-            ))}
-          </ul>
-        </SectionCard>
-      </div>
-
-      {isSupervisorView && (
-        <div className="space-y-4">
-          <Card>
-            <h2 className="text-sm font-semibold text-foreground">Vista de supervisión</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Puedes revisar contexto, historial y prioridad del lead. La llamada la cierra el ejecutivo asignado.
-            </p>
-
-            <dl className="mt-4 space-y-2 text-sm">
-              <InfoRow label="Asignado a">{assignedProfile?.full_name ?? "Sin asignar"}</InfoRow>
-              <InfoRow label="Estado workflow">{lead.workflow_status ?? "—"}</InfoRow>
-              <InfoRow label="Última gestión">
-                {lead.managed_at ? new Date(lead.managed_at).toLocaleString("es-CL") : "—"}
-              </InfoRow>
-            </dl>
           </Card>
 
           <Card>
-            <h2 className="text-sm font-semibold text-foreground">Acciones rápidas</h2>
-            <div className="mt-4 grid grid-cols-1 gap-2">
-              <Link href="/dashboard/team" className={buttonClasses({ className: "w-full" })}>
-                Reasignar en Mi equipo
-              </Link>
-              <Link
-                href="/dashboard/reportes"
-                className={buttonClasses({ variant: "secondary", className: "w-full" })}
-              >
-                Ver rendimiento
-              </Link>
-              <Link
-                href="/dashboard/leads/nuevo"
-                className={buttonClasses({ variant: "secondary", className: "w-full" })}
-              >
-                Nuevo registro
-              </Link>
-            </div>
-          </Card>
-        </div>
-      )}
-
-      {isAdminView && (
-        <div className="space-y-4">
-          <Card>
-            <h2 className="text-sm font-semibold text-foreground">Vista administrativa</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Auditoría del lead, asignación y configuración asociada. La gestión telefónica queda en manos del ejecutivo.
-            </p>
-
-            <dl className="mt-4 space-y-2 text-sm">
-              <InfoRow label="Ejecutivo">{assignedProfile?.full_name ?? "Sin asignar"}</InfoRow>
-              <InfoRow label="Equipo">{team?.name ?? "Sin equipo"}</InfoRow>
+            <h2 className="mb-3 text-sm font-semibold text-foreground">Operación</h2>
+            <dl className="space-y-2 text-sm">
               <InfoRow label="Campaña">{campaign?.name ?? "Sin campaña"}</InfoRow>
-              <InfoRow label="Workflow">{lead.workflow_status ?? "—"}</InfoRow>
-              <InfoRow label="Actualizado">{new Date(lead.updated_at).toLocaleString("es-CL")}</InfoRow>
+              <InfoRow label="Flujo de gestión">{workflow?.name ?? "Sin flujo asignado"}</InfoRow>
+              <InfoRow
+                label={
+                  <span className="inline-flex items-center gap-1">
+                    {metricDefinition("etapa_flujo").label}
+                    <InfoTooltip text={metricDefinition("etapa_flujo").definition} />
+                  </span>
+                }
+              >
+                {WORKFLOW_STAGE_LABEL[lead.workflow_status ?? ""] ?? lead.workflow_status ?? "Sin iniciar"}
+              </InfoRow>
+              {profile.role !== "agente" && (
+                <>
+                  <InfoRow label="Ejecutivo">{assignedProfile?.full_name ?? "Sin asignar"}</InfoRow>
+                  <InfoRow label="Equipo">{team?.name ?? "Sin equipo"}</InfoRow>
+                </>
+              )}
+              <InfoRow label="Última gestión">{formatDateTime(lead.managed_at)}</InfoRow>
+              <InfoRow label="Actualizado">{formatDateTime(lead.updated_at)}</InfoRow>
             </dl>
           </Card>
 
-          <Card>
-            <h2 className="text-sm font-semibold text-foreground">Acciones administrativas</h2>
-            <div className="mt-4 grid grid-cols-1 gap-2">
-              {campaign?.id && (
-                <Link
-                  href={`/dashboard/admin/campanas/${campaign.id}`}
-                  className={buttonClasses({ className: "w-full" })}
-                >
-                  Abrir campaña
-                </Link>
-              )}
-              <Link
-                href="/dashboard/admin/usuarios"
-                className={buttonClasses({ variant: "secondary", className: "w-full" })}
-              >
-                Usuarios y equipos
-              </Link>
-              <Link
-                href="/dashboard/reportes"
-                className={buttonClasses({ variant: "secondary", className: "w-full" })}
-              >
-                Ver reportes
-              </Link>
+          {campaignData.length > 0 && (
+            <Card>
+              <h2 className="mb-3 text-sm font-semibold text-foreground">Datos de la base</h2>
+              <dl className="space-y-2 text-sm">
+                {campaignData.map(([key, value]) => (
+                  <InfoRow key={key} label={key}>
+                    {String(value)}
+                  </InfoRow>
+                ))}
+              </dl>
+            </Card>
+          )}
+        </aside>
+
+        {/* Zona 2: la acción de ahora y el hilo completo */}
+        <main className="space-y-5">
+          <Card className={overdue ? "border-danger/40" : undefined}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <CalendarClock size={16} className={overdue ? "text-danger" : "text-muted-foreground"} />
+                <div>
+                  <p className="text-xs text-muted-foreground">Próxima acción</p>
+                  <p className={`text-sm font-medium ${overdue ? "text-danger" : "text-foreground"}`}>
+                    {lead.next_action_at
+                      ? `${overdue ? "Vencida · " : ""}${formatDateTime(lead.next_action_at)}`
+                      : "Sin agenda"}
+                  </p>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {record.summary?.timeline_count ?? entries.length} gestiones registradas
+              </p>
             </div>
           </Card>
-        </div>
-      )}
 
-      {/* Tipificación de la llamada */}
-      {call && (
-        <div className="lg:col-span-2">
-          <CallTypificationForm lead={lead} call={call} reasonCatalog={reasonCatalog} />
-        </div>
-      )}
+          {call && <CallTypificationForm lead={lead} call={call} reasonCatalog={reasonCatalog} />}
+
+          <LeadTimeline entries={entries} />
+        </main>
+      </div>
     </div>
   );
 }

@@ -1,18 +1,18 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { resolveCampaignScope } from "@/lib/campaign-scope";
-import { assignLead, reassignAgenda } from "@/app/actions/admin";
+import { reassignAgenda } from "@/app/actions/admin";
 import { LEAD_STATUSES } from "@/lib/types";
 import Link from "next/link";
 import {
   ActionForm,
-  Badge,
   Button,
-  Callout,
+  FilterBar,
+  Field,
+  MetricCard,
   PageHeader,
   SectionCard,
   Select,
-  StatCard,
   Table,
   Tbody,
   Td,
@@ -21,6 +21,12 @@ import {
   TableEmpty,
   Tr,
 } from "@/components/ui";
+import {
+  TeamAgentsTable,
+  TeamLeadsAssignment,
+  type TeamAgentRow,
+  type TeamLeadRow,
+} from "@/components/team-tables";
 
 type ProfileEmbed = { full_name: string } | { full_name: string }[] | null;
 type Option = { id: string; name?: string; full_name?: string };
@@ -164,7 +170,7 @@ export default async function TeamPage({
 }: {
   searchParams: Promise<{ agent?: string; campaign?: string; status?: string }>;
 }) {
-  const profile = await requireProfile(["supervisor"]);
+  await requireProfile(["supervisor"]);
   const { agent, campaign, status } = await searchParams;
   const campaignScope = await resolveCampaignScope(campaign);
   const supabase = await createClient();
@@ -193,9 +199,9 @@ export default async function TeamPage({
 
   const leadsQuery = supabase
     .from("leads")
-    .select("id, full_name, rut, phone, status, assigned_to, campaign_id")
+    .select("id, full_name, rut, phone, status, assigned_to, campaign_id, profiles!leads_assigned_to_fkey(full_name)")
     .order("updated_at", { ascending: false })
-    .limit(150);
+    .limit(250);
   if (filters.agent) leadsQuery.eq("assigned_to", filters.agent);
   if (filters.campaign) leadsQuery.eq("campaign_id", filters.campaign);
   if (filters.status) leadsQuery.eq("status", filters.status);
@@ -212,6 +218,10 @@ export default async function TeamPage({
   if (filters.status) agendaQuery.eq("status", filters.status);
   const { data: agendaLeads } = await agendaQuery;
 
+  // Carga por ejecutivo agrupada en la base: contarla en memoria obligaba a
+  // traer decenas de miles de filas y dejaba los números incompletos.
+  const { data: loadRows, error: loadError } = await supabase.rpc("get_team_agent_load");
+
   const now = new Date();
   const agendaRows = (agendaLeads ?? []) as AgendaLead[];
   const overdueAgenda = agendaRows.filter((lead) => new Date(lead.next_action_at!) <= now);
@@ -227,6 +237,33 @@ export default async function TeamPage({
   const visibleUnassigned = reportKpis?.sin_asignar ?? unassigned;
   const visibleOverdue = reportKpis?.agendas_vencidas ?? overdueAgenda.length;
 
+  const agentRows: TeamAgentRow[] = (
+    (loadRows ?? []) as {
+      profile_id: string;
+      full_name: string;
+      assigned: number;
+      unmanaged: number;
+      today: number;
+      overdue: number;
+    }[]
+  ).map((row) => ({
+    id: row.profile_id,
+    full_name: row.full_name,
+    assigned: Number(row.assigned),
+    unmanaged: Number(row.unmanaged),
+    today: Number(row.today),
+    overdue: Number(row.overdue),
+  }));
+
+  const assignmentRows: TeamLeadRow[] = (leads ?? []).map((lead) => ({
+    id: lead.id,
+    full_name: lead.full_name,
+    rut: lead.rut,
+    status: lead.status,
+    assigned_to: lead.assigned_to,
+    assigned_name: one(lead.profiles as ProfileEmbed)?.full_name ?? null,
+  }));
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -235,62 +272,88 @@ export default async function TeamPage({
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label="Ejecutivos reportados"
+        <MetricCard
+          label="Ejecutivos"
+          href="/dashboard/team#carga"
+          hrefLabel="Ver carga"
           value={reportedAgentsCount}
           hint={`${activeAgents.length} activos para asignación${historicalAgentsCount ? ` · ${historicalAgentsCount} históricos` : ""}`}
           progress={percent(activeAgents.length, reportedAgentsCount)}
           tone="good"
         />
-        <StatCard
-          label="Base equipo"
+        <MetricCard
+          label="Base del equipo"
           value={visibleBaseTotal.toLocaleString("es-CL")}
-          hint="Datos agregados desde Supabase"
+          hint="Registros visibles para tu equipo"
+          href="/dashboard/leads"
+          hrefLabel="Ver registros"
           progress={percent(reportKpis?.asignados ?? 0, visibleBaseTotal)}
         />
-        <StatCard
+        <MetricCard
           label="Sin asignar"
           value={visibleUnassigned.toLocaleString("es-CL")}
-          hint="Disponible para distribución"
+          hint="Disponible para repartir"
+          href="/dashboard/leads?view=disponibles"
+          hrefLabel="Ver disponibles"
           progress={percent(visibleUnassigned, visibleBaseTotal)}
           tone={visibleUnassigned > 0 ? "warn" : "good"}
         />
-        <StatCard
+        <MetricCard
           label="Agendas vencidas"
           value={visibleOverdue.toLocaleString("es-CL")}
           hint="Compromisos a recuperar"
-          progress={percent(visibleOverdue, Math.max(visibleOverdue, reportKpis?.agendas_vencidas ?? overdueAgenda.length))}
+          href="/dashboard/leads?view=vencidas"
+          hrefLabel="Ver vencidas"
           tone={visibleOverdue > 0 ? "danger" : "good"}
         />
       </div>
 
-      <form className="grid gap-3 rounded-xl border border-border bg-surface p-4 md:grid-cols-[repeat(3,minmax(180px,1fr))_auto]">
-        <Select name="agent" defaultValue={filters.agent}>
-          <option value="">Todos los ejecutivos activos</option>
-          {(activeAgents as Option[]).map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.full_name}
-            </option>
-          ))}
-        </Select>
-        <Select name="campaign" defaultValue={filters.campaign}>
-          <option value="">Todas las campañas</option>
-          {((campaigns ?? []) as Option[]).map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.name}
-            </option>
-          ))}
-        </Select>
-        <Select name="status" defaultValue={filters.status}>
-          <option value="">Todos los estados</option>
-          {LEAD_STATUSES.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </Select>
-        <Button type="submit">Filtrar</Button>
-      </form>
+      <FilterBar storageKey="equipo">
+        <Field label="Ejecutivo" className="w-48">
+          <Select name="agent" defaultValue={filters.agent}>
+            <option value="">Todos</option>
+            {(activeAgents as Option[]).map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.full_name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Campaña" className="w-48">
+          <Select name="campaign" defaultValue={filters.campaign}>
+            <option value="">Todas</option>
+            {((campaigns ?? []) as Option[]).map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Estado" className="w-44">
+          <Select name="status" defaultValue={filters.status}>
+            <option value="">Todos</option>
+            {LEAD_STATUSES.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      </FilterBar>
+
+      <div id="carga" />
+      <SectionCard
+        title="Carga por ejecutivo"
+        description="Quién está sobrecargado y quién puede recibir más trabajo."
+      >
+        <div className="p-4">
+          {loadError ? (
+            <p className="text-sm text-danger">No se pudo calcular la carga del equipo: {loadError.message}</p>
+          ) : (
+            <TeamAgentsTable rows={agentRows} />
+          )}
+        </div>
+      </SectionCard>
 
       <AgendaTable
         title="Agendas vencidas"
@@ -309,56 +372,13 @@ export default async function TeamPage({
         emptyText="No hay próximas agendas con estos filtros."
       />
 
-      <SectionCard title="Asignación de leads">
-        <Table>
-          <Thead>
-            <Th>Lead</Th>
-            <Th>RUT</Th>
-            <Th>Estado</Th>
-            <Th>Asignado a</Th>
-          </Thead>
-          <Tbody>
-            {(leads ?? []).length === 0 && (
-              <TableEmpty colSpan={4}>No hay leads en tu equipo todavía.</TableEmpty>
-            )}
-            {(leads ?? []).map((lead) => (
-              <Tr key={lead.id}>
-                <Td strong>
-                  <Link href={`/dashboard/leads/${lead.id}`} className="hover:text-primary">
-                    {lead.full_name}
-                  </Link>
-                </Td>
-                <Td muted>{lead.rut ?? "—"}</Td>
-                <Td>
-                  <Badge tone="neutral">
-                    {LEAD_STATUSES.find((s) => s.value === lead.status)?.label ?? lead.status}
-                  </Badge>
-                </Td>
-                <Td>
-                  <ActionForm action={assignLead} success="Lead asignado" className="flex items-center gap-2">
-                    <input type="hidden" name="lead_id" value={lead.id} />
-                    <Select
-                      name="agent_id"
-                      fieldSize="sm"
-                      defaultValue={lead.assigned_to ?? ""}
-                      className="w-auto"
-                    >
-                      <option value="">Sin asignar</option>
-                      {activeAgents.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.full_name}
-                        </option>
-                      ))}
-                    </Select>
-                    <Button type="submit" size="sm">
-                      Asignar
-                    </Button>
-                  </ActionForm>
-                </Td>
-              </Tr>
-            ))}
-          </Tbody>
-        </Table>
+      <SectionCard
+        title="Asignación de registros"
+        description={`Los ${assignmentRows.length} registros movidos más recientemente. Selecciona varios y asígnalos de una vez, o reparte automáticamente según la carga de cada ejecutivo.`}
+      >
+        <div className="p-4">
+          <TeamLeadsAssignment rows={assignmentRows} agents={activeAgents} />
+        </div>
       </SectionCard>
     </div>
   );

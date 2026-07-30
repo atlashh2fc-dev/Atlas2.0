@@ -2,27 +2,35 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import {
-  setCampaignWorkflow,
-  addCampaignAgent,
-  removeCampaignAgent,
-  addCampaignAgentSchedule,
-  removeCampaignAgentSchedule,
-  toggleCampaignActive,
-} from "@/app/actions/campaigns";
-import { upsertDialerCampaignConfig, toggleDialerCampaignActive } from "@/app/actions/dialer-config";
-import { DIAL_MODES, type DialerCampaignConfig } from "@/lib/types";
+import { setCampaignWorkflow } from "@/app/actions/campaigns";
+import { CampaignDashboardSummary } from "@/components/campaign-dashboard-summary";
+import type {
+  CampaignDashboardSummary as CampaignDashboardSummaryData,
+  DialerCampaignConfig,
+} from "@/lib/types";
+import { Button, Card, Field, SectionCard, Select } from "@/components/ui";
 
-type CampaignAgentSchedule = {
-  id: string;
-  campaign_agent_id: string;
-  days_of_week: number[];
-  start_time: string;
-  end_time: string;
-  timezone: string;
-};
+const DASHBOARD_WINDOW_DAYS = 30;
 
-export default async function CampaignDetailPage({ params }: { params: Promise<{ id: string }> }) {
+function startOfDay(date: Date): Date {
+  const value = new Date(date);
+  value.setHours(0, 0, 0, 0);
+  return value;
+}
+
+function endOfDay(date: Date): Date {
+  const value = new Date(date);
+  value.setHours(23, 59, 59, 999);
+  return value;
+}
+
+function addDays(date: Date, days: number): Date {
+  const value = new Date(date);
+  value.setDate(value.getDate() + days);
+  return value;
+}
+
+export default async function CampaignSummaryPage({ params }: { params: Promise<{ id: string }> }) {
   await requireProfile(["admin"]);
   const { id } = await params;
   const supabase = await createClient();
@@ -30,186 +38,100 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
   const { data: campaign } = await supabase.from("campaigns").select("*").eq("id", id).single();
   if (!campaign) notFound();
 
-  const [{ data: workflows }, { data: members }, { data: agents }, { count: leadCount }, { data: dialerConfig }] =
-    await Promise.all([
-      supabase.from("workflows").select("id, name").order("name"),
-      supabase
-        .from("campaign_agents")
-        .select("id, profile_id, schedule_required, profiles(full_name, email)")
-        .eq("campaign_id", id)
-        .order("assigned_at", { ascending: true }),
-      supabase.from("profiles").select("id, full_name, email").eq("role", "agente").order("full_name"),
-      supabase.from("leads").select("id", { count: "exact", head: true }).eq("campaign_id", id),
-      supabase.from("dialer_campaign_configs").select("*").eq("campaign_id", id).maybeSingle(),
-    ]);
+  const to = endOfDay(new Date());
+  const from = startOfDay(addDays(to, -(DASHBOARD_WINDOW_DAYS - 1)));
+  const previousFrom = startOfDay(addDays(from, -DASHBOARD_WINDOW_DAYS));
+  const previousTo = new Date(from.getTime() - 1);
 
-  const { data: schedules } = (members ?? []).length > 0
-    ? await supabase
-        .from("campaign_agent_schedules")
-        .select("id, campaign_agent_id, days_of_week, start_time, end_time, timezone")
-        .in("campaign_agent_id", (members ?? []).map((member) => member.id))
-        .order("start_time")
-    : { data: [] };
+  const [
+    { data: summary, error: summaryError },
+    { count: leadCount },
+    { count: memberCount },
+    { data: dialerConfig },
+    { data: workflows },
+  ] = await Promise.all([
+    supabase.rpc("get_campaign_dashboard_summary", {
+      p_campaign_id: id,
+      p_from: from.toISOString(),
+      p_to: to.toISOString(),
+      p_previous_from: previousFrom.toISOString(),
+      p_previous_to: previousTo.toISOString(),
+    }),
+    supabase.from("leads").select("id", { count: "exact", head: true }).eq("campaign_id", id),
+    supabase.from("campaign_agents").select("id", { count: "exact", head: true }).eq("campaign_id", id),
+    supabase.from("dialer_campaign_configs").select("*").eq("campaign_id", id).maybeSingle(),
+    // Solo flujos publicados: un borrador no debería quedar operando una campaña.
+    supabase.from("workflows").select("id, name").eq("status", "published").order("name"),
+  ]);
 
-  const dc = dialerConfig as DialerCampaignConfig | null;
+  const dialer = dialerConfig as DialerCampaignConfig | null;
+  const usesSiptel = dialer?.trunk_context === "siptel";
+  const base = `/dashboard/admin/campanas/${id}`;
 
-  const assignedIds = new Set((members ?? []).map((m) => m.profile_id));
-  const availableAgents = (agents ?? []).filter((a) => !assignedIds.has(a.id));
-  const schedulesByMembership = new Map<string, CampaignAgentSchedule[]>();
-  for (const schedule of (schedules ?? []) as CampaignAgentSchedule[]) {
-    schedulesByMembership.set(schedule.campaign_agent_id, [
-      ...(schedulesByMembership.get(schedule.campaign_agent_id) ?? []),
-      schedule,
-    ]);
-  }
   const setupItems = [
     {
-      label: "Flujo productivo",
-      detail: campaign.workflow_id ? "Configurado" : "Crea o asigna el guion de gestión",
+      label: "Flujo de gestión",
+      detail: campaign.workflow_id ? "Asignado" : "Asigna el guion que verán los ejecutivos",
       done: Boolean(campaign.workflow_id),
-      href: `/dashboard/admin/flujos?campaign_id=${campaign.id}`,
+      href: `${base}#flujo`,
     },
     {
       label: "Ejecutivos",
-      detail: (members ?? []).length > 0 ? `${members?.length} asignado(s)` : "Asigna al menos un ejecutivo",
-      done: (members ?? []).length > 0,
-      href: "#ejecutivos",
+      detail: (memberCount ?? 0) > 0 ? `${memberCount} asignados` : "Asigna al menos un ejecutivo",
+      done: (memberCount ?? 0) > 0,
+      href: `${base}/ejecutivos`,
     },
     {
-      label: "Base de leads",
-      detail: (leadCount ?? 0) > 0 ? `${leadCount} lead(s) cargados` : "Carga la base de la campaña",
+      label: "Base de registros",
+      detail:
+        (leadCount ?? 0) > 0
+          ? `${(leadCount ?? 0).toLocaleString("es-CL")} registros`
+          : "Carga la base de la campaña",
       done: (leadCount ?? 0) > 0,
-      href: `/dashboard/leads/cargar?campaign_id=${campaign.id}`,
+      href: `${base}/base`,
     },
     {
       label: "Discador",
-      detail: dc ? (dc.is_active ? "Configurado y activo" : "Configurado, falta activarlo") : "Configura la cola y modo de discado",
-      done: Boolean(dc?.is_active),
-      href: "#discado",
+      detail: dialer
+        ? !usesSiptel
+          ? "Revisa la ruta saliente: solo Siptel está habilitado"
+          : dialer.is_active
+            ? "Configurado y activo"
+            : "Configurado, falta iniciarlo"
+        : "Configura la cola y el modo de discado",
+      done: Boolean(dialer?.is_active && usesSiptel),
+      href: `${base}/discado`,
     },
   ];
-  const pendingSetupCount = setupItems.filter((item) => !item.done).length;
+  const pending = setupItems.filter((item) => !item.done).length;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <Link href="/dashboard/admin/campanas" className="text-xs text-muted-foreground hover:text-primary">
-            ← Campañas
-          </Link>
-          <h1 className="mt-1 text-xl font-semibold text-foreground">{campaign.name}</h1>
-          {campaign.description && (
-            <p className="text-sm text-muted-foreground">{campaign.description}</p>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <Link
-            href={`/dashboard/admin/campanas/${campaign.id}/dashboard`}
-            className="rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary-hover"
-          >
-            Ver dashboard
-          </Link>
-          {dc && (
-            <form action={toggleDialerCampaignActive}>
-              <input type="hidden" name="campaign_id" value={campaign.id} />
-              <input type="hidden" name="currently_active" value={String(dc.is_active)} />
-              <button
-                type="submit"
-                title="Pausa/reanuda solo el discado automático (el motor lo aplica en el próximo tick, ~segundos), sin tocar el resto de la configuración"
-                className={`rounded-lg px-3 py-2 text-xs font-medium ${
-                  dc.is_active
-                    ? "border border-danger text-danger hover:bg-danger/10"
-                    : "bg-success text-white hover:opacity-90"
-                }`}
-              >
-                {dc.is_active ? "Pausar discado" : "Reanudar discado"}
-              </button>
-            </form>
-          )}
-          <form action={toggleCampaignActive}>
-          <input type="hidden" name="campaign_id" value={campaign.id} />
-          <input type="hidden" name="active" value={String(campaign.is_active)} />
-          <button
-            type="submit"
-            className={`rounded-lg px-3 py-2 text-xs font-medium ${
-              campaign.is_active
-                ? "border border-border text-foreground hover:bg-surface-muted"
-                : "bg-primary text-primary-foreground hover:bg-primary-hover"
+    <div className="space-y-5">
+      <SectionCard
+        title="Preparación de la campaña"
+        description="Estos cuatro puntos definen si la campaña puede operar."
+        actions={
+          <span
+            className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+              pending === 0 ? "bg-success-bg text-success" : "bg-warning-bg text-warning"
             }`}
           >
-            {campaign.is_active ? "Desactivar campaña" : "Activar campaña"}
-          </button>
-          </form>
-        </div>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-3">
-        <div className="rounded-xl border border-border bg-surface p-5">
-          <p className="text-xs text-muted-foreground">Leads en esta campaña (BBDD)</p>
-          <p className="mt-1 text-2xl font-semibold text-foreground">{leadCount ?? 0}</p>
-          <Link
-            href={`/dashboard/leads/cargar?campaign_id=${campaign.id}`}
-            className="mt-2 inline-block text-xs text-primary hover:underline"
-          >
-            Cargar más leads a esta campaña →
-          </Link>
-        </div>
-        <div className="rounded-xl border border-border bg-surface p-5 sm:col-span-2">
-          <p className="mb-2 text-xs text-muted-foreground">Flujo productivo</p>
-          <form action={setCampaignWorkflow} className="flex items-center gap-2">
-            <input type="hidden" name="campaign_id" value={campaign.id} />
-            <select
-              name="workflow_id"
-              defaultValue={campaign.workflow_id ?? ""}
-              className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-            >
-              <option value="">Sin flujo asignado</option>
-              {(workflows ?? []).map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
-                </option>
-              ))}
-            </select>
-            <button
-              type="submit"
-              className="rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary-hover"
-            >
-              Guardar
-            </button>
-          </form>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Este es el flujo que los ejecutivos verán al gestionar leads de esta campaña. Edítalo en{" "}
-            <Link href={`/dashboard/admin/flujos?campaign_id=${campaign.id}`} className="text-primary hover:underline">
-              Flujos de gestión
-            </Link>
-            {" "}o{" "}
-            <Link
-              href={`/dashboard/admin/flujos?campaign_id=${campaign.id}`}
-              className="font-medium text-primary hover:underline"
-            >
-              crea un flujo nuevo para esta campaña
-            </Link>
-            .
-          </p>
-        </div>
-      </div>
-
-      <section className="rounded-xl border border-border bg-surface p-5">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <div>
-            <h2 className="text-sm font-semibold text-foreground">Preparación de la campaña</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Completa estos pasos antes de iniciar la operación.
-            </p>
-          </div>
-          <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${pendingSetupCount === 0 ? "bg-success-bg text-success" : "bg-warning-bg text-warning"}`}>
-            {pendingSetupCount === 0 ? "Lista para operar" : `${pendingSetupCount} pendiente${pendingSetupCount === 1 ? "" : "s"}`}
+            {pending === 0 ? "Lista para operar" : `${pending} pendiente${pending === 1 ? "" : "s"}`}
           </span>
-        </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        }
+      >
+        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
           {setupItems.map((item) => (
-            <Link key={item.label} href={item.href} className="rounded-lg border border-border bg-background p-3 transition-colors hover:border-primary">
-              <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${item.done ? "bg-success-bg text-success" : "bg-warning-bg text-warning"}`}>
+            <Link
+              key={item.label}
+              href={item.href}
+              className="rounded-lg border border-border bg-background p-3 transition-colors hover:border-primary"
+            >
+              <span
+                className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                  item.done ? "bg-success-bg text-success" : "bg-warning-bg text-warning"
+                }`}
+              >
                 {item.done ? "Listo" : "Pendiente"}
               </span>
               <p className="mt-2 text-sm font-medium text-foreground">{item.label}</p>
@@ -217,263 +139,40 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
             </Link>
           ))}
         </div>
-      </section>
+      </SectionCard>
 
-      <div id="ejecutivos" className="rounded-xl border border-border bg-surface p-5">
-        <h2 className="mb-1 text-sm font-semibold text-foreground">Ejecutivos asignados</h2>
-        <p className="mb-3 text-xs leading-5 text-muted-foreground">
-          Un ejecutivo puede pertenecer a varias campañas. En discado automático, define horarios sin traslape para
-          que reciba llamadas solo de la campaña que corresponde a su turno.
-        </p>
-        <div className="divide-y divide-border">
-          {(members ?? []).length === 0 && (
-            <p className="py-3 text-sm text-muted-foreground">Sin ejecutivos asignados todavía.</p>
-          )}
-          {(members ?? []).map((m) => {
-            const profileRaw = m.profiles as
-              | { full_name: string; email: string }
-              | { full_name: string; email: string }[]
-              | null;
-            const profile = Array.isArray(profileRaw) ? profileRaw[0] ?? null : profileRaw;
-            return (
-              <div key={m.id} className="py-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">{profile?.full_name ?? "—"}</p>
-                    <p className="text-xs text-muted-foreground">{profile?.email ?? "—"}</p>
-                  </div>
-                  <form action={removeCampaignAgent}>
-                    <input type="hidden" name="campaign_id" value={campaign.id} />
-                    <input type="hidden" name="membership_id" value={m.id} />
-                    <button
-                      type="submit"
-                      className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-foreground hover:bg-surface-muted"
-                    >
-                      Quitar
-                    </button>
-                  </form>
-                </div>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  {(schedulesByMembership.get(m.id) ?? []).map((schedule) => (
-                    <div key={schedule.id} className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-[11px] text-primary">
-                      {schedule.days_of_week.map((day) => ["Do", "Lu", "Ma", "Mi", "Ju", "Vi", "Sa"][day]).join(" · ")}
-                      {" "}{schedule.start_time.slice(0, 5)}–{schedule.end_time.slice(0, 5)}
-                      <form action={removeCampaignAgentSchedule}>
-                        <input type="hidden" name="campaign_id" value={campaign.id} />
-                        <input type="hidden" name="schedule_id" value={schedule.id} />
-                        <button type="submit" aria-label="Eliminar horario" className="font-semibold hover:text-danger">×</button>
-                      </form>
-                    </div>
-                  ))}
-                  {(schedulesByMembership.get(m.id) ?? []).length === 0 && (
-                    <span className="text-[11px] text-warning">
-                      {m.schedule_required ? "Sin horario: no recibirá llamadas automáticas." : "Sin horario: disponible siempre (configuración anterior)."}
-                    </span>
-                  )}
-                </div>
-                <details className="mt-2">
-                  <summary className="cursor-pointer text-xs font-medium text-primary">Agregar horario de conexión</summary>
-                  <form action={addCampaignAgentSchedule} className="mt-2 flex flex-wrap items-end gap-2 rounded-lg bg-background p-2">
-                    <input type="hidden" name="campaign_id" value={campaign.id} />
-                    <input type="hidden" name="membership_id" value={m.id} />
-                    <fieldset className="flex gap-1" aria-label="Días de la semana">
-                      {["Do", "Lu", "Ma", "Mi", "Ju", "Vi", "Sa"].map((day, dayIndex) => (
-                        <label key={day} className="flex cursor-pointer flex-col items-center gap-0.5 text-[10px] text-muted-foreground">
-                          <input type="checkbox" name="days_of_week" value={dayIndex} className="accent-primary" />
-                          {day}
-                        </label>
-                      ))}
-                    </fieldset>
-                    <label className="text-[11px] text-muted-foreground">Desde<input required type="time" name="start_time" className="ml-1 rounded border border-border bg-surface px-1 py-0.5 text-xs text-foreground" /></label>
-                    <label className="text-[11px] text-muted-foreground">Hasta<input required type="time" name="end_time" className="ml-1 rounded border border-border bg-surface px-1 py-0.5 text-xs text-foreground" /></label>
-                    <button type="submit" className="rounded bg-primary px-2 py-1 text-xs font-medium text-primary-foreground hover:bg-primary-hover">Agregar</button>
-                  </form>
-                </details>
-              </div>
-            );
-          })}
-        </div>
-        <form action={addCampaignAgent} className="mt-4 max-w-xl">
-          <input type="hidden" name="campaign_id" value={campaign.id} />
-          <label className="mb-1 block text-xs font-medium text-foreground">Agregar ejecutivos</label>
-          <select
-            name="profile_ids"
-            multiple
-            size={Math.min(Math.max(availableAgents.length, 2), 6)}
-            required
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-          >
-            {availableAgents.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.full_name} ({a.email})
-              </option>
-            ))}
-          </select>
-          <div className="mt-2 flex items-center gap-3">
-            <button
-              type="submit"
-              className="rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary-hover"
-            >
-              Agregar seleccionados
-            </button>
-            <span className="text-xs text-muted-foreground">Usa Ctrl/Cmd + clic para elegir varios.</span>
-          </div>
-        </form>
-      </div>
-
-      <div id="discado" className="rounded-xl border border-border bg-surface p-5">
-        <h2 className="mb-1 text-sm font-semibold text-foreground">Configuración de discado</h2>
-        <p className="mb-4 text-xs text-muted-foreground">
-          Define cómo el motor de discado maneja esta campaña. Los ejecutivos asignados arriba son los
-          que se sincronizan como miembros de la cola.
-        </p>
-        <form action={upsertDialerCampaignConfig} className="grid gap-4 sm:grid-cols-2">
-          <input type="hidden" name="campaign_id" value={campaign.id} />
-
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-foreground">Modo de discado</span>
-            <select
-              name="dial_mode"
-              defaultValue={dc?.dial_mode ?? "manual"}
-              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-            >
-              {DIAL_MODES.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.label}
+      <div id="flujo" />
+      <SectionCard
+        title="Flujo de gestión"
+        description="Es el guion que los ejecutivos siguen al atender los registros de esta campaña."
+      >
+        <form action={setCampaignWorkflow} className="flex flex-wrap items-end gap-3 p-4">
+          <input type="hidden" name="campaign_id" value={id} />
+          <Field label="Flujo asignado" className="w-72">
+            <Select name="workflow_id" defaultValue={campaign.workflow_id ?? ""}>
+              <option value="">Sin flujo asignado</option>
+              {(workflows ?? []).map((workflow) => (
+                <option key={workflow.id} value={workflow.id}>
+                  {workflow.name}
                 </option>
               ))}
-            </select>
-          </label>
-
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-foreground">Ratio de discado</span>
-            <input
-              type="number"
-              name="max_dial_ratio"
-              step="0.1"
-              min="0.1"
-              defaultValue={dc?.max_dial_ratio ?? 1.0}
-              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-            />
-          </label>
-
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-foreground">Tiempo entre llamadas (seg.)</span>
-            <input
-              type="number"
-              name="wrapup_seconds"
-              min="0"
-              max="600"
-              defaultValue={dc?.wrapup_seconds ?? 5}
-              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-            />
-          </label>
-
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-foreground">Caller ID (E.164)</span>
-            <input
-              type="text"
-              name="caller_id"
-              placeholder="+16507062614"
-              defaultValue={dc?.caller_id ?? ""}
-              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-            />
-          </label>
-
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-foreground">Nombre de la cola (Asterisk)</span>
-            <input
-              type="text"
-              name="queue_name"
-              required
-              placeholder="campania_ventas"
-              defaultValue={dc?.queue_name ?? ""}
-              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-            />
-          </label>
-
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-foreground">Trunk / contexto saliente</span>
-            <input
-              type="text"
-              name="trunk_context"
-              defaultValue={dc?.trunk_context ?? "twilio"}
-              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-            />
-          </label>
-
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-foreground">Tope de reintentos automáticos</span>
-            <input
-              type="number"
-              name="max_redial_attempts"
-              min="0"
-              max="20"
-              defaultValue={dc?.max_redial_attempts ?? 4}
-              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-            />
-            <span className="text-[11px] text-muted-foreground">
-              Backoff automático: 15min tras el 1er no-contesta/ocupado, 1h tras el 2do, 4h desde el 3ro.
-              Al llegar al tope, el lead sigue disponible para gestión manual pero deja de auto-discarse.
-            </span>
-          </label>
-
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-foreground">Timeout de cola sin agente (seg.)</span>
-            <input
-              type="number"
-              name="abandon_timeout_seconds"
-              min="10"
-              max="600"
-              defaultValue={dc?.abandon_timeout_seconds ?? 90}
-              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-            />
-            <span className="text-[11px] text-muted-foreground">
-              Si un cliente contesta y no hay ejecutivo libre, cuánto espera en espera antes de cortar
-              (se cuenta como abandono).
-            </span>
-          </label>
-
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-foreground">Tasa de abandono objetivo (%)</span>
-            <input
-              type="number"
-              name="target_abandonment_rate"
-              step="0.5"
-              min="0"
-              max="100"
-              defaultValue={dc?.target_abandonment_rate ?? 6.0}
-              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-            />
-            <span className="text-[11px] text-muted-foreground">
-              Solo aplica en modo Predictivo: el motor ajusta el ratio de marcación para mantener el
-              abandono medido cerca de este valor (tope: el ratio de arriba).
-            </span>
-          </label>
-
-          <label className="flex items-center gap-2">
-            <input type="checkbox" name="amd_enabled" value="true" defaultChecked={dc?.amd_enabled ?? false} />
-            <span className="text-sm text-foreground">Detectar contestador automático (AMD)</span>
-          </label>
-
-          <label className="flex items-center gap-2 sm:col-span-2">
-            <input type="checkbox" name="is_active" value="true" defaultChecked={dc?.is_active ?? false} />
-            <span className="text-sm text-foreground">Campaña activa para el motor de discado</span>
-          </label>
-
-          <div className="sm:col-span-2">
-            <button
-              type="submit"
-              className="rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary-hover"
-            >
-              Guardar configuración
-            </button>
-          </div>
+            </Select>
+          </Field>
+          <Button type="submit">Guardar</Button>
+          <Link
+            href={`/dashboard/admin/flujos?campaign_id=${id}`}
+            className="pb-2 text-xs font-medium text-primary hover:underline"
+          >
+            Editar o crear un flujo
+          </Link>
         </form>
-        <p className="mt-3 text-xs text-muted-foreground">
-          {DIAL_MODES.find((m) => m.value === (dc?.dial_mode ?? "manual"))?.description}
-        </p>
-      </div>
+      </SectionCard>
+
+      {summaryError ? (
+        <Card className="text-sm text-danger">No se pudo cargar el resumen: {summaryError.message}</Card>
+      ) : (
+        <CampaignDashboardSummary summary={summary as CampaignDashboardSummaryData} />
+      )}
     </div>
   );
 }

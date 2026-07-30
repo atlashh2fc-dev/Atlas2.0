@@ -28,6 +28,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { AppRole } from "@/lib/types";
+import { metricGlossary } from "@/lib/metric-definitions";
 
 type TrainingStep = {
   title: string;
@@ -63,7 +64,7 @@ const GUIDES: Guide[] = [
     icon: Users,
     roles: ["agente", "supervisor", "admin"],
     tags: ["buscar lead", "rut", "teléfono", "gestión", "tipificación", "llamada"],
-    route: ["Operación", "Registros"],
+    route: ["Consola", "Registros"],
     before: ["Ten a mano RUT, teléfono o nombre del contacto.", "Confirma que conoces el objetivo de la campaña antes de registrar el resultado."],
     outcome: "El registro queda con resultado, responsable y seguimiento cuando corresponde.",
     screenTitle: "Registros",
@@ -84,7 +85,7 @@ const GUIDES: Guide[] = [
     icon: CalendarClock,
     roles: ["agente"],
     tags: ["agenda", "vencido", "seguimiento", "recordatorio", "hoy"],
-    route: ["Operación", "Mi agenda"],
+    route: ["Consola", "Mi agenda"],
     before: ["Empieza por los seguimientos vencidos.", "Reserva tiempo para registrar el resultado de cada contacto, no solo para llamar."],
     outcome: "Los compromisos vencidos quedan resueltos o reprogramados con una nueva fecha real.",
     screenTitle: "Mi agenda",
@@ -104,7 +105,7 @@ const GUIDES: Guide[] = [
     icon: UsersRound,
     roles: ["supervisor"],
     tags: ["equipo", "ejecutivos", "supervisor", "carga", "reasignar"],
-    route: ["Operación", "Mi equipo"],
+    route: ["Consola", "Mi equipo"],
     before: ["Debes estar asociado a un equipo.", "Define si el objetivo es acompañar, reasignar o revisar un caso puntual."],
     outcome: "Tienes visibilidad de la carga del equipo y un plan de seguimiento para los casos críticos.",
     screenTitle: "Mi equipo",
@@ -124,7 +125,7 @@ const GUIDES: Guide[] = [
     icon: MonitorPlay,
     roles: ["supervisor", "admin"],
     tags: ["monitor", "en vivo", "pausa", "disponibilidad", "discador"],
-    route: ["Operación", "Monitor en vivo"],
+    route: ["Consola", "Monitor en vivo"],
     before: ["Confirma el período operativo que estás supervisando.", "Usa esta vista junto con reportes; el monitor muestra el estado actual, no toda la historia."],
     outcome: "Detectas oportunamente baja disponibilidad, pausas prolongadas o capacidad sin utilizar.",
     screenTitle: "Monitor en vivo",
@@ -140,14 +141,14 @@ const GUIDES: Guide[] = [
     title: "Leer reportes de gestión",
     description: "Convierte contactabilidad y tipificaciones en decisiones concretas para el equipo.",
     href: "/dashboard/reportes",
-    action: "Ver reportes de gestión",
+    action: "Ver reportes",
     icon: BarChart3,
     roles: ["supervisor", "admin"],
     tags: ["reporte", "contactabilidad", "kpi", "tipificación", "desempeño"],
-    route: ["Operación", "Reportes de gestión"],
+    route: ["Consola", "Reportes", "Gestión"],
     before: ["Define el rango de fechas y la pregunta que quieres responder.", "No compares períodos con distinta duración sin normalizar el análisis."],
     outcome: "Sales con una acción concreta: coaching, priorización, ajuste de base o seguimiento de campaña.",
-    screenTitle: "Reportes de gestión",
+    screenTitle: "Reportes · Gestión",
     screenControls: ["Selector de período", "Indicadores", "Desglose por ejecutivo, campaña o resultado"],
     steps: [
       { title: "Selecciona período", do: "Elige fechas comparables y aplica los filtros necesarios antes de leer los indicadores.", verify: "El encabezado y los gráficos reflejan exactamente el período elegido." },
@@ -159,15 +160,15 @@ const GUIDES: Guide[] = [
     id: "dialer-reports",
     title: "Analizar el discador",
     description: "Revisa servicio, abandono, ocupación y AHT sin confundir capacidad con gestión.",
-    href: "/dashboard/supervision/reportes",
-    action: "Ver reportes de discador",
+    href: "/dashboard/reportes/discador",
+    action: "Ver reportes del discador",
     icon: LineChart,
     roles: ["supervisor", "admin"],
     tags: ["discador", "aht", "abandono", "ocupación", "llamadas"],
-    route: ["Operación", "Reportes de discador"],
+    route: ["Consola", "Reportes", "Discador"],
     before: ["Selecciona un período cerrado o un corte horario claro.", "Revisa primero si existía capacidad de agentes disponible."],
     outcome: "Puedes diferenciar un problema de base, de dotación o de configuración del discador.",
-    screenTitle: "Reportes de discador",
+    screenTitle: "Reportes · Discador",
     screenControls: ["Rango de fechas", "Nivel de servicio", "Abandono, AHT y ocupación"],
     steps: [
       { title: "Fija el corte", do: "Selecciona rango de fechas y, si aplica, la campaña que quieres revisar.", verify: "Todos los indicadores se actualizan para el mismo corte." },
@@ -184,7 +185,7 @@ const GUIDES: Guide[] = [
     icon: Megaphone,
     roles: ["admin"],
     tags: ["campaña", "crear campaña", "activar", "configurar", "discador"],
-    route: ["Discador", "Campañas", "Crear campaña"],
+    route: ["Administración", "Operación", "Campañas"],
     before: ["Define nombre, objetivo y responsables de la campaña.", "Ten el flujo y la base preparados o identifica quién los proveerá."],
     outcome: "La campaña queda lista para operar, sin pendientes de flujo, ejecutivos, base ni discador.",
     screenTitle: "Campañas",
@@ -205,7 +206,7 @@ const GUIDES: Guide[] = [
     icon: Workflow,
     roles: ["admin"],
     tags: ["flujo", "script", "plantilla", "pregunta", "campaña"],
-    route: ["Administración", "Flujos", "Crear flujo desde cero"],
+    route: ["Administración", "Operación", "Flujos de gestión"],
     before: ["Define las preguntas, alternativas y resultados que el ejecutivo debe registrar.", "Identifica la campaña que recibirá el flujo."],
     outcome: "El flujo queda activo, con pasos obligatorios y conectado a la campaña elegida.",
     screenTitle: "Flujos de gestión",
@@ -221,15 +222,15 @@ const GUIDES: Guide[] = [
     id: "upload",
     title: "Cargar una base de leads",
     description: "Importa una base, valida columnas y asóciala a la campaña correcta.",
-    href: "/dashboard/leads/cargar",
-    action: "Cargar leads",
+    href: "/dashboard/admin/cargas",
+    action: "Abrir cargas y listas",
     icon: FileUp,
     roles: ["admin"],
     tags: ["excel", "csv", "importar", "base", "leads"],
-    route: ["Datos", "Cargar leads"],
+    route: ["Administración", "Operación", "Cargas y listas"],
     before: ["Revisa que el archivo no tenga datos duplicados o columnas mezcladas.", "Confirma la campaña destino antes de subirlo."],
     outcome: "La base queda asociada a la campaña y puedes comprobar el total cargado.",
-    screenTitle: "Cargar leads",
+    screenTitle: "Cargas y listas",
     screenControls: ["Selector de archivo", "Mapeo de columnas", "Selector de campaña", "Resumen de carga"],
     steps: [
       { title: "Selecciona el archivo", do: "Carga el archivo de la base y espera a que el sistema detecte encabezados y filas.", verify: "Ves la previsualización o el resumen de columnas detectadas." },
@@ -243,14 +244,14 @@ const GUIDES: Guide[] = [
     title: "Administrar usuarios, roles y equipos",
     description: "Crea accesos correctos y evita entregar permisos operativos que no corresponden.",
     href: "/dashboard/admin/usuarios",
-    action: "Ir a usuarios",
+    action: "Abrir usuarios y equipos",
     icon: ShieldCheck,
     roles: ["admin"],
     tags: ["usuario", "rol", "equipo", "supervisor", "agente"],
-    route: ["Administración", "Usuarios"],
+    route: ["Administración", "Plataforma", "Usuarios y equipos"],
     before: ["Confirma nombre, correo, rol y equipo con el responsable del área.", "Define quién supervisa al equipo antes de crear agentes."],
     outcome: "Cada persona ve solo las funciones que necesita y queda trazable en su equipo.",
-    screenTitle: "Usuarios",
+    screenTitle: "Usuarios y equipos",
     screenControls: ["Crear usuario", "Selector de rol", "Selector de equipo", "Listado de cuentas activas"],
     steps: [
       { title: "Crea la cuenta", do: "Ingresa los datos solicitados y verifica el correo antes de guardar.", verify: "La cuenta aparece en el listado con el nombre correcto." },
@@ -268,7 +269,7 @@ const GUIDES: Guide[] = [
     icon: PhoneCall,
     roles: ["admin"],
     tags: ["sip", "extensión", "telefonía", "pausa", "estado agente"],
-    route: ["Discador", "Extensiones SIP"],
+    route: ["Administración", "Plataforma", "Extensiones SIP"],
     before: ["El agente debe existir, estar activo y asociado a su equipo.", "Ten los datos de extensión entregados por telefonía."],
     outcome: "El agente puede quedar disponible para la cola y sus pausas quedan identificables.",
     screenTitle: "Extensiones SIP",
@@ -283,15 +284,15 @@ const GUIDES: Guide[] = [
     id: "vocalcom",
     title: "Importar gestión desde Vocalcom",
     description: "Incorpora resultados históricos con control previo, sin contaminar la operación activa.",
-    href: "/dashboard/admin/vocalcom",
-    action: "Abrir importación Vocalcom",
+    href: "/dashboard/admin/integraciones",
+    action: "Abrir Integraciones",
     icon: History,
     roles: ["admin"],
     tags: ["vocalcom", "histórico", "importar gestión", "resultado"],
-    route: ["Datos", "Cargar Vocalcom"],
+    route: ["Administración", "Plataforma", "Integraciones", "Importar gestión"],
     before: ["Confirma período, origen y formato del archivo exportado.", "Evita cargar dos veces el mismo corte."],
     outcome: "Los resultados históricos quedan revisados y disponibles para análisis sin duplicaciones conocidas.",
-    screenTitle: "Cargar Vocalcom",
+    screenTitle: "Integraciones",
     screenControls: ["Archivo de origen", "Resumen de detección", "Validación de campos", "Confirmación de importación"],
     steps: [
       { title: "Carga el export", do: "Selecciona el archivo proveniente de Vocalcom y espera el resumen de detección.", verify: "El sistema reconoce filas y campos del archivo." },
@@ -304,14 +305,14 @@ const GUIDES: Guide[] = [
     title: "Gestionar leads de correo",
     description: "Clasifica, asigna y controla que cada solicitud por mail tenga responsable y respuesta.",
     href: "/dashboard/mail",
-    action: "Abrir leads mail",
+    action: "Abrir bandeja mail",
     icon: MailCheck,
     roles: ["supervisor", "admin"],
     tags: ["correo", "mail", "asignar", "entrada", "sla"],
-    route: ["Datos", "Leads mail"],
+    route: ["Consola", "Bandeja mail"],
     before: ["Define qué campaña y equipo atienden el canal.", "Revisa tiempos de respuesta comprometidos."],
     outcome: "Cada correo relevante tiene campaña, responsable y seguimiento verificable.",
-    screenTitle: "Leads mail",
+    screenTitle: "Bandeja mail",
     screenControls: ["Bandeja de ingresos", "Asignación de campaña/ejecutivo", "Estado de atención"],
     steps: [
       { title: "Revisa pendientes", do: "Ordena o filtra por ingresos sin asignar y por tiempo transcurrido.", verify: "Identificas primero los casos que pueden incumplir respuesta." },
@@ -328,7 +329,7 @@ const GUIDES: Guide[] = [
     icon: UserPlus,
     roles: ["supervisor", "admin"],
     tags: ["nuevo lead", "manual", "registro", "crear"],
-    route: ["Datos", "Nuevo registro"],
+    route: ["Consola", "Registros", "Nuevo registro"],
     before: ["Busca primero por RUT, teléfono y correo para evitar duplicados.", "Define la campaña y responsable antes de guardar."],
     outcome: "El lead queda disponible en la campaña correcta con información suficiente para ser gestionado.",
     screenTitle: "Nuevo registro",
@@ -352,7 +353,7 @@ const ROLE_COPY: Record<AppRole, { title: string; description: string; scope: st
     title: "Capacitación para supervisión",
     description: "Controla equipo, prioridades y resultados con instrucciones que explican exactamente dónde entrar y qué revisar.",
     scope: "Como Supervisor, ves la operación y los equipos que se te han asignado.",
-    searches: ["Monitor en vivo", "Mi equipo", "Reportes", "Leads mail"],
+    searches: ["Monitor en vivo", "Mi equipo", "Reportes", "Bandeja mail"],
   },
   admin: {
     title: "Manual operativo de administración",
@@ -432,6 +433,47 @@ function GuideDetail({ guide, onClose }: { guide: Guide; onClose: () => void }) 
   );
 }
 
+/**
+ * Glosario de métricas: misma fuente que los tooltips de las tablas y KPI
+ * (`src/lib/metric-definitions.ts`), para que la definición nunca se duplique.
+ */
+function MetricGlossary() {
+  const [open, setOpen] = useState(false);
+  const entries = metricGlossary();
+
+  return (
+    <section className="rounded-xl border border-border bg-surface p-4">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-2 text-left"
+      >
+        <span className="text-sm font-semibold text-foreground">Glosario de métricas</span>
+        <span className="text-xs text-muted-foreground">{entries.length} términos</span>
+        <ArrowRight
+          size={15}
+          className={`ml-auto text-muted-foreground transition-transform ${open ? "rotate-90" : ""}`}
+        />
+      </button>
+
+      {open && (
+        <dl className="mt-4 grid gap-4 sm:grid-cols-2">
+          {entries.map((entry) => (
+            <div key={entry.id}>
+              <dt className="text-sm font-medium text-foreground">{entry.label}</dt>
+              <dd className="mt-0.5 text-sm leading-5 text-muted-foreground">
+                {entry.definition}
+                {entry.formula && <span className="mt-0.5 block text-xs">{entry.formula}</span>}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </section>
+  );
+}
+
 export function HelpCenter({ role }: { role: AppRole }) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -444,6 +486,8 @@ export function HelpCenter({ role }: { role: AppRole }) {
     <section className="overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 via-surface to-surface p-6 sm:p-8"><div className="max-w-4xl"><span className="inline-flex items-center gap-2 rounded-full bg-surface px-3 py-1 text-xs font-semibold text-primary shadow-sm"><CircleHelp size={15} /> Centro de capacitación Atlas</span><h1 className="mt-4 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">{copy.title}</h1><p className="mt-2 text-sm leading-6 text-muted-foreground sm:text-base">{copy.description}</p><div className="relative mt-5 max-w-3xl"><Search size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Busca una tarea: campaña, flujo, carga, agenda, usuarios..." className="w-full rounded-xl border border-border bg-surface py-3 pl-10 pr-4 text-sm text-foreground shadow-sm outline-none placeholder:text-muted-foreground focus:border-primary" /></div><div className="mt-3 flex flex-wrap gap-2">{copy.searches.map((item) => <button key={item} type="button" onClick={() => setQuery(item)} className="rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:border-primary hover:text-primary">{item}</button>)}</div></div></section>
     <section className="rounded-xl border border-border bg-surface p-4"><p className="text-sm font-semibold text-foreground">Tu alcance</p><p className="mt-1 text-sm text-muted-foreground">{copy.scope}</p><p className="mt-3 flex gap-2 rounded-lg bg-surface-muted/60 p-3 text-xs leading-5 text-muted-foreground"><CheckCircle2 size={16} className="mt-0.5 shrink-0 text-success" />Cada guía incluye ruta de menú, una referencia visual, pantalla real cargable y validaciones de término. Así sabes dónde entrar, qué hacer y cuándo está bien hecho.</p></section>
     {selectedGuide && <GuideDetail guide={selectedGuide} onClose={() => setSelectedId(null)} />}
+    <MetricGlossary />
+
     <section><div className="mb-4"><h2 className="text-lg font-semibold text-foreground">Guías disponibles</h2><p className="mt-1 text-sm text-muted-foreground">{normalizedQuery ? `${guides.length} resultado${guides.length === 1 ? "" : "s"} para tu búsqueda.` : `${guides.length} procedimientos habilitados para tu rol.`}</p></div>{guides.length > 0 ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{guides.map((guide) => { const Icon = guide.icon; return <article key={guide.id} className="flex flex-col rounded-xl border border-border bg-surface p-5 shadow-sm"><div className="flex gap-3"><div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Icon size={20} /></div><div><h3 className="text-base font-semibold text-foreground">{guide.title}</h3><p className="mt-1 text-sm leading-5 text-muted-foreground">{guide.description}</p></div></div><div className="mt-4 flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">{guide.route.map((item) => <span key={item} className="rounded border border-border bg-background px-2 py-1">{item}</span>)}</div><div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-4"><span className="text-xs text-muted-foreground">{guide.steps.length} pasos con validación</span><button type="button" onClick={() => { setSelectedId(guide.id); setQuery(""); }} className="inline-flex items-center gap-1 text-sm font-semibold text-primary hover:text-primary-hover">Ver capacitación <ArrowRight size={16} /></button></div></article>; })}</div> : <div className="rounded-xl border border-dashed border-border bg-surface p-8 text-center"><CircleHelp size={24} className="mx-auto text-muted-foreground" /><p className="mt-3 text-sm font-medium text-foreground">No encontramos una guía para “{query.trim()}”.</p><p className="mt-1 text-sm text-muted-foreground">Prueba con campaña, lead, agenda, flujo, carga, usuario o discador.</p></div>}</section>
   </div>;
 }

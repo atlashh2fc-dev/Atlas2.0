@@ -11,7 +11,7 @@ import {
 } from "@/components/reportes-charts";
 import { SupervisorAgentMetricsTable } from "@/components/supervisor-agent-metrics-table";
 import { ChartDownloadButton } from "@/components/chart-download-button";
-import { Button, Card, PageHeader, Select } from "@/components/ui";
+import { Button, Card, Select } from "@/components/ui";
 import { resolveCampaignScope } from "@/lib/campaign-scope";
 
 type SupervisorReportKpis = {
@@ -254,10 +254,9 @@ export default async function ReportesPage({
 
     return (
       <div className="space-y-6">
-        <PageHeader
-          title="Reportes del equipo"
-          description={`Últimos ${DASHBOARD_WINDOW_DAYS} días · ${formatDate(report.range.from)} a ${formatDate(report.range.to)}`}
-        />
+        <p className="text-sm text-muted-foreground">
+          {`Equipo · últimos ${DASHBOARD_WINDOW_DAYS} días · ${formatDate(report.range.from)} a ${formatDate(report.range.to)}`}
+        </p>
 
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <MetricCard
@@ -369,25 +368,26 @@ export default async function ReportesPage({
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={selectedCampaign ? `Dashboard — ${selectedCampaign.name}` : "Dashboard comercial"}
-        description={selectedCampaign ? "KPIs, embudo y seguimiento de la campaña seleccionada." : "KPIs consolidados de todas las campañas."}
-        actions={
-          campaigns.length > 0 ? (
-            <form className="flex items-center gap-2">
-              <Select name="campaign" defaultValue={selectedCampaignId ?? ""} className="w-auto">
-                <option value="">Todas las campañas</option>
-                {campaigns.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </Select>
-              <Button type="submit">Ver</Button>
-            </form>
-          ) : undefined
-        }
-      />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          {selectedCampaign
+            ? `${selectedCampaign.name} · KPIs, embudo y seguimiento de la campaña.`
+            : "Todas las campañas · KPIs consolidados."}
+        </p>
+        {campaigns.length > 0 && (
+          <form className="flex items-center gap-2">
+            <Select name="campaign" defaultValue={selectedCampaignId ?? ""} className="w-auto">
+              <option value="">Todas las campañas</option>
+              {campaigns.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+            <Button type="submit">Ver</Button>
+          </form>
+        )}
+      </div>
 
       {campaigns.length === 0 && (
         <Card className="p-6 text-center text-sm text-muted-foreground">

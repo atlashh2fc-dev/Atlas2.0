@@ -9,7 +9,7 @@ export default async function AgentesSipPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold text-foreground">Extensiones SIP de agentes</h1>
+        <h1 className="text-xl font-semibold text-foreground">Extensiones SIP</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Cada ejecutivo necesita su propia extensión para usar la barra CTI y para que el motor de
           discado lo agregue a la cola de una campaña. Al generar una extensión, el motor la detecta solo

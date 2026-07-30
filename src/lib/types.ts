@@ -61,11 +61,16 @@ export interface Interaction {
   created_at: string;
 }
 
+export type WorkflowStatus = "draft" | "published";
+
 export interface Workflow {
   id: string;
   name: string;
   description: string | null;
   is_active: boolean;
+  /** draft = en construcción; published = operativo para las campañas. */
+  status: WorkflowStatus;
+  published_at: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -249,6 +254,12 @@ export interface AgentStatusReason {
   sort_order: number;
   is_active: boolean;
   is_system: boolean;
+  /** El tiempo en este estado cuenta como trabajo efectivo. */
+  is_productive: boolean;
+  /** El tiempo en este estado no entra en el cálculo de adherencia. */
+  excludes_from_adherence: boolean;
+  /** Tope sugerido de permanencia en segundos; nulo = sin tope. */
+  max_seconds: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -307,17 +318,22 @@ export interface CallMetricsReportRow {
   service_level_20s: number | null;
 }
 
+/**
+ * Actividad por ejecutivo. Las columnas de jornada llegan en null cuando el
+ * reporte se pide filtrado por campaña: ese tiempo no es atribuible a una
+ * campaña (ver get_agent_activity_report).
+ */
 export interface AgentActivityReportRow {
   profile_id: string;
   full_name: string;
   calls_handled: number;
   talk_seconds: number;
   avg_handle_seconds: number | null;
-  logged_in_seconds: number;
-  productive_seconds: number;
+  logged_in_seconds: number | null;
+  productive_seconds: number | null;
   occupancy_rate: number | null;
-  available_seconds: number;
-  paused_seconds: number;
+  available_seconds: number | null;
+  paused_seconds: number | null;
   adherence_rate: number | null;
 }
 

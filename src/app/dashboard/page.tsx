@@ -1,7 +1,7 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { LiveDashboard } from "@/components/live-dashboard";
-import { StatCard } from "@/components/stat-card";
+import { MetricCard, PageHeader, SectionCard, buttonClasses } from "@/components/ui";
 import Link from "next/link";
 import type { AgentPerformance, HomeDashboardSummary, Profile } from "@/lib/types";
 
@@ -86,29 +86,21 @@ export default async function DashboardPage() {
     const topAgents = (performanceResult.data ?? []) as AgentPerformance[];
 
     return (
-      <div className="space-y-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-semibold text-foreground">Control de equipo</h1>
-            <p className="text-sm text-muted-foreground">
-              Foco diario: carga, agendas vencidas y rendimiento de tus ejecutivos.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Link
-              href="/dashboard/team"
-              className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
-            >
-              Reasignar trabajo
-            </Link>
-            <Link
-              href="/dashboard/reportes"
-              className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground hover:bg-surface-muted"
-            >
-              Ver reportes
-            </Link>
-          </div>
-        </div>
+      <div className="space-y-5">
+        <PageHeader
+          title={`Hola, ${firstName(profile)}`}
+          description="Tu foco de hoy: agendas vencidas, trabajo sin asignar y rendimiento del equipo."
+          actions={
+            <div className="flex flex-wrap gap-2">
+              <Link href="/dashboard/team" className={buttonClasses()}>
+                Repartir trabajo
+              </Link>
+              <Link href="/dashboard/reportes" className={buttonClasses({ variant: "secondary" })}>
+                Ver reportes
+              </Link>
+            </div>
+          }
+        />
 
         {!teamId && (
           <div className="rounded-lg border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger">
@@ -116,62 +108,70 @@ export default async function DashboardPage() {
           </div>
         )}
 
+        {/* Cada número abre la lista que lo compone. */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-          <StatCard label="Ejecutivos" value={agentsResult.count ?? 0} />
-          <StatCard label="Leads del equipo" value={totalLeadsResult.count ?? 0} />
-          <StatCard label="Sin asignar" value={unassignedResult.count ?? 0} />
-          <StatCard label="Agendas vencidas" value={overdueResult.count ?? 0} />
-          <StatCard label="Agendas hoy" value={todayResult.count ?? 0} />
+          <MetricCard
+            label="Agendas vencidas"
+            value={(overdueResult.count ?? 0).toLocaleString("es-CL")}
+            hint="Compromisos a recuperar"
+            href="/dashboard/leads?view=vencidas"
+            hrefLabel="Recuperar"
+            tone={(overdueResult.count ?? 0) > 0 ? "danger" : "good"}
+          />
+          <MetricCard
+            label="Agendas de hoy"
+            value={(todayResult.count ?? 0).toLocaleString("es-CL")}
+            href="/dashboard/leads?view=hoy"
+            hrefLabel="Ver agenda"
+          />
+          <MetricCard
+            label="Sin asignar"
+            value={(unassignedResult.count ?? 0).toLocaleString("es-CL")}
+            hint="Listo para repartir"
+            href="/dashboard/team"
+            hrefLabel="Repartir"
+            tone={(unassignedResult.count ?? 0) > 0 ? "warn" : "good"}
+          />
+          <MetricCard
+            label="Base del equipo"
+            value={(totalLeadsResult.count ?? 0).toLocaleString("es-CL")}
+            href="/dashboard/leads"
+            hrefLabel="Ver registros"
+          />
+          <MetricCard
+            label="Ejecutivos"
+            value={(agentsResult.count ?? 0).toLocaleString("es-CL")}
+            href="/dashboard/team"
+            hrefLabel="Ver carga"
+          />
         </div>
 
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-          <div className="rounded-lg border border-border bg-surface p-4 shadow-sm xl:col-span-2">
-            <h2 className="text-sm font-semibold text-foreground">Alertas operativas</h2>
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <Link
-                href="/dashboard/team"
-                className="rounded-lg border border-border bg-background p-4 hover:bg-surface-muted"
-              >
-                <p className="text-xs text-muted-foreground">Corregir vencidas</p>
-                <p className="mt-1 text-lg font-semibold text-foreground">{overdueResult.count ?? 0}</p>
-              </Link>
-              <Link
-                href="/dashboard/team"
-                className="rounded-lg border border-border bg-background p-4 hover:bg-surface-muted"
-              >
-                <p className="text-xs text-muted-foreground">Asignar pendientes</p>
-                <p className="mt-1 text-lg font-semibold text-foreground">{unassignedResult.count ?? 0}</p>
-              </Link>
-              <Link
-                href="/dashboard/leads/nuevo"
-                className="rounded-lg border border-border bg-background p-4 hover:bg-surface-muted"
-              >
-                <p className="text-xs text-muted-foreground">Registro manual</p>
-                <p className="mt-1 text-lg font-semibold text-foreground">Nuevo registro</p>
-              </Link>
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-border bg-surface shadow-sm">
-            <div className="border-b border-border px-5 py-4">
-              <h2 className="text-sm font-semibold text-foreground">Top ejecutivos</h2>
-            </div>
-            <ul className="divide-y divide-border">
-              {topAgents.length === 0 && (
-                <li className="px-5 py-4 text-sm text-muted-foreground">Sin gestiones registradas.</li>
-              )}
-              {topAgents.map((agent) => (
-                <li key={agent.agent_id} className="flex items-center justify-between px-5 py-3">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">{agent.full_name}</p>
-                    <p className="text-xs text-muted-foreground">{agent.leads_managed} leads gestionados</p>
-                  </div>
-                  <span className="text-sm font-semibold text-foreground">{agent.total_interactions}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
+        <SectionCard
+          title="Rendimiento del equipo"
+          description="Los cinco con más gestiones registradas. Abre la cartera de cada uno para revisar su trabajo."
+        >
+          <ul className="divide-y divide-border">
+            {topAgents.length === 0 && (
+              <li className="px-5 py-4 text-sm text-muted-foreground">Sin gestiones registradas.</li>
+            )}
+            {topAgents.map((agent) => (
+              <li key={agent.agent_id} className="flex items-center justify-between gap-3 px-5 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-foreground">{agent.full_name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {agent.leads_managed} registros gestionados · {agent.total_interactions} gestiones
+                  </p>
+                </div>
+                <Link
+                  href={`/dashboard/leads?agent=${agent.agent_id}`}
+                  className="flex-shrink-0 text-xs font-medium text-primary hover:underline"
+                >
+                  Ver cartera
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
       </div>
     );
   }
@@ -196,11 +196,13 @@ export default async function DashboardPage() {
         .from("leads")
         .select("id", { count: "exact", head: true })
         .is("assigned_to", null),
+      // Todas las campañas activas: con un tope de 8 los contadores de "sin
+      // flujo" y "sin ejecutivos" mentían justo en la pantalla que existe para
+      // detectarlos.
       supabase
         .from("campaigns")
         .select("id, name, workflow_id, is_active")
-        .order("created_at", { ascending: false })
-        .limit(8),
+        .order("created_at", { ascending: false }),
       supabase.from("campaign_agents").select("campaign_id"),
     ]);
 
@@ -212,94 +214,125 @@ export default async function DashboardPage() {
     );
 
     return (
-      <div className="space-y-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-semibold text-foreground">Administración Atlas</h1>
-            <p className="text-sm text-muted-foreground">
-              Salud del sistema, configuración comercial y calidad de operación.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Link
-              href="/dashboard/admin/campanas"
-              className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
-            >
-              Configurar campañas
-            </Link>
-            <Link
-              href="/dashboard/admin/usuarios"
-              className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground hover:bg-surface-muted"
-            >
-              Usuarios y equipos
-            </Link>
-          </div>
-        </div>
+      <div className="space-y-5">
+        <PageHeader
+          title="Salud de la plataforma"
+          description="Qué está sin configurar y qué puede frenar la operación hoy."
+          actions={
+            <div className="flex flex-wrap gap-2">
+              <Link href="/dashboard/admin/campanas" className={buttonClasses()}>
+                Campañas
+              </Link>
+              <Link href="/dashboard/admin/cargas" className={buttonClasses({ variant: "secondary" })}>
+                Cargar base
+              </Link>
+            </div>
+          }
+        />
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-          <StatCard label="Usuarios activos" value={activeUsersResult.count ?? 0} />
-          <StatCard label="Campañas activas" value={activeCampaignsResult.count ?? 0} />
-          <StatCard label="Leads sin asignar" value={unassignedLeadsResult.count ?? 0} />
-          <StatCard label="Campañas sin flujo" value={campaignsWithoutWorkflow.length} />
-          <StatCard label="Campañas sin ejecutivos" value={campaignsWithoutAgents.length} />
+          <MetricCard
+            label="Campañas sin flujo"
+            value={campaignsWithoutWorkflow.length}
+            hint="No tienen guion de gestión"
+            href="/dashboard/admin/campanas"
+            hrefLabel="Revisar"
+            tone={campaignsWithoutWorkflow.length > 0 ? "danger" : "good"}
+          />
+          <MetricCard
+            label="Campañas sin ejecutivos"
+            value={campaignsWithoutAgents.length}
+            hint="No pueden operar"
+            href="/dashboard/admin/campanas"
+            hrefLabel="Revisar"
+            tone={campaignsWithoutAgents.length > 0 ? "danger" : "good"}
+          />
+          <MetricCard
+            label="Registros sin asignar"
+            value={(unassignedLeadsResult.count ?? 0).toLocaleString("es-CL")}
+            href="/dashboard/leads?view=disponibles"
+            hrefLabel="Ver disponibles"
+            tone={(unassignedLeadsResult.count ?? 0) > 0 ? "warn" : "good"}
+          />
+          <MetricCard
+            label="Campañas activas"
+            value={activeCampaignsResult.count ?? 0}
+            href="/dashboard/admin/campanas"
+            hrefLabel="Administrar"
+          />
+          <MetricCard
+            label="Usuarios activos"
+            value={activeUsersResult.count ?? 0}
+            href="/dashboard/admin/usuarios?active=si"
+            hrefLabel="Ver usuarios"
+          />
         </div>
 
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-          <div className="rounded-lg border border-border bg-surface p-4 shadow-sm xl:col-span-2">
-            <h2 className="text-sm font-semibold text-foreground">Pendientes de configuración</h2>
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <Link
-                href="/dashboard/admin/flujos"
-                className="rounded-lg border border-border bg-background p-4 hover:bg-surface-muted"
-              >
-                <p className="text-xs text-muted-foreground">Flujos faltantes</p>
-                <p className="mt-1 text-lg font-semibold text-foreground">{campaignsWithoutWorkflow.length}</p>
-              </Link>
-              <Link
-                href="/dashboard/admin/campanas"
-                className="rounded-lg border border-border bg-background p-4 hover:bg-surface-muted"
-              >
-                <p className="text-xs text-muted-foreground">Sin ejecutivos</p>
-                <p className="mt-1 text-lg font-semibold text-foreground">{campaignsWithoutAgents.length}</p>
-              </Link>
-              <Link
-                href="/dashboard/leads/cargar"
-                className="rounded-lg border border-border bg-background p-4 hover:bg-surface-muted"
-              >
-                <p className="text-xs text-muted-foreground">Importación</p>
-                <p className="mt-1 text-lg font-semibold text-foreground">Cargar leads</p>
-              </Link>
-            </div>
-          </div>
+        <SectionCard
+          title="Requiere configuración"
+          description="Cada fila lleva directo al lugar donde se arregla."
+        >
+          <ul className="divide-y divide-border">
+            {campaignsWithoutWorkflow.length === 0 && campaignsWithoutAgents.length === 0 && (
+              <li className="px-5 py-4 text-sm text-muted-foreground">
+                Todas las campañas activas tienen flujo y ejecutivos asignados.
+              </li>
+            )}
+            {campaignsWithoutWorkflow.map((campaign) => (
+              <li key={`wf-${campaign.id}`} className="flex items-center justify-between gap-3 px-5 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-foreground">{campaign.name}</p>
+                  <p className="text-xs text-danger">Sin flujo de gestión: los ejecutivos no tendrán guion.</p>
+                </div>
+                <Link
+                  href={`/dashboard/admin/campanas/${campaign.id}#flujo`}
+                  className="flex-shrink-0 text-xs font-medium text-primary hover:underline"
+                >
+                  Asignar flujo
+                </Link>
+              </li>
+            ))}
+            {campaignsWithoutAgents.map((campaign) => (
+              <li key={`ag-${campaign.id}`} className="flex items-center justify-between gap-3 px-5 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-foreground">{campaign.name}</p>
+                  <p className="text-xs text-danger">Sin ejecutivos asignados: la campaña no puede operar.</p>
+                </div>
+                <Link
+                  href={`/dashboard/admin/campanas/${campaign.id}/ejecutivos`}
+                  className="flex-shrink-0 text-xs font-medium text-primary hover:underline"
+                >
+                  Asignar ejecutivos
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
 
-          <div className="rounded-lg border border-border bg-surface shadow-sm">
-            <div className="border-b border-border px-5 py-4">
-              <h2 className="text-sm font-semibold text-foreground">Campañas recientes</h2>
-            </div>
-            <ul className="divide-y divide-border">
-              {campaigns.length === 0 && (
-                <li className="px-5 py-4 text-sm text-muted-foreground">No hay campañas configuradas.</li>
-              )}
-              {campaigns.map((campaign) => (
-                <li key={campaign.id} className="flex items-center justify-between gap-3 px-5 py-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-foreground">{campaign.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {campaign.is_active ? "Activa" : "Inactiva"} ·{" "}
-                      {campaign.workflow_id ? "Con flujo" : "Sin flujo"}
-                    </p>
-                  </div>
-                  <Link
-                    href={`/dashboard/admin/campanas/${campaign.id}`}
-                    className="text-xs text-primary hover:underline"
-                  >
-                    Abrir
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
+        <SectionCard title="Campañas recientes" description="Las ocho últimas creadas.">
+          <ul className="divide-y divide-border">
+            {campaigns.length === 0 && (
+              <li className="px-5 py-4 text-sm text-muted-foreground">No hay campañas configuradas.</li>
+            )}
+            {campaigns.slice(0, 8).map((campaign) => (
+              <li key={campaign.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-foreground">{campaign.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {campaign.is_active ? "Activa" : "Inactiva"} ·{" "}
+                    {campaign.workflow_id ? "Con flujo" : "Sin flujo"}
+                  </p>
+                </div>
+                <Link
+                  href={`/dashboard/admin/campanas/${campaign.id}`}
+                  className="flex-shrink-0 text-xs font-medium text-primary hover:underline"
+                >
+                  Abrir
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
       </div>
     );
   }
@@ -309,23 +342,19 @@ export default async function DashboardPage() {
   const summary = data as HomeDashboardSummary;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">
-            Hola, {firstName(profile)}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Tu mesa de trabajo para avanzar leads, agendas y gestiones del día.
-          </p>
-        </div>
-        <Link
-          href={summary.agenda[0] ? `/dashboard/leads/${summary.agenda[0].id}` : "/dashboard/leads"}
-          className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
-        >
-          Gestionar siguiente
-        </Link>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title={`Hola, ${firstName(profile)}`}
+        description="Tu mesa de trabajo: la siguiente llamada, tus agendas y las gestiones del día."
+        actions={
+          <Link
+            href={summary.agenda[0] ? `/dashboard/leads/${summary.agenda[0].id}` : "/dashboard/leads"}
+            className={buttonClasses()}
+          >
+            {summary.agenda[0] ? "Llamar al siguiente" : "Ver mis registros"}
+          </Link>
+        }
+      />
 
       <LiveDashboard initialSummary={summary} />
     </div>

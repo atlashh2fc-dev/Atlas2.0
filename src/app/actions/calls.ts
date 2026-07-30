@@ -1,8 +1,8 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import {
   CALL_REASONS,
   buildCallReasonCatalogFromWorkflow,
@@ -10,6 +10,7 @@ import {
   type CallStatus,
   type CallOutcome,
 } from "@/lib/call-typification";
+import { LEGAL_INTERCALL_BREAK_MS } from "@/lib/intercall-break";
 import type { Call, WorkflowStep, WorkflowStepBranch } from "@/lib/types";
 
 async function requireAgent() {
@@ -19,6 +20,75 @@ async function requireAgent() {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("No autenticado");
   return { supabase, userId: user.id };
+}
+
+async function releaseAgentFromWrapUp(userId: string, campaignId: string | null) {
+  if (!campaignId) return;
+  const admin = createAdminClient();
+  const now = new Date().toISOString();
+  const { error } = await admin
+    .from("dialer_agent_sessions")
+    .update({
+      status: "available",
+      last_state_change_at: now,
+      updated_at: now,
+    })
+    .eq("profile_id", userId)
+    .eq("campaign_id", campaignId)
+    .eq("status", "wrap_up");
+  if (error) throw new Error(error.message);
+}
+
+async function getLeadCampaignId(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  leadId: string
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("leads")
+    .select("campaign_id")
+    .eq("id", leadId)
+    .single();
+  if (error) throw new Error(error.message);
+  return data.campaign_id;
+}
+
+async function assertIntercallBreakCompleted(params: {
+  userId: string;
+  campaignId: string | null;
+  requireCallEnded?: boolean;
+}) {
+  const { userId, campaignId, requireCallEnded = false } = params;
+  if (!campaignId) return;
+
+  const admin = createAdminClient();
+  const { data: session, error } = await admin
+    .from("dialer_agent_sessions")
+    .select("status, last_state_change_at")
+    .eq("profile_id", userId)
+    .eq("campaign_id", campaignId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!session) return;
+
+  if (
+    requireCallEnded &&
+    (session.status === "ringing" || session.status === "on_call")
+  ) {
+    throw new Error("Finaliza la llamada antes de cerrar la gestión.");
+  }
+
+  if (session.status !== "wrap_up") return;
+  const elapsedMs = Date.now() - new Date(session.last_state_change_at).getTime();
+  if (elapsedMs >= LEGAL_INTERCALL_BREAK_MS) return;
+
+  const remaining = Math.max(
+    1,
+    Math.ceil((LEGAL_INTERCALL_BREAK_MS - elapsedMs) / 1000)
+  );
+  throw new Error(
+    `Interrupción legal en curso. Espera ${remaining} segundo${remaining === 1 ? "" : "s"} antes de continuar la tipificación.`
+  );
 }
 
 function inferNextActionWindow(nextActionAt: string | null): string | null {
@@ -167,6 +237,8 @@ export async function saveCallProgress(input: {
 }) {
   const { supabase, userId } = await requireAgent();
   const { callId, leadId, status, outcome, reason, notes } = input;
+  const campaignId = await getLeadCampaignId(supabase, leadId);
+  await assertIntercallBreakCompleted({ userId, campaignId });
 
   const { error: updateError } = await supabase
     .from("calls")
@@ -209,6 +281,8 @@ export async function saveCallAgenda(input: {
 }) {
   const { supabase, userId } = await requireAgent();
   const { callId, leadId, nextActionAt } = input;
+  const campaignId = await getLeadCampaignId(supabase, leadId);
+  await assertIntercallBreakCompleted({ userId, campaignId });
 
   if (!nextActionAt || Number.isNaN(new Date(nextActionAt).getTime())) {
     throw new Error("Selecciona una fecha y hora de agenda válida.");
@@ -256,7 +330,7 @@ export async function closeCall(input: {
   equifax_uf_amount: number | null;
   equifax_recipient_email: string | null;
 }) {
-  const { supabase } = await requireAgent();
+  const { supabase, userId } = await requireAgent();
   const {
     callId,
     leadId,
@@ -276,6 +350,11 @@ export async function closeCall(input: {
     .eq("id", leadId)
     .single();
   if (leadFetchError) throw new Error(leadFetchError.message);
+  await assertIntercallBreakCompleted({
+    userId,
+    campaignId: lead.campaign_id,
+    requireCallEnded: true,
+  });
   const reasonCatalog = await getLeadCallReasonCatalog({ supabase, lead });
 
   const errors = validateCallClosure(
@@ -311,10 +390,10 @@ export async function closeCall(input: {
     p_equifax_recipient_email: equifax_recipient_email,
   });
   if (closeError) throw new Error(closeError.message);
+  await releaseAgentFromWrapUp(userId, lead.campaign_id);
 
   revalidatePath(`/dashboard/leads/${leadId}`);
   revalidatePath("/dashboard/leads");
-  redirect("/dashboard/leads");
 }
 
 /**
@@ -325,6 +404,18 @@ export async function closeCall(input: {
 export async function discardCallTechnicalError(input: { callId: string; leadId: string; reason: string }) {
   const { supabase, userId } = await requireAgent();
   const { callId, leadId, reason } = input;
+
+  const { data: lead, error: leadError } = await supabase
+    .from("leads")
+    .select("campaign_id")
+    .eq("id", leadId)
+    .single();
+  if (leadError) throw new Error(leadError.message);
+  await assertIntercallBreakCompleted({
+    userId,
+    campaignId: lead.campaign_id,
+    requireCallEnded: true,
+  });
 
   const { error } = await supabase
     .from("calls")
@@ -347,7 +438,8 @@ export async function discardCallTechnicalError(input: { callId: string; leadId:
     payload: { reason },
   });
 
+  await releaseAgentFromWrapUp(userId, lead.campaign_id);
+
   revalidatePath(`/dashboard/leads/${leadId}`);
   revalidatePath("/dashboard/leads");
-  redirect("/dashboard/leads");
 }

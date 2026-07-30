@@ -1,7 +1,8 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { resolveCampaignScope } from "@/lib/campaign-scope";
-import Link from "next/link";
+import { PageHeader } from "@/components/ui";
+import { AgendaTable, type AgendaRow } from "@/components/agenda-table";
 
 export default async function MyAgendaPage({
   searchParams,
@@ -13,77 +14,57 @@ export default async function MyAgendaPage({
   const campaignScope = await resolveCampaignScope(campaign);
   const supabase = await createClient();
 
+  // El embed tiene que nombrar la clave foránea: `campaigns(name)` es ambiguo
+  // (hay más de una relación entre leads y campaigns) y PostgREST responde
+  // PGRST201, lo que dejaba esta pantalla siempre vacía sin avisar.
   const leadsQuery = supabase
     .from("leads")
-    .select("id, full_name, rut, phone, next_action_at, tipificacion_actual, campaigns(name)")
+    .select("id, full_name, rut, phone, next_action_at, tipificacion_actual, campaigns!leads_campaign_id_fkey(name)")
     .eq("managed_by", profile.id)
     .not("next_action_at", "is", null)
     .order("next_action_at", { ascending: true })
-    .limit(100);
+    .limit(500);
   if (campaignScope) leadsQuery.eq("campaign_id", campaignScope);
-  const { data: leads } = await leadsQuery;
+  const { data: leads, error } = await leadsQuery;
 
-  const now = new Date();
-  const overdue = (leads ?? []).filter((l) => new Date(l.next_action_at!) <= now);
-  const upcoming = (leads ?? []).filter((l) => new Date(l.next_action_at!) > now);
+  const now = new Date().getTime();
+  const rows: AgendaRow[] = (leads ?? []).map((lead) => {
+    // El embed uno-a-uno llega como objeto; el array es solo la forma que usa
+    // PostgREST cuando la relación es de varios.
+    const embedded = lead.campaigns as { name: string } | { name: string }[] | null;
+    const campaign = Array.isArray(embedded) ? embedded[0]?.name : embedded?.name;
+    return {
+      id: lead.id,
+      full_name: lead.full_name,
+      contact: lead.rut ?? lead.phone ?? "—",
+      campaign: campaign ?? "Sin campaña",
+      tipificacion: lead.tipificacion_actual ?? "—",
+      next_action_at: lead.next_action_at!,
+      overdue: new Date(lead.next_action_at!).getTime() <= now,
+    };
+  });
+
+  // Vencidas primero; dentro de cada grupo, la más urgente arriba.
+  const ordered = [...rows.filter((row) => row.overdue), ...rows.filter((row) => !row.overdue)];
+  const overdueCount = rows.filter((row) => row.overdue).length;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-foreground">Mi agenda</h1>
-        <p className="text-sm text-muted-foreground">
-          Todas tus próximas llamadas agendadas, vencidas primero.
+    <div className="space-y-5">
+      <PageHeader
+        title="Mi agenda"
+        description={
+          overdueCount > 0
+            ? `Tus próximas llamadas agendadas. Tienes ${overdueCount} ${overdueCount === 1 ? "vencida" : "vencidas"} por recuperar.`
+            : "Tus próximas llamadas agendadas, vencidas primero."
+        }
+      />
+      {error ? (
+        <p className="rounded-lg border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger">
+          No se pudo cargar tu agenda: {error.message}
         </p>
-      </div>
-
-      <div className="overflow-hidden rounded-xl border border-border bg-surface">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-left text-xs text-muted-foreground">
-              <th className="px-5 py-3 font-medium">Lead</th>
-              <th className="px-5 py-3 font-medium">RUT / Teléfono</th>
-              <th className="px-5 py-3 font-medium">Campaña</th>
-              <th className="px-5 py-3 font-medium">Tipificación actual</th>
-              <th className="px-5 py-3 font-medium">Agenda</th>
-              <th className="px-5 py-3 font-medium"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {(leads ?? []).length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-5 py-6 text-center text-muted-foreground">
-                  No tienes agendas pendientes.
-                </td>
-              </tr>
-            )}
-            {[...overdue, ...upcoming].map((l) => {
-              const isOverdue = new Date(l.next_action_at!) <= now;
-              return (
-                <tr key={l.id}>
-                  <td className="px-5 py-3 font-medium text-foreground">{l.full_name}</td>
-                  <td className="px-5 py-3 text-muted-foreground">{l.rut ?? l.phone ?? "—"}</td>
-                  <td className="px-5 py-3 text-muted-foreground">
-                    {Array.isArray(l.campaigns) ? l.campaigns[0]?.name ?? "Sin campaña" : "Sin campaña"}
-                  </td>
-                  <td className="px-5 py-3 text-muted-foreground">{l.tipificacion_actual ?? "—"}</td>
-                  <td className={`px-5 py-3 ${isOverdue ? "font-medium text-danger" : "text-foreground"}`}>
-                    {isOverdue ? "Vencida: " : ""}
-                    {new Date(l.next_action_at!).toLocaleString("es-CL")}
-                  </td>
-                  <td className="px-5 py-3 text-right">
-                    <Link
-                      href={`/dashboard/leads/${l.id}`}
-                      className="inline-flex items-center rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary-hover"
-                    >
-                      Llamar ahora
-                    </Link>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      ) : (
+        <AgendaTable rows={ordered} />
+      )}
     </div>
   );
 }

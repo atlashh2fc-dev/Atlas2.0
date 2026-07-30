@@ -3,6 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { createWorkflow, createWorkflowFromTemplate, toggleWorkflowActive } from "@/app/actions/workflows";
 import { WORKFLOW_TEMPLATES } from "@/lib/workflow-templates";
 import Link from "next/link";
+import type { WorkflowStep, WorkflowStepBranch } from "@/lib/types";
+import { validateWorkflow, workflowStatus } from "@/lib/workflow-validation";
+import { Badge } from "@/components/ui";
 
 export default async function WorkflowsPage({
   searchParams,
@@ -22,6 +25,32 @@ export default async function WorkflowsPage({
     .from("campaigns")
     .select("id, name, workflow_id")
     .order("name");
+
+  // Revisión de todos los flujos de una vez: dos tablas chicas, un viaje.
+  const [{ data: allSteps }, { data: allBranches }] = await Promise.all([
+    supabase.from("workflow_steps").select("*"),
+    supabase.from("workflow_step_branches").select("*"),
+  ]);
+
+  const issuesByWorkflow = new Map<string, ReturnType<typeof validateWorkflow>>();
+  for (const workflow of workflows ?? []) {
+    issuesByWorkflow.set(
+      workflow.id,
+      validateWorkflow(
+        ((allSteps ?? []) as WorkflowStep[]).filter((step) => step.workflow_id === workflow.id),
+        ((allBranches ?? []) as WorkflowStepBranch[]).filter((branch) => branch.workflow_id === workflow.id)
+      )
+    );
+  }
+
+  const campaignsByWorkflow = new Map<string, string[]>();
+  for (const campaign of campaigns ?? []) {
+    if (!campaign.workflow_id) continue;
+    campaignsByWorkflow.set(campaign.workflow_id, [
+      ...(campaignsByWorkflow.get(campaign.workflow_id) ?? []),
+      campaign.name,
+    ]);
+  }
 
   const selectedCampaign = (campaigns ?? []).find((campaign) => campaign.id === campaignId);
 
@@ -142,7 +171,8 @@ export default async function WorkflowsPage({
           <thead>
             <tr className="border-b border-border text-left text-xs text-muted-foreground">
               <th className="px-5 py-3 font-medium">Nombre</th>
-              <th className="px-5 py-3 font-medium">Descripción</th>
+              <th className="px-5 py-3 font-medium">En uso por</th>
+              <th className="px-5 py-3 font-medium">Revisión</th>
               <th className="px-5 py-3 font-medium">Estado</th>
               <th className="px-5 py-3 font-medium"></th>
             </tr>
@@ -150,19 +180,35 @@ export default async function WorkflowsPage({
           <tbody className="divide-y divide-border">
             {(workflows ?? []).length === 0 && (
               <tr>
-                <td colSpan={4} className="px-5 py-6 text-center text-muted-foreground">
+                <td colSpan={5} className="px-5 py-6 text-center text-muted-foreground">
                   Todavía no hay flujos creados.
                 </td>
               </tr>
             )}
-            {(workflows ?? []).map((w) => (
+            {(workflows ?? []).map((w) => {
+              const status = workflowStatus(issuesByWorkflow.get(w.id) ?? []);
+              const usedBy = campaignsByWorkflow.get(w.id) ?? [];
+              return (
               <tr key={w.id}>
                 <td className="px-5 py-3 font-medium text-foreground">
                   <Link href={`/dashboard/admin/flujos/${w.id}`} className="hover:text-primary">
                     {w.name}
                   </Link>
+                  {w.description && <p className="mt-0.5 text-xs text-muted-foreground">{w.description}</p>}
                 </td>
-                <td className="px-5 py-3 text-muted-foreground">{w.description ?? "—"}</td>
+                <td className="px-5 py-3 text-xs text-muted-foreground">
+                  {usedBy.length > 0 ? usedBy.join(", ") : "Ninguna campaña"}
+                </td>
+                <td className="px-5 py-3">
+                  <Link href={`/dashboard/admin/flujos/${w.id}`} className="inline-flex flex-wrap items-center gap-1.5">
+                    <Badge tone={w.status === "published" ? "success" : "warning"}>
+                      {w.status === "published" ? "Publicado" : "Borrador"}
+                    </Badge>
+                    <Badge tone={status.tone === "danger" ? "danger" : status.tone === "warning" ? "warning" : "success"}>
+                      {status.label}
+                    </Badge>
+                  </Link>
+                </td>
                 <td className="px-5 py-3">
                   <span
                     className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${
@@ -185,7 +231,8 @@ export default async function WorkflowsPage({
                   </form>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

@@ -29,7 +29,7 @@ function blankToNull(value: string | undefined): string | null {
 
 export async function createManualLeadRecord(input: ManualRecordInput): Promise<ManualRecordResult> {
   try {
-    const profile = await requireProfile(["supervisor", "admin"]);
+    await requireProfile(["supervisor", "admin"]);
     const fullName = blankToNull(input.fullName);
     const rut = blankToNull(input.rut);
     const phone = blankToNull(input.phone);

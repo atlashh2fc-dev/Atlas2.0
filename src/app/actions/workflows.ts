@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { WorkflowFieldType, WorkflowStep, WorkflowStepBranch } from "@/lib/types";
 import { WORKFLOW_TEMPLATES } from "@/lib/workflow-templates";
+import { validateWorkflow } from "@/lib/workflow-validation";
 import { requireProfile } from "@/lib/auth";
 
 export async function createWorkflow(formData: FormData) {
@@ -32,7 +33,8 @@ export async function createWorkflow(formData: FormData) {
 
   const { data, error } = await supabase
     .from("workflows")
-    .insert({ name, description })
+    // Nace en borrador: se publica recién cuando pasa la validación.
+    .insert({ name, description, status: "draft" })
     .select("id")
     .single();
 
@@ -88,7 +90,7 @@ export async function createWorkflowFromTemplate(formData: FormData) {
 
   const { data: workflow, error: workflowError } = await supabase
     .from("workflows")
-    .insert({ name: template.name, description: template.description })
+    .insert({ name: template.name, description: template.description, status: "draft" })
     .select("id")
     .single();
 
@@ -166,6 +168,48 @@ export async function toggleWorkflowActive(formData: FormData) {
 
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/admin/flujos");
+}
+
+/**
+ * Publica o vuelve a borrador un flujo. Publicar exige que la validación no
+ * tenga errores: un flujo con pasos inalcanzables deja al ejecutivo sin salida
+ * en medio de una llamada (ver src/lib/workflow-validation.ts).
+ */
+export async function setWorkflowStatus(formData: FormData) {
+  await requireProfile(["admin"]);
+  const workflowId = formData.get("workflow_id") as string;
+  const status = formData.get("status") === "published" ? "published" : "draft";
+
+  const supabase = await createClient();
+
+  if (status === "published") {
+    const [{ data: steps }, { data: branches }] = await Promise.all([
+      supabase.from("workflow_steps").select("*").eq("workflow_id", workflowId),
+      supabase.from("workflow_step_branches").select("*").eq("workflow_id", workflowId),
+    ]);
+    const errors = validateWorkflow(
+      (steps ?? []) as WorkflowStep[],
+      (branches ?? []) as WorkflowStepBranch[]
+    ).filter((issue) => issue.level === "error");
+
+    if (errors.length > 0) {
+      throw new Error(
+        `No se puede publicar: ${errors.length} ${errors.length === 1 ? "error" : "errores"} en el flujo. ${errors[0].message}`
+      );
+    }
+  }
+
+  const { error } = await supabase
+    .from("workflows")
+    .update({
+      status,
+      published_at: status === "published" ? new Date().toISOString() : null,
+    })
+    .eq("id", workflowId);
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/dashboard/admin/flujos");
+  revalidatePath(`/dashboard/admin/flujos/${workflowId}`);
 }
 
 export async function addWorkflowStep(formData: FormData) {
