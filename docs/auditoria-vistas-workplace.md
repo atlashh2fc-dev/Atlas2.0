@@ -471,6 +471,52 @@ de desplegar.
 
 ---
 
+## 10b. Formularios que se pueden enviar dos veces (2026-07-30)
+
+**Síntoma reportado:** al crear un usuario apareció "this page couldn't load, a server
+error occurred". **La cuenta sí se había creado.**
+
+**Causa,** según los logs de Vercel — dos POST a `/dashboard/admin/usuarios` con 1,1 s
+de diferencia:
+
+| Hora | Estado | Qué pasó |
+| --- | --- | --- |
+| 16:27:27.67 | 200 | Creó al usuario correctamente |
+| 16:27:28.75 | 500 | `Error: Ya existe una cuenta con este correo.` |
+
+Doble envío del formulario. El segundo chocó con la validación de duplicados de
+`createUserAccount`, que hace `throw`; un throw sin capturar dentro de un server
+action se convierte en la página genérica de error. O sea el mensaje existía —
+nunca llegó a la pantalla.
+
+Son dos defectos distintos y ambos estaban en 23 de los 25 formularios del módulo
+de administración:
+
+1. **Nada impide el doble envío.** El botón no se deshabilita mientras el action
+   está en vuelo.
+2. **Los errores de negocio se lanzan, no se muestran.** `<form action={...}>`
+   crudo no captura nada.
+
+**Lo corregido**
+
+- `ActionForm` ahora ignora envíos mientras hay uno en curso, acepta `onSuccess`
+  (para cerrar el panel), expone `pending` por contexto (`useActionPending`,
+  `ActionSubmit`) y **deja pasar los errores de control de flujo de Next**: un
+  `redirect()` lanza con `digest = "NEXT_REDIRECT"` y antes lo habría tragado el
+  `catch`, mostrando un toast de error sobre una operación exitosa.
+- `SubmitButton` (nuevo, sobre `useFormStatus`) resuelve solo el doble envío sin
+  obligar a convertir la página a cliente. Es la vía para los formularios cuyo
+  action **redirige**, que no pueden usar `ActionForm`.
+- Migrados: `user-create-panel` (a `ActionForm`, su action no redirige),
+  `campaign-create-panel` y `workflow-create-panel` (a `SubmitButton`, porque
+  `createCampaign` y `createWorkflow` sí redirigen).
+
+**Pendiente:** quedan ~20 `<form action={...}>` crudos con el mismo defecto, sobre
+todo en `src/app/dashboard/admin/**`. Antes de migrar cada uno hay que mirar si su
+action redirige: eso decide si va `ActionForm` o `SubmitButton`.
+
+---
+
 ## 11. Relación con los otros documentos
 
 - `docs/arquitectura-navegacion.md` — cómo se llega a cada pantalla (resuelto).

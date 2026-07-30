@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Plus } from "lucide-react";
 import { createUserAccount } from "@/app/actions/admin";
 import type { AppRole } from "@/lib/types";
-import { Button, Field, Input, SlideOver, buttonClasses } from "@/components/ui";
+import { ActionForm, ActionSubmit, Button, Field, Input, SlideOver, buttonClasses } from "@/components/ui";
 
 const ROLE_OPTIONS: { value: AppRole; label: string }[] = [
   { value: "agente", label: "Agente" },
@@ -28,7 +28,12 @@ export function UserCreatePanel({ teams }: { teams: { id: string; name: string }
         title="Nuevo usuario"
         description="La cuenta queda activa de inmediato con la contraseña temporal que definas."
       >
-        <form action={createUserAccount} className="space-y-4">
+        <ActionForm
+          action={createUserAccount}
+          success="Usuario creado"
+          onSuccess={() => setOpen(false)}
+          className="space-y-4"
+        >
           <Field label="Nombre completo">
             <Input name="full_name" required placeholder="María Fernández" data-autofocus />
           </Field>
@@ -77,9 +82,9 @@ export function UserCreatePanel({ teams }: { teams: { id: string; name: string }
             <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
               Cancelar
             </Button>
-            <Button type="submit">Crear usuario</Button>
+            <ActionSubmit pendingLabel="Creando…">Crear usuario</ActionSubmit>
           </div>
-        </form>
+        </ActionForm>
       </SlideOver>
     </>
   );

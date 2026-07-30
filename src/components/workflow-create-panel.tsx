@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { createWorkflow, createWorkflowFromTemplate } from "@/app/actions/workflows";
 import { WORKFLOW_TEMPLATES } from "@/lib/workflow-templates";
-import { Button, Field, Input, SlideOver, Select, buttonClasses } from "@/components/ui";
+import { Button, Field, Input, SlideOver, Select, SubmitButton, buttonClasses } from "@/components/ui";
 
 /**
  * Crear flujo desde el panel lateral: desde cero o desde una plantilla. Antes
@@ -88,7 +88,7 @@ export function WorkflowCreatePanel({
               <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
                 Cancelar
               </Button>
-              <Button type="submit">Crear y configurar</Button>
+              <SubmitButton pendingLabel="Creando…">Crear y configurar</SubmitButton>
             </div>
           </form>
         )}
@@ -111,9 +111,9 @@ export function WorkflowCreatePanel({
                 <span className="mt-1 text-sm font-medium text-foreground">{template.name}</span>
                 <span className="mt-0.5 flex-1 text-xs text-muted-foreground">{template.description}</span>
                 <span className="mt-1 text-[11px] text-muted-foreground">{template.steps.length} pasos</span>
-                <Button type="submit" variant="secondary" size="sm" className="mt-2">
+                <SubmitButton variant="secondary" size="sm" className="mt-2" pendingLabel="Creando…">
                   Usar plantilla
-                </Button>
+                </SubmitButton>
               </form>
             ))}
           </div>

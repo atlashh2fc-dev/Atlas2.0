@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import { createCampaign } from "@/app/actions/campaigns";
-import { Button, Field, Input, SlideOver, buttonClasses } from "@/components/ui";
+import { Button, Field, Input, SlideOver, SubmitButton, buttonClasses } from "@/components/ui";
 
 /**
  * Crear campaña en panel lateral, no como formulario pegado al final de la
@@ -44,7 +44,7 @@ export function CampaignCreatePanel({ duplicateName = false }: { duplicateName?:
             <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
               Cancelar
             </Button>
-            <Button type="submit">Crear y configurar</Button>
+            <SubmitButton pendingLabel="Creando…">Crear y configurar</SubmitButton>
           </div>
         </form>
       </SlideOver>
