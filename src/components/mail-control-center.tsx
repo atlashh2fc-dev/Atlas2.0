@@ -204,7 +204,7 @@ export function MailControlCenter({
         </div>
       </div>
 
-      <div className="divide-y divide-border">
+      <div className="max-h-[34rem] divide-y divide-border overflow-y-auto">
         {rows.length === 0 ? (
           <div className="px-5 py-12 text-center">
             <p className="text-sm font-medium text-foreground">No hay oportunidades pendientes en esta prioridad.</p>

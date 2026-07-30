@@ -5,11 +5,11 @@ import {
   type MailControlBucket,
   type MailQueueRow,
 } from "@/components/mail-control-center";
+import { MailAgentControl } from "@/components/mail-agent-control";
+import { MailWorkspace } from "@/components/mail-workspace";
 import {
-  Badge,
   Button,
   PageHeader,
-  SectionCard,
   Select,
   Table,
   Tbody,
@@ -291,8 +291,8 @@ export default async function MailDashboardPage({
   const historicalAgentRows = agentSummary.filter((row) => !activeAgentIds.has(row.agent_id));
   const agentSummaryForDisplay = [
     ...agentOptions.map(
-      (agent) =>
-        agentSummaryById.get(agent.id) ?? {
+      (agent) => ({
+        ...(agentSummaryById.get(agent.id) ?? {
           agent_id: agent.id,
           agent_name: agent.full_name ?? agent.email ?? "Ejecutivo sin nombre",
           assigned_leads: 0,
@@ -309,9 +309,11 @@ export default async function MailDashboardPage({
           next_agenda_at: null,
           last_interaction_at: null,
           last_event_at: null,
-        }
+        }),
+        is_active: true,
+      })
     ),
-    ...historicalAgentRows,
+    ...historicalAgentRows.map((row) => ({ ...row, is_active: false })),
   ].sort((left, right) => {
     if (right.assigned_leads !== left.assigned_leads) return right.assigned_leads - left.assigned_leads;
     if (right.clicked_uncontacted_leads !== left.clicked_uncontacted_leads) {
@@ -395,96 +397,32 @@ export default async function MailDashboardPage({
         actions={<CampaignFilterForm campaigns={campaigns} selectedMailCampaignId={selectedMailCampaignId} />}
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
-        <MetricCard label="Enviados" value={formatNumber(totals.sent)} />
-        <MetricCard label="Aperturas" value={formatNumber(totals.opened)} detail={percent(totals.opened, totals.sent)} />
-        <MetricCard label="Clicks" value={formatNumber(totals.clicked)} detail={percent(totals.clicked, totals.sent)} />
-        <MetricCard label="Priorizados" value={formatNumber(totals.hot)} detail="Apertura o click" />
-        <MetricCard label="Asignados" value={formatNumber(totals.assigned)} detail={percent(totals.assigned, totals.hot)} />
-        <MetricCard label="Gestionados" value={formatNumber(totals.managed)} detail={percent(totals.managed, totals.hot)} />
-      </div>
-
-      <SectionCard title="Reportería por campaña mail">
-        <div className="overflow-x-auto">
-          <Table>
-            <Thead>
-              <Th>Campaña mail</Th>
-              <Th>CRM</Th>
-              <Th>Enviados</Th>
-              <Th>Aperturas</Th>
-              <Th>Clicks</Th>
-              <Th>Asignados</Th>
-              <Th>Última señal</Th>
-            </Thead>
-            <Tbody>
-              {reports.length === 0 && (
-                <TableEmpty colSpan={7}>Sin señales mail para el filtro seleccionado.</TableEmpty>
-              )}
-              {reports.map((row) => (
-                <Tr key={`${row.mail_campaign_id ?? row.campaign_id}-${row.campaign_id}`}>
-                  <Td strong>{row.mail_campaign_name}</Td>
-                  <Td muted>{row.campaign_name}</Td>
-                  <Td muted>{formatNumber(row.sent_leads)}</Td>
-                  <Td muted>{formatNumber(row.opened_leads)}</Td>
-                  <Td muted>{formatNumber(row.clicked_leads)}</Td>
-                  <Td muted>
-                    {formatNumber(row.assigned_hot_leads)} / {formatNumber(row.hot_leads)}
-                  </Td>
-                  <Td muted>{formatDate(row.last_event_at)}</Td>
-                </Tr>
-              ))}
-            </Tbody>
-          </Table>
-        </div>
-      </SectionCard>
-
-      <MailControlCenter
-        rows={queue}
-        agents={agentOptions}
-        buckets={buckets}
-        activeBucket={activeBucket}
-        total={totalPrioritized}
-        nextHref={nextQueueHref}
-        resetHref={resetQueueHref}
-      />
-
-      <SectionCard
-        title="Control por ejecutivo"
-        description="Carga actual, seguimiento y agendas de los leads priorizados por mail."
-        actions={
-          <div className="flex flex-wrap justify-end gap-2 text-xs text-muted-foreground">
-            <span className="rounded-full border border-border bg-background px-2.5 py-1">{formatNumber(agentOptions.length)} activos</span>
-            <span className="rounded-full border border-border bg-background px-2.5 py-1">{formatNumber(agentTotals.assigned)} con carga</span>
-          </div>
+      <MailWorkspace
+        attentionCount={agentTotals.overdue + agentTotals.clickedUncontacted + agentTotals.noNextAction}
+        operation={<MailControlCenter rows={queue} agents={agentOptions} buckets={buckets} activeBucket={activeBucket} total={totalPrioritized} nextHref={nextQueueHref} resetHref={resetQueueHref} />}
+        team={<MailAgentControl rows={agentSummaryForDisplay} />}
+        reports={
+          <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
+            <div className="grid gap-3 border-b border-border p-4 sm:grid-cols-2 xl:grid-cols-3">
+              <MetricCard label="Enviados" value={formatNumber(totals.sent)} />
+              <MetricCard label="Aperturas" value={formatNumber(totals.opened)} detail={percent(totals.opened, totals.sent)} />
+              <MetricCard label="Clicks" value={formatNumber(totals.clicked)} detail={percent(totals.clicked, totals.sent)} />
+              <MetricCard label="Priorizados" value={formatNumber(totals.hot)} detail="Apertura o click" />
+              <MetricCard label="Asignados" value={formatNumber(totals.assigned)} detail={percent(totals.assigned, totals.hot)} />
+              <MetricCard label="Gestionados" value={formatNumber(totals.managed)} detail={percent(totals.managed, totals.hot)} />
+            </div>
+            <div className="max-h-[34rem] overflow-auto">
+              <Table>
+                <Thead><Th>Campaña mail</Th><Th>CRM</Th><Th>Enviados</Th><Th>Aperturas</Th><Th>Clicks</Th><Th>Asignados</Th><Th>Última señal</Th></Thead>
+                <Tbody>
+                  {reports.length === 0 && <TableEmpty colSpan={7}>Sin señales mail para el filtro seleccionado.</TableEmpty>}
+                  {reports.map((row) => <Tr key={`${row.mail_campaign_id ?? row.campaign_id}-${row.campaign_id}`}><Td strong>{row.mail_campaign_name}</Td><Td muted>{row.campaign_name}</Td><Td muted>{formatNumber(row.sent_leads)}</Td><Td muted>{formatNumber(row.opened_leads)}</Td><Td muted>{formatNumber(row.clicked_leads)}</Td><Td muted>{formatNumber(row.assigned_hot_leads)} / {formatNumber(row.hot_leads)}</Td><Td muted>{formatDate(row.last_event_at)}</Td></Tr>)}
+                </Tbody>
+              </Table>
+            </div>
+          </section>
         }
-      >
-        <div className="grid gap-3 border-b border-border bg-background/40 p-4 sm:grid-cols-2 xl:grid-cols-4">
-          <MetricCard label="Contactados" value={formatNumber(agentTotals.contacted)} detail={`${percent(agentTotals.contacted, agentTotals.assigned)} de asignados`} />
-          <MetricCard label="Clicks sin gestión" value={formatNumber(agentTotals.clickedUncontacted)} detail="Requieren priorización" />
-          <MetricCard label="Sin próxima acción" value={formatNumber(agentTotals.noNextAction)} detail="Revisar seguimiento" />
-          <MetricCard label="Agendas vencidas" value={formatNumber(agentTotals.overdue)} detail={agentTotals.overdue > 0 ? "Prioridad de recuperación" : "Sin atraso operativo"} />
-        </div>
-        <div className="overflow-x-auto">
-          <Table>
-            <Thead><Th>Ejecutivo</Th><Th>Leads mail</Th><Th>Contactos</Th><Th>Agendas</Th><Th>Seguimiento</Th></Thead>
-            <Tbody>
-              {agentSummaryForDisplay.length === 0 && <TableEmpty colSpan={5}>No hay ejecutivos con gestión mail para este filtro.</TableEmpty>}
-              {agentSummaryForDisplay.map((row) => {
-                const attention = row.overdue_agendas > 0 ? "Agendas vencidas" : row.clicked_uncontacted_leads > 0 ? "Clicks sin gestión" : row.no_next_action_leads > 0 ? "Sin próxima acción" : "En seguimiento";
-                return (
-                  <Tr key={row.agent_id}>
-                    <Td><p className="font-medium text-foreground">{row.agent_name}</p><p className="text-xs text-muted-foreground">Última gestión: {formatDate(row.last_interaction_at)}</p></Td>
-                    <Td><p className="font-semibold text-foreground">{formatNumber(row.assigned_leads)}</p><p className="text-xs text-muted-foreground">{formatNumber(row.clicked_leads)} clicks</p></Td>
-                    <Td><p className="font-semibold text-foreground">{formatNumber(row.contacted_leads)}</p><p className="text-xs text-muted-foreground">{formatNumber(row.interactions)} gestiones</p></Td>
-                    <Td><p className="font-semibold text-foreground">{formatNumber(row.pending_agendas)} pendientes</p><p className={row.overdue_agendas > 0 ? "text-xs font-medium text-danger" : "text-xs text-muted-foreground"}>{formatNumber(row.overdue_agendas)} vencidas · próxima {formatDate(row.next_agenda_at)}</p></Td>
-                    <Td><Badge tone={attention === "En seguimiento" ? "success" : attention === "Sin próxima acción" ? "neutral" : "warning"}>{attention}</Badge></Td>
-                  </Tr>
-                );
-              })}
-            </Tbody>
-          </Table>
-        </div>
-      </SectionCard>
+      />
     </div>
   );
 }
