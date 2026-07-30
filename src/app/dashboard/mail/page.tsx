@@ -1,11 +1,7 @@
-import Link from "next/link";
-
-import { assignMailEngagementLead } from "@/app/actions/mail";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { MailEngagementQueue, type MailQueueRow } from "@/components/mail-engagement-queue";
 import {
-  ActionForm,
-  ActionSubmit,
   Badge,
   Button,
   PageHeader,
@@ -41,26 +37,6 @@ type MailReportRow = {
   assigned_hot_leads: number;
   managed_hot_leads: number;
   last_event_at: string | null;
-};
-
-type MailQueueRow = {
-  mail_campaign_id: string | null;
-  mail_campaign_name: string;
-  campaign_id: string;
-  campaign_name: string;
-  lead_id: string;
-  full_name: string;
-  rut: string | null;
-  phone: string | null;
-  email: string | null;
-  assigned_to: string | null;
-  assigned_to_name: string | null;
-  team_id: string | null;
-  opened: boolean;
-  clicked: boolean;
-  last_event_at: string;
-  priority_rank: number;
-  priority_reason: string;
 };
 
 type AgentOption = {
@@ -150,40 +126,71 @@ function CampaignFilterForm({
   );
 }
 
-async function fetchMailEngagementQueue(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  selectedMailCampaignId: string | null
-) {
-  const pageSize = 1000;
-  const rows: MailQueueRow[] = [];
+const MAIL_PAGE_SIZE = 100;
 
-  for (let offset = 0; offset < 20000; offset += pageSize) {
-    const { data, error } = await supabase.rpc("get_mail_engagement_queue", {
-      p_mail_campaign_id: selectedMailCampaignId,
-      p_campaign_id: null,
-      p_limit: pageSize,
-      p_offset: offset,
-    });
+type MailCursor = {
+  priorityRank: number;
+  lastEventAt: string;
+  leadId: string;
+};
 
-    if (error) throw new Error(error.message);
-
-    const page = (data ?? []) as MailQueueRow[];
-    rows.push(...page);
-
-    if (page.length < pageSize) break;
+function decodeCursor(value: string | undefined): MailCursor | null {
+  if (!value) return null;
+  try {
+    const cursor = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as MailCursor;
+    if (
+      !Number.isInteger(cursor.priorityRank) ||
+      Number.isNaN(new Date(cursor.lastEventAt).getTime()) ||
+      !/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(cursor.leadId)
+    ) {
+      return null;
+    }
+    return cursor;
+  } catch {
+    return null;
   }
+}
 
-  return rows;
+function encodeCursor(row: MailQueueRow): string {
+  return Buffer.from(
+    JSON.stringify({ priorityRank: row.priority_rank, lastEventAt: row.last_event_at, leadId: row.lead_id })
+  ).toString("base64url");
+}
+
+function mailHref(mailCampaignId: string | null, cursor?: string): string {
+  const params = new URLSearchParams();
+  if (mailCampaignId) params.set("mailCampaign", mailCampaignId);
+  if (cursor) params.set("cursor", cursor);
+  const query = params.toString();
+  return query ? `/dashboard/mail?${query}` : "/dashboard/mail";
+}
+
+async function fetchMailEngagementPage(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  selectedMailCampaignId: string | null,
+  cursor: MailCursor | null
+) {
+  const { data, error } = await supabase.rpc("get_mail_engagement_page", {
+    p_mail_campaign_id: selectedMailCampaignId,
+    p_campaign_id: null,
+    p_limit: MAIL_PAGE_SIZE + 1,
+    p_after_priority_rank: cursor?.priorityRank ?? null,
+    p_after_last_event_at: cursor?.lastEventAt ?? null,
+    p_after_lead_id: cursor?.leadId ?? null,
+  });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as MailQueueRow[];
 }
 
 export default async function MailDashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ mailCampaign?: string }>;
+  searchParams: Promise<{ mailCampaign?: string; cursor?: string }>;
 }) {
   const profile = await requireProfile(["supervisor", "admin"]);
-  const { mailCampaign } = await searchParams;
+  const { mailCampaign, cursor: cursorParam } = await searchParams;
   const selectedMailCampaignId = mailCampaign || null;
+  const cursor = decodeCursor(cursorParam);
   const supabase = await createClient();
 
   const agentsQuery = supabase
@@ -211,15 +218,15 @@ export default async function MailDashboardPage({
         .select("id, name, campaign_id, umbrella_key, status")
         .eq("umbrella_key", "equifax")
         .order("updated_at", { ascending: false }),
-      supabase.rpc("get_mail_engagement_report", {
+      supabase.rpc("get_mail_engagement_report_read_model", {
         p_mail_campaign_id: selectedMailCampaignId,
         p_campaign_id: null,
       }),
-      supabase.rpc("get_mail_agent_control_summary", {
+      supabase.rpc("get_mail_agent_control_summary_read_model", {
         p_mail_campaign_id: selectedMailCampaignId,
         p_campaign_id: null,
       }),
-      fetchMailEngagementQueue(supabase, selectedMailCampaignId),
+      fetchMailEngagementPage(supabase, selectedMailCampaignId, cursor),
       agentsQuery,
     ]);
 
@@ -228,7 +235,8 @@ export default async function MailDashboardPage({
 
   const campaigns = (mailCampaigns ?? []) as MailCampaign[];
   const reports = (reportData ?? []) as MailReportRow[];
-  const queue = queueData;
+  const queue = queueData.slice(0, MAIL_PAGE_SIZE);
+  const hasMoreQueue = queueData.length > MAIL_PAGE_SIZE;
   const agentSummary = (agentSummaryData ?? []) as MailAgentSummary[];
   const agentOptions = (agents ?? []) as AgentOption[];
   const agentSummaryById = new Map(agentSummary.map((row) => [row.agent_id, row]));
@@ -284,7 +292,11 @@ export default async function MailDashboardPage({
     if (!latest || new Date(row.last_event_at) > new Date(latest)) return row.last_event_at;
     return latest;
   }, null);
-  const unassignedHotLeads = queue.filter((row) => !row.assigned_to).length;
+  const totalPrioritized = selectedMailCampaignId ? reports[0]?.hot_leads ?? 0 : totals.hot;
+  const totalAssignedPrioritized = selectedMailCampaignId ? reports[0]?.assigned_hot_leads ?? 0 : totals.assigned;
+  const unassignedHotLeads = Math.max(0, totalPrioritized - totalAssignedPrioritized);
+  const nextQueueHref = hasMoreQueue && queue.length > 0 ? mailHref(selectedMailCampaignId, encodeCursor(queue[queue.length - 1])) : null;
+  const resetQueueHref = mailHref(selectedMailCampaignId);
   const agentTotals = agentSummary.reduce(
     (acc, row) => {
       acc.assigned += row.assigned_leads;
@@ -364,7 +376,7 @@ export default async function MailDashboardPage({
             </div>
             <div className="flex flex-wrap gap-2 text-xs">
               <span className="rounded-full border border-border bg-background px-3 py-1 text-muted-foreground">
-                {formatNumber(selectedDetail?.hot_leads ?? totals.hot)} priorizados
+                {formatNumber(totalPrioritized)} priorizados
               </span>
               <span className={`rounded-full border px-3 py-1 ${unassignedHotLeads > 0 ? "border-warning/30 bg-warning-bg text-warning" : "border-success/30 bg-success-bg text-success"}`}>
                 {formatNumber(unassignedHotLeads)} sin asignar
@@ -525,75 +537,13 @@ export default async function MailDashboardPage({
             </Table>
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <Table>
-            <Thead>
-              <Th>Lead</Th>
-              <Th>Señal</Th>
-              <Th>Campaña</Th>
-              <Th>Asignado</Th>
-              <Th>Asignar</Th>
-            </Thead>
-            <Tbody>
-              {queue.length === 0 && (
-                <TableEmpty colSpan={5}>No hay leads con apertura o click para asignar.</TableEmpty>
-              )}
-              {queue.map((row) => (
-                <Tr key={`${row.mail_campaign_id ?? row.campaign_id}-${row.lead_id}`}>
-                  <Td>
-                    <Link href={`/dashboard/leads/${row.lead_id}`} className="font-medium text-foreground hover:text-primary">
-                      {row.full_name}
-                    </Link>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {row.rut ?? "Sin RUT"} · {row.phone ?? row.email ?? "Sin contacto"}
-                    </p>
-                  </Td>
-                  <Td>
-                    <div className="flex flex-wrap gap-1.5">
-                      {row.clicked && <Badge tone="success">Click</Badge>}
-                      {row.opened && <Badge tone="warning">Apertura</Badge>}
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">{formatDate(row.last_event_at)}</p>
-                  </Td>
-                  <Td muted>
-                    <p>{row.mail_campaign_name}</p>
-                    <p className="text-xs">{row.campaign_name}</p>
-                  </Td>
-                  <Td muted>{row.assigned_to_name ?? "Sin asignar"}</Td>
-                  <Td>
-                    <ActionForm
-                      action={assignMailEngagementLead}
-                      success="Registro asignado"
-                      className="flex min-w-72 items-center gap-2"
-                    >
-                      <input type="hidden" name="lead_id" value={row.lead_id} />
-                      <input type="hidden" name="mail_campaign_id" value={row.mail_campaign_id ?? ""} />
-                      <Select
-                        name="agent_id"
-                        fieldSize="sm"
-                        defaultValue={row.assigned_to ?? ""}
-                        required
-                        className="min-w-0 flex-1"
-                      >
-                        <option value="" disabled>
-                          Ejecutivo
-                        </option>
-                        {agentOptions.map((agent) => (
-                          <option key={agent.id} value={agent.id}>
-                            {agent.full_name}
-                          </option>
-                        ))}
-                      </Select>
-                      <ActionSubmit size="sm" pendingLabel="Asignando…">
-                        Asignar
-                      </ActionSubmit>
-                    </ActionForm>
-                  </Td>
-                </Tr>
-              ))}
-            </Tbody>
-          </Table>
-        </div>
+        <MailEngagementQueue
+          rows={queue}
+          agents={agentOptions}
+          total={totalPrioritized}
+          nextHref={nextQueueHref}
+          resetHref={resetQueueHref}
+        />
       </section>
     </div>
   );
