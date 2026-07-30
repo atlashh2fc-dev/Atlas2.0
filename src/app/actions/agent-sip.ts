@@ -3,6 +3,7 @@
 import { randomBytes } from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { requireProfile } from "@/lib/auth";
 
@@ -103,9 +104,13 @@ export async function listAgentSipRows(): Promise<AgentSipRow[]> {
   });
 }
 
-async function nextFreeExtension(): Promise<string> {
-  const supabase = await createClient();
-  const { data, error } = await supabase.from("agent_sip_credentials").select("extension");
+async function nextFreeExtension(service: SupabaseClient): Promise<string> {
+  // Un administrador ya no puede leer las credenciales SIP de otros usuarios
+  // mediante su sesión (la política protege también la contraseña). Calcular
+  // el correlativo con ese cliente devolvía una lista vacía y hacía que se
+  // intentara reutilizar la extensión 6010. El cliente de servicio se usa
+  // solo en este action, después de validar el rol admin, y no expone claves.
+  const { data, error } = await service.from("agent_sip_credentials").select("extension");
   if (error) throw new Error(error.message);
 
   let max = EXTENSION_RANGE_START - 1;
@@ -124,22 +129,39 @@ async function nextFreeExtension(): Promise<string> {
  */
 export async function provisionAgentExtension(formData: FormData) {
   await requireProfile(["admin"]);
-  const profileId = formData.get("profile_id") as string;
-  if (!profileId) throw new Error("Falta profile_id");
+  const profileId = String(formData.get("profile_id") ?? "").trim();
+  if (!profileId) throw new Error("No se pudo identificar al ejecutivo.");
 
-  const supabase = await createClient();
+  // Toda esta operación es administrativa. Usar el cliente autenticado aquí
+  // rompe el cálculo de disponibilidad por RLS y termina en un 23505 que
+  // Next oculta detrás del mensaje genérico de Server Components.
+  const service = createAdminClient();
 
-  const { data: existing } = await supabase
+  const { data: agent, error: agentError } = await service
+    .from("profiles")
+    .select("id, role, active")
+    .eq("id", profileId)
+    .maybeSingle();
+  if (agentError) throw new Error(agentError.message);
+  if (!agent || agent.role !== "agente") {
+    throw new Error("El usuario seleccionado ya no es un ejecutivo válido.");
+  }
+  if (!agent.active) {
+    throw new Error("Activa al ejecutivo antes de asignarle una extensión.");
+  }
+
+  const { data: existing, error: existingError } = await service
     .from("agent_sip_credentials")
     .select("id")
     .eq("profile_id", profileId)
     .maybeSingle();
+  if (existingError) throw new Error(existingError.message);
   if (existing) throw new Error("Este agente ya tiene una extensión asignada.");
 
-  const extension = await nextFreeExtension();
+  const extension = await nextFreeExtension(service);
   const sipPassword = randomBytes(16).toString("hex");
 
-  const { error } = await supabase.from("agent_sip_credentials").insert({
+  const { error } = await service.from("agent_sip_credentials").insert({
     profile_id: profileId,
     extension,
     sip_password: sipPassword,

@@ -17,6 +17,20 @@ function isNextControlFlow(error: unknown): boolean {
   return typeof digest === "string" && (digest.startsWith("NEXT_REDIRECT") || digest === "NEXT_NOT_FOUND");
 }
 
+/**
+ * Next oculta deliberadamente los detalles de un fallo de Server Component
+ * en producción. Esa frase técnica no ayuda a quien está operando el CRM;
+ * la causa queda registrada en el servidor y la interfaz entrega un siguiente
+ * paso entendible.
+ */
+function actionErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : "";
+  if (message.includes("An error occurred in the Server Components render")) {
+    return "No se pudo completar la operación. Actualiza la página e inténtalo otra vez. Si continúa, avisa a soporte.";
+  }
+  return message || "Ocurrió un error. Intenta de nuevo.";
+}
+
 /** `true` mientras el ActionForm que envuelve al componente está en vuelo. */
 export function useActionPending(): boolean {
   return useContext(PendingContext);
@@ -73,7 +87,7 @@ export function ActionForm({
 
         toast({
           tone: "danger",
-          message: error instanceof Error ? error.message : "Ocurrió un error. Intenta de nuevo.",
+          message: actionErrorMessage(error),
         });
       }
     });
