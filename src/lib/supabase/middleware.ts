@@ -1,7 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/auth"];
+// `/reset-password` entra acá aunque exija sesión: si el enlace venció, la
+// propia pantalla lo explica y ofrece pedir otro, en vez de rebotar al login sin
+// decir nada. `/api/status` tiene que responder antes de autenticar: es lo que
+// le dice al ejecutivo si el problema es el sistema o su contraseña.
+const PUBLIC_PATHS = ["/login", "/auth", "/forgot-password", "/reset-password", "/api/status"];
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });

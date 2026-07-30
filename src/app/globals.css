@@ -25,6 +25,13 @@
   --danger: #dc2626;
   --danger-bg: #fee2e2;
   --ring: var(--blue-corp);
+
+  /* Panel de marca de las pantallas de acceso. Va sobre black-dark y no sobre
+     blue-corp porque el blanco sobre #049dd9 da 3.07:1 de contraste y no llega
+     al mínimo AA para texto normal; el azul corporativo se mantiene como color
+     de acción (botones y enlaces) y el aqua como acento. */
+  --auth-panel: var(--black-dark);
+  --auth-panel-foreground: var(--grey-light);
 }
 
 .dark {
@@ -46,6 +53,8 @@
   --danger: #f87171;
   --danger-bg: #450a0a;
   --ring: #79f2e6;
+  --auth-panel: #191817;
+  --auth-panel-foreground: #f2f2f2;
 }
 
 @theme inline {
@@ -67,6 +76,8 @@
   --color-danger: var(--danger);
   --color-danger-bg: var(--danger-bg);
   --color-ring: var(--ring);
+  --color-auth-panel: var(--auth-panel);
+  --color-auth-panel-foreground: var(--auth-panel-foreground);
   --font-sans: "Outfit", var(--font-plus-jakarta), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-plus-jakarta), ui-monospace, monospace;
 }
