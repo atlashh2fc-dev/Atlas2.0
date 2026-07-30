@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   ChevronDown,
   ChevronUp,
@@ -35,8 +36,14 @@ import {
   setMyCurrentStatus,
   heartbeat,
 } from "@/app/actions/agent-status";
-import { registerManualCall, startLegalIntercallBreak } from "@/app/actions/calls";
-import { StatusDot, Input, Select, type BadgeTone } from "@/components/ui";
+import {
+  beginManualCallManagement,
+  discardCallTechnicalError,
+  registerManualCall,
+  startLegalIntercallBreak,
+  type ManualCallManagement,
+} from "@/app/actions/calls";
+import { SlideOver, StatusDot, Input, Select, type BadgeTone } from "@/components/ui";
 import {
   beginLegalIntercallBreak,
   LEGAL_INTERCALL_BREAK_SECONDS,
@@ -169,6 +176,7 @@ function automaticAttemptTone(status: string): string {
 }
 
 export function CtiBar({ profile }: { profile: Profile }) {
+  const router = useRouter();
   const [credential, setCredential] = useState<
     { extension: string; sip_password: string } | null | undefined
   >(undefined);
@@ -200,6 +208,13 @@ export function CtiBar({ profile }: { profile: Profile }) {
       : { mode: "manual", campaigns: [], session: null }
   );
   const [automaticHistory, setAutomaticHistory] = useState<AgentDialerHistoryItem[]>([]);
+  const [manualCampaignId, setManualCampaignId] = useState("");
+  const [manualRecoveryOpen, setManualRecoveryOpen] = useState(false);
+  const [manualRecoveryCampaignId, setManualRecoveryCampaignId] = useState("");
+  const [manualRecoveryPhone, setManualRecoveryPhone] = useState("");
+  const [manualRecoveryName, setManualRecoveryName] = useState("");
+  const [manualRecoveryPending, setManualRecoveryPending] = useState(false);
+  const [manualRecoveryError, setManualRecoveryError] = useState<string | null>(null);
 
   const [statusReasons, setStatusReasons] = useState<AgentStatusReason[]>([]);
   const [currentReasonId, setCurrentReasonId] = useState<string | null>(null);
@@ -213,6 +228,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
   const registererRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sessionRef = useRef<any>(null);
+  const manualManagementRef = useRef<ManualCallManagement | null>(null);
   const callAttemptRef = useRef(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const mediaCleanupRef = useRef<(() => void) | null>(null);
@@ -701,6 +717,64 @@ export function CtiBar({ profile }: { profile: Profile }) {
     setView("keypad");
   }
 
+  function openManualManagement(management: ManualCallManagement) {
+    manualManagementRef.current = null;
+    router.push(`/dashboard/leads/${management.leadId}`);
+    router.refresh();
+  }
+
+  function discardUnconnectedManualManagement(management: ManualCallManagement) {
+    if (manualManagementRef.current?.callId !== management.callId) return;
+    manualManagementRef.current = null;
+    void discardCallTechnicalError({
+      callId: management.callId,
+      leadId: management.leadId,
+      reason: "La llamada manual no llegó a establecerse.",
+    }).catch((err) =>
+      console.error("CTI: no se pudo descartar la gestión manual no conectada", err)
+    );
+  }
+
+  function openManualRecovery() {
+    const campaignId = operatingMode?.session?.campaign_id ?? "";
+    setManualRecoveryCampaignId(campaignId);
+    setManualRecoveryPhone(subscriber);
+    setManualRecoveryName("");
+    setManualRecoveryError(null);
+    setManualRecoveryOpen(true);
+  }
+
+  async function handleManualRecovery() {
+    const target = fullChileMobile(subscriberFromPhone(manualRecoveryPhone));
+    if (!target) {
+      setManualRecoveryError("Ingresa los 8 dígitos del móvil que se llamó.");
+      return;
+    }
+    if (!manualRecoveryCampaignId) {
+      setManualRecoveryError("No se pudo identificar la campaña que está en cierre.");
+      return;
+    }
+
+    setManualRecoveryPending(true);
+    setManualRecoveryError(null);
+    try {
+      const management = await beginManualCallManagement({
+        campaignId: manualRecoveryCampaignId,
+        phone: target,
+        contactName: manualRecoveryName,
+        entryMode: "after_call",
+      });
+      setManualRecoveryOpen(false);
+      openManualManagement(management);
+    } catch (err) {
+      setManualRecoveryError(
+        err instanceof Error ? err.message : "No se pudo registrar la llamada manual."
+      );
+    } finally {
+      setManualRecoveryPending(false);
+    }
+  }
+
   async function loadIncomingContext(callAttempt: number) {
     for (let retry = 0; retry < 8; retry += 1) {
       if (callAttemptRef.current !== callAttempt) return;
@@ -806,7 +880,27 @@ export function CtiBar({ profile }: { profile: Profile }) {
       return;
     }
 
+    let management: ManualCallManagement | null = null;
     try {
+      if (profile.role === "agente") {
+        const campaignId =
+          manualCampaignId ||
+          (operatingMode?.mode === "manual" && operatingMode.campaigns.length === 1
+            ? operatingMode.campaigns[0].id
+            : "");
+        if (!campaignId) {
+          setCallError("Selecciona la campaña donde se registrará la llamada.");
+          return;
+        }
+        management = await beginManualCallManagement({
+          campaignId,
+          phone: target,
+          contactName: selectedName,
+          entryMode: "before_dial",
+        });
+        manualManagementRef.current = management;
+      }
+
       const callAttempt = callAttemptRef.current + 1;
       callAttemptRef.current = callAttempt;
       setIsIncomingCall(false);
@@ -815,13 +909,16 @@ export function CtiBar({ profile }: { profile: Profile }) {
       setCallState("calling");
       startLocalRingback();
 
-      // Toda llamada marcada a mano queda registrada: antes no había forma de
-      // auditar a quién se llamó desde el teclado del CTI.
-      void registerManualCall({
-        phone: target,
-        leadId: contacts.find((contact) => subscriberFromPhone(contact.phone) === subscriber)?.id ?? null,
-        contactName: selectedName,
-      }).catch((err) => console.error("CTI: no se pudo registrar la llamada manual", err));
+      // Supervisión y administración conservan el registro técnico previo.
+      // Para ejecutivos, `beginManualCallManagement` ya dejó una gestión
+      // tipificable y auditada antes de originar la llamada.
+      if (profile.role !== "agente") {
+        void registerManualCall({
+          phone: target,
+          leadId: contacts.find((contact) => subscriberFromPhone(contact.phone) === subscriber)?.id ?? null,
+          contactName: selectedName,
+        }).catch((err) => console.error("CTI: no se pudo registrar la llamada manual", err));
+      }
       const { Inviter, SessionState, UserAgent } = await import("sip.js");
       if (callAttemptRef.current !== callAttempt) return;
       const targetUri = UserAgent.makeURI(`sip:${target}@${SIP_DOMAIN}`);
@@ -851,13 +948,16 @@ export function CtiBar({ profile }: { profile: Profile }) {
             break;
           case SessionState.Terminated:
             if (wasEstablished) {
-        beginLegalIntercallBreak();
-        // El servidor es el que manda: en el navegador solo sirve para que el
-        // contador se vea al instante.
-        void startLegalIntercallBreak().catch((err) =>
-          console.error("CTI: no se pudo registrar la interrupción legal", err)
-        );
-      }
+              beginLegalIntercallBreak();
+              // El servidor es el que manda: en el navegador solo sirve para que el
+              // contador se vea al instante.
+              void startLegalIntercallBreak().catch((err) =>
+                console.error("CTI: no se pudo registrar la interrupción legal", err)
+              );
+              if (management) openManualManagement(management);
+            } else if (management) {
+              discardUnconnectedManualManagement(management);
+            }
             stopLocalRingback();
             detachRemoteAudio();
             setCallState("idle");
@@ -879,6 +979,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
       // rechazaba en silencio todas las entrantes por el resto del turno.
       sessionRef.current = null;
       setCallState("idle");
+      if (management) discardUnconnectedManualManagement(management);
       setCallError("No se pudo iniciar la llamada. Reintenta en unos segundos.");
     }
   }
@@ -886,6 +987,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
   async function handleHangup() {
     const session = sessionRef.current;
     const wasEstablished = callState === "in_call";
+    const management = manualManagementRef.current;
     stopLocalRingback();
     detachRemoteAudio();
     if (!session) {
@@ -924,6 +1026,11 @@ export function CtiBar({ profile }: { profile: Profile }) {
         void startLegalIntercallBreak().catch((err) =>
           console.error("CTI: no se pudo registrar la interrupción legal", err)
         );
+        if (management && manualManagementRef.current?.callId === management.callId) {
+          openManualManagement(management);
+        }
+      } else if (management) {
+        discardUnconnectedManualManagement(management);
       }
       stopLocalRingback();
       detachRemoteAudio();
@@ -1007,6 +1114,12 @@ export function CtiBar({ profile }: { profile: Profile }) {
   const validNumber = subscriber.length === MOBILE_SUBSCRIBER_DIGITS;
   const activeCall =
     callState === "in_call" || callState === "calling" || callState === "ringing";
+  const manualCampaigns = operatingMode?.mode === "manual" ? operatingMode.campaigns : [];
+  const effectiveManualCampaignId =
+    manualCampaignId || (manualCampaigns.length === 1 ? manualCampaigns[0].id : "");
+  const manualRecoveryCampaign = operatingMode?.campaigns.find(
+    (campaign) => campaign.id === manualRecoveryCampaignId
+  );
   const incomingFields = incomingContext
     ? Object.entries(incomingContext.extra).filter(
         ([key, value]) =>
@@ -1018,6 +1131,65 @@ export function CtiBar({ profile }: { profile: Profile }) {
   return (
     <div className="fixed bottom-4 right-4 z-50 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-[1.75rem] border border-border bg-surface shadow-2xl">
       <audio ref={audioRef} autoPlay className="hidden" />
+
+      <SlideOver
+        open={manualRecoveryOpen}
+        onClose={() => {
+          if (!manualRecoveryPending) setManualRecoveryOpen(false);
+        }}
+        title="Registrar llamada manual"
+        description={
+          manualRecoveryCampaign
+            ? `La gestión quedará en ${manualRecoveryCampaign.name} para que puedas tipificarla y cerrar el estado pendiente.`
+            : "Registra la llamada que se realizó fuera de la base para poder tipificarla."
+        }
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setManualRecoveryOpen(false)}
+              disabled={manualRecoveryPending}
+              className="rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleManualRecovery}
+              disabled={manualRecoveryPending}
+              className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
+            >
+              {manualRecoveryPending ? "Creando gestión…" : "Ir a tipificar"}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          {manualRecoveryError && (
+            <p role="alert" className="rounded-lg bg-danger-bg px-3 py-2 text-sm text-danger">
+              {manualRecoveryError}
+            </p>
+          )}
+          <label className="block space-y-1.5">
+            <span className="text-sm font-medium">Número llamado</span>
+            <Input
+              value={manualRecoveryPhone}
+              onChange={(event) => setManualRecoveryPhone(event.target.value)}
+              inputMode="numeric"
+              placeholder="81406609"
+              data-autofocus
+            />
+          </label>
+          <label className="block space-y-1.5">
+            <span className="text-sm font-medium">Nombre del contacto (opcional)</span>
+            <Input
+              value={manualRecoveryName}
+              onChange={(event) => setManualRecoveryName(event.target.value)}
+              placeholder="Se puede completar después"
+            />
+          </label>
+        </div>
+      </SlideOver>
 
       {showStatusSelector && (
         <div className="flex items-center gap-3 border-b border-border bg-surface px-5 py-3">
@@ -1245,6 +1417,16 @@ export function CtiBar({ profile }: { profile: Profile }) {
                                 : "Validando tu disponibilidad con la cola automática."}
                       </p>
 
+                      {automaticSessionStatus === "wrap_up" && operatingMode.session && (
+                        <button
+                          type="button"
+                          onClick={openManualRecovery}
+                          className="mt-4 rounded-xl border border-white/20 px-3 py-2 text-xs font-semibold text-white transition hover:bg-white/10"
+                        >
+                          Registrar llamada manual para tipificar
+                        </button>
+                      )}
+
                       {operatingMode.campaigns.length > 0 && (
                         <div className="mt-4 flex flex-wrap gap-1.5">
                           {operatingMode.campaigns.map((campaign) => (
@@ -1366,6 +1548,32 @@ export function CtiBar({ profile }: { profile: Profile }) {
                         {selectedName ?? "Escribe 8 dígitos o pega el número completo"}
                       </p>
                     </div>
+
+                    {profile.role === "agente" && (
+                      <label className="mt-3 block space-y-1.5">
+                        <span className="text-xs font-medium text-muted-foreground">
+                          Campaña de la llamada
+                        </span>
+                        {manualCampaigns.length ? (
+                          <Select
+                            value={effectiveManualCampaignId}
+                            onChange={(event) => setManualCampaignId(event.target.value)}
+                            aria-label="Campaña de la llamada manual"
+                          >
+                            <option value="">Selecciona una campaña</option>
+                            {manualCampaigns.map((campaign) => (
+                              <option key={campaign.id} value={campaign.id}>
+                                {campaign.name}
+                              </option>
+                            ))}
+                          </Select>
+                        ) : (
+                          <p className="rounded-lg bg-warning-bg px-3 py-2 text-xs text-warning">
+                            No tienes una campaña manual activa. Pide que configuren la campaña en modo Manual antes de marcar.
+                          </p>
+                        )}
+                      </label>
+                    )}
                   </div>
 
                   <div className="mx-4 mt-4 grid grid-cols-3 rounded-xl bg-surface-muted p-1">
@@ -1532,7 +1740,12 @@ export function CtiBar({ profile }: { profile: Profile }) {
                     <button
                       type="button"
                       onClick={handleCall}
-                      disabled={!validNumber || regState !== "registered" || !agentCanCall}
+                      disabled={
+                        !validNumber ||
+                        regState !== "registered" ||
+                        !agentCanCall ||
+                        (profile.role === "agente" && !effectiveManualCampaignId)
+                      }
                       className={cn(
                         "flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-sm font-bold text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-40",
                         regState === "registered"
@@ -1549,6 +1762,8 @@ export function CtiBar({ profile }: { profile: Profile }) {
                         ? "Preparando teléfono..."
                         : !agentCanCall
                           ? "Ponte disponible para llamar"
+                          : profile.role === "agente" && !effectiveManualCampaignId
+                            ? "Selecciona una campaña"
                           : "Llamar"}
                     </button>
                   </div>

@@ -114,6 +114,55 @@ export async function registerManualCall(input: {
   }
 }
 
+export type ManualCallManagement = {
+  leadId: string;
+  callId: string;
+  campaignId: string;
+  leadCreated: boolean;
+  leadReused: boolean;
+};
+
+/**
+ * Abre la gestión que respalda una llamada manual de un ejecutivo. A
+ * diferencia de `registerManualCall`, esta operación crea/reutiliza el lead y
+ * la llamada abierta en una sola transacción, para que siempre exista una
+ * ficha donde tipificar y cerrar el ACW correctamente.
+ */
+export async function beginManualCallManagement(input: {
+  campaignId: string;
+  phone: string;
+  contactName?: string | null;
+  entryMode: "before_dial" | "after_call";
+}): Promise<ManualCallManagement> {
+  const { supabase } = await requireAgent();
+  const { data, error } = await supabase.rpc("begin_agent_manual_call_management", {
+    p_campaign_id: input.campaignId,
+    p_phone: input.phone,
+    p_full_name: input.contactName?.trim() || null,
+    p_entry_mode: input.entryMode,
+  });
+  if (error) throw new Error(error.message);
+
+  const value = data && typeof data === "object" ? (data as Record<string, unknown>) : null;
+  const leadId = value?.lead_id;
+  const callId = value?.call_id;
+  const campaignId = value?.campaign_id;
+  if (typeof leadId !== "string" || typeof callId !== "string" || typeof campaignId !== "string") {
+    throw new Error("La llamada manual no devolvió una gestión válida.");
+  }
+
+  revalidatePath(`/dashboard/leads/${leadId}`);
+  revalidatePath("/dashboard/leads");
+
+  return {
+    leadId,
+    callId,
+    campaignId,
+    leadCreated: value?.lead_created === true,
+    leadReused: value?.lead_reused === true,
+  };
+}
+
 async function assertIntercallBreakCompleted(params: {
   userId: string;
   campaignId: string | null;
