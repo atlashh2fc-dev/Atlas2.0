@@ -69,6 +69,81 @@ export type AgentDialerHistoryItem = {
   ended_at: string | null;
 };
 
+export type AgentPhoneTelemetryPhase = "microphone" | "module" | "wss" | "register";
+
+export type AgentPhoneTelemetryInput = {
+  outcome: "failed" | "registered";
+  phase: AgentPhoneTelemetryPhase;
+  code: string;
+  message?: string | null;
+  attempt?: number;
+};
+
+const PHONE_TELEMETRY_PHASES = new Set<AgentPhoneTelemetryPhase>([
+  "microphone",
+  "module",
+  "wss",
+  "register",
+]);
+
+function sanitizePhoneTelemetryCode(value: unknown): string {
+  const code = String(value ?? "unknown")
+    .trim()
+    .replace(/[^a-zA-Z0-9_.:-]/g, "_")
+    .slice(0, 80);
+  return code || "unknown";
+}
+
+function sanitizePhoneTelemetryMessage(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const message = value
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(
+      /\b(password|authorization(?:password|username)?|token|secret|api[_-]?key|sip[_-]?password)\b\s*[:=]\s*[^\s,;]+/gi,
+      "$1=[REDACTED]"
+    )
+    .replace(/\bbearer\s+[^\s,;]+/gi, "Bearer [REDACTED]")
+    .replace(/\b(wss?|https?):\/\/[^\s/]+/gi, "$1://[host]")
+    .replace(/\bsips?:[^\s,;]+/gi, "sip:[REDACTED]")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 300);
+  return message || null;
+}
+
+/**
+ * Telemetría operativa del teléfono web. La entrada se valida y sanitiza en el
+ * servidor para que errores de librerías/navegador nunca filtren credenciales,
+ * tokens ni URLs internas dentro de la bitácora administrativa.
+ */
+export async function reportAgentPhoneTelemetry(input: AgentPhoneTelemetryInput): Promise<void> {
+  const profile = await requireProfile(["agente"]);
+  if (!PHONE_TELEMETRY_PHASES.has(input.phase)) throw new Error("Fase telefónica inválida.");
+  if (input.outcome !== "failed" && input.outcome !== "registered") {
+    throw new Error("Resultado telefónico inválido.");
+  }
+
+  const attempt = Number.isInteger(input.attempt)
+    ? Math.min(Math.max(Number(input.attempt), 0), 100)
+    : 0;
+  const admin = createAdminClient();
+  const { error } = await admin.from("sensitive_access_log").insert({
+    actor_id: profile.id,
+    action:
+      input.outcome === "registered"
+        ? "cti.phone_registered"
+        : "cti.phone_registration_failed",
+    target_profile_id: profile.id,
+    metadata: {
+      phase: input.phase,
+      code: sanitizePhoneTelemetryCode(input.code),
+      message: sanitizePhoneTelemetryMessage(input.message),
+      attempt,
+    },
+  });
+  if (error) throw new Error(error.message);
+}
+
 /**
  * Lista todos los ejecutivos (agentes) con su extensión SIP asignada, si
  * tienen una. Pantalla de gestión para admin: /dashboard/admin/agentes-sip.

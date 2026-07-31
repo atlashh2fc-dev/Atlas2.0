@@ -35,7 +35,8 @@ async function main() {
   // (agent_sip_credentials), con el AGENT_EXTENSION_MAP estático del .env
   // como base para no romper 6001/6002 mientras no tengan fila en la tabla.
   // Cada refresh también aprovisiona en Asterisk (vía AMI) cualquier
-  // extensión nueva que un admin haya generado desde el CRM.
+  // extensión nueva y reconcilia las claves SIP existentes con la fuente de
+  // verdad, corrigiendo divergencias DB↔PBX sin recargar si ya coinciden.
   await refreshAgentDirectory(config.agentExtensionMap);
   await ensureAgentEndpoints(ami, getActiveCredentials()).catch((err) =>
     logger.error({ err }, "Sync inicial de extensiones PJSIP falló")

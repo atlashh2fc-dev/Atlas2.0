@@ -34,6 +34,7 @@ export function ForceLogoutGuard({ userId }: { userId: string }) {
   useEffect(() => {
     const supabase = createClient();
     let disposed = false;
+    let fetching = false;
 
     async function execute(row: CommandRow) {
       if (disposed || row.target_profile_id !== userId || handlingRef.current) return;
@@ -56,28 +57,31 @@ export function ForceLogoutGuard({ userId }: { userId: string }) {
           if (error) console.error("No se pudo confirmar el cierre remoto", error);
         });
 
-      // Global usa el JWT del propio agente y revoca todas sus sesiones y
-      // refresh tokens en Supabase. Un login posterior crea otra sesión.
-      await supabase.auth.signOut({ scope: "global" }).catch((error) => {
+      // Cada estación cierra exclusivamente la sesión a la que pertenece la
+      // orden. Las demás sesiones revocadas reciben y confirman su propia
+      // copia; un login posterior nunca queda afectado por un logout global.
+      await supabase.auth.signOut({ scope: "local" }).catch((error) => {
         console.error("No se pudo cerrar Supabase Auth", error);
       });
       window.location.replace("/login?reason=forced_logout");
     }
 
     async function findPending() {
-      const { data, error } = await supabase
-        .from("agent_control_commands")
-        .select("id, target_profile_id, command")
-        .eq("target_profile_id", userId)
-        .is("browser_acknowledged_at", null)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (error) {
-        console.error("No se pudo consultar el plano de control", error);
-        return;
+      if (disposed || fetching || handlingRef.current) return;
+      fetching = true;
+      try {
+        const { data, error } = await supabase.rpc(
+          "get_my_agent_control_command"
+        );
+        if (error) {
+          console.error("No se pudo consultar el plano de control", error);
+          return;
+        }
+        const row = Array.isArray(data) ? data[0] : null;
+        if (row) await execute(row as CommandRow);
+      } finally {
+        fetching = false;
       }
-      if (data) await execute(data as CommandRow);
     }
 
     const channel = supabase
@@ -85,12 +89,14 @@ export function ForceLogoutGuard({ userId }: { userId: string }) {
       .on(
         "postgres_changes",
         {
-          event: "INSERT",
+          event: "*",
           schema: "public",
           table: "agent_control_commands",
           filter: `target_profile_id=eq.${userId}`,
         },
-        (payload) => void execute(payload.new as CommandRow)
+        // Realtime sólo despierta al guard. La decisión siempre vuelve a la
+        // RPC, que enlaza command_id con el session_id actual en servidor.
+        () => void findPending()
       )
       .subscribe();
 
@@ -105,4 +111,3 @@ export function ForceLogoutGuard({ userId }: { userId: string }) {
 
   return null;
 }
-

@@ -25,7 +25,47 @@ export function amiAction(
   });
 }
 
-async function getExistingCategories(ami: AmiClient, filename: string): Promise<Set<string>> {
+type ConfigSnapshot = {
+  categories: Set<string>;
+  variablesByCategory: Map<string, Map<string, string>>;
+};
+
+/**
+ * GetConfig enumera categorías y líneas con índices correlativos:
+ * `Category-000001` + `Line-000001-000002`. Conservamos los valores sólo en
+ * memoria para poder comparar configuración declarada con la fuente de verdad;
+ * nunca se incluyen en logs (algunas líneas contienen secretos SIP).
+ */
+export function parseConfigSnapshot(res: Record<string, unknown>): ConfigSnapshot {
+  const categoryByIndex = new Map<string, string>();
+  const categories = new Set<string>();
+  const variablesByCategory = new Map<string, Map<string, string>>();
+
+  for (const [key, value] of Object.entries(res)) {
+    const match = /^category-(\d+)$/i.exec(key);
+    if (!match || typeof value !== "string") continue;
+    const category = value.replace(/\([^)]*\)$/, "").trim();
+    categoryByIndex.set(match[1], category);
+    categories.add(category);
+    if (!variablesByCategory.has(category)) variablesByCategory.set(category, new Map());
+  }
+
+  for (const [key, value] of Object.entries(res)) {
+    const match = /^line-(\d+)-(\d+)$/i.exec(key);
+    if (!match || typeof value !== "string") continue;
+    const category = categoryByIndex.get(match[1]);
+    if (!category) continue;
+    const separator = value.indexOf("=");
+    if (separator < 0) continue;
+    const variable = value.slice(0, separator).trim();
+    const variableValue = value.slice(separator + 1).trim();
+    if (variable) variablesByCategory.get(category)?.set(variable, variableValue);
+  }
+
+  return { categories, variablesByCategory };
+}
+
+async function getConfigSnapshot(ami: AmiClient, filename: string): Promise<ConfigSnapshot> {
   // Asterisk excluye las categorías template de GetConfig por defecto. Sin
   // este filtro el motor cree que faltan y trata de recrearlas en cada ciclo.
   const res = await amiAction(ami, {
@@ -33,16 +73,7 @@ async function getExistingCategories(ami: AmiClient, filename: string): Promise<
     Filename: filename,
     Filter: "TEMPLATES=include",
   });
-  const names = new Set<string>();
-  for (const [key, value] of Object.entries(res)) {
-    if (key.toLowerCase().startsWith("category-") && typeof value === "string") {
-      // GetConfig conserva el sufijo de herencia/template del encabezado
-      // (`[nombre](!)` / `[nombre](base)`). Para idempotencia necesitamos
-      // comparar la categoría real, no su declaración completa.
-      names.add(value.replace(/\([^)]*\)$/, "").trim());
-    }
-  }
-  return names;
+  return parseConfigSnapshot(res);
 }
 
 function buildUpdateConfigAction(
@@ -75,6 +106,27 @@ function buildUpdateConfigAction(
 const AGENT_ENDPOINT_TEMPLATE = "atlas-agent-endpoint-template";
 const AGENT_AOR_TEMPLATE = "atlas-agent-aor-template";
 const OUTBOUND_QUEUE_STRATEGY = "leastrecent";
+
+type ConfigLine = {
+  action: "NewCat" | "Append" | "Update";
+  cat: string;
+  varName?: string;
+  value?: string;
+  options?: string;
+};
+
+/**
+ * UpdateConfig puede devolver un error que incluya el action original. Como
+ * ese action contiene la contraseña SIP, reemplazamos el error antes de que
+ * llegue al logger. La extensión se registra en el caller, nunca el secreto.
+ */
+async function applyAgentPjsipConfig(ami: AmiClient, lines: ConfigLine[]): Promise<void> {
+  try {
+    await amiAction(ami, buildUpdateConfigAction("pjsip.conf", lines));
+  } catch {
+    throw new Error("AMI rechazó la actualización de configuración PJSIP del agente");
+  }
+}
 
 async function ensureAgentTemplates(
   ami: AmiClient,
@@ -156,11 +208,11 @@ async function ensureAgentTemplates(
 }
 
 /**
- * Crea (si falta) el endpoint PJSIP WebRTC de un agente: aor + auth +
- * endpoint. Endpoint y AOR comparten la extensión, tal como requiere el
- * registro dinámico de PJSIP; son objetos distintos y heredan templates
- * separados. El auth vive en "<ext>-auth". Así REGISTER y
- * Dial(PJSIP/<ext>) usan el mismo identificador.
+ * Reconcilia el endpoint PJSIP WebRTC de un agente: lo crea si falta y, si ya
+ * existe, compara su auth con la credencial vigente de Supabase. Endpoint y
+ * AOR comparten la extensión, tal como requiere el registro dinámico de
+ * PJSIP; son objetos distintos y heredan templates separados. El auth vive en
+ * "<ext>-auth". Así REGISTER y Dial(PJSIP/<ext>) usan el mismo identificador.
  */
 export async function ensureAgentEndpoints(
   ami: AmiClient,
@@ -168,28 +220,80 @@ export async function ensureAgentEndpoints(
 ): Promise<void> {
   if (agents.length === 0) return;
 
-  let existing: Set<string>;
+  let snapshot: ConfigSnapshot;
   try {
-    existing = await getExistingCategories(ami, "pjsip.conf");
+    snapshot = await getConfigSnapshot(ami, "pjsip.conf");
   } catch (err) {
     logger.error({ err }, "GetConfig pjsip.conf falló; se salta el sync de extensiones este ciclo");
     return;
   }
 
-  if (!(await ensureAgentTemplates(ami, existing))) return;
+  if (!(await ensureAgentTemplates(ami, snapshot.categories))) return;
 
   for (const agent of agents) {
-    if (existing.has(agent.extension)) continue;
-
     const authCat = `${agent.extension}-auth`;
 
-    const lines: {
-      action: "NewCat" | "Append";
-      cat: string;
-      varName?: string;
-      value?: string;
-      options?: string;
-    }[] = [
+    if (snapshot.categories.has(agent.extension)) {
+      const authVariables = snapshot.variablesByCategory.get(authCat);
+      const endpointVariables = snapshot.variablesByCategory.get(agent.extension);
+      const lines: ConfigLine[] = [];
+
+      if (!snapshot.categories.has(authCat)) {
+        // Repara aprovisionamientos parciales: un endpoint sin auth nunca podrá
+        // aceptar REGISTER aunque la extensión ya exista en pjsip.conf.
+        lines.push(
+          { action: "NewCat", cat: authCat },
+          { action: "Append", cat: authCat, varName: "type", value: "auth" },
+          { action: "Append", cat: authCat, varName: "auth_type", value: "userpass" },
+          { action: "Append", cat: authCat, varName: "username", value: agent.extension },
+          { action: "Append", cat: authCat, varName: "password", value: agent.sipPassword }
+        );
+      } else if (authVariables?.get("password") !== agent.sipPassword) {
+        // Update requiere que la variable exista; Append cubre categorías auth
+        // antiguas o incompletas que todavía no tienen `password`.
+        lines.push({
+          action: authVariables?.has("password") ? "Update" : "Append",
+          cat: authCat,
+          varName: "password",
+          value: agent.sipPassword,
+        });
+      }
+
+      if (endpointVariables?.get("aors") !== agent.extension) {
+        lines.push({
+          action: endpointVariables?.has("aors") ? "Update" : "Append",
+          cat: agent.extension,
+          varName: "aors",
+          value: agent.extension,
+        });
+      }
+      if (endpointVariables?.get("auth") !== authCat) {
+        lines.push({
+          action: endpointVariables?.has("auth") ? "Update" : "Append",
+          cat: agent.extension,
+          varName: "auth",
+          value: authCat,
+        });
+      }
+
+      if (lines.length === 0) continue;
+      try {
+        await applyAgentPjsipConfig(ami, lines);
+        snapshot.categories.add(authCat);
+        logger.info(
+          { extension: agent.extension },
+          "Configuración PJSIP de agente reconciliada con el directorio"
+        );
+      } catch (err) {
+        logger.error(
+          { err, extension: agent.extension },
+          "No se pudo reconciliar el endpoint PJSIP del agente"
+        );
+      }
+      continue;
+    }
+
+    const lines: ConfigLine[] = [
       { action: "NewCat", cat: authCat },
       { action: "Append", cat: authCat, varName: "type", value: "auth" },
       { action: "Append", cat: authCat, varName: "auth_type", value: "userpass" },
@@ -210,8 +314,9 @@ export async function ensureAgentEndpoints(
     ];
 
     try {
-      await amiAction(ami, buildUpdateConfigAction("pjsip.conf", lines));
-      existing.add(agent.extension);
+      await applyAgentPjsipConfig(ami, lines);
+      snapshot.categories.add(agent.extension);
+      snapshot.categories.add(authCat);
       logger.info({ extension: agent.extension }, "Endpoint PJSIP creado para agente nuevo");
     } catch (err) {
       logger.error({ err, extension: agent.extension }, "No se pudo crear el endpoint PJSIP del agente");
@@ -229,17 +334,14 @@ export async function updateAgentSipPassword(
   extension: string,
   sipPassword: string
 ): Promise<void> {
-  await amiAction(
-    ami,
-    buildUpdateConfigAction("pjsip.conf", [
-      {
-        action: "Update",
-        cat: `${extension}-auth`,
-        varName: "password",
-        value: sipPassword,
-      },
-    ])
-  );
+  await applyAgentPjsipConfig(ami, [
+    {
+      action: "Update",
+      cat: `${extension}-auth`,
+      varName: "password",
+      value: sipPassword,
+    },
+  ]);
 }
 
 const AMD_CONTEXT = "dialer-amd-out";
@@ -261,7 +363,7 @@ const AMD_CONTEXT = "dialer-amd-out";
 export async function ensureAmdContext(ami: AmiClient): Promise<void> {
   let existing: Set<string>;
   try {
-    existing = await getExistingCategories(ami, "extensions.conf");
+    existing = (await getConfigSnapshot(ami, "extensions.conf")).categories;
   } catch (err) {
     logger.error({ err }, "GetConfig extensions.conf falló; se salta el sync del contexto AMD este ciclo");
     return;
@@ -311,7 +413,7 @@ const lastQueueConfigByName = new Map<string, { wrapupSeconds: number; strategy:
 export async function ensureQueue(ami: AmiClient, queueName: string, wrapupSeconds: number): Promise<void> {
   let existing: Set<string>;
   try {
-    existing = await getExistingCategories(ami, "queues.conf");
+    existing = (await getConfigSnapshot(ami, "queues.conf")).categories;
   } catch (err) {
     logger.error({ err, queueName }, "GetConfig queues.conf falló; la campaña no puede originar este ciclo");
     throw err;

@@ -41,9 +41,9 @@ export async function updateSession(request: NextRequest) {
     );
     if (!sessionError && !sessionValid) {
       forcedLogout = true;
-      // Acá sí tenemos el JWT/cookie del propio ejecutivo. Es la vía
-      // soportada por Supabase para revocar sus refresh tokens globalmente.
-      await supabase.auth.signOut({ scope: "global" });
+      // La orden está ligada al session_id actual. Cerrar globalmente también
+      // eliminaría un relogin legítimo abierto después de la orden.
+      await supabase.auth.signOut({ scope: "local" });
       currentUser = null;
     }
   }

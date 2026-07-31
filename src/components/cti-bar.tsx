@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronDown,
@@ -25,6 +25,8 @@ import {
   getMySipCredentials,
   listMyAutomaticDialHistory,
   listMyDialerContacts,
+  reportAgentPhoneTelemetry,
+  type AgentPhoneTelemetryPhase,
   type AgentDialerHistoryItem,
   type AgentDialerOperatingMode,
   type DialerContact,
@@ -65,6 +67,7 @@ const MAX_RECONNECT_DELAY_MS = 15_000;
 const MAX_SILENT_RECONNECT_ATTEMPTS = 3;
 
 type RegState = "idle" | "connecting" | "registered" | "error";
+type PhoneIssue = AgentPhoneTelemetryPhase | null;
 type CallState = "idle" | "calling" | "ringing" | "in_call" | "ending";
 type DialerView = "keypad" | "recents" | "contacts";
 type RingbackPlayback = {
@@ -194,6 +197,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
   /** Evita reescribir `since` en cada render una vez confirmada la capacidad. */
   const readyStatusSyncedRef = useRef<string | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [phoneIssue, setPhoneIssue] = useState<PhoneIssue>(null);
   const [callState, setCallState] = useState<CallState>("idle");
   const [subscriber, setSubscriber] = useState("");
   const [selectedName, setSelectedName] = useState<string | null>(null);
@@ -248,6 +252,50 @@ export function CtiBar({ profile }: { profile: Profile }) {
   const forcedLogoutRef = useRef(false);
 
   const recentStorageKey = `atlas-cti-recents:${profile.id}`;
+
+  function telemetryCode(error: unknown, phase: AgentPhoneTelemetryPhase): string {
+    if (error instanceof DOMException && error.name) return error.name;
+    if (error && typeof error === "object") {
+      const candidate = (error as { code?: unknown; name?: unknown }).code ??
+        (error as { name?: unknown }).name;
+      if (typeof candidate === "string" && candidate.trim()) return candidate;
+    }
+    const fallback: Record<AgentPhoneTelemetryPhase, string> = {
+      microphone: "MEDIA_ACCESS_FAILED",
+      module: "MODULE_LOAD_FAILED",
+      wss: "WSS_CONNECT_FAILED",
+      register: "REGISTER_FAILED",
+    };
+    return fallback[phase];
+  }
+
+  function telemetryMessage(error: unknown): string {
+    if (error instanceof Error) return error.message;
+    return typeof error === "string" ? error : "Fallo sin detalle entregado por el navegador.";
+  }
+
+  const recordPhoneTelemetry = useCallback(
+    (params: {
+      outcome: "failed" | "registered";
+      phase: AgentPhoneTelemetryPhase;
+      code: string;
+      message?: string | null;
+    }) => {
+      void reportAgentPhoneTelemetry({
+        ...params,
+        attempt: registrationAttempt,
+      }).catch((error) => console.error("CTI: no se pudo registrar telemetría telefónica", error));
+    },
+    [registrationAttempt]
+  );
+
+  function retryPhoneRegistration() {
+    if (forcedLogoutRef.current) return;
+    setPhoneIssue(null);
+    setConnectionError(null);
+    setRegState("connecting");
+    setRegistrationAttempt((attempt) => attempt + 1);
+  }
 
   useEffect(() => {
     if (profile.role !== "agente") return;
@@ -515,6 +563,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
       // tenía que avisar a soporte.
       const failing = registrationAttempt >= MAX_SILENT_RECONNECT_ATTEMPTS;
       setRegState(failing ? "error" : "connecting");
+      if (failing) setPhoneIssue((issue) => issue ?? "register");
       registeredRef.current = false;
       setConnectionError(
         failing
@@ -533,10 +582,16 @@ export function CtiBar({ profile }: { profile: Profile }) {
     async function register(sipUser: string, sipPassword: string) {
       if (forcedLogoutRef.current) return;
       setRegState("connecting");
+      setPhoneIssue(null);
       setConnectionError(null);
+      let phase: AgentPhoneTelemetryPhase = "microphone";
+      let registeredTelemetrySent = false;
+      let failureTelemetrySent = false;
       try {
         if (!navigator.mediaDevices?.getUserMedia) {
-          throw new Error("Este navegador no permite acceder al micrófono.");
+          const unsupported = new Error("Este navegador no permite acceder al micrófono.");
+          unsupported.name = "MediaDevicesUnavailable";
+          throw unsupported;
         }
         const mediaProbe = await navigator.mediaDevices.getUserMedia({
           audio: true,
@@ -545,6 +600,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
         mediaProbe.getTracks().forEach((track) => track.stop());
         mediaReadyRef.current = true;
 
+        phase = "module";
         const { UserAgent, Registerer, RegistererState } = await import("sip.js");
         // En PJSIP el usuario del REGISTER debe coincidir con el nombre del
         // AOR. Endpoint y AOR comparten la extensión, aunque sean objetos de
@@ -564,6 +620,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
           onInvite: (invitation: unknown) => incomingInviteHandlerRef.current(invitation),
         };
 
+        phase = "wss";
         await ua.start();
         activeUa = ua;
         if (disposed) {
@@ -579,17 +636,36 @@ export function CtiBar({ profile }: { profile: Profile }) {
           if (disposed) return;
           if (state === RegistererState.Registered) {
             setRegState("registered");
+            setPhoneIssue(null);
             registeredRef.current = true;
             // Sin esto el backoff quedaba pegado en el máximo aunque el
             // registro se hubiera recuperado.
             setRegistrationAttempt(0);
             setConnectionError(null);
+            if (!registeredTelemetrySent) {
+              registeredTelemetrySent = true;
+              recordPhoneTelemetry({
+                outcome: "registered",
+                phase: "register",
+                code: "REGISTERED",
+              });
+            }
           } else if (
             state === RegistererState.Unregistered ||
             state === RegistererState.Terminated
           ) {
+            if (forcedLogoutRef.current) return;
             mediaReadyRef.current = false;
             readyStatusSyncedRef.current = null;
+            if (!failureTelemetrySent) {
+              failureTelemetrySent = true;
+              recordPhoneTelemetry({
+                outcome: "failed",
+                phase: "register",
+                code: "REGISTER_TERMINATED",
+                message: "El registro SIP terminó antes de quedar operativo.",
+              });
+            }
             void markAgentUnavailable().catch((err) =>
               console.error("CTI: no se pudo sacar de disponibilidad tras perder SIP", err)
             );
@@ -597,9 +673,19 @@ export function CtiBar({ profile }: { profile: Profile }) {
           }
         });
 
+        phase = "register";
         await registerer.register();
       } catch (err) {
         console.error("CTI: fallo al registrar softphone", err);
+        if (!failureTelemetrySent) {
+          failureTelemetrySent = true;
+          recordPhoneTelemetry({
+            outcome: "failed",
+            phase,
+            code: telemetryCode(err, phase),
+            message: telemetryMessage(err),
+          });
+        }
         mediaReadyRef.current = false;
         registeredRef.current = false;
         readyStatusSyncedRef.current = null;
@@ -608,14 +694,17 @@ export function CtiBar({ profile }: { profile: Profile }) {
         );
         if (!disposed) {
           const permissionDenied =
-            err instanceof DOMException && err.name === "NotAllowedError";
-          if (permissionDenied) {
+            phase === "microphone" &&
+            ((err instanceof DOMException && err.name === "NotAllowedError") ||
+              (err instanceof Error && err.name === "MediaDevicesUnavailable"));
+          if (permissionDenied || phase === "microphone") {
             setRegState("error");
-            setCurrentReasonId(null);
+            setPhoneIssue("microphone");
             setConnectionError(
-              "El micrófono está bloqueado. Autorízalo en el navegador y recarga Atlas para recibir llamadas."
+              "Autoriza el micrófono en el navegador y luego presiona Reintentar teléfono."
             );
           } else {
+            setPhoneIssue(phase);
             scheduleReconnect();
           }
         }
@@ -635,7 +724,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
       if (registererRef.current === activeRegisterer) registererRef.current = null;
       if (uaRef.current === activeUa) uaRef.current = null;
     };
-  }, [credential, registrationAttempt]);
+  }, [credential, registrationAttempt, recordPhoneTelemetry]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function attachRemoteAudio(session: any) {
@@ -1206,7 +1295,9 @@ export function CtiBar({ profile }: { profile: Profile }) {
       ? "Teléfono conectado"
       : regState === "connecting"
         ? "Conectando..."
-        : "Teléfono desconectado";
+        : phoneIssue === "microphone"
+          ? "Micrófono bloqueado"
+          : "Teléfono desconectado";
   const currentReason = statusReasons.find((reason) => reason.id === currentReasonId) ?? null;
   const availableReasons = statusReasons.filter((reason) => !reason.is_pause);
   const auxReasons = statusReasons.filter(
@@ -1406,12 +1497,36 @@ export function CtiBar({ profile }: { profile: Profile }) {
             <div className="bg-surface">
               {regState !== "registered" && (
                 <div
-                  className="mx-4 mt-4 flex items-center gap-3 rounded-xl bg-warning-bg px-3 py-2.5 text-xs text-warning"
+                  className={cn(
+                    "mx-4 mt-4 flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs",
+                    regState === "error"
+                      ? "bg-danger-bg text-danger"
+                      : "bg-warning-bg text-warning"
+                  )}
                 >
-                  <LoaderCircle className="shrink-0 animate-spin" size={16} />
-                  <span className="flex-1">
-                    {connectionError ?? "Conectando automáticamente el teléfono con la central..."}
-                  </span>
+                  {regState === "error" ? (
+                    phoneIssue === "microphone" ? (
+                      <MicOff className="shrink-0" size={16} />
+                    ) : (
+                      <PhoneOff className="shrink-0" size={16} />
+                    )
+                  ) : (
+                    <LoaderCircle className="shrink-0 animate-spin" size={16} />
+                  )}
+                  <div className="flex flex-1 items-center justify-between gap-3">
+                    <span>
+                      {connectionError ?? "Conectando automáticamente el teléfono con la central..."}
+                    </span>
+                    {regState === "error" && (
+                      <button
+                        type="button"
+                        onClick={retryPhoneRegistration}
+                        className="shrink-0 rounded-lg border border-current/30 px-2.5 py-1.5 font-semibold hover:bg-black/5"
+                      >
+                        Reintentar teléfono
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -1490,8 +1605,10 @@ export function CtiBar({ profile }: { profile: Profile }) {
                             Discado automático
                           </p>
                           <p className="mt-1 text-base font-semibold">
-                            {regState !== "registered"
-                              ? "Conectando teléfono..."
+                            {regState === "error"
+                              ? statusLabel
+                              : regState !== "registered"
+                                ? "Conectando teléfono..."
                               : !agentCanCall
                                 ? `AUX · ${currentReason?.label ?? "Pausa"}`
                                 : inLegalIntercallBreak
@@ -1881,13 +1998,21 @@ export function CtiBar({ profile }: { profile: Profile }) {
                           : "bg-primary hover:bg-primary-hover"
                       )}
                     >
-                      {regState !== "registered" ? (
+                      {regState === "connecting" ? (
                         <LoaderCircle className="animate-spin" size={18} />
+                      ) : regState === "error" ? (
+                        phoneIssue === "microphone" ? (
+                          <MicOff size={18} />
+                        ) : (
+                          <PhoneOff size={18} />
+                        )
                       ) : (
                         <Phone size={18} />
                       )}
-                      {regState !== "registered"
-                        ? "Preparando teléfono..."
+                      {regState === "error"
+                        ? statusLabel
+                        : regState !== "registered"
+                          ? "Preparando teléfono..."
                         : !agentCanCall
                           ? "Ponte disponible para llamar"
                           : profile.role === "agente" && !effectiveManualCampaignId
