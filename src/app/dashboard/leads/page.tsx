@@ -72,7 +72,9 @@ export default async function LeadsPage({
   const [{ data: agentOptions }, { data: campaignOptions }] = canManage
     ? await Promise.all([
         supabase.from("profiles").select("id, full_name").eq("role", "agente").eq("active", true).order("full_name"),
-        supabase.from("campaigns").select("id, name").order("name"),
+        profile.role === "supervisor"
+          ? supabase.rpc("get_report_scope_campaigns")
+          : supabase.from("campaigns").select("id, name").order("name"),
       ])
     : [{ data: [] }, { data: [] }];
 

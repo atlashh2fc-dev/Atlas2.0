@@ -225,6 +225,11 @@ export default async function MailDashboardPage({
   const activeBucket = queueParam && MAIL_BUCKETS.has(queueParam) ? queueParam : "all";
   const cursor = decodeCursor(cursorParam);
   const supabase = await createClient();
+  const { data: supervisedTeams } =
+    profile.role === "supervisor"
+      ? await supabase.from("teams").select("id").eq("supervisor_id", profile.id)
+      : { data: [] as { id: string }[] };
+  const supervisedTeamIds = (supervisedTeams ?? []).map((team) => team.id);
 
   const agentsQuery = supabase
     .from("profiles")
@@ -234,7 +239,7 @@ export default async function MailDashboardPage({
     .order("full_name");
 
   if (profile.role === "supervisor") {
-    if (profile.team_id) agentsQuery.eq("team_id", profile.team_id);
+    if (supervisedTeamIds.length > 0) agentsQuery.in("team_id", supervisedTeamIds);
     else agentsQuery.eq("id", "00000000-0000-0000-0000-000000000000");
   }
 

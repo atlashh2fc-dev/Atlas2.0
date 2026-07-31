@@ -233,10 +233,12 @@ export function SupervisorAgentMetricsTable({
   agents,
   rangeFrom,
   rangeTo,
+  campaignId,
 }: {
   agents: SupervisorAgentMetric[];
   rangeFrom: string;
   rangeTo: string;
+  campaignId?: string | null;
 }) {
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<Scope>("all");
@@ -266,6 +268,7 @@ export function SupervisorAgentMetricsTable({
     if (drilldown.agent.historical_agent_id) {
       params.set("historicalAgentId", drilldown.agent.historical_agent_id);
     }
+    if (campaignId) params.set("campaignId", campaignId);
 
     fetch(`/api/reportes/supervisor-drilldown?${params.toString()}`, { signal: controller.signal })
       .then(async (response) => {
@@ -285,7 +288,7 @@ export function SupervisorAgentMetricsTable({
       });
 
     return () => controller.abort();
-  }, [drilldown, rangeFrom, rangeTo]);
+  }, [campaignId, drilldown, rangeFrom, rangeTo]);
 
   const visibleAgents = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();

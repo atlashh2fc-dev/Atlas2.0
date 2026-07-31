@@ -190,11 +190,12 @@ export default async function TeamPage({
       .select("id, full_name")
       .eq("role", "agente")
       .order("full_name"),
-    supabase.from("campaigns").select("id, name").order("name"),
+    supabase.rpc("get_report_scope_campaigns"),
     supabase.rpc("get_supervisor_report_summary", {
       p_from: reportFrom.toISOString(),
       p_to: reportTo.toISOString(),
       p_team_id: null,
+      p_campaign_id: campaignScope || null,
     }),
   ]);
 
@@ -221,18 +222,24 @@ export default async function TeamPage({
 
   // Carga por ejecutivo agrupada en la base: contarla en memoria obligaba a
   // traer decenas de miles de filas y dejaba los números incompletos.
-  const { data: loadRows, error: loadError } = await supabase.rpc("get_team_agent_load");
+  const { data: loadRows, error: loadError } = await supabase.rpc("get_team_agent_load", {
+    p_campaign_id: campaignScope || null,
+  });
 
   // Compromisos vencidos: agendas que pasaron su hora sin cumplirse.
-  const { data: callbackRows } = await supabase
+  const callbackQuery = supabase
     .from("leads")
     .select(
-      "id, full_name, phone, next_action_at, callback_mode, callback_attempts, managed_by, assigned_to, campaigns!leads_campaign_id_fkey(name), profiles!leads_managed_by_fkey(full_name)"
+      "id, full_name, phone, campaign_id, next_action_at, callback_mode, callback_attempts, managed_by, assigned_to, campaigns!leads_campaign_id_fkey(name), profiles!leads_managed_by_fkey(full_name)"
     )
     .eq("workflow_status", "callback")
     .not("next_action_at", "is", null)
     .order("next_action_at", { ascending: true })
     .limit(300);
+  if (filters.campaign) callbackQuery.eq("campaign_id", filters.campaign);
+  if (filters.agent) callbackQuery.eq("managed_by", filters.agent);
+  if (filters.status) callbackQuery.eq("status", filters.status);
+  const { data: callbackRows } = await callbackQuery;
 
   const now = new Date();
   const agendaRows = (agendaLeads ?? []) as AgendaLead[];

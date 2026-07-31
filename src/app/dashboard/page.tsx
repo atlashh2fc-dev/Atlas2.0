@@ -26,7 +26,14 @@ export default async function DashboardPage() {
   const supabase = await createClient();
 
   if (profile.role === "supervisor") {
-    const teamId = profile.team_id;
+    // El vínculo de un supervisor con sus equipos vive en teams.supervisor_id.
+    // profiles.team_id pertenece al ejecutivo y puede ser null cuando el
+    // supervisor administra uno o más equipos.
+    const { data: supervisedTeams } = await supabase
+      .from("teams")
+      .select("id")
+      .eq("supervisor_id", profile.id);
+    const teamIds = (supervisedTeams ?? []).map((team) => team.id);
     const today = new Date();
     const nowIso = today.toISOString();
     const todayStart = startOfDay(today).toISOString();
@@ -39,38 +46,38 @@ export default async function DashboardPage() {
       overdueResult,
       todayResult,
       performanceResult,
-    ] = teamId
+    ] = teamIds.length > 0
       ? await Promise.all([
           supabase
             .from("profiles")
             .select("id", { count: "exact", head: true })
-            .eq("team_id", teamId)
+            .in("team_id", teamIds)
             .eq("role", "agente"),
           supabase
             .from("leads")
             .select("id", { count: "exact", head: true })
-            .eq("team_id", teamId),
+            .in("team_id", teamIds),
           supabase
             .from("leads")
             .select("id", { count: "exact", head: true })
-            .eq("team_id", teamId)
+            .in("team_id", teamIds)
             .is("assigned_to", null),
           supabase
             .from("leads")
             .select("id", { count: "exact", head: true })
-            .eq("team_id", teamId)
+            .in("team_id", teamIds)
             .not("next_action_at", "is", null)
             .lt("next_action_at", nowIso),
           supabase
             .from("leads")
             .select("id", { count: "exact", head: true })
-            .eq("team_id", teamId)
+            .in("team_id", teamIds)
             .gte("next_action_at", todayStart)
             .lte("next_action_at", todayEnd),
           supabase
             .from("agent_performance")
             .select("*")
-            .eq("team_id", teamId)
+            .in("team_id", teamIds)
             .order("total_interactions", { ascending: false })
             .limit(5),
         ])
@@ -102,9 +109,9 @@ export default async function DashboardPage() {
           }
         />
 
-        {!teamId && (
+        {teamIds.length === 0 && (
           <div className="rounded-lg border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger">
-            Tu usuario supervisor no tiene equipo asignado. Un administrador debe asociarte a un equipo.
+            Tu usuario supervisor no tiene equipos asignados. Un administrador debe asociarte al menos uno.
           </div>
         )}
 

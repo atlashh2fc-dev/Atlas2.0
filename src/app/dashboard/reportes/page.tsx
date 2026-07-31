@@ -237,15 +237,22 @@ export default async function ReportesPage({
   const dashboardFrom = startOfDay(addDays(dashboardTo, -(DASHBOARD_WINDOW_DAYS - 1)));
 
   if (profile.role === "supervisor") {
-    const { data, error } = await supabase.rpc("get_supervisor_report_summary", {
-      p_from: dashboardFrom.toISOString(),
-      p_to: dashboardTo.toISOString(),
-      p_team_id: null,
-    });
+    const [{ data, error }, { data: campaignRows }] = await Promise.all([
+      supabase.rpc("get_supervisor_report_summary", {
+        p_from: dashboardFrom.toISOString(),
+        p_to: dashboardTo.toISOString(),
+        p_team_id: null,
+        p_campaign_id: campaignScope || null,
+      }),
+      supabase.rpc("get_report_scope_campaigns"),
+    ]);
 
     if (error) throw new Error(error.message);
 
     const report = data as SupervisorReportSummary;
+    const campaigns = (campaignRows ?? []) as { id: string; name: string }[];
+    const selectedCampaign = campaigns.find((campaign) => campaign.id === campaignScope) ?? null;
+    const campaignQuery = selectedCampaign ? `?campaign=${encodeURIComponent(selectedCampaign.id)}` : "";
     const kpis = report.kpis;
     const tipificationRows = report.tipifications.map((row) => ({
       Tipificación: row.label,
@@ -280,13 +287,13 @@ export default async function ReportesPage({
     return (
       <div className="space-y-6">
         <p className="text-sm text-muted-foreground">
-          {`Equipo · últimos ${DASHBOARD_WINDOW_DAYS} días · ${formatDate(report.range.from)} a ${formatDate(report.range.to)}`}
+          {`${selectedCampaign ? `${selectedCampaign.name} · ` : "Todos tus equipos · "}últimos ${DASHBOARD_WINDOW_DAYS} días · ${formatDate(report.range.from)} a ${formatDate(report.range.to)}`}
         </p>
 
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <MetricCard
             label="Base del equipo"
-            href="/dashboard/leads"
+            href={`/dashboard/leads${campaignQuery}`}
             value={formatNumber(kpis.base_total)}
             detail={`${formatNumber(kpis.asignados)} asignados`}
             progress={percent(kpis.asignados, kpis.base_total)}
@@ -300,7 +307,7 @@ export default async function ReportesPage({
           <MetricCard
             label="Contactados"
             metric="contactabilidad"
-            href="/dashboard/leads?view=gestionados"
+            href={`/dashboard/leads?view=gestionados${selectedCampaign ? `&campaign=${encodeURIComponent(selectedCampaign.id)}` : ""}`}
             value={formatNumber(kpis.contactados)}
             detail={`Contactabilidad ${formatPercent(kpis.contactabilidad)} · ${formatNumber(kpis.vocalcom_contactados)} Vocalcom`}
             tone="good"
@@ -321,14 +328,14 @@ export default async function ReportesPage({
           />
           <MetricCard
             label="Agendas creadas"
-            href="/dashboard/leads?view=hoy"
+            href={`/dashboard/leads?view=hoy${selectedCampaign ? `&campaign=${encodeURIComponent(selectedCampaign.id)}` : ""}`}
             value={formatNumber(kpis.agendas_creadas)}
             detail={`${formatNumber(kpis.agendas_pendientes)} pendientes`}
             progress={percent(kpis.agendas_pendientes, kpis.agendas_creadas)}
           />
           <MetricCard
             label="Agendas vencidas"
-            href="/dashboard/leads?view=vencidas"
+            href={`/dashboard/leads?view=vencidas${selectedCampaign ? `&campaign=${encodeURIComponent(selectedCampaign.id)}` : ""}`}
             value={formatNumber(kpis.agendas_vencidas)}
             detail="Compromisos pendientes de recuperar"
             tone={kpis.agendas_vencidas > 0 ? "danger" : "default"}
@@ -357,7 +364,12 @@ export default async function ReportesPage({
 
         <section>
           <h2 className="mb-3 text-sm font-semibold text-foreground">Métricas por ejecutivo</h2>
-          <SupervisorAgentMetricsTable agents={report.agents} rangeFrom={report.range.from} rangeTo={report.range.to} />
+          <SupervisorAgentMetricsTable
+            agents={report.agents}
+            rangeFrom={report.range.from}
+            rangeTo={report.range.to}
+            campaignId={selectedCampaign?.id}
+          />
         </section>
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">

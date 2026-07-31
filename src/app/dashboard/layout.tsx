@@ -16,14 +16,17 @@ export default async function DashboardLayout({
   const profile = await requireProfile();
   const showAgendaReminder = profile.role === "agente";
   const supabase = await createClient();
-  const [{ data: campaignRows }, { data: memberships }] = await Promise.all([
-    supabase.from("campaigns").select("id, name").eq("is_active", true).order("name"),
+  const [{ data: rawCampaignRows }, { data: memberships }] = await Promise.all([
+    profile.role === "agente"
+      ? supabase.from("campaigns").select("id, name").eq("is_active", true).order("name")
+      : supabase.rpc("get_report_scope_campaigns"),
     profile.role === "agente"
       ? supabase.from("campaign_agents").select("campaign_id").eq("profile_id", profile.id)
       : Promise.resolve({ data: [] as { campaign_id: string }[] }),
   ]);
+  const campaignRows = (rawCampaignRows ?? []) as { id: string; name: string }[];
   const assignedCampaignIds = new Set((memberships ?? []).map((membership) => membership.campaign_id));
-  const campaigns = (campaignRows ?? []).filter(
+  const campaigns = campaignRows.filter(
     (campaign) => profile.role !== "agente" || assignedCampaignIds.has(campaign.id)
   );
   const requestedScope = await resolveCampaignScope();

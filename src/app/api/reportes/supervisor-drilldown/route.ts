@@ -17,6 +17,7 @@ export async function GET(request: Request) {
   const to = url.searchParams.get("to");
   const profileId = nullableUuid(url.searchParams.get("profileId"));
   const historicalAgentId = nullableUuid(url.searchParams.get("historicalAgentId"));
+  const campaignId = nullableUuid(url.searchParams.get("campaignId"));
 
   if (!SUPPORTED_METRICS.has(metric)) {
     return NextResponse.json({ error: "Métrica no soportada" }, { status: 400 });
@@ -38,6 +39,7 @@ export async function GET(request: Request) {
     p_historical_agent_id: historicalAgentId,
     p_metric: metric,
     p_limit: 100,
+    p_campaign_id: campaignId,
   });
 
   if (error) {
