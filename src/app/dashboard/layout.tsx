@@ -7,6 +7,7 @@ import { CtiBar } from "@/components/cti-bar";
 import { ToastProvider } from "@/components/ui";
 import { createClient } from "@/lib/supabase/server";
 import { resolveCampaignScope } from "@/lib/campaign-scope";
+import { ForceLogoutGuard } from "@/components/force-logout-guard";
 
 export default async function DashboardLayout({
   children,
@@ -49,6 +50,7 @@ export default async function DashboardLayout({
   return (
     <ToastProvider>
       <div className="flex h-screen w-full overflow-hidden bg-background">
+        {profile.role === "agente" && <ForceLogoutGuard userId={profile.id} />}
         <DialerListener userId={profile.id} />
         <Sidebar profile={profile} badges={badges} />
         <div className="flex flex-1 flex-col overflow-hidden">

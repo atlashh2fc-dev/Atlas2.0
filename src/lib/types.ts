@@ -292,6 +292,12 @@ export interface AgentLiveStatus {
   reason_label: string | null;
   is_pause: boolean;
   reason_since: string | null;
+  control_command_id: string | null;
+  control_status: "pending" | "processing" | "completed" | "failed" | null;
+  control_requested_at: string | null;
+  control_browser_acknowledged_at: string | null;
+  control_pbx_completed_at: string | null;
+  control_last_error: string | null;
 }
 
 export interface QueueHealth {
@@ -337,8 +343,10 @@ export interface AgentActivityReportRow {
   logged_in_seconds: number | null;
   productive_seconds: number | null;
   occupancy_rate: number | null;
+  scheduled_seconds: number | null;
   available_seconds: number | null;
   paused_seconds: number | null;
+  disconnected_seconds: number | null;
   adherence_rate: number | null;
 }
 

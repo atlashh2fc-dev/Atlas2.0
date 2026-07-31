@@ -7,6 +7,12 @@ export async function getCurrentProfile(): Promise<Profile | null> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
+  const { data: sessionValid, error: sessionError } = await supabase.rpc(
+    "is_current_app_session_valid"
+  );
+  if (sessionError) throw new Error(sessionError.message);
+  if (!sessionValid) return null;
+
   const { data: profile } = await supabase
     .from("profiles")
     .select("*")

@@ -219,6 +219,29 @@ export async function ensureAgentEndpoints(
   }
 }
 
+/**
+ * Rota la clave de un endpoint ya aprovisionado. Se usa únicamente al cerrar
+ * una sesión por administración; UpdateConfig recarga PJSIP en la misma
+ * operación y evita que una credencial copiada vuelva a registrar el agente.
+ */
+export async function updateAgentSipPassword(
+  ami: AmiClient,
+  extension: string,
+  sipPassword: string
+): Promise<void> {
+  await amiAction(
+    ami,
+    buildUpdateConfigAction("pjsip.conf", [
+      {
+        action: "Update",
+        cat: `${extension}-auth`,
+        varName: "password",
+        value: sipPassword,
+      },
+    ])
+  );
+}
+
 const AMD_CONTEXT = "dialer-amd-out";
 
 /**

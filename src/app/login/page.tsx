@@ -10,14 +10,19 @@ export const metadata: Metadata = {
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; reason?: string }>;
 }) {
-  const { error } = await searchParams;
+  const { error, reason } = await searchParams;
+  const forcedLogout = reason === "forced_logout";
 
   return (
     <AuthShell
       title="Inicia sesión"
-      description="Usa el correo con el que te dieron de alta en Atlas."
+      description={
+        forcedLogout
+          ? "Un administrador cerró tu sesión anterior. Puedes volver a entrar normalmente."
+          : "Usa el correo con el que te dieron de alta en Atlas."
+      }
       footer={<SupportLine />}
     >
       <LoginForm linkExpired={error === "enlace_invalido"} />

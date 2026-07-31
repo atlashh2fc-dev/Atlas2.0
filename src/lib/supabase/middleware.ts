@@ -33,16 +33,36 @@ export async function updateSession(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser();
 
+  let currentUser = user;
+  let forcedLogout = false;
+  if (currentUser) {
+    const { data: sessionValid, error: sessionError } = await supabase.rpc(
+      "is_current_app_session_valid"
+    );
+    if (!sessionError && !sessionValid) {
+      forcedLogout = true;
+      // Acá sí tenemos el JWT/cookie del propio ejecutivo. Es la vía
+      // soportada por Supabase para revocar sus refresh tokens globalmente.
+      await supabase.auth.signOut({ scope: "global" });
+      currentUser = null;
+    }
+  }
+
   const path = request.nextUrl.pathname;
   const isPublic = PUBLIC_PATHS.some((p) => path.startsWith(p));
 
-  if (!user && !isPublic) {
+  if (!currentUser && !isPublic) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    return NextResponse.redirect(url);
+    if (forcedLogout) url.searchParams.set("reason", "forced_logout");
+    const redirectResponse = NextResponse.redirect(url);
+    for (const cookie of supabaseResponse.cookies.getAll()) {
+      redirectResponse.cookies.set(cookie);
+    }
+    return redirectResponse;
   }
 
-  if (user && path === "/login") {
+  if (currentUser && path === "/login") {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);

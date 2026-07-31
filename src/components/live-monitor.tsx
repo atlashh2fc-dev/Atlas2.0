@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { Bar, BarChart, Cell, Label, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import ReactGridLayout, { useContainerWidth, verticalCompactor, type Layout, type LayoutItem } from "react-grid-layout";
-import { RotateCcw } from "lucide-react";
-import { getAgentLiveStatus, getQueueHealth } from "@/app/actions/supervision";
+import { LogOut, RotateCcw } from "lucide-react";
+import { forceAgentLogout, getAgentLiveStatus, getQueueHealth } from "@/app/actions/supervision";
 import type { AgentLiveStatus, QueueHealth } from "@/lib/types";
 import { LEGAL_INTERCALL_BREAK_SECONDS } from "@/lib/intercall-break";
 import { usePersistentState } from "@/lib/persistent-state";
@@ -20,6 +20,7 @@ import {
   SectionCard,
   Select,
   StatusDot,
+  useToast,
   type BadgeTone,
   type Column,
 } from "@/components/ui";
@@ -126,6 +127,7 @@ function formatElapsed(seconds: number | null): string {
 
 function groupOf(agent: AgentLiveStatus): AgentGroup {
   if (agent.phone_status === "on_call" || agent.phone_status === "ringing") return "on_call";
+  if (agent.reason_code === "desconectado" || agent.phone_status === "offline") return "offline";
   if (agent.is_pause) return "paused";
   if (agent.phone_status === "wrap_up") return "wrap_up";
   if (agent.phone_status === "available") return "available";
@@ -135,6 +137,11 @@ function groupOf(agent: AgentLiveStatus): AgentGroup {
 function agentDisplay(agent: AgentLiveStatus, now: number): { label: string; tone: BadgeTone; since: string | null; alert: boolean } {
   if (agent.phone_status === "on_call") return { label: "En llamada", tone: "info", since: agent.phone_status_since, alert: false };
   if (agent.phone_status === "ringing") return { label: "Timbrando", tone: "warning", since: agent.phone_status_since, alert: false };
+  // Desconectado es ausencia, no una pausa/AUX. Fuera del horario no acumula
+  // nada; dentro del horario se calcula como métrica separada en reportes.
+  if (agent.reason_code === "desconectado") {
+    return { label: "Desconectado", tone: "neutral", since: null, alert: false };
+  }
   if (agent.is_pause && agent.reason_label) {
     const seconds = elapsedSeconds(agent.reason_since, now);
     return { label: agent.reason_label, tone: "danger", since: agent.reason_since, alert: seconds != null && seconds > THRESHOLDS.pauseSeconds };
@@ -202,7 +209,7 @@ function QueueNumber({ label, value }: { label: string; value: number }) {
   return <div><p className="text-xl font-semibold tabular-nums tracking-tight text-foreground">{formatInt(value)}</p><p className="mt-0.5 text-[10px] uppercase tracking-[0.1em] text-muted-foreground">{label}</p></div>;
 }
 
-export function LiveMonitor() {
+export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boolean }) {
   const [agents, setAgents] = useState<AgentLiveStatus[]>([]);
   const [queues, setQueues] = useState<QueueHealth[]>([]);
   const [now, setNow] = useState(() => new Date().getTime());
@@ -211,6 +218,11 @@ export function LiveMonitor() {
   const [group, setGroup] = useState<AgentGroup | "">("");
   const [campaign, setCampaign] = useState("");
   const [term, setTerm] = useState("");
+  const [logoutTarget, setLogoutTarget] = useState<AgentLiveStatus | null>(null);
+  const [logoutReason, setLogoutReason] = useState("");
+  const [logoutPending, startLogoutTransition] = useTransition();
+  const logoutDialogRef = useRef<HTMLDialogElement>(null);
+  const { toast } = useToast();
   const [layout, setLayout] = usePersistentState<WidgetLayout[]>("atlas:live-monitor-layout:v2", DEFAULT_LAYOUT);
   const { width, containerRef } = useContainerWidth();
 
@@ -259,13 +271,73 @@ export function LiveMonitor() {
   }), [agents, group, campaign, normalizedTerm]);
   const statusChartData = (Object.keys(GROUP_LABEL) as AgentGroup[]).map((key) => ({ name: GROUP_LABEL[key], value: groups[key], color: STATUS_COLORS[key] }));
   const campaignChartData = queues.map((queue) => ({ name: queue.campaign_name.length > 18 ? `${queue.campaign_name.slice(0, 16)}…` : queue.campaign_name, fullName: queue.campaign_name, "En curso": queue.in_flight, Contestadas: queue.answered_today, Completadas: queue.completed_today }));
+  const openLogoutDialog = useCallback((agent: AgentLiveStatus) => {
+    setLogoutTarget(agent);
+    setLogoutReason("");
+    queueMicrotask(() => logoutDialogRef.current?.showModal());
+  }, []);
+
+  function confirmLogout() {
+    if (!logoutTarget) return;
+    startLogoutTransition(async () => {
+      try {
+        await forceAgentLogout(logoutTarget.profile_id, logoutReason);
+        toast({
+          tone: "success",
+          message: `Cierre solicitado para ${logoutTarget.full_name}. Atlas confirmará navegador y PBX por separado.`,
+        });
+        logoutDialogRef.current?.close();
+        setLogoutTarget(null);
+      } catch (err) {
+        toast({
+          tone: "danger",
+          message: err instanceof Error ? err.message : "No se pudo cerrar la sesión.",
+        });
+      }
+    });
+  }
+
   const columns = useMemo<Column<AgentLiveStatus>[]>(() => [
     { id: "ejecutivo", header: "Ejecutivo", value: (row) => row.full_name },
     { id: "extension", header: "Extensión", value: (row) => row.extension, className: "text-muted-foreground" },
     { id: "campana", header: "Campaña", value: (row) => row.campaign_name ?? "", cell: (row) => row.campaign_name ?? "—", className: "text-muted-foreground" },
     { id: "estado", header: "Estado", value: (row) => agentDisplay(row, now).label, cell: (row) => { const { label, tone } = agentDisplay(row, now); return <span className="inline-flex items-center gap-2"><StatusDot tone={tone} />{label}</span>; } },
     { id: "tiempo", header: "Tiempo en estado", align: "right", value: (row) => elapsedSeconds(agentDisplay(row, now).since, now) ?? -1, cell: (row) => { const { since, alert } = agentDisplay(row, now); return <span className={alert ? "font-medium text-danger" : "tabular-nums"}>{formatElapsed(elapsedSeconds(since, now))}{alert && " ⚠"}</span>; } },
-  ], [now]);
+    ...(canForceLogout ? [{
+      id: "acciones",
+      header: "",
+      align: "right" as const,
+      sortable: false,
+      cell: (row: AgentLiveStatus) => {
+        const controlRelevant = Boolean(
+          row.reason_code === "desconectado" &&
+          row.control_requested_at &&
+          (!row.reason_since || new Date(row.control_requested_at).getTime() >= new Date(row.reason_since).getTime())
+        );
+        const closing = controlRelevant && (row.control_status === "pending" || row.control_status === "processing");
+        const failed = controlRelevant && row.control_status === "failed";
+        return (
+          <div className="flex flex-col items-end gap-1">
+            <Button
+              type="button"
+              size="sm"
+              variant={failed ? "danger" : "secondary"}
+              disabled={closing}
+              onClick={() => openLogoutDialog(row)}
+            >
+              <LogOut size={13} aria-hidden="true" />
+              {closing ? "Cerrando…" : failed ? "Reintentar" : "Cerrar sesión"}
+            </Button>
+            {controlRelevant && row.control_status === "completed" && (
+              <span className="text-[10px] text-success">
+                {row.control_browser_acknowledged_at ? "Navegador y PBX confirmados" : "PBX confirmado"}
+              </span>
+            )}
+          </div>
+        );
+      },
+    }] : []),
+  ], [now, canForceLogout, openLogoutDialog]);
 
   const widgets: Record<WidgetId, ReactNode> = {
     occupancy: <MetricWidget kicker={WIDGET_KICKER.occupancy} label="Ocupación del equipo" metric="ocupacion" value={`${occupancy}%`} hint={`${connected} conectados · objetivo operativo 85%`} tone={occupancy >= 85 ? "warn" : "default"} />,
@@ -369,6 +441,38 @@ export function LiveMonitor() {
 
   return (
     <div className="space-y-4">
+      <dialog
+        ref={logoutDialogRef}
+        className="w-[min(32rem,calc(100vw-2rem))] rounded-xl border border-border bg-surface p-0 text-foreground shadow-2xl backdrop:bg-black/45"
+        onClose={() => setLogoutTarget(null)}
+      >
+        <div className="border-b border-border px-5 py-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-danger">Cierre administrativo</p>
+          <h2 className="mt-1 text-lg font-semibold">Cerrar sesión de {logoutTarget?.full_name}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Se cortará una llamada activa, el teléfono WebRTC y las sesiones actuales. La cuenta, extensión,
+            campañas y cartera seguirán activas para que pueda volver a iniciar sesión normalmente.
+          </p>
+        </div>
+        <div className="p-5">
+          <Field label="Motivo (opcional)">
+            <Input
+              value={logoutReason}
+              maxLength={240}
+              onChange={(event) => setLogoutReason(event.target.value)}
+              placeholder="Ej. cierre solicitado por supervisión"
+            />
+          </Field>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
+          <Button type="button" variant="secondary" disabled={logoutPending} onClick={() => logoutDialogRef.current?.close()}>
+            Cancelar
+          </Button>
+          <Button type="button" variant="danger" disabled={logoutPending} onClick={confirmLogout}>
+            {logoutPending ? "Cerrando…" : "Cerrar sesión ahora"}
+          </Button>
+        </div>
+      </dialog>
       <div className="flex justify-end">
         <Button variant="secondary" size="sm" onClick={() => setLayout(DEFAULT_LAYOUT)} title="Restaurar orden y tamaños iniciales"><RotateCcw size={14} aria-hidden="true" />Restaurar vista</Button>
       </div>

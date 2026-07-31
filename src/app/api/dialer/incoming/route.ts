@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getOrCreateOpenCall } from "@/app/actions/calls";
+import { getCurrentProfile } from "@/lib/auth";
 
 /**
  * Endpoint nativo para integraciones de discador (ej. extensión de Chrome
@@ -48,11 +49,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Número no reconocible" }, { status: 400 });
   }
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
+  const profile = await getCurrentProfile();
+  if (!profile) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
+  if (profile.role !== "agente") {
+    return NextResponse.json({ error: "Solo disponible para ejecutivos" }, { status: 403 });
+  }
+  const supabase = await createClient();
 
   // Match exacto contra el formato real almacenado (+56XXXXXXXXX).
   // RLS limita lo que cada rol puede ver (agente: solo sus leads asignados;
@@ -73,7 +77,7 @@ export async function POST(request: Request) {
 
   // Si hay varios leads con el mismo teléfono, prioriza el asignado al
   // agente que está recibiendo la llamada.
-  const lead = leads.find((l) => l.assigned_to === user.id) ?? leads[0];
+  const lead = leads.find((l) => l.assigned_to === profile.id) ?? leads[0];
 
   let callId: string | null = null;
   try {
@@ -83,7 +87,7 @@ export async function POST(request: Request) {
     const { error: eventError } = await supabase.from("call_events").insert({
       call_id: call.id,
       lead_id: lead.id,
-      agent_id: user.id,
+      agent_id: profile.id,
       event_type: "dialer.incoming_call",
       payload: { phone, source: "vocalcom_extension" },
     });

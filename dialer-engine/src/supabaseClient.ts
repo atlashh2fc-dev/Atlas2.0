@@ -360,6 +360,42 @@ export async function expireStaleAgentHeartbeats(): Promise<string[]> {
 
 export type AgentPauseState = { extension: string; paused: boolean; reasonLabel: string | null };
 
+export type AgentControlCommand = {
+  command_id: string;
+  profile_id: string;
+  extension: string;
+  sip_password: string;
+  previous_phone_status: string | null;
+  reason: string | null;
+};
+
+export async function claimAgentControlCommands(
+  workerId: string,
+  limit = 5
+): Promise<AgentControlCommand[]> {
+  const { data, error } = await supabase.rpc("claim_agent_control_commands", {
+    p_worker_id: workerId,
+    p_limit: limit,
+  });
+  if (error) throw new Error(`claim_agent_control_commands: ${error.message}`);
+  return (data ?? []) as AgentControlCommand[];
+}
+
+export async function completeAgentControlCommand(params: {
+  commandId: string;
+  success: boolean;
+  result?: Record<string, unknown>;
+  error?: string | null;
+}): Promise<void> {
+  const { error } = await supabase.rpc("complete_agent_control_command", {
+    p_command_id: params.commandId,
+    p_success: params.success,
+    p_result: params.result ?? {},
+    p_error: params.error ?? null,
+  });
+  if (error) throw new Error(`complete_agent_control_command: ${error.message}`);
+}
+
 /**
  * Estado de pausa (Auxiliar/Baño/Capacitación/etc.) de cada agente con
  * extensión activa, para sincronizar QueuePause en Asterisk. La relación

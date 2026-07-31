@@ -50,6 +50,10 @@ import {
   LEGAL_INTERCALL_BREAK_SECONDS,
 } from "@/lib/intercall-break";
 import { cn } from "@/lib/utils";
+import {
+  AGENT_FORCE_LOGOUT_EVENT,
+  type AgentForceLogoutEventDetail,
+} from "@/lib/agent-control";
 
 const HEARTBEAT_MS = 20_000;
 const SIP_DOMAIN = process.env.NEXT_PUBLIC_SIP_DOMAIN ?? "ws-atlas.geimser.cl";
@@ -240,8 +244,58 @@ export function CtiBar({ profile }: { profile: Profile }) {
   const ringbackRef = useRef<RingbackPlayback | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const incomingInviteHandlerRef = useRef<(invitation: any) => void>(() => {});
+  /** Bloquea cualquier reconexión SIP desde que llega una orden administrativa. */
+  const forcedLogoutRef = useRef(false);
 
   const recentStorageKey = `atlas-cti-recents:${profile.id}`;
+
+  useEffect(() => {
+    if (profile.role !== "agente") return;
+
+    const onForceLogout = (rawEvent: Event) => {
+      const event = rawEvent as CustomEvent<AgentForceLogoutEventDetail>;
+      forcedLogoutRef.current = true;
+      registeredRef.current = false;
+      mediaReadyRef.current = false;
+      readyStatusSyncedRef.current = null;
+
+      const shutdown = (async () => {
+        callAttemptRef.current += 1;
+        stopLocalRingback();
+        detachRemoteAudio();
+
+        const session = sessionRef.current;
+        if (session) {
+          try {
+            const { SessionState } = await import("sip.js");
+            if (session.state === SessionState.Established && typeof session.bye === "function") {
+              await session.bye();
+            } else if (typeof session.cancel === "function") {
+              await session.cancel();
+            } else if (typeof session.reject === "function") {
+              await session.reject();
+            }
+          } catch (error) {
+            console.error("CTI: no se pudo terminar limpiamente la llamada forzada", error);
+            try { session.dispose?.(); } catch { /* ya terminó */ }
+          }
+        }
+
+        sessionRef.current = null;
+        try { await registererRef.current?.unregister(); } catch { /* PBX aplica fallback */ }
+        try { await uaRef.current?.stop(); } catch { /* PBX aplica fallback */ }
+        registererRef.current = null;
+        uaRef.current = null;
+        mediaCleanupRef.current?.();
+        mediaCleanupRef.current = null;
+      })();
+
+      event.detail?.shutdowns.push(shutdown);
+    };
+
+    window.addEventListener(AGENT_FORCE_LOGOUT_EVENT, onForceLogout);
+    return () => window.removeEventListener(AGENT_FORCE_LOGOUT_EVENT, onForceLogout);
+  }, [profile.role]);
 
   useEffect(() => {
     getMySipCredentials()
@@ -455,7 +509,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
     function scheduleReconnect() {
-      if (disposed || reconnectTimer) return;
+      if (disposed || forcedLogoutRef.current || reconnectTimer) return;
       // Tras varios intentos fallidos el estado deja de ser "conectando" y pasa
       // a error: antes el ejecutivo veía un spinner indefinido sin saber que
       // tenía que avisar a soporte.
@@ -477,6 +531,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
     }
 
     async function register(sipUser: string, sipPassword: string) {
+      if (forcedLogoutRef.current) return;
       setRegState("connecting");
       setConnectionError(null);
       try {

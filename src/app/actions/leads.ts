@@ -142,13 +142,12 @@ export async function registerInteraction(formData: FormData) {
   const newStatus = formData.get("new_status") as string | null;
   const workflowStepId = (formData.get("workflow_step_id") as string) || null;
 
+  const profile = await requireProfile();
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("No autenticado");
 
   const { error: insertError } = await supabase.from("interactions").insert({
     lead_id: leadId,
-    agent_id: user.id,
+    agent_id: profile.id,
     result,
     notes,
     workflow_step_id: workflowStepId,

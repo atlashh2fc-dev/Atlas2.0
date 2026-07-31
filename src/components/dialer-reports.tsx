@@ -229,6 +229,14 @@ export function DialerReports() {
         cell: (row) => formatPercent(row.occupancy_rate),
       },
       {
+        id: "jornada",
+        header: "Jornada programada",
+        align: "right",
+        value: (row) => row.scheduled_seconds,
+        cell: (row) => formatSeconds(row.scheduled_seconds),
+        tooltip: "Suma únicamente horarios laborales configurados. Sin horario explícito se muestra vacío.",
+      },
+      {
         id: "disponible",
         header: "Disponible",
         align: "right",
@@ -241,6 +249,14 @@ export function DialerReports() {
         align: "right",
         value: (row) => row.paused_seconds,
         cell: (row) => formatSeconds(row.paused_seconds),
+      },
+      {
+        id: "desconectado",
+        header: "Desconectado en jornada",
+        align: "right",
+        value: (row) => row.disconnected_seconds,
+        cell: (row) => formatSeconds(row.disconnected_seconds),
+        tooltip: "Sólo el cruce entre Desconectado y un horario laboral explícito. Fuera de jornada no suma.",
       },
       {
         id: "adherencia",
@@ -350,7 +366,7 @@ export function DialerReports() {
         title={
           <span className="inline-flex items-center gap-1.5">
             Actividad por ejecutivo
-            <InfoTooltip text="Las llamadas sí se pueden atribuir a una campaña; el tiempo conectado y las pausas son de la jornada completa. Por eso, al filtrar por campaña, las columnas de tiempo de jornada quedan vacías en vez de mostrar un número que no cuadra con el filtro." />
+            <InfoTooltip text="La jornada se calcula sólo con horarios laborales explícitos. Disponible, AUX y Desconectado se recortan a esos horarios; fuera de jornada no suman. Al filtrar una campaña, estas columnas quedan vacías porque el tiempo operativo no se atribuye a una sola campaña." />
           </span>
         }
         description={

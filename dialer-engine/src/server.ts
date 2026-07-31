@@ -8,6 +8,7 @@ import { refreshAgentDirectory, getActiveCredentials } from "./dialer/agentDirec
 import { ensureAgentEndpoints, ensureAmdContext } from "./asterisk/configSync";
 import { syncAgentPauseStates } from "./dialer/agentPause";
 import { checkAgentHeartbeats } from "./dialer/agentHeartbeat";
+import { AGENT_CONTROL_POLL_MS, processAgentControlCommands } from "./dialer/agentControl";
 
 const AGENT_DIRECTORY_REFRESH_MS = 10_000;
 const AGENT_PAUSE_SYNC_MS = 10_000;
@@ -59,6 +60,21 @@ async function main() {
   setInterval(() => {
     checkAgentHeartbeats().catch((err) => logger.error({ err }, "Chequeo de heartbeats falló"));
   }, AGENT_HEARTBEAT_CHECK_MS);
+
+  // Plano de control durable para cierres administrativos. Single-flight y
+  // separado del pacing: nunca espera un tick de campaña para sacar capacidad.
+  const scheduleAgentControl = () => {
+    setTimeout(async () => {
+      try {
+        await processAgentControlCommands(ami);
+      } catch (err) {
+        logger.error({ err }, "Procesamiento de cierres remotos falló");
+      } finally {
+        scheduleAgentControl();
+      }
+    }, AGENT_CONTROL_POLL_MS);
+  };
+  scheduleAgentControl();
 
   // Ciclo single-flight: el siguiente tick se agenda cuando terminó el
   // anterior. setInterval permitía superposición si AMI/Supabase demoraban.

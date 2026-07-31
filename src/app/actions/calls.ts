@@ -12,14 +12,12 @@ import {
 } from "@/lib/call-typification";
 import { LEGAL_INTERCALL_BREAK_MS } from "@/lib/intercall-break";
 import type { Call, WorkflowStep, WorkflowStepBranch } from "@/lib/types";
+import { requireProfile } from "@/lib/auth";
 
 async function requireAgent() {
+  const profile = await requireProfile(["agente"]);
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("No autenticado");
-  return { supabase, userId: user.id };
+  return { supabase, userId: profile.id };
 }
 
 /** La interrupción termina cuando la gestión queda cerrada. */
