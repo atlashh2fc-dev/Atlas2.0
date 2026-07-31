@@ -200,22 +200,22 @@ export const DIAL_MODES: { value: DialMode; label: string; description: string }
   {
     value: "manual",
     label: "Manual",
-    description: "El motor no auto-disca. El ejecutivo marca desde la barra CTI o la ficha del lead.",
+    description: "El ejecutivo elige el contacto y marca desde la barra CTI o la ficha del lead. El sistema no inicia llamadas por sí solo.",
   },
   {
     value: "preview",
     label: "Vista previa",
-    description: "El motor reserva el próximo lead para el agente antes de marcar.",
+    description: "El sistema prepara el próximo lead para que el ejecutivo vea su ficha antes de que se inicie la llamada automática.",
   },
   {
     value: "progressive",
     label: "Progresivo",
-    description: "El motor marca ~1 llamada por agente disponible (ratio cercano a 1).",
+    description: "El sistema inicia aproximadamente una llamada por cada ejecutivo disponible y entrega las que contestan. Mantiene un ritmo controlado y un abandono bajo.",
   },
   {
     value: "predictive",
     label: "Predictivo (asistido)",
-    description: "El motor sobre-marca según el ratio configurado, anticipando abandonos.",
+    description: "El sistema adelanta más llamadas según el ratio y la contactabilidad esperada para ocupar a los ejecutivos disponibles. Puede aumentar la velocidad, pero también el riesgo de abandono.",
   },
 ];
 

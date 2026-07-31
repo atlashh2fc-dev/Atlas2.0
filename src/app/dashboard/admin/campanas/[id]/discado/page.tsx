@@ -1,7 +1,8 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { upsertDialerCampaignConfig } from "@/app/actions/dialer-config";
-import { DIAL_MODES, type DialerCampaignConfig } from "@/lib/types";
+import type { DialerCampaignConfig } from "@/lib/types";
+import { DialModeSelect } from "@/components/dial-mode-select";
 import { ActionForm, ActionSubmit, Callout, Field, InfoTooltip, Input, SectionCard, Select } from "@/components/ui";
 
 /** Etiqueta con la explicación al lado: esta es la pantalla más técnica del producto. */
@@ -60,17 +61,11 @@ export default async function CampaignDialerPage({ params }: { params: Promise<{
             label={
               <LabelWithHelp
                 label="Modo de discado"
-                help="Manual: el ejecutivo marca. Progresivo: una llamada por ejecutivo libre. Predictivo: el motor adelanta llamadas según la tasa de contacto."
+                help="Selecciona un modo para ver debajo una explicación de cómo se originan y se entregan las llamadas."
               />
             }
           >
-            <Select name="dial_mode" defaultValue={mode}>
-              {DIAL_MODES.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </Select>
+            <DialModeSelect defaultValue={mode} />
           </Field>
 
           <Field
@@ -268,9 +263,6 @@ export default async function CampaignDialerPage({ params }: { params: Promise<{
 
           <div className="sm:col-span-2 flex items-center gap-3">
             <ActionSubmit pendingLabel="Guardando…">Guardar configuración</ActionSubmit>
-            <p className="text-xs text-muted-foreground">
-              {DIAL_MODES.find((item) => item.value === mode)?.description}
-            </p>
           </div>
         </ActionForm>
       </SectionCard>
