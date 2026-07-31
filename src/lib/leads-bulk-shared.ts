@@ -8,6 +8,8 @@
 export interface BulkUploadResult {
   totalRows: number;
   inserted: number;
+  /** Filas existentes a las que se les completaron datos de la BBDD. */
+  refreshedExisting: number;
   /** Filas que se repetían dentro del mismo archivo (mismo rut, o mismo teléfono si no había rut). */
   duplicatesInFile: number;
   /** Filas que ya existían en la base (misma campaña/bolsa) según rut o teléfono. */
@@ -49,6 +51,8 @@ export interface CandidateRow {
   workflow_id: string | null;
   campaign_id: string | null;
   created_by: string;
+  /** Columnas originales de la BBDD, disponibles para la ficha del ejecutivo. */
+  extra: Record<string, string | number | boolean>;
 }
 
 export function normalizeHeader(h: string) {
@@ -95,6 +99,7 @@ export function buildCandidates(
   const result: BulkUploadResult = {
     totalRows: rows.length,
     inserted: 0,
+    refreshedExisting: 0,
     duplicatesInFile: 0,
     duplicatesInDb: 0,
     normalizedStatus: 0,
@@ -135,6 +140,17 @@ export function buildCandidates(
     const rut = String(row.rut ?? "").trim() || null;
     const phone = String(row.phone ?? "").trim() || null;
     const email = String(row.email ?? "").trim() || null;
+    const extraSource = rawRow.extra;
+    const extra =
+      extraSource && typeof extraSource === "object" && !Array.isArray(extraSource)
+        ? Object.fromEntries(
+            Object.entries(extraSource as Record<string, unknown>).filter(
+              ([key, value]) =>
+                key.trim() !== "" &&
+                (typeof value === "string" || typeof value === "number" || typeof value === "boolean")
+            )
+          ) as Record<string, string | number | boolean>
+        : {};
     const { status, changed: statusChanged } = normalizeStatus(String(row.status ?? ""));
     if (statusChanged) result.normalizedStatus += 1;
 
@@ -171,6 +187,7 @@ export function buildCandidates(
       workflow_id: ctx.workflowId,
       campaign_id: ctx.campaignId,
       created_by: ctx.userId,
+      extra,
     });
   });
 

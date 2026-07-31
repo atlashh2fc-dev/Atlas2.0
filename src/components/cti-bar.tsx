@@ -212,6 +212,11 @@ export function CtiBar({ profile }: { profile: Profile }) {
   const [contactSearch, setContactSearch] = useState("");
   const [recents, setRecents] = useState<DialerRecent[]>([]);
   const [incomingContext, setIncomingContext] = useState<IncomingDialContext | null>(null);
+  // El listener SIP conserva el cierre con el estado del render en que llegó
+  // el INVITE. El contexto, en cambio, se resuelve de forma asíncrona; este
+  // ref evita perder el lead al colgar por usar un closure anterior.
+  const incomingContextRef = useRef<IncomingDialContext | null>(null);
+  const automaticManagementOpenedRef = useRef<string | null>(null);
   const [isIncomingCall, setIsIncomingCall] = useState(false);
   const [operatingMode, setOperatingMode] = useState<
     AgentDialerOperatingMode | undefined
@@ -940,6 +945,18 @@ export function CtiBar({ profile }: { profile: Profile }) {
     router.refresh();
   }
 
+  function openAutomaticManagement(context: IncomingDialContext | null) {
+    if (!context) return;
+    if (automaticManagementOpenedRef.current === context.dial_attempt_id) return;
+    automaticManagementOpenedRef.current = context.dial_attempt_id;
+    // El panel telefónico no debe competir visualmente con la ficha de cierre.
+    // La URL deja la gestión destacada incluso si el agente volvió atrás
+    // durante la conversación.
+    setExpanded(false);
+    router.push(`/dashboard/leads/${context.lead_id}?tipificar=1`);
+    router.refresh();
+  }
+
   function discardUnconnectedManualManagement(management: ManualCallManagement) {
     if (manualManagementRef.current?.callId !== management.callId) return;
     manualManagementRef.current = null;
@@ -998,6 +1015,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
       try {
         const context = await getMyIncomingDialContext();
         if (context) {
+          incomingContextRef.current = context;
           setIncomingContext(context);
           setSelectedName(context.full_name);
           setSubscriber(subscriberFromPhone(context.phone));
@@ -1022,6 +1040,8 @@ export function CtiBar({ profile }: { profile: Profile }) {
     callAttemptRef.current = callAttempt;
     sessionRef.current = invitation;
     setIsIncomingCall(true);
+    incomingContextRef.current = null;
+    automaticManagementOpenedRef.current = null;
     setIncomingContext(null);
     setSelectedName(null);
     setSubscriber("");
@@ -1045,18 +1065,23 @@ export function CtiBar({ profile }: { profile: Profile }) {
             attachRemoteAudio(invitation);
             break;
           case SessionState.Terminated:
+            const finishedContext = incomingContextRef.current;
             if (wasEstablished) {
-        beginLegalIntercallBreak();
-        // El servidor es el que manda: en el navegador solo sirve para que el
-        // contador se vea al instante.
-        void startLegalIntercallBreak().catch((err) =>
-          console.error("CTI: no se pudo registrar la interrupción legal", err)
-        );
-      }
+              beginLegalIntercallBreak();
+              // El servidor es el que manda: en el navegador solo sirve para que el
+              // contador se vea al instante.
+              void startLegalIntercallBreak().catch((err) =>
+                console.error("CTI: no se pudo registrar la interrupción legal", err)
+              );
+              // Una llamada automática no puede terminar dejando al agente en
+              // el teclado o en otra pantalla: siempre vuelve a su gestión.
+              openAutomaticManagement(finishedContext);
+            }
             detachRemoteAudio();
             setCallState("idle");
             setCallStartedAt(null);
             setIsIncomingCall(false);
+            incomingContextRef.current = null;
             setIncomingContext(null);
             sessionRef.current = null;
             break;
@@ -1076,6 +1101,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
       setCallState("idle");
       setCallStartedAt(null);
       setIsIncomingCall(false);
+      incomingContextRef.current = null;
       setIncomingContext(null);
       sessionRef.current = null;
       setCallError("La central envió una llamada, pero el teléfono no pudo contestarla.");
@@ -1205,6 +1231,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
     const session = sessionRef.current;
     const wasEstablished = callState === "in_call";
     const management = manualManagementRef.current;
+    const automaticContext = incomingContextRef.current;
     stopLocalRingback();
     detachRemoteAudio();
     if (!session) {
@@ -1246,6 +1273,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
         if (management && manualManagementRef.current?.callId === management.callId) {
           openManualManagement(management);
         }
+        if (isIncomingCall) openAutomaticManagement(automaticContext);
       } else if (management) {
         discardUnconnectedManualManagement(management);
       }
@@ -1254,6 +1282,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
       setCallState("idle");
       setCallStartedAt(null);
       setIsIncomingCall(false);
+      incomingContextRef.current = null;
       setIncomingContext(null);
       sessionRef.current = null;
     }

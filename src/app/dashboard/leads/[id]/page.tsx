@@ -77,9 +77,17 @@ function formatDateTime(value: string | null | undefined): string {
   return date.toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short" });
 }
 
-export default async function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function LeadDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ tipificar?: string | string[] }>;
+}) {
   const profile = await requireProfile();
   const { id } = await params;
+  const { tipificar } = await searchParams;
+  const prioritizeTypification = tipificar === "1";
   const supabase = await createClient();
 
   const { data: lead360 } = await supabase.rpc("get_lead_360", { p_lead_id: id });
@@ -92,10 +100,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   const team = record.team;
   const contacts = record.contacts ?? [];
   const campaignData = Object.entries(lead.extra ?? {}).filter(
-    ([key, value]) =>
-      key.toLowerCase() !== "source" &&
-      !key.startsWith("_") &&
-      (typeof value === "string" || typeof value === "number" || typeof value === "boolean")
+    ([, value]) =>
+      typeof value === "string" || typeof value === "number" || typeof value === "boolean"
   );
 
   const effectiveWorkflowId = lead.workflow_id ?? campaign?.workflow_id ?? null;
@@ -176,6 +182,41 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         }
       />
 
+      {campaignData.length > 0 && (
+        <section className="rounded-2xl border border-border bg-surface p-5">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Datos cargados de la base</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Información disponible para esta gestión.
+              </p>
+            </div>
+            <span className="rounded-full bg-surface-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+              {campaignData.length} campos
+            </span>
+          </div>
+          <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
+            {campaignData.map(([key, value]) => (
+              <div key={key} className="min-w-0 border-b border-border/70 pb-2">
+                <dt className="text-xs font-medium text-muted-foreground">{key}</dt>
+                <dd className="mt-0.5 break-words text-sm text-foreground">{String(value)}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      )}
+
+      {call && (
+        <section className="rounded-2xl border-2 border-primary/20 bg-primary/[0.025] p-3 sm:p-5">
+          <CallTypificationForm
+            lead={lead}
+            call={call}
+            reasonCatalog={reasonCatalog}
+            priority={prioritizeTypification}
+          />
+        </section>
+      )}
+
       <div className="grid gap-5 lg:grid-cols-[minmax(240px,280px)_minmax(0,1fr)]">
         {/* Zona 1: identidad y contexto */}
         <aside className="space-y-4">
@@ -232,18 +273,6 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
             </dl>
           </Card>
 
-          {campaignData.length > 0 && (
-            <Card>
-              <h2 className="mb-3 text-sm font-semibold text-foreground">Datos de la base</h2>
-              <dl className="space-y-2 text-sm">
-                {campaignData.map(([key, value]) => (
-                  <InfoRow key={key} label={key}>
-                    {String(value)}
-                  </InfoRow>
-                ))}
-              </dl>
-            </Card>
-          )}
         </aside>
 
         {/* Zona 2: la acción de ahora y el hilo completo */}
@@ -266,8 +295,6 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
               </p>
             </div>
           </Card>
-
-          {call && <CallTypificationForm lead={lead} call={call} reasonCatalog={reasonCatalog} />}
 
           <LeadTimeline entries={entries} />
         </main>

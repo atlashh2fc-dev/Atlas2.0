@@ -170,6 +170,29 @@ export function BulkUploadForm({
     return "";
   }
 
+  /**
+   * La carga no debe reducir una BBDD al puñado de columnas que Atlas usa
+   * para identificar al lead. Conservamos cada campo simple del archivo para
+   * que el ejecutivo lo tenga en la ficha cuando entra la llamada.
+   */
+  function collectCampaignData(row: Record<string, unknown>): Record<string, string | number | boolean> {
+    const data: Record<string, string | number | boolean> = {};
+    for (const [key, value] of Object.entries(row)) {
+      if (!key.trim() || value === null || value === undefined) continue;
+      if (typeof value === "string") {
+        const text = value.trim();
+        if (text) data[key] = text;
+      } else if (typeof value === "number" || typeof value === "boolean") {
+        data[key] = value;
+      } else if (value instanceof Date) {
+        data[key] = value.toISOString();
+      } else {
+        data[key] = String(value);
+      }
+    }
+    return data;
+  }
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!rows || !headers) {
@@ -214,6 +237,7 @@ export function BulkUploadForm({
         phone: firstNonEmpty(row, mapping.phone),
         email: firstNonEmpty(row, mapping.email),
         status: mapping.status ? row[mapping.status] : "",
+        extra: collectCampaignData(row),
       }));
 
       const { candidates, result: partialResult } = buildCandidates(remappedRows, {
@@ -239,8 +263,8 @@ export function BulkUploadForm({
         );
 
         const payload = batches[i].map((row) => {
-          const { full_name, rut, phone, email, status, team_id, workflow_id, campaign_id, created_by } = row;
-          return { full_name, rut, phone, email, status, team_id, workflow_id, campaign_id, created_by };
+          const { full_name, rut, phone, email, status, team_id, workflow_id, campaign_id, created_by, extra } = row;
+          return { full_name, rut, phone, email, status, team_id, workflow_id, campaign_id, created_by, extra };
         });
 
         const { data, error: rpcError } = await supabase.rpc("bulk_insert_leads", { payload });
@@ -252,8 +276,10 @@ export function BulkUploadForm({
           });
         } else {
           const insertedInBatch = (data as { inserted: number } | null)?.inserted ?? 0;
+          const refreshedInBatch = (data as { refreshed: number } | null)?.refreshed ?? 0;
           totalInserted += insertedInBatch;
-          partialResult.duplicatesInDb += batches[i].length - insertedInBatch;
+          partialResult.refreshedExisting += refreshedInBatch;
+          partialResult.duplicatesInDb += batches[i].length - insertedInBatch - refreshedInBatch;
         }
 
         setProgress(Math.round(((i + 1) / batches.length) * 100));
@@ -410,6 +436,9 @@ export function BulkUploadForm({
             <p className="mt-3 text-xs text-muted-foreground">
               Cada fila necesita al menos RUT o teléfono para poder detectar duplicados.
             </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Todas las demás columnas se conservarán como datos de campaña y se mostrarán en la ficha del ejecutivo.
+            </p>
           </div>
         )}
 
@@ -554,9 +583,10 @@ export function BulkUploadForm({
       {result && (
         <div className="rounded-xl border border-border bg-surface p-5">
           <h3 className="mb-2 text-sm font-semibold text-foreground">Resultado de la carga</h3>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
             <Stat label="Filas en el archivo" value={result.totalRows} />
             <Stat label="Insertadas" value={result.inserted} highlight />
+            <Stat label="Datos actualizados" value={result.refreshedExisting} highlight />
             <Stat label="Duplicadas (archivo)" value={result.duplicatesInFile} />
             <Stat label="Duplicadas (ya existían)" value={result.duplicatesInDb} />
           </div>

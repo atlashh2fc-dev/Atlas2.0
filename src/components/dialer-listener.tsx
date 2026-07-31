@@ -44,7 +44,11 @@ export function DialerListener({ userId }: { userId: string }) {
           if (lastHandledId.current === row.id) return;
           lastHandledId.current = row.id;
 
-          router.push(`/dashboard/leads/${row.lead_id}`);
+          // La ruta lleva una marca explícita para que la ficha priorice la
+          // tipificación por sobre el resto del CRM. El agente llega a la
+          // información del cliente desde el primer timbre y, al colgar, el
+          // CTI vuelve a esta misma ficha si se había navegado a otra parte.
+          router.push(`/dashboard/leads/${row.lead_id}?tipificar=1`);
         }
       )
       .subscribe();

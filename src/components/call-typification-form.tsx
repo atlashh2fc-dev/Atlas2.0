@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, CalendarClock, CheckCircle2, Clock3 } from "lucide-react";
+import { AlertCircle, CalendarClock, CheckCircle2, Clock3, ShieldCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { Call, Lead } from "@/lib/types";
 import {
@@ -51,10 +51,13 @@ export function CallTypificationForm({
   lead,
   call,
   reasonCatalog,
+  priority = false,
 }: {
   lead: Lead;
   call: Call;
   reasonCatalog?: CallReasonConfig[];
+  /** La gestión llegó desde una llamada: debe dominar la pantalla. */
+  priority?: boolean;
 }) {
   const router = useRouter();
   const catalog = reasonCatalog && reasonCatalog.length > 0 ? reasonCatalog : CALL_REASONS;
@@ -262,7 +265,20 @@ export function CallTypificationForm({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" aria-label="Tipificación de llamada">
+      {priority && (
+        <div className="flex items-start gap-3 rounded-2xl border border-primary/25 bg-primary/10 px-4 py-3 text-foreground">
+          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <ShieldCheck size={17} />
+          </span>
+          <div>
+            <p className="text-sm font-bold">Tipificación pendiente</p>
+            <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+              Esta llamada queda en cierre hasta que selecciones un motivo y guardes la gestión.
+            </p>
+          </div>
+        </div>
+      )}
       {legalBreakActive && (
         <div className="flex items-center gap-3 rounded-xl border border-warning/30 bg-warning-bg px-4 py-3 text-warning">
           <Clock3 className="shrink-0" size={20} />
@@ -281,7 +297,7 @@ export function CallTypificationForm({
         disabled={legalBreakActive}
         className="space-y-4 border-0 p-0 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        <div className="rounded-xl border border-border bg-surface p-5">
+        <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold text-foreground">Tipificacion rapida Equifax</h2>
@@ -452,7 +468,7 @@ export function CallTypificationForm({
         </div>
       </div>
 
-        <div className="rounded-xl border border-border bg-surface p-5">
+        <div className="sticky bottom-3 z-10 rounded-2xl border border-border bg-surface p-5 shadow-lg">
         {attemptedClose && pendingIssues.length > 0 && (
           <ul className="mb-3 space-y-1 rounded-lg bg-warning-bg p-3 text-xs text-warning">
             {pendingIssues.map((issue) => (

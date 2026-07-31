@@ -244,6 +244,11 @@ function inferNextActionWindow(nextActionAt: string | null): string | null {
 export async function getOrCreateOpenCall(leadId: string): Promise<Call> {
   const { supabase, userId } = await requireAgent();
 
+  // No usamos `maybeSingle()` aquí. Hubo llamadas antiguas duplicadas antes
+  // de que el CTI llevara el ciclo completo y PostgREST responde con error
+  // cuando encuentra más de una fila; eso derribaba toda la ficha de cliente
+  // justo al entrar una llamada. Para la operación importa la más reciente y
+  // las anteriores se conservan para auditoría.
   const { data: existing, error: findError } = await supabase
     .from("calls")
     .select("*")
@@ -251,11 +256,10 @@ export async function getOrCreateOpenCall(leadId: string): Promise<Call> {
     .eq("agent_id", userId)
     .is("ended_at", null)
     .order("started_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
 
   if (findError) throw new Error(findError.message);
-  if (existing) return existing as Call;
+  if (existing?.[0]) return existing[0] as Call;
 
   const { data: created, error: insertError } = await supabase
     .from("calls")
