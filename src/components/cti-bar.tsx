@@ -33,6 +33,7 @@ import {
 import {
   listActiveStatusReasons,
   getMyCurrentStatus,
+  markAgentUnavailable,
   setMyCurrentStatus,
   heartbeat,
 } from "@/app/actions/agent-status";
@@ -184,6 +185,8 @@ export function CtiBar({ profile }: { profile: Profile }) {
   const [registrationAttempt, setRegistrationAttempt] = useState(0);
   /** Espejo síncrono de `regState === "registered"` para los efectos. */
   const registeredRef = useRef(false);
+  /** El REGISTER no basta: el navegador debe poder capturar audio. */
+  const mediaReadyRef = useRef(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [callState, setCallState] = useState<CallState>("idle");
   const [subscriber, setSubscriber] = useState("");
@@ -362,6 +365,18 @@ export function CtiBar({ profile }: { profile: Profile }) {
   }, [profile.role]);
 
   async function handleStatusChange(reasonId: string) {
+    const requestedReason = statusReasons.find((reason) => reason.id === reasonId);
+    if (
+      requestedReason &&
+      !requestedReason.is_pause &&
+      (!registeredRef.current || !mediaReadyRef.current)
+    ) {
+      setStatusError(
+        "No puedes quedar Disponible hasta conectar el teléfono y autorizar el micrófono."
+      );
+      return;
+    }
+
     const previous = currentReasonId;
     setCurrentReasonId(reasonId);
     setSavingStatus(true);
@@ -441,6 +456,16 @@ export function CtiBar({ profile }: { profile: Profile }) {
       setRegState("connecting");
       setConnectionError(null);
       try {
+        if (!navigator.mediaDevices?.getUserMedia) {
+          throw new Error("Este navegador no permite acceder al micrófono.");
+        }
+        const mediaProbe = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+          video: false,
+        });
+        mediaProbe.getTracks().forEach((track) => track.stop());
+        mediaReadyRef.current = true;
+
         const { UserAgent, Registerer, RegistererState } = await import("sip.js");
         // En PJSIP el usuario del REGISTER debe coincidir con el nombre del
         // AOR. Endpoint y AOR comparten la extensión, aunque sean objetos de
@@ -484,6 +509,10 @@ export function CtiBar({ profile }: { profile: Profile }) {
             state === RegistererState.Unregistered ||
             state === RegistererState.Terminated
           ) {
+            mediaReadyRef.current = false;
+            void markAgentUnavailable().catch((err) =>
+              console.error("CTI: no se pudo sacar de disponibilidad tras perder SIP", err)
+            );
             scheduleReconnect();
           }
         });
@@ -491,8 +520,23 @@ export function CtiBar({ profile }: { profile: Profile }) {
         await registerer.register();
       } catch (err) {
         console.error("CTI: fallo al registrar softphone", err);
+        mediaReadyRef.current = false;
+        registeredRef.current = false;
+        void markAgentUnavailable().catch((statusErr) =>
+          console.error("CTI: no se pudo sacar de disponibilidad tras fallo del teléfono", statusErr)
+        );
         if (!disposed) {
-          scheduleReconnect();
+          const permissionDenied =
+            err instanceof DOMException && err.name === "NotAllowedError";
+          if (permissionDenied) {
+            setRegState("error");
+            setCurrentReasonId(null);
+            setConnectionError(
+              "El micrófono está bloqueado. Autorízalo en el navegador y recarga Atlas para recibir llamadas."
+            );
+          } else {
+            scheduleReconnect();
+          }
         }
       }
     }
@@ -501,6 +545,8 @@ export function CtiBar({ profile }: { profile: Profile }) {
 
     return () => {
       disposed = true;
+      mediaReadyRef.current = false;
+      registeredRef.current = false;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       activeRegisterer?.unregister().catch(() => {});
       activeUa?.stop().catch(() => {});

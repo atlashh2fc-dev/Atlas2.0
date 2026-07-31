@@ -62,6 +62,16 @@ export async function markAgentLoggedOut(): Promise<void> {
 }
 
 /**
+ * La usa el CTI cuando el navegador no puede operar el softphone (por
+ * ejemplo, micrófono denegado o registro SIP perdido). Comparte la misma
+ * transición de sistema que el logout para que Asterisk lo pause y el motor
+ * no entregue clientes a un navegador incapaz de contestar.
+ */
+export async function markAgentUnavailable(): Promise<void> {
+  await markAgentLoggedOut();
+}
+
+/**
  * Heartbeat del agente logueado: se llama cada ~20s mientras la pestaña del
  * CRM está abierta (ver CtiBar). El motor revisa last_heartbeat_at y fuerza
  * 'desconectado' si se vence (~60s sin heartbeat) — esto cubre el caso que
