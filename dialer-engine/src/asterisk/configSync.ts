@@ -74,6 +74,7 @@ function buildUpdateConfigAction(
 
 const AGENT_ENDPOINT_TEMPLATE = "atlas-agent-endpoint-template";
 const AGENT_AOR_TEMPLATE = "atlas-agent-aor-template";
+const OUTBOUND_QUEUE_STRATEGY = "leastrecent";
 
 async function ensureAgentTemplates(
   ami: AmiClient,
@@ -278,98 +279,166 @@ export async function ensureAmdContext(ami: AmiClient): Promise<void> {
   }
 }
 
-const lastWrapupByQueue = new Map<string, number>();
+const lastQueueConfigByName = new Map<string, { wrapupSeconds: number; strategy: string }>();
 
 /**
  * Crea la cola en queues.conf si no existe (con defaults razonables) o
- * sincroniza wrapuptime ("tiempo entre llamadas") si cambió desde el CRM.
+ * sincroniza estrategia y wrapuptime ("tiempo entre llamadas") desde el CRM.
  */
 export async function ensureQueue(ami: AmiClient, queueName: string, wrapupSeconds: number): Promise<void> {
   let existing: Set<string>;
   try {
     existing = await getExistingCategories(ami, "queues.conf");
   } catch (err) {
-    logger.error({ err, queueName }, "GetConfig queues.conf falló; se salta el sync de cola este ciclo");
-    return;
+    logger.error({ err, queueName }, "GetConfig queues.conf falló; la campaña no puede originar este ciclo");
+    throw err;
   }
 
   if (!existing.has(queueName)) {
     const lines: { action: "NewCat" | "Append"; cat: string; varName?: string; value?: string }[] = [
       { action: "NewCat", cat: queueName },
-      { action: "Append", cat: queueName, varName: "strategy", value: "ringall" },
+      { action: "Append", cat: queueName, varName: "strategy", value: OUTBOUND_QUEUE_STRATEGY },
       { action: "Append", cat: queueName, varName: "timeout", value: "20" },
       { action: "Append", cat: queueName, varName: "retry", value: "5" },
       { action: "Append", cat: queueName, varName: "wrapuptime", value: String(wrapupSeconds) },
       { action: "Append", cat: queueName, varName: "maxlen", value: "0" },
       { action: "Append", cat: queueName, varName: "joinempty", value: "yes" },
       { action: "Append", cat: queueName, varName: "leavewhenempty", value: "no" },
-      { action: "Append", cat: queueName, varName: "ring", value: "no" },
+      { action: "Append", cat: queueName, varName: "autofill", value: "yes" },
       { action: "Append", cat: queueName, varName: "language", value: "es" },
     ];
     try {
       await amiAction(ami, buildUpdateConfigAction("queues.conf", lines));
-      lastWrapupByQueue.set(queueName, wrapupSeconds);
+      lastQueueConfigByName.set(queueName, {
+        wrapupSeconds,
+        strategy: OUTBOUND_QUEUE_STRATEGY,
+      });
       logger.info({ queueName, wrapupSeconds }, "Cola creada en Asterisk");
     } catch (err) {
       logger.error({ err, queueName }, "No se pudo crear la cola en Asterisk");
+      throw err;
     }
     return;
   }
 
-  if (lastWrapupByQueue.get(queueName) === wrapupSeconds) return;
+  const lastConfig = lastQueueConfigByName.get(queueName);
+  if (
+    lastConfig?.wrapupSeconds === wrapupSeconds
+    && lastConfig.strategy === OUTBOUND_QUEUE_STRATEGY
+  ) return;
 
   try {
     await amiAction(
       ami,
       buildUpdateConfigAction("queues.conf", [
+        { action: "Update", cat: queueName, varName: "strategy", value: OUTBOUND_QUEUE_STRATEGY },
         { action: "Update", cat: queueName, varName: "wrapuptime", value: String(wrapupSeconds) },
       ])
     );
-    lastWrapupByQueue.set(queueName, wrapupSeconds);
-    logger.info({ queueName, wrapupSeconds }, "wrapuptime de la cola actualizado desde el CRM");
+    lastQueueConfigByName.set(queueName, {
+      wrapupSeconds,
+      strategy: OUTBOUND_QUEUE_STRATEGY,
+    });
+    logger.info(
+      { queueName, wrapupSeconds, strategy: OUTBOUND_QUEUE_STRATEGY },
+      "Configuración de la cola actualizada desde el CRM"
+    );
   } catch (err) {
-    logger.error({ err, queueName, wrapupSeconds }, "No se pudo actualizar wrapuptime");
+    logger.error(
+      { err, queueName, wrapupSeconds, strategy: OUTBOUND_QUEUE_STRATEGY },
+      "No se pudo actualizar la configuración de la cola"
+    );
+    throw err;
   }
 }
 
-const knownMembersByQueue = new Map<string, Set<string>>();
+function extensionFromQueueInterface(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const match = value.match(/^PJSIP\/(\d+)$/);
+  return match ? match[1] : null;
+}
+
+/**
+ * QueueStatus es la fuente viva de miembros. El cache local anterior podía
+ * sobrevivir a errores y creer que un miembro dinámico seguía en Asterisk.
+ */
+async function getCurrentQueueMembers(ami: AmiClient, queueName: string): Promise<Set<string>> {
+  return new Promise((resolve, reject) => {
+    const actionId = `atlas-queue-status-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
+    const members = new Set<string>();
+    let finished = false;
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      ami.removeListener("managerevent", onEvent);
+    };
+    const finish = (err?: Error) => {
+      if (finished) return;
+      finished = true;
+      cleanup();
+      if (err) reject(err);
+      else resolve(members);
+    };
+    const onEvent = (evt: Record<string, unknown>) => {
+      if (String(evt.actionid ?? "") !== actionId) return;
+      const event = String(evt.event ?? "").toLowerCase();
+      if (event === "queuemember") {
+        const extension = extensionFromQueueInterface(
+          evt.location ?? evt.interface ?? evt.name
+        );
+        if (extension) members.add(extension);
+      } else if (event === "queuestatuscomplete") {
+        finish();
+      }
+    };
+    const timer = setTimeout(
+      () => finish(new Error(`QueueStatus timeout para ${queueName}`)),
+      5_000
+    );
+
+    ami.on("managerevent", onEvent);
+    ami.action(
+      { Action: "QueueStatus", Queue: queueName, actionid: actionId },
+      (err) => {
+        if (err) finish(new Error(typeof err === "object" ? JSON.stringify(err) : String(err)));
+      }
+    );
+  });
+}
 
 /**
  * Miembros dinámicos de cola (QueueAdd/QueueRemove) — no tocan queues.conf,
  * viven en memoria de Asterisk. Se re-sincronizan agentes asignados a la
  * campaña (campaign_agents) que tengan extensión activa.
  */
-export async function syncQueueMembers(ami: AmiClient, queueName: string, desiredExtensions: string[]): Promise<void> {
+export async function syncQueueMembers(
+  ami: AmiClient,
+  queueName: string,
+  desiredExtensions: string[]
+): Promise<boolean> {
   const desired = new Set(desiredExtensions);
-  const known = knownMembersByQueue.get(queueName) ?? new Set<string>();
+  const current = await getCurrentQueueMembers(ami, queueName);
+  let changed = false;
 
   for (const ext of desired) {
-    if (known.has(ext)) continue;
-    try {
-      await amiAction(ami, {
-        Action: "QueueAdd",
-        Queue: queueName,
-        Interface: `PJSIP/${ext}`,
-        MemberName: ext,
-        Paused: "false",
-      });
-      logger.info({ queueName, ext }, "Agente agregado a la cola");
-    } catch {
-      // Ya era miembro (p. ej. tras un reinicio del motor) — lo damos por sincronizado.
-    }
-    known.add(ext);
+    if (current.has(ext)) continue;
+    await amiAction(ami, {
+      Action: "QueueAdd",
+      Queue: queueName,
+      Interface: `PJSIP/${ext}`,
+      MemberName: ext,
+      Paused: "false",
+    });
+    changed = true;
+    logger.info({ queueName, ext }, "Agente agregado a la cola");
   }
 
-  for (const ext of Array.from(known)) {
+  for (const ext of current) {
     if (desired.has(ext)) continue;
-    try {
-      await amiAction(ami, { Action: "QueueRemove", Queue: queueName, Interface: `PJSIP/${ext}` });
-      logger.info({ queueName, ext }, "Agente quitado de la cola");
-    } catch (err) {
-      logger.warn({ err, queueName, ext }, "QueueRemove falló (¿ya no era miembro?)");
-    }
-    known.delete(ext);
+    await amiAction(ami, { Action: "QueueRemove", Queue: queueName, Interface: `PJSIP/${ext}` });
+    changed = true;
+    logger.info({ queueName, ext }, "Agente quitado de la cola");
   }
 
-  knownMembersByQueue.set(queueName, known);
+  return changed;
 }

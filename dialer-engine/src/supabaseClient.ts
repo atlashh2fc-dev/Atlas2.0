@@ -20,6 +20,7 @@ import { config } from "./config";
  * consumiendo la capacidad del ejecutivo.
  */
 const OPEN_CALL_MAX_AGE_MS = 4 * 60 * 60 * 1000;
+export const STALE_QUEUED_SECONDS = 5 * 60;
 
 export const supabase = createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -66,14 +67,30 @@ export async function registerDialEvent(params: {
 }
 
 /**
+ * Recupera reservas que nunca recibieron respuesta AMI. Solo toca `queued`:
+ * una llamada que ya tiene canal/originated_at necesita reconciliación con
+ * Asterisk y no se puede expirar por tiempo a ciegas.
+ */
+export async function expireStaleQueuedDialAttempts(
+  campaignId: string,
+  olderThanSeconds = STALE_QUEUED_SECONDS
+): Promise<number> {
+  const { data, error } = await supabase.rpc("expire_stale_queued_dial_attempts", {
+    p_campaign_id: campaignId,
+    p_older_than_seconds: olderThanSeconds,
+  });
+  if (error) throw new Error(`expire_stale_queued_dial_attempts: ${error.message}`);
+  return typeof data === "number" ? data : 0;
+}
+
+/**
  * AgentCalled ocurre antes de que el navegador reciba el INVITE de Queue.
  * Asociar el intento en ese punto permite que el CTI cargue la ficha exacta
  * mientras contesta automáticamente, sin adivinar por teléfono o campaña.
  */
 /**
- * Asigna el intento al primer ejecutivo que lo tome. Devuelve `false` si otro
- * ya se lo quedó: con la cola en `ringall`, AgentCalled llega una vez por cada
- * miembro timbrado y solo uno debe ganar.
+ * Asigna el intento al ejecutivo seleccionado por Queue. Devuelve `false` si
+ * el evento llegó duplicado o el intento ya fue tomado/terminalizado.
  */
 export async function assignDialAttemptAgent(dialAttemptId: string, agentId: string): Promise<boolean> {
   // Una sola operación en la base: sin esto quedaba un instante con el intento
@@ -232,13 +249,25 @@ export async function countAvailableAgents(campaignId: string): Promise<number> 
 }
 
 export async function countInFlightAttempts(campaignId: string): Promise<number> {
-  const { count, error } = await supabase
-    .from("dial_attempts")
-    .select("id", { count: "exact", head: true })
-    .eq("campaign_id", campaignId)
-    .in("status", ["queued", "originating", "ringing", "answered", "bridged"]);
-  if (error) throw new Error(`dial_attempts: ${error.message}`);
-  return count ?? 0;
+  const queuedCutoff = new Date(Date.now() - STALE_QUEUED_SECONDS * 1000).toISOString();
+  const [active, freshQueued] = await Promise.all([
+    supabase
+      .from("dial_attempts")
+      .select("id", { count: "exact", head: true })
+      .eq("campaign_id", campaignId)
+      .eq("attempt_kind", "pool")
+      .in("status", ["originating", "ringing", "answered", "bridged"]),
+    supabase
+      .from("dial_attempts")
+      .select("id", { count: "exact", head: true })
+      .eq("campaign_id", campaignId)
+      .eq("attempt_kind", "pool")
+      .eq("status", "queued")
+      .gte("created_at", queuedCutoff),
+  ]);
+  if (active.error) throw new Error(`dial_attempts (active): ${active.error.message}`);
+  if (freshQueued.error) throw new Error(`dial_attempts (fresh queued): ${freshQueued.error.message}`);
+  return (active.count ?? 0) + (freshQueued.count ?? 0);
 }
 
 /**
@@ -346,24 +375,19 @@ export async function getAgentPauseStates(): Promise<AgentPauseState[]> {
   if (campaignError) throw new Error(`dialer_campaign_configs: ${campaignError.message}`);
   if (!activeCampaigns || activeCampaigns.length === 0) return [];
 
-  const { data: assignments, error: assignmentError } = await supabase
-    .from("campaign_agents")
-    .select("profile_id")
-    .in(
-      "campaign_id",
-      activeCampaigns.map((campaign) => campaign.campaign_id)
-    );
-  if (assignmentError) throw new Error(`campaign_agents: ${assignmentError.message}`);
-  const assignedProfileIds = Array.from(
-    new Set((assignments ?? []).map((assignment) => assignment.profile_id))
+  const activeExtensionResults = await Promise.all(
+    activeCampaigns.map((campaign) =>
+      getCampaignAgentExtensions(campaign.campaign_id)
+    )
   );
-  if (assignedProfileIds.length === 0) return [];
+  const activeExtensions = Array.from(new Set(activeExtensionResults.flat()));
+  if (activeExtensions.length === 0) return [];
 
   const { data: creds, error: credsError } = await supabase
     .from("agent_sip_credentials")
     .select("profile_id, extension")
     .eq("is_active", true)
-    .in("profile_id", assignedProfileIds);
+    .in("extension", activeExtensions);
   if (credsError) throw new Error(`agent_sip_credentials: ${credsError.message}`);
   if (!creds || creds.length === 0) return [];
 

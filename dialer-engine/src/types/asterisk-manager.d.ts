@@ -17,8 +17,10 @@ declare module "asterisk-manager" {
   class AmiClient {
     constructor(port: number, host: string, username: string, secret: string, events: boolean);
     keepConnected(): void;
+    isConnected(): boolean;
     on(event: "connect" | "disconnect" | "reconnection" | "error", cb: (err?: Error) => void): void;
     on(event: "managerevent", cb: (evt: AmiEvent) => void): void;
+    removeListener(event: "managerevent", cb: (evt: AmiEvent) => void): void;
     action(
       action: Record<string, string | number | boolean | undefined>,
       callback?: (err: Error | null, res: AmiActionResponse) => void

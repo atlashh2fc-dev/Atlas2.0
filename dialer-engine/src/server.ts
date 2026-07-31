@@ -60,17 +60,31 @@ async function main() {
     checkAgentHeartbeats().catch((err) => logger.error({ err }, "Chequeo de heartbeats falló"));
   }, AGENT_HEARTBEAT_CHECK_MS);
 
-  setInterval(() => {
-    runCampaignTick(ami, config.campaignIds, queueToCampaignId).catch((err) =>
-      logger.error({ err }, "runCampaignTick falló")
-    );
-  }, config.tickMs);
+  // Ciclo single-flight: el siguiente tick se agenda cuando terminó el
+  // anterior. setInterval permitía superposición si AMI/Supabase demoraban.
+  const scheduleCampaignTick = () => {
+    setTimeout(async () => {
+      try {
+        await runCampaignTick(ami, config.campaignIds, queueToCampaignId);
+      } catch (err) {
+        logger.error({ err }, "runCampaignTick falló");
+      } finally {
+        scheduleCampaignTick();
+      }
+    }, config.tickMs);
+  };
+  scheduleCampaignTick();
 
   // Health-check HTTP: lo único que expone este servicio por red además de
   // AMI/Supabase. Un ALB/target group de AWS le pega a /health.
   const app = express();
   app.get("/health", (_req, res) => {
-    res.json({ ok: true, campaigns: config.campaignIds.length });
+    const amiConnected = ami.isConnected();
+    res.status(amiConnected ? 200 : 503).json({
+      ok: amiConnected,
+      ami: amiConnected ? "connected" : "disconnected",
+      campaigns: config.campaignIds.length,
+    });
   });
   app.listen(config.port, () => logger.info({ port: config.port }, "Health check escuchando"));
 }

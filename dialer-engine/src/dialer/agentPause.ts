@@ -16,7 +16,10 @@ import { amiAction } from "../asterisk/configSync";
 
 const lastPausedByExtension = new Map<string, boolean>();
 
-export async function syncAgentPauseStates(ami: AmiClient): Promise<void> {
+export async function syncAgentPauseStates(
+  ami: AmiClient,
+  options: { force?: boolean } = {}
+): Promise<void> {
   let states: Awaited<ReturnType<typeof getAgentPauseStates>>;
   try {
     states = await getAgentPauseStates();
@@ -27,7 +30,7 @@ export async function syncAgentPauseStates(ami: AmiClient): Promise<void> {
 
   for (const state of states) {
     const previous = lastPausedByExtension.get(state.extension);
-    if (previous === state.paused) continue;
+    if (!options.force && previous === state.paused) continue;
 
     try {
       await amiAction(ami, {

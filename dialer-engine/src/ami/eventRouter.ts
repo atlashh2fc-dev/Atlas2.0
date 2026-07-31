@@ -7,6 +7,7 @@ import {
   updateAgentDialerStatus,
 } from "../supabaseClient";
 import { getProfileIdForExtension } from "../dialer/agentDirectory";
+import { normalizeAmiUniqueId, queueMemberDialerStatus } from "./eventSemantics";
 
 // uniqueid del canal saliente (la pata que originamos) -> dial_attempt_id.
 // Se puebla en OriginateResponse (ActionID = dial_attempt_id) y se limpia en Hangup.
@@ -69,9 +70,9 @@ export function registerEventRouter(ami: AmiClient, campaignIdByQueue: Map<strin
     switch (event) {
       case "originateresponse": {
         const actionId = String(evt.actionid ?? "");
-        const uniqueId = String(evt.uniqueid ?? "");
-        if (!actionId || !uniqueId) return;
-        attemptByUniqueId.set(uniqueId, actionId);
+        const uniqueId = normalizeAmiUniqueId(evt.uniqueid);
+        if (!actionId) return;
+        if (uniqueId) attemptByUniqueId.set(uniqueId, actionId);
 
         const success = String(evt.response ?? "").toLowerCase() === "success";
         registerDialEvent({
@@ -153,9 +154,9 @@ export function registerEventRouter(ami: AmiClient, campaignIdByQueue: Map<strin
         const profileId = extension ? getProfileIdForExtension(extension) : undefined;
         if (!dialAttemptId || !campaignId || !extension || !profileId) return;
 
-        // Con estrategia `ringall` este evento llega una vez por cada miembro
-        // timbrado: solo el primero se queda con el intento, para no abrir la
-        // ficha del mismo cliente en la pantalla de todo el equipo.
+        // La asignación atómica también protege ante eventos duplicados o una
+        // transición de estrategia de cola: un solo ejecutivo puede quedarse
+        // con el intento y recibir el screen-pop.
         void (async () => {
           const claimed = await assignDialAttemptAgent(dialAttemptId, profileId).catch((err) => {
             logger.error({ err, evt }, "assign_dial_attempt_agent falló");
@@ -250,19 +251,21 @@ export function registerEventRouter(ami: AmiClient, campaignIdByQueue: Map<strin
 
       case "queuememberstatus":
       case "queuememberadded":
-      case "queuememberpause": {
+      case "queuememberpause":
+      case "queuemember": {
         const queue = String(evt.queue ?? "");
         const campaignId = campaignIdByQueue.get(queue);
-        const extension = extensionFromInterface(evt.interface ?? evt.membername);
+        const extension = extensionFromInterface(
+          evt.interface ?? evt.location ?? evt.membername
+        );
         const profileId = extension ? getProfileIdForExtension(extension) : undefined;
         if (!campaignId || !extension || !profileId) return;
 
-        // Una pausa de cola NO es cierre de llamada. Marcarla como `wrap_up`
-        // dejaba al ejecutivo atrapado: al volver de AUX el motor intentaba
-        // ponerlo disponible, la guarda de wrap-up lo impedía y se quedaba sin
-        // llamadas y con el selector bloqueado hasta tipificar algo.
-        const paused = String(evt.paused ?? "0") === "1";
-        const status = paused ? "paused" : "available";
+        // Paused=0 no implica que el softphone esté registrado. Antes se
+        // marcaba "available" incluso con Status=5 (Unavailable), generando
+        // capacidad ficticia y clientes abandonados en una cola sin agente.
+        const status = queueMemberDialerStatus(evt.paused, evt.status);
+        if (!status) return;
 
         updateAgentDialerStatus({ profileId, campaignId, extension, status }).catch((err) =>
           logger.error({ err, evt }, "update_agent_dialer_status falló")
