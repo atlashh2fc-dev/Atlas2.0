@@ -120,6 +120,54 @@ export type ManualCallManagement = {
   leadReused: boolean;
 };
 
+export type PendingCallManagement = {
+  leadId: string;
+  callId: string | null;
+};
+
+/**
+ * Destino único del botón "Completar tipificación" del CTI. Primero recupera
+ * la gestión abierta; si el screen-pop no alcanzó a crearla, usa el último
+ * intento de la campaña que mantiene al ejecutivo en ACW para abrir su ficha.
+ */
+export async function getMyPendingCallManagement(): Promise<PendingCallManagement | null> {
+  const { supabase, userId } = await requireAgent();
+  const { data: openCalls, error: callsError } = await supabase
+    .from("calls")
+    .select("id, lead_id")
+    .eq("agent_id", userId)
+    .is("ended_at", null)
+    .order("started_at", { ascending: false })
+    .limit(1);
+  if (callsError) throw new Error(callsError.message);
+  if (openCalls?.[0]) {
+    return { leadId: openCalls[0].lead_id, callId: openCalls[0].id };
+  }
+
+  const admin = createAdminClient();
+  const { data: sessions, error: sessionsError } = await admin
+    .from("dialer_agent_sessions")
+    .select("campaign_id")
+    .eq("profile_id", userId)
+    .eq("status", "wrap_up")
+    .order("updated_at", { ascending: false })
+    .limit(1);
+  if (sessionsError) throw new Error(sessionsError.message);
+  const campaignId = sessions?.[0]?.campaign_id;
+  if (!campaignId) return null;
+
+  const { data: attempts, error: attemptsError } = await admin
+    .from("dial_attempts")
+    .select("lead_id")
+    .eq("agent_id", userId)
+    .eq("campaign_id", campaignId)
+    .in("status", ["completed", "bridged", "answered"])
+    .order("updated_at", { ascending: false })
+    .limit(1);
+  if (attemptsError) throw new Error(attemptsError.message);
+  return attempts?.[0] ? { leadId: attempts[0].lead_id, callId: null } : null;
+}
+
 /**
  * Abre la gestión que respalda una llamada manual de un ejecutivo. A
  * diferencia de `registerManualCall`, esta operación crea/reutiliza el lead y

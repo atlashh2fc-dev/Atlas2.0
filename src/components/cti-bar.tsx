@@ -42,6 +42,7 @@ import {
 import {
   beginManualCallManagement,
   discardCallTechnicalError,
+  getMyPendingCallManagement,
   registerManualCall,
   startLegalIntercallBreak,
   type ManualCallManagement,
@@ -233,6 +234,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
   const [manualRecoveryName, setManualRecoveryName] = useState("");
   const [manualRecoveryPending, setManualRecoveryPending] = useState(false);
   const [manualRecoveryError, setManualRecoveryError] = useState<string | null>(null);
+  const [pendingTypificationOpening, setPendingTypificationOpening] = useState(false);
 
   const [statusReasons, setStatusReasons] = useState<AgentStatusReason[]>([]);
   const [currentReasonId, setCurrentReasonId] = useState<string | null>(null);
@@ -957,6 +959,29 @@ export function CtiBar({ profile }: { profile: Profile }) {
     router.refresh();
   }
 
+  async function handleOpenPendingTypification() {
+    setPendingTypificationOpening(true);
+    setCallError(null);
+    try {
+      const pending = await getMyPendingCallManagement();
+      if (!pending) {
+        setCallError(
+          "No encontramos la gestión pendiente. Abre Mi historial o pide a soporte revisar la llamada."
+        );
+        return;
+      }
+      setExpanded(false);
+      router.push(`/dashboard/leads/${pending.leadId}?tipificar=1`);
+      router.refresh();
+    } catch (err) {
+      setCallError(
+        err instanceof Error ? err.message : "No se pudo abrir la tipificación pendiente."
+      );
+    } finally {
+      setPendingTypificationOpening(false);
+    }
+  }
+
   function discardUnconnectedManualManagement(management: ManualCallManagement) {
     if (manualManagementRef.current?.callId !== management.callId) return;
     manualManagementRef.current = null;
@@ -1522,6 +1547,19 @@ export function CtiBar({ profile }: { profile: Profile }) {
             {expanded ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
           </button>
 
+          {inAutomaticWrapUp && !expanded && (
+            <div className="border-b border-warning/30 bg-warning-bg p-2.5">
+              <button
+                type="button"
+                onClick={handleOpenPendingTypification}
+                disabled={pendingTypificationOpening}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-warning px-3 py-2.5 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-60"
+              >
+                {pendingTypificationOpening ? "Abriendo gestión…" : "Completar tipificación"}
+              </button>
+            </div>
+          )}
+
           {expanded && (
             <div className="bg-surface">
               {regState !== "registered" && (
@@ -1692,13 +1730,23 @@ export function CtiBar({ profile }: { profile: Profile }) {
                       </p>
 
                       {automaticSessionStatus === "wrap_up" && operatingMode.session && (
-                        <button
-                          type="button"
-                          onClick={openManualRecovery}
-                          className="mt-4 rounded-xl border border-white/20 px-3 py-2 text-xs font-semibold text-white transition hover:bg-white/10"
-                        >
-                          Registrar llamada manual para tipificar
-                        </button>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={handleOpenPendingTypification}
+                            disabled={pendingTypificationOpening}
+                            className="rounded-xl bg-white px-3 py-2 text-xs font-bold text-[#12333b] transition hover:bg-white/90 disabled:opacity-60"
+                          >
+                            {pendingTypificationOpening ? "Abriendo gestión…" : "Completar tipificación"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={openManualRecovery}
+                            className="rounded-xl border border-white/20 px-3 py-2 text-xs font-semibold text-white transition hover:bg-white/10"
+                          >
+                            Registrar llamada manual
+                          </button>
+                        </div>
                       )}
 
                       {operatingMode.campaigns.length > 0 && (
