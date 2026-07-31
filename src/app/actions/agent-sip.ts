@@ -158,17 +158,40 @@ export async function provisionAgentExtension(formData: FormData) {
   if (existingError) throw new Error(existingError.message);
   if (existing) throw new Error("Este agente ya tiene una extensión asignada.");
 
-  const extension = await nextFreeExtension(service);
   const sipPassword = randomBytes(16).toString("hex");
 
-  const { error } = await service.from("agent_sip_credentials").insert({
-    profile_id: profileId,
-    extension,
-    sip_password: sipPassword,
-    is_active: true,
-  });
+  // Dos administradores pueden aprovisionar al mismo tiempo. El índice
+  // UNIQUE sigue siendo la autoridad; si ambos calcularon el mismo número,
+  // el perdedor recalcula sobre el valor que el primero acaba de confirmar.
+  let provisioned = false;
+  for (let attempt = 0; attempt < 8 && !provisioned; attempt += 1) {
+    const extension = await nextFreeExtension(service);
+    const { error } = await service.from("agent_sip_credentials").insert({
+      profile_id: profileId,
+      extension,
+      sip_password: sipPassword,
+      is_active: true,
+    });
 
-  if (error) throw new Error(error.message);
+    if (!error) {
+      provisioned = true;
+      break;
+    }
+    if (error.code !== "23505") throw new Error(error.message);
+
+    const { data: concurrentlyCreated, error: concurrentError } = await service
+      .from("agent_sip_credentials")
+      .select("id")
+      .eq("profile_id", profileId)
+      .maybeSingle();
+    if (concurrentError) throw new Error(concurrentError.message);
+    if (concurrentlyCreated) {
+      throw new Error("Este agente ya recibió una extensión en otra operación.");
+    }
+  }
+  if (!provisioned) {
+    throw new Error("No se pudo reservar una extensión libre después de varios intentos.");
+  }
   revalidatePath("/dashboard/admin/agentes-sip");
 }
 

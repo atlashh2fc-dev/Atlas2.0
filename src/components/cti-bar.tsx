@@ -187,6 +187,8 @@ export function CtiBar({ profile }: { profile: Profile }) {
   const registeredRef = useRef(false);
   /** El REGISTER no basta: el navegador debe poder capturar audio. */
   const mediaReadyRef = useRef(false);
+  /** Evita reescribir `since` en cada render una vez confirmada la capacidad. */
+  const readyStatusSyncedRef = useRef<string | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [callState, setCallState] = useState<CallState>("idle");
   const [subscriber, setSubscriber] = useState("");
@@ -383,6 +385,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
     setStatusError(null);
     try {
       await setMyCurrentStatus(reasonId);
+      readyStatusSyncedRef.current = requestedReason?.is_pause ? null : reasonId;
     } catch (err) {
       // Sin esto la barra mostraba el estado nuevo mientras la base seguía con
       // el anterior, y el discador actuaba según la base.
@@ -392,6 +395,27 @@ export function CtiBar({ profile }: { profile: Profile }) {
       setSavingStatus(false);
     }
   }
+
+  // En un alta nueva el catálogo/estado suele cargar antes que SIP. Antes la
+  // UI elegía "Disponible" localmente, pero al completarse el REGISTER no se
+  // persistía nada y heartbeat() actualizaba cero filas. Este efecto cierra
+  // ese orden de llegada: solo publica capacidad tras micrófono + REGISTER.
+  useEffect(() => {
+    if (profile.role !== "agente" || regState !== "registered") return;
+    const selectedReason = statusReasons.find((reason) => reason.id === currentReasonId);
+    if (!selectedReason || selectedReason.is_pause || !mediaReadyRef.current) return;
+    if (readyStatusSyncedRef.current === selectedReason.id) return;
+
+    readyStatusSyncedRef.current = selectedReason.id;
+    setMyCurrentStatus(selectedReason.id).catch((err) => {
+      readyStatusSyncedRef.current = null;
+      setStatusError(
+        err instanceof Error
+          ? err.message
+          : "El teléfono conectó, pero no se pudo publicar la disponibilidad."
+      );
+    });
+  }, [profile.role, regState, statusReasons, currentReasonId]);
 
   useEffect(() => {
     const trackingCall = callState === "in_call" && callStartedAt;
@@ -510,6 +534,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
             state === RegistererState.Terminated
           ) {
             mediaReadyRef.current = false;
+            readyStatusSyncedRef.current = null;
             void markAgentUnavailable().catch((err) =>
               console.error("CTI: no se pudo sacar de disponibilidad tras perder SIP", err)
             );
@@ -522,6 +547,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
         console.error("CTI: fallo al registrar softphone", err);
         mediaReadyRef.current = false;
         registeredRef.current = false;
+        readyStatusSyncedRef.current = null;
         void markAgentUnavailable().catch((statusErr) =>
           console.error("CTI: no se pudo sacar de disponibilidad tras fallo del teléfono", statusErr)
         );
@@ -547,6 +573,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
       disposed = true;
       mediaReadyRef.current = false;
       registeredRef.current = false;
+      readyStatusSyncedRef.current = null;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       activeRegisterer?.unregister().catch(() => {});
       activeUa?.stop().catch(() => {});
