@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, CalendarClock, CheckCircle2, Clock3, ShieldCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { Call, Lead } from "@/lib/types";
@@ -60,7 +60,10 @@ export function CallTypificationForm({
   priority?: boolean;
 }) {
   const router = useRouter();
-  const catalog = reasonCatalog && reasonCatalog.length > 0 ? reasonCatalog : CALL_REASONS;
+  // `undefined` significa que el lead no tiene workflow y usa el catálogo
+  // histórico. Un arreglo vacío es un workflow inválido y nunca debe caer a
+  // Equifax, porque ofrecería tipificaciones que la base luego rechazará.
+  const catalog = reasonCatalog === undefined ? CALL_REASONS : reasonCatalog;
   const initialReason = getReasonConfigFrom(catalog, call.reason);
   const [selectedState, setSelectedState] = useState(initialReason?.stateLabel ?? "");
   const [selectedResult, setSelectedResult] = useState(initialReason?.resultLabel ?? "");
@@ -81,6 +84,7 @@ export function CallTypificationForm({
     readLegalIntercallBreakUntil()
   );
   const [clockNow, setClockNow] = useState(() => Date.now());
+  const closeInFlightRef = useRef(false);
 
   useEffect(() => {
     function handleBreak(event: Event) {
@@ -181,7 +185,7 @@ export function CallTypificationForm({
     setPending("progress");
     setMessage(null);
     try {
-      await saveCallProgress({
+      const result = await saveCallProgress({
         callId: call.id,
         leadId: lead.id,
         status,
@@ -189,6 +193,10 @@ export function CallTypificationForm({
         reason: reason || null,
         notes: notes || null,
       });
+      if (!result.ok) {
+        setMessage({ type: "error", text: result.error });
+        return;
+      }
       setMessage({ type: "success", text: "Avance guardado." });
     } catch (e) {
       setMessage({ type: "error", text: e instanceof Error ? e.message : "Error al guardar avance." });
@@ -206,7 +214,11 @@ export function CallTypificationForm({
     setPending("agenda");
     setMessage(null);
     try {
-      await saveCallAgenda({ callId: call.id, leadId: lead.id, nextActionAt: iso });
+      const result = await saveCallAgenda({ callId: call.id, leadId: lead.id, nextActionAt: iso });
+      if (!result.ok) {
+        setMessage({ type: "error", text: result.error });
+        return;
+      }
       setMessage({ type: "success", text: "Agenda guardada." });
     } catch (e) {
       setMessage({ type: "error", text: e instanceof Error ? e.message : "Error al guardar agenda." });
@@ -216,16 +228,18 @@ export function CallTypificationForm({
   }
 
   async function handleClose() {
+    if (closeInFlightRef.current) return;
     setAttemptedClose(true);
     if (pendingIssues.length > 0) {
       setMessage({ type: "error", text: "Completa los campos marcados antes de cerrar." });
       return;
     }
 
+    closeInFlightRef.current = true;
     setPending("close");
     setMessage(null);
     try {
-      await closeCall({
+      const result = await closeCall({
         callId: call.id,
         leadId: lead.id,
         status,
@@ -237,11 +251,16 @@ export function CallTypificationForm({
         equifax_uf_amount: equifaxUf ? Number(equifaxUf) : null,
         equifax_recipient_email: equifaxEmail || null,
       });
-      router.push("/dashboard/leads");
-      router.refresh();
+      if (!result.ok) {
+        setMessage({ type: "error", text: result.error });
+        return;
+      }
+      router.replace("/dashboard/leads");
     } catch (e) {
-      setMessage({ type: "error", text: e instanceof Error ? e.message : "Error al cerrar gestion." });
+      console.error("No se pudo completar la acción de cierre", e);
+      setMessage({ type: "error", text: "No se pudo cerrar la gestión. Reintenta; si persiste, informa a supervisión." });
     } finally {
+      closeInFlightRef.current = false;
       setPending(null);
     }
   }
@@ -293,8 +312,18 @@ export function CallTypificationForm({
         </div>
       )}
 
+      {catalog.length === 0 && (
+        <div className="flex items-start gap-3 rounded-xl border border-danger/30 bg-danger-bg px-4 py-3 text-danger">
+          <AlertCircle className="mt-0.5 shrink-0" size={20} />
+          <div>
+            <p className="text-sm font-semibold">La campaña no tiene una tipificación válida configurada.</p>
+            <p className="mt-0.5 text-xs">Informa a supervisión; no se guardará una categoría ajena a este flujo.</p>
+          </div>
+        </div>
+      )}
+
       <fieldset
-        disabled={legalBreakActive}
+        disabled={legalBreakActive || catalog.length === 0}
         className="space-y-4 border-0 p-0 disabled:cursor-not-allowed disabled:opacity-60"
       >
         <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">

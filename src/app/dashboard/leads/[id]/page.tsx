@@ -4,7 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, CalendarClock } from "lucide-react";
 import { LEAD_STATUSES } from "@/lib/types";
-import { getOrCreateOpenCall } from "@/app/actions/calls";
+import { getOpenCall } from "@/app/actions/calls";
 import { CallTypificationForm } from "@/components/call-typification-form";
 import { CallTimer } from "@/components/call-timer";
 import { LeadTimeline, type TimelineEntry } from "@/components/lead-timeline";
@@ -121,11 +121,11 @@ export default async function LeadDetailPage({
     (workflowBranches ?? []) as WorkflowStepBranch[]
   );
 
-  // Solo los ejecutivos pueden abrir una llamada: la política RLS de `calls` no
-  // permite INSERT a supervisión, así que para ellos la ficha es de lectura.
+  // El render solo consulta una gestión abierta. Crear una llamada aquí provoca
+  // duplicados cuando el cierre revalida la página antes de navegar.
   const canManageCall = profile.role === "agente";
   const canReassign = profile.role === "supervisor" || profile.role === "admin";
-  const call = canManageCall ? await getOrCreateOpenCall(id) : null;
+  const call = canManageCall ? await getOpenCall(id) : null;
 
   const entries: TimelineEntry[] = (record.timeline ?? []).map((item) => ({
     key: `${item.source}-${item.id}`,

@@ -174,39 +174,59 @@ export async function getMyPendingCallManagement(): Promise<PendingCallManagemen
  * la llamada abierta en una sola transacción, para que siempre exista una
  * ficha donde tipificar y cerrar el ACW correctamente.
  */
+export type CallActionResult<T = null> =
+  | { ok: true; data: T }
+  | { ok: false; error: string };
+
+function callActionError<T>(context: string, error: unknown, metadata: Record<string, unknown>): CallActionResult<T> {
+  const message = error instanceof Error ? error.message : "Ocurrió un error inesperado.";
+  console.error(`[calls.${context}] failed`, { ...metadata, error: message });
+  return { ok: false, error: message };
+}
+
 export async function beginManualCallManagement(input: {
   campaignId: string;
   phone: string;
   contactName?: string | null;
   entryMode: "before_dial" | "after_call";
-}): Promise<ManualCallManagement> {
-  const { supabase } = await requireAgent();
-  const { data, error } = await supabase.rpc("begin_agent_manual_call_management", {
-    p_campaign_id: input.campaignId,
-    p_phone: input.phone,
-    p_full_name: input.contactName?.trim() || null,
-    p_entry_mode: input.entryMode,
-  });
-  if (error) throw new Error(error.message);
+}): Promise<CallActionResult<ManualCallManagement>> {
+  try {
+    const { supabase } = await requireAgent();
+    const { data, error } = await supabase.rpc("begin_agent_manual_call_management", {
+      p_campaign_id: input.campaignId,
+      p_phone: input.phone,
+      p_full_name: input.contactName?.trim() || null,
+      p_entry_mode: input.entryMode,
+    });
+    if (error) throw new Error(error.message);
 
-  const value = data && typeof data === "object" ? (data as Record<string, unknown>) : null;
-  const leadId = value?.lead_id;
-  const callId = value?.call_id;
-  const campaignId = value?.campaign_id;
-  if (typeof leadId !== "string" || typeof callId !== "string" || typeof campaignId !== "string") {
-    throw new Error("La llamada manual no devolvió una gestión válida.");
+    const value = data && typeof data === "object" ? (data as Record<string, unknown>) : null;
+    const leadId = value?.lead_id;
+    const callId = value?.call_id;
+    const campaignId = value?.campaign_id;
+    if (typeof leadId !== "string" || typeof callId !== "string" || typeof campaignId !== "string") {
+      throw new Error("La llamada manual no devolvió una gestión válida.");
+    }
+
+    revalidatePath(`/dashboard/leads/${leadId}`);
+    revalidatePath("/dashboard/leads");
+
+    return {
+      ok: true,
+      data: {
+        leadId,
+        callId,
+        campaignId,
+        leadCreated: value?.lead_created === true,
+        leadReused: value?.lead_reused === true,
+      },
+    };
+  } catch (error) {
+    return callActionError("beginManualCallManagement", error, {
+      campaignId: input.campaignId,
+      entryMode: input.entryMode,
+    });
   }
-
-  revalidatePath(`/dashboard/leads/${leadId}`);
-  revalidatePath("/dashboard/leads");
-
-  return {
-    leadId,
-    callId,
-    campaignId,
-    leadCreated: value?.lead_created === true,
-    leadReused: value?.lead_reused === true,
-  };
 }
 
 async function assertIntercallBreakCompleted(params: {
@@ -285,11 +305,12 @@ function inferNextActionWindow(nextActionAt: string | null): string | null {
 }
 
 /**
- * Devuelve la llamada abierta (sin cerrar) del agente actual para este lead,
- * o crea una nueva si no existe ninguna. Se usa al entrar a la ficha de
- * gestión, así el agente nunca pierde el progreso de una llamada en curso.
+ * Devuelve la llamada abierta del agente actual para este lead. Este helper es
+ * deliberadamente de solo lectura: un render/revalidate nunca puede iniciar
+ * una gestión. Las llamadas nacen únicamente desde el evento del discador o
+ * desde `begin_agent_manual_call_management`.
  */
-export async function getOrCreateOpenCall(leadId: string): Promise<Call> {
+export async function getOpenCall(leadId: string): Promise<Call | null> {
   const { supabase, userId } = await requireAgent();
 
   // No usamos `maybeSingle()` aquí. Hubo llamadas antiguas duplicadas antes
@@ -307,16 +328,44 @@ export async function getOrCreateOpenCall(leadId: string): Promise<Call> {
     .limit(1);
 
   if (findError) throw new Error(findError.message);
-  if (existing?.[0]) return existing[0] as Call;
+  return existing?.[0] ? (existing[0] as Call) : null;
+}
+
+/**
+ * Compatibilidad explícita con la integración entrante de Vocalcom. A
+ * diferencia del render de la ficha, este endpoint sí representa un evento de
+ * llamada y puede iniciar la gestión. La restricción única de BD resuelve
+ * carreras entre dos notificaciones del mismo evento.
+ */
+export async function ensureOpenCallForIncomingDialer(leadId: string): Promise<Call> {
+  const { supabase, userId } = await requireAgent();
+  const existing = await getOpenCall(leadId);
+  if (existing) return existing;
+
+  const { data: anotherOpen, error: openError } = await supabase
+    .from("calls")
+    .select("id, lead_id")
+    .eq("agent_id", userId)
+    .is("ended_at", null)
+    .order("started_at", { ascending: false })
+    .limit(1);
+  if (openError) throw new Error(openError.message);
+  if (anotherOpen?.[0]) {
+    throw new Error("Tienes otra gestión pendiente de tipificación.");
+  }
 
   const { data: created, error: insertError } = await supabase
     .from("calls")
     .insert({ lead_id: leadId, agent_id: userId })
     .select("*")
     .single();
+  if (!insertError && created) return created as Call;
 
-  if (insertError) throw new Error(insertError.message);
-  return created as Call;
+  // Una notificación concurrente pudo insertar primero. Sólo reutilizamos la
+  // llamada si corresponde al mismo evento/lead.
+  const raced = await getOpenCall(leadId);
+  if (raced) return raced;
+  throw new Error(insertError?.message ?? "No se pudo abrir la gestión de la llamada entrante.");
 }
 
 /**
@@ -404,7 +453,12 @@ async function getLeadCallReasonCatalog(params: {
     (branches ?? []) as WorkflowStepBranch[]
   );
 
-  return catalog.length > 0 ? catalog : CALL_REASONS;
+  if (catalog.length === 0) {
+    throw new Error(
+      "La campaña no tiene una tipificación válida configurada. Informa a supervisión antes de cerrar."
+    );
+  }
+  return catalog;
 }
 
 /** Guardar avance sin cerrar la llamada. */
@@ -415,43 +469,54 @@ export async function saveCallProgress(input: {
   outcome: CallOutcome | null;
   reason: string | null;
   notes: string | null;
-}) {
-  const { supabase, userId } = await requireAgent();
-  const { callId, leadId, status, outcome, reason, notes } = input;
-  const campaignId = await getLeadCampaignId(supabase, leadId);
-  await assertIntercallBreakCompleted({ userId, campaignId });
+}): Promise<CallActionResult> {
+  try {
+    const { supabase, userId } = await requireAgent();
+    const { callId, leadId, status, outcome, reason, notes } = input;
+    const campaignId = await getLeadCampaignId(supabase, leadId);
+    await assertIntercallBreakCompleted({ userId, campaignId });
 
-  const { error: updateError } = await supabase
-    .from("calls")
-    .update({
-      status,
-      outcome,
-      reason,
-      notes,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", callId);
-  if (updateError) throw new Error(updateError.message);
+    const { error: updateError } = await supabase
+      .from("calls")
+      .update({
+        status,
+        outcome,
+        reason,
+        notes,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", callId)
+      .eq("lead_id", leadId)
+      .eq("agent_id", userId)
+      .is("ended_at", null)
+      .select("id")
+      .single();
+    if (updateError) throw new Error(updateError.message);
 
-  await supabase.from("call_events").insert({
-    call_id: callId,
-    lead_id: leadId,
-    agent_id: userId,
-    event_type: "call.progress_updated",
-    payload: { status, outcome, reason },
-  });
+    const { error: eventError } = await supabase.from("call_events").insert({
+      call_id: callId,
+      lead_id: leadId,
+      agent_id: userId,
+      event_type: "call.progress_updated",
+      payload: { status, outcome, reason },
+    });
+    if (eventError) throw new Error(eventError.message);
 
-  // Sincronización no destructiva: solo se actualizan los campos que el
-  // agente efectivamente está dejando en esta gestión.
-  const leadUpdate: Record<string, unknown> = {};
-  if (reason) leadUpdate.tipificacion_actual = reason;
-  if (notes !== null && notes !== undefined && notes !== "") leadUpdate.observacion_actual = notes;
-  if (Object.keys(leadUpdate).length > 0) {
-    const { error: leadError } = await supabase.from("leads").update(leadUpdate).eq("id", leadId);
-    if (leadError) throw new Error(leadError.message);
+    // Sincronización no destructiva: solo se actualizan los campos que el
+    // agente efectivamente está dejando en esta gestión.
+    const leadUpdate: Record<string, unknown> = {};
+    if (reason) leadUpdate.tipificacion_actual = reason;
+    if (notes !== null && notes !== undefined && notes !== "") leadUpdate.observacion_actual = notes;
+    if (Object.keys(leadUpdate).length > 0) {
+      const { error: leadError } = await supabase.from("leads").update(leadUpdate).eq("id", leadId);
+      if (leadError) throw new Error(leadError.message);
+    }
+
+    revalidatePath(`/dashboard/leads/${leadId}`);
+    return { ok: true, data: null };
+  } catch (error) {
+    return callActionError("saveCallProgress", error, { callId: input.callId, leadId: input.leadId });
   }
-
-  revalidatePath(`/dashboard/leads/${leadId}`);
 }
 
 /** Guardar agenda (fecha/hora de próximo contacto) sin cerrar la llamada. */
@@ -459,43 +524,54 @@ export async function saveCallAgenda(input: {
   callId: string;
   leadId: string;
   nextActionAt: string;
-}) {
-  const { supabase, userId } = await requireAgent();
-  const { callId, leadId, nextActionAt } = input;
-  const campaignId = await getLeadCampaignId(supabase, leadId);
-  await assertIntercallBreakCompleted({ userId, campaignId });
+}): Promise<CallActionResult> {
+  try {
+    const { supabase, userId } = await requireAgent();
+    const { callId, leadId, nextActionAt } = input;
+    const campaignId = await getLeadCampaignId(supabase, leadId);
+    await assertIntercallBreakCompleted({ userId, campaignId });
 
-  if (!nextActionAt || Number.isNaN(new Date(nextActionAt).getTime())) {
-    throw new Error("Selecciona una fecha y hora de agenda válida.");
+    if (!nextActionAt || Number.isNaN(new Date(nextActionAt).getTime())) {
+      throw new Error("Selecciona una fecha y hora de agenda válida.");
+    }
+
+    const hasConflict = await findAgendaConflict({ supabase, leadId, excludeCallId: callId, nextActionAt });
+    if (hasConflict) {
+      throw new Error(
+        "Ya existe una agenda cerrada para este lead/contacto, en la misma campaña, para esa fecha y hora exacta."
+      );
+    }
+
+    const { error } = await supabase
+      .from("calls")
+      .update({
+        next_action_at: nextActionAt,
+        next_action_window: inferNextActionWindow(nextActionAt),
+        callback_owner_user_id: userId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", callId)
+      .eq("lead_id", leadId)
+      .eq("agent_id", userId)
+      .is("ended_at", null)
+      .select("id")
+      .single();
+    if (error) throw new Error(error.message);
+
+    const { error: eventError } = await supabase.from("call_events").insert({
+      call_id: callId,
+      lead_id: leadId,
+      agent_id: userId,
+      event_type: "call.agenda_saved",
+      payload: { next_action_at: nextActionAt, next_action_window: inferNextActionWindow(nextActionAt) },
+    });
+    if (eventError) throw new Error(eventError.message);
+
+    revalidatePath(`/dashboard/leads/${leadId}`);
+    return { ok: true, data: null };
+  } catch (error) {
+    return callActionError("saveCallAgenda", error, { callId: input.callId, leadId: input.leadId });
   }
-
-  const hasConflict = await findAgendaConflict({ supabase, leadId, excludeCallId: callId, nextActionAt });
-  if (hasConflict) {
-    throw new Error(
-      "Ya existe una agenda cerrada para este lead/contacto, en la misma campaña, para esa fecha y hora exacta."
-    );
-  }
-
-  const { error } = await supabase
-    .from("calls")
-    .update({
-      next_action_at: nextActionAt,
-      next_action_window: inferNextActionWindow(nextActionAt),
-      callback_owner_user_id: userId,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", callId);
-  if (error) throw new Error(error.message);
-
-  await supabase.from("call_events").insert({
-    call_id: callId,
-    lead_id: leadId,
-    agent_id: userId,
-    event_type: "call.agenda_saved",
-    payload: { next_action_at: nextActionAt, next_action_window: inferNextActionWindow(nextActionAt) },
-  });
-
-  revalidatePath(`/dashboard/leads/${leadId}`);
 }
 
 /** Cerrar la gestión ("Guardar y terminar"): valida todo y persiste el cierre. */
@@ -510,36 +586,12 @@ export async function closeCall(input: {
   equifax_products: string[];
   equifax_uf_amount: number | null;
   equifax_recipient_email: string | null;
-}) {
-  const { supabase, userId } = await requireAgent();
-  const {
-    callId,
-    leadId,
-    status,
-    outcome,
-    reason,
-    notes,
-    next_action_at,
-    equifax_products,
-    equifax_uf_amount,
-    equifax_recipient_email,
-  } = input;
-
-  const { data: lead, error: leadFetchError } = await supabase
-    .from("leads")
-    .select("id, email, workflow_id, campaign_id")
-    .eq("id", leadId)
-    .single();
-  if (leadFetchError) throw new Error(leadFetchError.message);
-  await assertIntercallBreakCompleted({
-    userId,
-    campaignId: lead.campaign_id,
-    requireCallEnded: true,
-  });
-  const reasonCatalog = await getLeadCallReasonCatalog({ supabase, lead });
-
-  const errors = validateCallClosure(
-    {
+}): Promise<CallActionResult> {
+  try {
+    const { supabase, userId } = await requireAgent();
+    const {
+      callId,
+      leadId,
       status,
       outcome,
       reason,
@@ -548,34 +600,94 @@ export async function closeCall(input: {
       equifax_products,
       equifax_uf_amount,
       equifax_recipient_email,
-      lead_email: lead.email,
-      contact_email: lead.email,
-    },
-    reasonCatalog
-  );
-  if (errors.length > 0) {
-    throw new Error(errors.join(" "));
+    } = input;
+
+    const { data: lead, error: leadFetchError } = await supabase
+      .from("leads")
+      .select("id, email, workflow_id, campaign_id")
+      .eq("id", leadId)
+      .single();
+    if (leadFetchError) throw new Error(leadFetchError.message);
+    await assertIntercallBreakCompleted({
+      userId,
+      campaignId: lead.campaign_id,
+      requireCallEnded: true,
+    });
+    const reasonCatalog = await getLeadCallReasonCatalog({ supabase, lead });
+
+    const errors = validateCallClosure(
+      {
+        status,
+        outcome,
+        reason,
+        notes,
+        next_action_at,
+        equifax_products,
+        equifax_uf_amount,
+        equifax_recipient_email,
+        lead_email: lead.email,
+        contact_email: lead.email,
+      },
+      reasonCatalog
+    );
+    if (errors.length > 0) {
+      throw new Error(errors.join(" "));
+    }
+
+    const { error: closeError } = await supabase.rpc("save_call_management", {
+      p_call_id: callId,
+      p_lead_id: leadId,
+      p_status: status,
+      p_outcome: outcome,
+      p_reason: reason,
+      p_notes: notes,
+      p_next_action_at: next_action_at,
+      p_next_action_window: inferNextActionWindow(next_action_at),
+      p_equifax_products: equifax_products,
+      p_equifax_uf_amount: equifax_uf_amount,
+      p_equifax_recipient_email: equifax_recipient_email,
+    });
+
+    if (closeError) {
+      // Un doble clic puede completar el primer POST antes de que llegue el
+      // segundo. Si esta misma gestión ya está cerrada, el cierre es idempotente
+      // y ambos clientes reciben éxito; cualquier otro error sigue siendo real.
+      const { data: existingCall, error: existingError } = await supabase
+        .from("calls")
+        .select("lead_id, agent_id, ended_at")
+        .eq("id", callId)
+        .eq("lead_id", leadId)
+        .eq("agent_id", userId)
+        .maybeSingle();
+      if (existingError || !existingCall?.ended_at) {
+        throw new Error(closeError.message);
+      }
+      console.info("[calls.closeCall] idempotent replay", { callId, leadId, userId });
+    }
+
+    const cleanupResults = await Promise.allSettled([
+      clearLegalIntercallBreak(userId),
+      releaseAgentFromWrapUp(userId, lead.campaign_id),
+    ]);
+    cleanupResults.forEach((result, index) => {
+      if (result.status === "rejected") {
+        console.error("[calls.closeCall] post-close cleanup failed", {
+          callId,
+          leadId,
+          userId,
+          cleanup: index === 0 ? "intercall_break" : "wrap_up",
+          error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+        });
+      }
+    });
+
+    // La ficha se abandona inmediatamente. Invalidarla aquí hacía que Next la
+    // renderizara de nuevo antes de la navegación del cliente.
+    revalidatePath("/dashboard/leads");
+    return { ok: true, data: null };
+  } catch (error) {
+    return callActionError("closeCall", error, { callId: input.callId, leadId: input.leadId });
   }
-
-  const { error: closeError } = await supabase.rpc("save_call_management", {
-    p_call_id: callId,
-    p_lead_id: leadId,
-    p_status: status,
-    p_outcome: outcome,
-    p_reason: reason,
-    p_notes: notes,
-    p_next_action_at: next_action_at,
-    p_next_action_window: inferNextActionWindow(next_action_at),
-    p_equifax_products: equifax_products,
-    p_equifax_uf_amount: equifax_uf_amount,
-    p_equifax_recipient_email: equifax_recipient_email,
-  });
-  if (closeError) throw new Error(closeError.message);
-  await clearLegalIntercallBreak(userId);
-  await releaseAgentFromWrapUp(userId, lead.campaign_id);
-
-  revalidatePath(`/dashboard/leads/${leadId}`);
-  revalidatePath("/dashboard/leads");
 }
 
 /**

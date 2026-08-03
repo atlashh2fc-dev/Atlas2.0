@@ -385,6 +385,55 @@ export async function upsertBranch(input: {
 }): Promise<WorkflowStepBranch> {
   await requireProfile(["admin"]);
   const supabase = await createClient();
+
+  // PostgreSQL permite múltiples NULL en una restricción UNIQUE compuesta.
+  // Para una salida por defecto resolvemos explícitamente la fila existente y
+  // limpiamos duplicados antiguos antes de devolverla.
+  if (input.fromOption === null) {
+    const { data: defaults, error: findError } = await supabase
+      .from("workflow_step_branches")
+      .select("*")
+      .eq("workflow_id", input.workflowId)
+      .eq("from_step_id", input.fromStepId)
+      .is("from_option", null)
+      .order("created_at", { ascending: true });
+    if (findError) throw new Error(findError.message);
+
+    if (defaults && defaults.length > 0) {
+      const keeper = defaults[0] as WorkflowStepBranch;
+      const { data, error } = await supabase
+        .from("workflow_step_branches")
+        .update({ to_step_id: input.toStepId })
+        .eq("id", keeper.id)
+        .select("*")
+        .single();
+      if (error) throw new Error(error.message);
+
+      const duplicateIds = defaults.slice(1).map((branch) => branch.id);
+      if (duplicateIds.length > 0) {
+        const { error: deleteError } = await supabase
+          .from("workflow_step_branches")
+          .delete()
+          .in("id", duplicateIds);
+        if (deleteError) throw new Error(deleteError.message);
+      }
+      return data as WorkflowStepBranch;
+    }
+
+    const { data, error } = await supabase
+      .from("workflow_step_branches")
+      .insert({
+        workflow_id: input.workflowId,
+        from_step_id: input.fromStepId,
+        from_option: null,
+        to_step_id: input.toStepId,
+      })
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    return data as WorkflowStepBranch;
+  }
+
   const { data, error } = await supabase
     .from("workflow_step_branches")
     .upsert(

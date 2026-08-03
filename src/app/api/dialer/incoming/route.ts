@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getOrCreateOpenCall } from "@/app/actions/calls";
+import { ensureOpenCallForIncomingDialer } from "@/app/actions/calls";
 import { getCurrentProfile } from "@/lib/auth";
 
 /**
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
 
   let callId: string | null = null;
   try {
-    const call = await getOrCreateOpenCall(lead.id);
+    const call = await ensureOpenCallForIncomingDialer(lead.id);
     callId = call.id;
 
     const { error: eventError } = await supabase.from("call_events").insert({

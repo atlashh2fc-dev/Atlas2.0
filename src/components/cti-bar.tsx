@@ -1017,14 +1017,18 @@ export function CtiBar({ profile }: { profile: Profile }) {
     setManualRecoveryPending(true);
     setManualRecoveryError(null);
     try {
-      const management = await beginManualCallManagement({
+      const result = await beginManualCallManagement({
         campaignId: manualRecoveryCampaignId,
         phone: target,
         contactName: manualRecoveryName,
         entryMode: "after_call",
       });
+      if (!result.ok) {
+        setManualRecoveryError(result.error);
+        return;
+      }
       setManualRecoveryOpen(false);
-      openManualManagement(management);
+      openManualManagement(result.data);
     } catch (err) {
       setManualRecoveryError(
         err instanceof Error ? err.message : "No se pudo registrar la llamada manual."
@@ -1160,12 +1164,17 @@ export function CtiBar({ profile }: { profile: Profile }) {
           setCallError("Selecciona la campaña donde se registrará la llamada.");
           return;
         }
-        management = await beginManualCallManagement({
+        const result = await beginManualCallManagement({
           campaignId,
           phone: target,
           contactName: selectedName,
           entryMode: "before_dial",
         });
+        if (!result.ok) {
+          setCallError(result.error);
+          return;
+        }
+        management = result.data;
         manualManagementRef.current = management;
       }
 

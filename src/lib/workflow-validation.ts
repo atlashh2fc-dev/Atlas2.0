@@ -15,7 +15,11 @@ export type WorkflowIssue = {
   stepId?: string;
 };
 
-const CHOICE_TYPES = new Set(["select", "radio", "checkbox", "multiselect"]);
+const CHOICE_TYPES = new Set<WorkflowStep["field_type"]>([
+  "single_choice",
+  "multi_select",
+  "combobox",
+]);
 
 export function validateWorkflow(steps: WorkflowStep[], branches: WorkflowStepBranch[]): WorkflowIssue[] {
   const issues: WorkflowIssue[] = [];
@@ -62,6 +66,23 @@ export function validateWorkflow(steps: WorkflowStep[], branches: WorkflowStepBr
 
     const stepBranches = outgoing.get(step.id) ?? [];
     const options = Array.isArray(step.options) ? step.options : [];
+    const defaultBranches = stepBranches.filter((branch) => branch.from_option === null);
+
+    if (defaultBranches.length > 1) {
+      issues.push({
+        level: "error",
+        message: `«${step.name}» tiene ${defaultBranches.length} salidas por defecto; debe tener como máximo una.`,
+        stepId: step.id,
+      });
+    }
+
+    if (CHOICE_TYPES.has(step.field_type) && options.length === 0) {
+      issues.push({
+        level: "error",
+        message: `«${step.name}» es un campo de selección sin opciones.`,
+        stepId: step.id,
+      });
+    }
 
     if (CHOICE_TYPES.has(step.field_type) && options.length > 0) {
       const covered = new Set(stepBranches.map((branch) => branch.from_option).filter(Boolean));
@@ -69,6 +90,17 @@ export function validateWorkflow(steps: WorkflowStep[], branches: WorkflowStepBr
 
       // Una salida sin opción funciona como camino por defecto para todas.
       const hasDefault = stepBranches.some((branch) => !branch.from_option);
+
+      const invalidBranches = stepBranches.filter(
+        (branch) => branch.from_option !== null && !options.includes(branch.from_option)
+      );
+      if (invalidBranches.length > 0) {
+        issues.push({
+          level: "error",
+          message: `«${step.name}» tiene conexiones asociadas a opciones que ya no existen.`,
+          stepId: step.id,
+        });
+      }
 
       if (!hasDefault && uncovered.length === options.length && stepBranches.length === 0) {
         issues.push({
