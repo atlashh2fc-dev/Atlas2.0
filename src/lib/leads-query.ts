@@ -7,10 +7,11 @@ import type { AppRole } from "./types";
  * filas cargadas y la tabla cortaba en 75 sin avisar: los contadores de las
  * pestañas eran, por lo tanto, falsos en cualquier base grande.
  *
- * La visibilidad la garantiza la política RLS `leads_select` (admin ve todo,
- * supervisor su equipo, ejecutivo lo propio o lo no asignado de su equipo),
- * así que consultar `leads` directamente es equivalente a la RPC anterior y
- * además permite `count` y `range` reales.
+ * La política RLS `leads_select` es la barrera de seguridad (admin ve todo,
+ * supervisor sus equipos y ejecutivo sólo registros propios u operativamente
+ * activos). Además, esta consulta acota "Mis registros" a gestiones que el
+ * ejecutivo efectivamente cerró: estar meramente asignado no convierte toda
+ * una cartera en su historial personal.
  */
 
 export const LEAD_VIEWS = [
@@ -79,9 +80,21 @@ function applyView(query: Query, view: LeadView) {
   return query;
 }
 
-function applyFilters(query: Query, filters: LeadFilters, ids: string[] | null) {
+function applyFilters(
+  query: Query,
+  filters: LeadFilters,
+  ids: string[] | null,
+  actor: { role: AppRole; userId: string }
+) {
   if (ids) query = query.in("id", ids);
-  if (filters.agent) query = query.or(`assigned_to.eq.${filters.agent},managed_by.eq.${filters.agent}`);
+  if (actor.role === "agente") {
+    // "Mis registros" es historial de gestión, no la cartera asignada ni la
+    // bolsa de la campaña. `save_call_management` escribe ambos campos en la
+    // misma transacción al guardar tipificación/agenda.
+    query = query.eq("managed_by", actor.userId).not("managed_at", "is", null);
+  } else if (filters.agent) {
+    query = query.or(`assigned_to.eq.${filters.agent},managed_by.eq.${filters.agent}`);
+  }
   if (filters.campaign) query = query.eq("campaign_id", filters.campaign);
   if (filters.status) query = query.eq("status", filters.status);
   return query;
@@ -105,6 +118,7 @@ export async function fetchLeadsPage<T>(
   supabase: SupabaseClient,
   options: {
     role: AppRole;
+    userId: string;
     filters: LeadFilters;
     view: LeadView;
     page: number;
@@ -156,7 +170,12 @@ export async function fetchLeadsPage<T>(
       p_ids: ids,
     }),
     (async () => {
-      const base = applyFilters(supabase.from("leads").select(LEAD_SELECT, { count: "exact" }), filters, ids);
+      const base = applyFilters(
+        supabase.from("leads").select(LEAD_SELECT, { count: "exact" }),
+        filters,
+        ids,
+        { role: options.role, userId: options.userId }
+      );
       const scoped = applyView(base, view);
       const page = Math.max(1, options.page);
       const from = (page - 1) * pageSize;

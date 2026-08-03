@@ -37,7 +37,7 @@ function roleCopy(role: string) {
   }
   return {
     title: "Mis registros",
-    description: "Tus próximas gestiones ordenadas por urgencia.",
+    description: "Clientes que gestionaste, con su tipificación y próximas agendas.",
     action: "Gestionar",
   };
 }
@@ -80,6 +80,7 @@ export default async function LeadsPage({
 
   const result = await fetchLeadsPage<LeadQueueRow>(supabase, {
     role: profile.role,
+    userId: profile.id,
     filters,
     view,
     page: Number(pageParam) || 1,
