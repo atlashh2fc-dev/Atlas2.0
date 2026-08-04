@@ -80,7 +80,6 @@ export default async function LeadsPage({
 
   const result = await fetchLeadsPage<LeadQueueRow>(supabase, {
     role: profile.role,
-    userId: profile.id,
     filters,
     view,
     page: Number(pageParam) || 1,

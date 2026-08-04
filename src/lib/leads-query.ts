@@ -9,9 +9,9 @@ import type { AppRole } from "./types";
  *
  * La política RLS `leads_select` es la barrera de seguridad (admin ve todo,
  * supervisor sus equipos y ejecutivo sólo registros propios u operativamente
- * activos). Además, esta consulta acota "Mis registros" a gestiones que el
- * ejecutivo efectivamente cerró: estar meramente asignado no convierte toda
- * una cartera en su historial personal.
+ * activos). Además, esta consulta usa `agent_contacted_leads` para que "Mis
+ * registros" contenga sólo contactos efectivos del ejecutivo. Una asignación
+ * o un intento tipificado como no contesta no convierte el lead en cliente.
  */
 
 export const LEAD_VIEWS = [
@@ -30,6 +30,10 @@ export const LEAD_SELECT =
 
 export const PAGE_SIZE_DEFAULT = 50;
 export const PAGE_SIZE_MAX = 250;
+
+export function leadRelationForRole(role: AppRole): "agent_contacted_leads" | "leads" {
+  return role === "agente" ? "agent_contacted_leads" : "leads";
+}
 
 export type LeadFilters = {
   q: string;
@@ -84,15 +88,10 @@ function applyFilters(
   query: Query,
   filters: LeadFilters,
   ids: string[] | null,
-  actor: { role: AppRole; userId: string }
+  role: AppRole
 ) {
   if (ids) query = query.in("id", ids);
-  if (actor.role === "agente") {
-    // "Mis registros" es historial de gestión, no la cartera asignada ni la
-    // bolsa de la campaña. `save_call_management` escribe ambos campos en la
-    // misma transacción al guardar tipificación/agenda.
-    query = query.eq("managed_by", actor.userId).not("managed_at", "is", null);
-  } else if (filters.agent) {
+  if (role !== "agente" && filters.agent) {
     query = query.or(`assigned_to.eq.${filters.agent},managed_by.eq.${filters.agent}`);
   }
   if (filters.campaign) query = query.eq("campaign_id", filters.campaign);
@@ -118,7 +117,6 @@ export async function fetchLeadsPage<T>(
   supabase: SupabaseClient,
   options: {
     role: AppRole;
-    userId: string;
     filters: LeadFilters;
     view: LeadView;
     page: number;
@@ -170,11 +168,15 @@ export async function fetchLeadsPage<T>(
       p_ids: ids,
     }),
     (async () => {
+      // La vista usa auth.uid(), llamadas conectadas y RLS. No basta con
+      // managed_by/managed_at: esos campos también cambian en intentos sin
+      // conversación y fueron la causa de registros ajenos en esta pantalla.
+      const relation = leadRelationForRole(options.role);
       const base = applyFilters(
-        supabase.from("leads").select(LEAD_SELECT, { count: "exact" }),
+        supabase.from(relation).select(LEAD_SELECT, { count: "exact" }),
         filters,
         ids,
-        { role: options.role, userId: options.userId }
+        options.role
       );
       const scoped = applyView(base, view);
       const page = Math.max(1, options.page);
