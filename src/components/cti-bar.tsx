@@ -951,9 +951,10 @@ export function CtiBar({ profile }: { profile: Profile }) {
     if (!context) return;
     if (automaticManagementOpenedRef.current === context.dial_attempt_id) return;
     automaticManagementOpenedRef.current = context.dial_attempt_id;
-    // El panel telefónico no debe competir visualmente con la ficha de cierre.
-    // La URL deja la gestión destacada incluso si el agente volvió atrás
-    // durante la conversación.
+    // El screen-pop debe ocurrir apenas el motor confirma qué ejecutivo tomó
+    // la llamada. Así la ficha 360 completa queda visible durante la
+    // conversación y no recién después del corte. Al colgar, esta misma URL
+    // conserva la gestión destacada para completar la tipificación.
     setExpanded(false);
     router.push(`/dashboard/leads/${context.lead_id}?tipificar=1`);
     router.refresh();
@@ -1048,6 +1049,11 @@ export function CtiBar({ profile }: { profile: Profile }) {
           setIncomingContext(context);
           setSelectedName(context.full_name);
           setSubscriber(subscriberFromPhone(context.phone));
+          // Realtime mantiene el screen-pop como canal principal, pero esta
+          // apertura directa desde el INVITE evita depender de la entrega del
+          // evento: en cuanto el intento ya está asignado y la llamada abierta
+          // existe, cargamos nombre, base, contactos e historial en el CRM.
+          openAutomaticManagement(context);
           return;
         }
       } catch (err) {
