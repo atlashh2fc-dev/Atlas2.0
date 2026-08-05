@@ -16,7 +16,13 @@ import {
   type CallReasonConfig,
   type CallStatus,
 } from "@/lib/call-typification";
-import { closeCall, discardCallTechnicalError, saveCallAgenda, saveCallProgress } from "@/app/actions/calls";
+import {
+  closeCall,
+  discardCallTechnicalError,
+  reviseCallManagement,
+  saveCallAgenda,
+  saveCallProgress,
+} from "@/app/actions/calls";
 import {
   INTERCALL_BREAK_EVENT,
   INTERCALL_BREAK_STORAGE_KEY,
@@ -52,12 +58,15 @@ export function CallTypificationForm({
   call,
   reasonCatalog,
   priority = false,
+  revision = false,
 }: {
   lead: Lead;
   call: Call;
   reasonCatalog?: CallReasonConfig[];
   /** La gestión llegó desde una llamada: debe dominar la pantalla. */
   priority?: boolean;
+  /** Corrige una gestión ya cerrada sin crear una llamada ficticia. */
+  revision?: boolean;
 }) {
   const router = useRouter();
   // `undefined` significa que el lead no tiene workflow y usa el catálogo
@@ -127,7 +136,7 @@ export function CallTypificationForm({
     0,
     Math.ceil((legalBreakUntil - clockNow) / 1000)
   );
-  const legalBreakActive = legalBreakRemaining > 0;
+  const legalBreakActive = !revision && legalBreakRemaining > 0;
 
   const pendingIssues = useMemo(
     () =>
@@ -239,7 +248,7 @@ export function CallTypificationForm({
     setPending("close");
     setMessage(null);
     try {
-      const result = await closeCall({
+      const payload = {
         callId: call.id,
         leadId: lead.id,
         status,
@@ -250,15 +259,24 @@ export function CallTypificationForm({
         equifax_products: equifaxProducts,
         equifax_uf_amount: equifaxUf ? Number(equifaxUf) : null,
         equifax_recipient_email: equifaxEmail || null,
-      });
+      };
+      const result = revision
+        ? await reviseCallManagement(payload)
+        : await closeCall(payload);
       if (!result.ok) {
         setMessage({ type: "error", text: result.error });
         return;
       }
-      router.replace("/dashboard/leads");
+      router.replace(revision ? `/dashboard/leads/${lead.id}` : "/dashboard/leads");
+      router.refresh();
     } catch (e) {
-      console.error("No se pudo completar la acción de cierre", e);
-      setMessage({ type: "error", text: "No se pudo cerrar la gestión. Reintenta; si persiste, informa a supervisión." });
+      console.error("No se pudo completar la acción de gestión", e);
+      setMessage({
+        type: "error",
+        text: revision
+          ? "No se pudo guardar la corrección. Reintenta; si persiste, informa a supervisión."
+          : "No se pudo cerrar la gestión. Reintenta; si persiste, informa a supervisión.",
+      });
     } finally {
       closeInFlightRef.current = false;
       setPending(null);
@@ -284,7 +302,20 @@ export function CallTypificationForm({
   }
 
   return (
-    <div className="space-y-4" aria-label="Tipificación de llamada">
+    <div className="space-y-4" aria-label={revision ? "Corrección de tipificación" : "Tipificación de llamada"}>
+      {revision && (
+        <div className="flex items-start gap-3 rounded-2xl border border-warning/30 bg-warning-bg px-4 py-3 text-foreground">
+          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-warning text-white">
+            <CalendarClock size={17} />
+          </span>
+          <div>
+            <p className="text-sm font-bold">Corregir tipificación y agenda</p>
+            <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+              La versión anterior quedará en la auditoría. Esta acción no genera una llamada nueva.
+            </p>
+          </div>
+        </div>
+      )}
       {priority && (
         <div className="flex items-start gap-3 rounded-2xl border border-primary/25 bg-primary/10 px-4 py-3 text-foreground">
           <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
@@ -329,8 +360,14 @@ export function CallTypificationForm({
         <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-sm font-semibold text-foreground">Tipificacion rapida Equifax</h2>
-            <p className="mt-1 text-xs text-muted-foreground">Flujo definido por la campana. Selecciona motivo y cierra.</p>
+            <h2 className="text-sm font-semibold text-foreground">
+              {revision ? "Nueva tipificación" : "Tipificacion rapida Equifax"}
+            </h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {revision
+                ? "Selecciona el motivo correcto y agrega una agenda si deben volver a llamar."
+                : "Flujo definido por la campana. Selecciona motivo y cierra."}
+            </p>
           </div>
           {reasonConfig && (
             <span className="rounded-full bg-accent px-2.5 py-1 text-xs font-medium text-accent-foreground">
@@ -427,14 +464,16 @@ export function CallTypificationForm({
                   </div>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={handleSaveAgenda}
-                disabled={pending !== null}
-                className="mt-3 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-surface-muted disabled:opacity-50"
-              >
-                {pending === "agenda" ? "Guardando agenda..." : "Guardar agenda"}
-              </button>
+              {!revision && (
+                <button
+                  type="button"
+                  onClick={handleSaveAgenda}
+                  disabled={pending !== null}
+                  className="mt-3 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-surface-muted disabled:opacity-50"
+                >
+                  {pending === "agenda" ? "Guardando agenda..." : "Guardar agenda"}
+                </button>
+              )}
             </div>
           )}
 
@@ -518,14 +557,16 @@ export function CallTypificationForm({
         )}
 
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={handleSaveProgress}
-            disabled={pending !== null}
-            className="rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-surface-muted disabled:opacity-50"
-          >
-            {pending === "progress" ? "Guardando..." : "Guardar avance"}
-          </button>
+          {!revision && (
+            <button
+              type="button"
+              onClick={handleSaveProgress}
+              disabled={pending !== null}
+              className="rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-surface-muted disabled:opacity-50"
+            >
+              {pending === "progress" ? "Guardando..." : "Guardar avance"}
+            </button>
+          )}
 
           <button
             type="button"
@@ -533,19 +574,27 @@ export function CallTypificationForm({
             disabled={pending !== null}
             className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary-hover disabled:opacity-50"
           >
-            {pending === "close" ? "Cerrando..." : "Guardar y terminar"}
+            {pending === "close"
+              ? revision
+                ? "Guardando corrección..."
+                : "Cerrando..."
+              : revision
+                ? "Guardar corrección y agenda"
+                : "Guardar y terminar"}
           </button>
 
-          <button
-            type="button"
-            onClick={() => setDiscardOpen((v) => !v)}
-            className="ml-auto rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground hover:text-danger"
-          >
-            Descartar por error tecnico
-          </button>
+          {!revision && (
+            <button
+              type="button"
+              onClick={() => setDiscardOpen((v) => !v)}
+              className="ml-auto rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground hover:text-danger"
+            >
+              Descartar por error tecnico
+            </button>
+          )}
         </div>
 
-        {discardOpen && (
+        {!revision && discardOpen && (
           <div className="mt-3 rounded-lg border border-border bg-background p-3">
             <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
               Motivo del error tecnico

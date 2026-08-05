@@ -2,9 +2,9 @@ import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CalendarClock } from "lucide-react";
+import { ArrowLeft, CalendarClock, PencilLine } from "lucide-react";
 import { LEAD_STATUSES } from "@/lib/types";
-import { getOpenCall } from "@/app/actions/calls";
+import { getOpenCall, getRevisableCall } from "@/app/actions/calls";
 import { CallTypificationForm } from "@/components/call-typification-form";
 import { CallTimer } from "@/components/call-timer";
 import { LeadTimeline, type TimelineEntry } from "@/components/lead-timeline";
@@ -82,12 +82,13 @@ export default async function LeadDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tipificar?: string | string[] }>;
+  searchParams: Promise<{ tipificar?: string | string[]; corregir?: string | string[] }>;
 }) {
   const profile = await requireProfile();
   const { id } = await params;
-  const { tipificar } = await searchParams;
+  const { tipificar, corregir } = await searchParams;
   const prioritizeTypification = tipificar === "1";
+  const correctionRequested = corregir === "1";
   const supabase = await createClient();
 
   const { data: lead360 } = await supabase.rpc("get_lead_360", { p_lead_id: id });
@@ -126,6 +127,10 @@ export default async function LeadDetailPage({
   const canManageCall = profile.role === "agente";
   const canReassign = profile.role === "supervisor" || profile.role === "admin";
   const call = canManageCall ? await getOpenCall(id) : null;
+  const revisableCall =
+    canManageCall && !call && lead.managed_by === profile.id
+      ? await getRevisableCall(id)
+      : null;
 
   const entries: TimelineEntry[] = (record.timeline ?? []).map((item) => ({
     key: `${item.source}-${item.id}`,
@@ -165,6 +170,15 @@ export default async function LeadDetailPage({
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {call && <CallTimer startedAt={call.started_at} endedAt={call.ended_at} />}
+            {revisableCall && !correctionRequested && (
+              <Link
+                href={`/dashboard/leads/${lead.id}?corregir=1`}
+                className={buttonClasses({ variant: "secondary" })}
+              >
+                <PencilLine size={15} />
+                Corregir tipificación
+              </Link>
+            )}
             {canReassign && (
               <Link href="/dashboard/team" className={buttonClasses({ variant: "secondary" })}>
                 Reasignar
@@ -213,6 +227,17 @@ export default async function LeadDetailPage({
             call={call}
             reasonCatalog={reasonCatalog}
             priority={prioritizeTypification}
+          />
+        </section>
+      )}
+
+      {!call && revisableCall && correctionRequested && (
+        <section className="rounded-2xl border-2 border-warning/20 bg-warning/[0.025] p-3 sm:p-5">
+          <CallTypificationForm
+            lead={lead}
+            call={revisableCall}
+            reasonCatalog={reasonCatalog}
+            revision
           />
         </section>
       )}

@@ -332,6 +332,27 @@ export async function getOpenCall(leadId: string): Promise<Call | null> {
 }
 
 /**
+ * Devuelve la última gestión conectada y cerrada que el ejecutivo puede
+ * corregir desde "Mis registros". Nunca crea una llamada ni reabre el ACW.
+ */
+export async function getRevisableCall(leadId: string): Promise<Call | null> {
+  const { supabase, userId } = await requireAgent();
+  const { data, error } = await supabase
+    .from("calls")
+    .select("*")
+    .eq("lead_id", leadId)
+    .eq("agent_id", userId)
+    .eq("status", "connected")
+    .not("ended_at", "is", null)
+    .is("discarded_reason", null)
+    .order("ended_at", { ascending: false })
+    .limit(1);
+
+  if (error) throw new Error(error.message);
+  return data?.[0] ? (data[0] as Call) : null;
+}
+
+/**
  * Compatibilidad explícita con la integración entrante de Vocalcom. A
  * diferencia del render de la ficha, este endpoint sí representa un evento de
  * llamada y puede iniciar la gestión. La restricción única de BD resuelve
@@ -687,6 +708,77 @@ export async function closeCall(input: {
     return { ok: true, data: null };
   } catch (error) {
     return callActionError("closeCall", error, { callId: input.callId, leadId: input.leadId });
+  }
+}
+
+/**
+ * Corrige una gestión propia ya cerrada. La RPC actualiza el snapshot
+ * operativo y conserva los valores anteriores en auditoría; no crea una
+ * llamada ficticia ni altera el tiempo real de la conversación.
+ */
+export async function reviseCallManagement(input: {
+  callId: string;
+  leadId: string;
+  status: CallStatus | null;
+  outcome: CallOutcome | null;
+  reason: string | null;
+  notes: string | null;
+  next_action_at: string | null;
+  equifax_products: string[];
+  equifax_uf_amount: number | null;
+  equifax_recipient_email: string | null;
+}): Promise<CallActionResult> {
+  try {
+    const { supabase, userId } = await requireAgent();
+    const { data: lead, error: leadError } = await supabase
+      .from("leads")
+      .select("id, email, workflow_id, campaign_id, managed_by")
+      .eq("id", input.leadId)
+      .eq("managed_by", userId)
+      .single();
+    if (leadError) throw new Error("El registro ya no pertenece a tu historial de gestión.");
+
+    const reasonCatalog = await getLeadCallReasonCatalog({ supabase, lead });
+    const errors = validateCallClosure(
+      {
+        status: input.status,
+        outcome: input.outcome,
+        reason: input.reason,
+        notes: input.notes,
+        next_action_at: input.next_action_at,
+        equifax_products: input.equifax_products,
+        equifax_uf_amount: input.equifax_uf_amount,
+        equifax_recipient_email: input.equifax_recipient_email,
+        lead_email: lead.email,
+        contact_email: lead.email,
+      },
+      reasonCatalog
+    );
+    if (errors.length > 0) throw new Error(errors.join(" "));
+
+    const { error } = await supabase.rpc("revise_call_management", {
+      p_call_id: input.callId,
+      p_lead_id: input.leadId,
+      p_status: input.status,
+      p_outcome: input.outcome,
+      p_reason: input.reason,
+      p_notes: input.notes,
+      p_next_action_at: input.next_action_at,
+      p_equifax_products: input.equifax_products,
+      p_equifax_uf_amount: input.equifax_uf_amount,
+      p_equifax_recipient_email: input.equifax_recipient_email,
+    });
+    if (error) throw new Error(error.message);
+
+    revalidatePath(`/dashboard/leads/${input.leadId}`);
+    revalidatePath("/dashboard/leads");
+    revalidatePath("/dashboard/agenda");
+    return { ok: true, data: null };
+  } catch (error) {
+    return callActionError("reviseCallManagement", error, {
+      callId: input.callId,
+      leadId: input.leadId,
+    });
   }
 }
 
