@@ -84,30 +84,24 @@ export async function expireStaleQueuedDialAttempts(
 }
 
 /**
- * AgentCalled ocurre antes de que el navegador reciba el INVITE de Queue.
- * Asociar el intento en ese punto permite que el CTI cargue la ficha exacta
- * mientras contesta automáticamente, sin adivinar por teléfono o campaña.
+ * Confirma al ejecutivo que Asterisk efectivamente conectó. Devuelve `false`
+ * si el intento ya terminó y no debe reabrirse.
  */
-/**
- * Asigna el intento al ejecutivo seleccionado por Queue. Devuelve `false` si
- * el evento llegó duplicado o el intento ya fue tomado/terminalizado.
- */
-export async function assignDialAttemptAgent(dialAttemptId: string, agentId: string): Promise<boolean> {
-  // Una sola operación en la base: sin esto quedaba un instante con el intento
-  // tomado y el registro todavía en manos de otro ejecutivo, que era justo la
-  // ventana en que el screen-pop y la tipificación se bloqueaban.
-  const { data, error } = await supabase.rpc("claim_dial_attempt_for_agent", {
+export async function confirmDialAttemptAgent(dialAttemptId: string, agentId: string): Promise<boolean> {
+  // AgentConnect es la primera señal autoritativa de quién atendió. La RPC
+  // mantiene intento, lead y asignación en una sola transacción y puede
+  // corregir una oferta provisional creada por una versión anterior del motor.
+  const { data, error } = await supabase.rpc("confirm_dial_attempt_agent_connection", {
     p_dial_attempt_id: dialAttemptId,
     p_agent_id: agentId,
   });
-  if (error) throw new Error(`claim_dial_attempt_for_agent: ${error.message}`);
+  if (error) throw new Error(`confirm_dial_attempt_agent_connection: ${error.message}`);
   return data === true;
 }
 
 /**
  * Evento de screen-pop consumido por DialerListener en el layout de Atlas.
- * Se emite cuando Queue selecciona al agente, antes del bridge, para abrir
- * la ficha y la tipificación mientras el CTI contesta el INVITE.
+ * Se emite después de AgentConnect, cuando Queue ya confirmó al agente real.
  */
 export async function emitIncomingDialEvent(dialAttemptId: string, agentId: string) {
   const { data: attempt, error: attemptError } = await supabase
@@ -427,29 +421,37 @@ export async function getAgentPauseStates(): Promise<AgentPauseState[]> {
   if (credsError) throw new Error(`agent_sip_credentials: ${credsError.message}`);
   if (!creds || creds.length === 0) return [];
 
-  const { data: statuses, error: statusError } = await supabase
-    .from("agent_current_status")
-    .select("profile_id, agent_status_reasons(label, is_pause)")
-    .in(
-      "profile_id",
-      creds.map((c) => c.profile_id)
-    );
-  if (statusError) throw new Error(`agent_current_status: ${statusError.message}`);
+  const profileIds = creds.map((c) => c.profile_id);
+  const [statusResult, sessionResult] = await Promise.all([
+    supabase
+      .from("agent_current_status")
+      .select("profile_id, agent_status_reasons(label, is_pause)")
+      .in("profile_id", profileIds),
+    supabase
+      .from("dialer_agent_sessions")
+      .select("profile_id, status")
+      .in("profile_id", profileIds)
+      .eq("status", "wrap_up"),
+  ]);
+  if (statusResult.error) throw new Error(`agent_current_status: ${statusResult.error.message}`);
+  if (sessionResult.error) throw new Error(`dialer_agent_sessions: ${sessionResult.error.message}`);
 
   const statusByProfile = new Map(
-    (statuses ?? []).map((s) => {
+    (statusResult.data ?? []).map((s) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const reason = (s as any).agent_status_reasons as { label: string; is_pause: boolean } | null;
       return [s.profile_id, reason];
     })
   );
+  const wrapUpProfiles = new Set((sessionResult.data ?? []).map((s) => s.profile_id));
 
   return creds.map((c) => {
     const reason = statusByProfile.get(c.profile_id) ?? null;
+    const inWrapUp = wrapUpProfiles.has(c.profile_id);
     return {
       extension: c.extension,
-      paused: reason?.is_pause ?? false,
-      reasonLabel: reason?.label ?? null,
+      paused: inWrapUp || (reason?.is_pause ?? false),
+      reasonLabel: inWrapUp ? "Cierre y tipificación" : (reason?.label ?? null),
     };
   });
 }

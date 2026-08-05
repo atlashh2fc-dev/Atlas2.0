@@ -721,7 +721,10 @@ export async function discardCallTechnicalError(input: { callId: string; leadId:
       reason: null,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", callId);
+    .eq("id", callId)
+    .eq("lead_id", leadId)
+    .eq("agent_id", userId)
+    .is("ended_at", null);
   if (error) throw new Error(error.message);
 
   await supabase.from("call_events").insert({

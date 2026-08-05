@@ -3,6 +3,7 @@ import test from "node:test";
 import type AmiClient from "asterisk-manager";
 import {
   ensureAgentEndpoints,
+  ensureQueue,
   parseConfigSnapshot,
   updateAgentSipPassword,
 } from "./configSync";
@@ -108,4 +109,20 @@ test("un error AMI de actualización no propaga la contraseña a los logs", asyn
       return true;
     }
   );
+});
+
+test("agrega ringinuse=no a una cola existente sin esa protección", async () => {
+  const { ami, actions } = fakeAmi({
+    "Category-000000": "secretaria_virtual",
+    "Line-000000-000000": "strategy=leastrecent",
+    "Line-000000-000001": "wrapuptime=10",
+  });
+
+  await ensureQueue(ami, "secretaria_virtual", 10);
+
+  const update = actions[1];
+  assert.equal(update.Action, "UpdateConfig");
+  assert.equal(update["Action-000002"], "Append");
+  assert.equal(update["Var-000002"], "ringinuse");
+  assert.equal(update["Value-000002"], "no");
 });

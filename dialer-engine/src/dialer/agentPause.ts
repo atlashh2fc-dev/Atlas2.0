@@ -16,6 +16,16 @@ import { amiAction } from "../asterisk/configSync";
 
 const lastPausedByExtension = new Map<string, boolean>();
 
+export async function pauseAgentForWrapUp(ami: AmiClient, extension: string): Promise<void> {
+  await amiAction(ami, {
+    Action: "QueuePause",
+    Interface: `PJSIP/${extension}`,
+    Paused: "true",
+    Reason: "Cierre y tipificación",
+  });
+  lastPausedByExtension.set(extension, true);
+}
+
 export async function syncAgentPauseStates(
   ami: AmiClient,
   options: { force?: boolean } = {}

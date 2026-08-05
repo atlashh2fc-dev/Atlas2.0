@@ -404,22 +404,25 @@ export async function ensureAmdContext(ami: AmiClient): Promise<void> {
   }
 }
 
-const lastQueueConfigByName = new Map<string, { wrapupSeconds: number; strategy: string }>();
+const lastQueueConfigByName = new Map<
+  string,
+  { wrapupSeconds: number; strategy: string; ringInUse: boolean }
+>();
 
 /**
  * Crea la cola en queues.conf si no existe (con defaults razonables) o
  * sincroniza estrategia y wrapuptime ("tiempo entre llamadas") desde el CRM.
  */
 export async function ensureQueue(ami: AmiClient, queueName: string, wrapupSeconds: number): Promise<void> {
-  let existing: Set<string>;
+  let snapshot: ConfigSnapshot;
   try {
-    existing = (await getConfigSnapshot(ami, "queues.conf")).categories;
+    snapshot = await getConfigSnapshot(ami, "queues.conf");
   } catch (err) {
     logger.error({ err, queueName }, "GetConfig queues.conf falló; la campaña no puede originar este ciclo");
     throw err;
   }
 
-  if (!existing.has(queueName)) {
+  if (!snapshot.categories.has(queueName)) {
     const lines: { action: "NewCat" | "Append"; cat: string; varName?: string; value?: string }[] = [
       { action: "NewCat", cat: queueName },
       { action: "Append", cat: queueName, varName: "strategy", value: OUTBOUND_QUEUE_STRATEGY },
@@ -430,6 +433,11 @@ export async function ensureQueue(ami: AmiClient, queueName: string, wrapupSecon
       { action: "Append", cat: queueName, varName: "joinempty", value: "yes" },
       { action: "Append", cat: queueName, varName: "leavewhenempty", value: "no" },
       { action: "Append", cat: queueName, varName: "autofill", value: "yes" },
+      // Nunca ofrecer una segunda llamada a un softphone que ya está en uso.
+      // El CTI rechaza correctamente un segundo INVITE; sin esta opción la
+      // Queue saltaba después a otro agente cuando el primero ya había sido
+      // persistido como dueño provisional de la gestión.
+      { action: "Append", cat: queueName, varName: "ringinuse", value: "no" },
       { action: "Append", cat: queueName, varName: "language", value: "es" },
     ];
     try {
@@ -437,6 +445,7 @@ export async function ensureQueue(ami: AmiClient, queueName: string, wrapupSecon
       lastQueueConfigByName.set(queueName, {
         wrapupSeconds,
         strategy: OUTBOUND_QUEUE_STRATEGY,
+        ringInUse: false,
       });
       logger.info({ queueName, wrapupSeconds }, "Cola creada en Asterisk");
     } catch (err) {
@@ -450,19 +459,38 @@ export async function ensureQueue(ami: AmiClient, queueName: string, wrapupSecon
   if (
     lastConfig?.wrapupSeconds === wrapupSeconds
     && lastConfig.strategy === OUTBOUND_QUEUE_STRATEGY
+    && lastConfig.ringInUse === false
   ) return;
 
   try {
+    const variables = snapshot.variablesByCategory.get(queueName);
     await amiAction(
       ami,
       buildUpdateConfigAction("queues.conf", [
-        { action: "Update", cat: queueName, varName: "strategy", value: OUTBOUND_QUEUE_STRATEGY },
-        { action: "Update", cat: queueName, varName: "wrapuptime", value: String(wrapupSeconds) },
+        {
+          action: variables?.has("strategy") ? "Update" : "Append",
+          cat: queueName,
+          varName: "strategy",
+          value: OUTBOUND_QUEUE_STRATEGY,
+        },
+        {
+          action: variables?.has("wrapuptime") ? "Update" : "Append",
+          cat: queueName,
+          varName: "wrapuptime",
+          value: String(wrapupSeconds),
+        },
+        {
+          action: variables?.has("ringinuse") ? "Update" : "Append",
+          cat: queueName,
+          varName: "ringinuse",
+          value: "no",
+        },
       ])
     );
     lastQueueConfigByName.set(queueName, {
       wrapupSeconds,
       strategy: OUTBOUND_QUEUE_STRATEGY,
+      ringInUse: false,
     });
     logger.info(
       { queueName, wrapupSeconds, strategy: OUTBOUND_QUEUE_STRATEGY },

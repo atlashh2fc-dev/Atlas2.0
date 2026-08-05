@@ -47,10 +47,12 @@ async function main() {
       .catch((err) => logger.error({ err }, "Sync de directorio de agentes falló"));
   }, AGENT_DIRECTORY_REFRESH_MS);
 
-  // Estado del agente (Disponible o un motivo AUX concreto, elegido desde la
-  // barra CTI): se sincroniza a QueuePause en Asterisk sin
-  // esperar al tick de campaña, para que la pausa/despausa sea casi
-  // inmediata sin importar en qué campaña esté el agente.
+  // Estado del agente (AUX o cierre/tipificación): se sincroniza a QueuePause
+  // antes de iniciar el pacing y luego continuamente. Así un reinicio del
+  // motor no abre una ventana donde un agente en wrap_up reciba otra llamada.
+  await syncAgentPauseStates(ami, { force: true }).catch((err) =>
+    logger.error({ err }, "Sync inicial de pausas de agente falló")
+  );
   setInterval(() => {
     syncAgentPauseStates(ami).catch((err) => logger.error({ err }, "Sync de pausas de agente falló"));
   }, AGENT_PAUSE_SYNC_MS);

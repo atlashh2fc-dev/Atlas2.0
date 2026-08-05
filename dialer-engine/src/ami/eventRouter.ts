@@ -1,12 +1,13 @@
 import type AmiClient from "asterisk-manager";
 import { logger } from "../logger";
 import {
-  assignDialAttemptAgent,
+  confirmDialAttemptAgent,
   emitIncomingDialEvent,
   registerDialEvent,
   updateAgentDialerStatus,
 } from "../supabaseClient";
 import { getProfileIdForExtension } from "../dialer/agentDirectory";
+import { pauseAgentForWrapUp } from "../dialer/agentPause";
 import { normalizeAmiUniqueId, queueMemberDialerStatus } from "./eventSemantics";
 
 // uniqueid del canal saliente (la pata que originamos) -> dial_attempt_id.
@@ -27,6 +28,31 @@ const answerStateByAttemptId = new Map<string, { answered: boolean; bridged: boo
 // real de que se cortó es que era una máquina, no que "alguien colgó tras
 // contestar". Se limpia al procesar el Hangup, igual que los otros mapas.
 const voicemailAttemptIds = new Set<string>();
+
+// AMI entrega los eventos en orden, pero las RPC anteriores se disparaban sin
+// esperar unas por otras. Bajo latencia, Hangup podía confirmarse antes que
+// Answered/AgentConnect y la transición terminal hacía que se perdieran el
+// bridge y la llamada. Esta cola conserva el orden por intento sin serializar
+// llamadas independientes.
+const taskTailByAttemptId = new Map<string, Promise<void>>();
+
+function enqueueAttemptTask(
+  dialAttemptId: string,
+  eventName: string,
+  task: () => Promise<void>
+): void {
+  const previous = taskTailByAttemptId.get(dialAttemptId) ?? Promise.resolve();
+  const current = previous
+    .catch(() => undefined)
+    .then(task)
+    .catch((err) => logger.error({ err, dialAttemptId }, `${eventName} falló`))
+    .finally(() => {
+      if (taskTailByAttemptId.get(dialAttemptId) === current) {
+        taskTailByAttemptId.delete(dialAttemptId);
+      }
+    });
+  taskTailByAttemptId.set(dialAttemptId, current);
+}
 
 function extensionFromInterface(iface: unknown): string | null {
   // AMI manda cosas como "PJSIP/1001" o "PJSIP/1001-00000012".
@@ -75,13 +101,15 @@ export function registerEventRouter(ami: AmiClient, campaignIdByQueue: Map<strin
         if (uniqueId) attemptByUniqueId.set(uniqueId, actionId);
 
         const success = String(evt.response ?? "").toLowerCase() === "success";
-        registerDialEvent({
-          dialAttemptId: actionId,
-          eventType: success ? "originating" : "failed",
-          amiUniqueId: uniqueId,
-          amiChannel: String(evt.channel ?? "") || null,
-          payload: { raw_response: evt.response ?? null, reason: evt.reason ?? null },
-        }).catch((err) => logger.error({ err, evt }, "register_dial_event (originate) falló"));
+        enqueueAttemptTask(actionId, "register_dial_event (originate)", () =>
+          registerDialEvent({
+            dialAttemptId: actionId,
+            eventType: success ? "originating" : "failed",
+            amiUniqueId: uniqueId,
+            amiChannel: String(evt.channel ?? "") || null,
+            payload: { raw_response: evt.response ?? null, reason: evt.reason ?? null },
+          })
+        );
         return;
       }
 
@@ -89,8 +117,8 @@ export function registerEventRouter(ami: AmiClient, campaignIdByQueue: Map<strin
         const uniqueId = String(evt.uniqueid ?? "");
         const dialAttemptId = attemptByUniqueId.get(uniqueId);
         if (!dialAttemptId) return;
-        registerDialEvent({ dialAttemptId, eventType: "ringing" }).catch((err) =>
-          logger.error({ err, evt }, "register_dial_event (ringing) falló")
+        enqueueAttemptTask(dialAttemptId, "register_dial_event (ringing)", () =>
+          registerDialEvent({ dialAttemptId, eventType: "ringing" })
         );
         return;
       }
@@ -105,8 +133,8 @@ export function registerEventRouter(ami: AmiClient, campaignIdByQueue: Map<strin
           state.answered = true;
           answerStateByAttemptId.set(dialAttemptId, state);
 
-          registerDialEvent({ dialAttemptId, eventType: "answered" }).catch((err) =>
-            logger.error({ err, evt }, "register_dial_event (answered) falló")
+          enqueueAttemptTask(dialAttemptId, "register_dial_event (answered)", () =>
+            registerDialEvent({ dialAttemptId, eventType: "answered" })
           );
         }
         return;
@@ -123,61 +151,56 @@ export function registerEventRouter(ami: AmiClient, campaignIdByQueue: Map<strin
         state.bridged = true;
         answerStateByAttemptId.set(dialAttemptId, state);
 
-        registerDialEvent({
-          dialAttemptId,
-          eventType: "bridged",
-          agentId: profileId ?? null,
-          payload: { queue: evt.queue ?? null, extension },
-        }).catch((err) => logger.error({ err, evt }, "register_dial_event (bridged) falló"));
-
         const campaignId = campaignIdByQueue.get(String(evt.queue ?? ""));
-        if (campaignId && extension && profileId) {
-          updateAgentDialerStatus({
-            profileId,
-            campaignId,
-            extension,
-            status: "on_call",
-          }).catch((err) =>
-            logger.error({ err, evt }, "update_agent_dialer_status (on_call) falló")
-          );
+        if (extension && profileId) {
+          enqueueAttemptTask(dialAttemptId, "confirmación de AgentConnect", async () => {
+            const confirmed = await confirmDialAttemptAgent(dialAttemptId, profileId);
+            if (!confirmed) {
+              logger.warn({ dialAttemptId, profileId, extension }, "AgentConnect llegó para un intento no activo");
+              return;
+            }
+
+            await registerDialEvent({
+              dialAttemptId,
+              eventType: "bridged",
+              agentId: profileId,
+              payload: { queue: evt.queue ?? null, extension },
+            });
+
+            const effects: Promise<unknown>[] = [emitIncomingDialEvent(dialAttemptId, profileId)];
+            if (campaignId) {
+              effects.push(
+                updateAgentDialerStatus({
+                  profileId,
+                  campaignId,
+                  extension,
+                  status: "on_call",
+                })
+              );
+            }
+            const results = await Promise.allSettled(effects);
+            for (const result of results) {
+              if (result.status === "rejected") {
+                logger.error({ err: result.reason, evt }, "efecto de AgentConnect falló");
+              }
+            }
+          });
         }
         return;
       }
 
       case "agentcalled": {
-        const dialAttemptId = attemptIdFromEvent(evt);
-        const queue = String(evt.queue ?? "");
-        const campaignId = campaignIdByQueue.get(queue);
-        const extension = extensionFromInterface(
-          evt.interface ?? evt.membername ?? evt.agentcalled ?? evt.destchannel
-        );
-        const profileId = extension ? getProfileIdForExtension(extension) : undefined;
-        if (!dialAttemptId || !campaignId || !extension || !profileId) return;
-
-        // La asignación atómica también protege ante eventos duplicados o una
-        // transición de estrategia de cola: un solo ejecutivo puede quedarse
-        // con el intento y recibir el screen-pop.
-        void (async () => {
-          const claimed = await assignDialAttemptAgent(dialAttemptId, profileId).catch((err) => {
-            logger.error({ err, evt }, "assign_dial_attempt_agent falló");
-            return false;
-          });
-          if (!claimed) return;
-
-          // Se ejecutan por separado: si el screen-pop falla, el estado del
-          // ejecutivo igual tiene que quedar en "timbrando".
-          const results = await Promise.allSettled([
-            emitIncomingDialEvent(dialAttemptId, profileId),
-            updateAgentDialerStatus({ profileId, campaignId, extension, status: "ringing" }),
-          ]);
-          for (const result of results) {
-            if (result.status === "rejected") {
-              logger.error({ err: result.reason, evt }, "efecto de AgentCalled falló");
-            }
-          }
-        })();
+        // AgentCalled sólo significa que el miembro fue notificado. No es
+        // autoridad de propiedad: puede no responder o estar ya ocupado y la
+        // Queue conectará a otra persona. Persistir aquí causaba que el primer
+        // agente recibiera la tipificación de la llamada del segundo.
         return;
       }
+
+      case "agentringnoanswer":
+        // No se creó estado durable en AgentCalled, por lo que tampoco hay una
+        // reserva provisional que liberar aquí.
+        return;
 
       case "agentcomplete": {
         const queue = String(evt.queue ?? "");
@@ -186,14 +209,24 @@ export function registerEventRouter(ami: AmiClient, campaignIdByQueue: Map<strin
         const profileId = extension ? getProfileIdForExtension(extension) : undefined;
         if (!campaignId || !extension || !profileId) return;
 
-        updateAgentDialerStatus({
-          profileId,
-          campaignId,
-          extension,
-          status: "wrap_up",
-        }).catch((err) =>
-          logger.error({ err, evt }, "update_agent_dialer_status (wrap_up) falló")
-        );
+        void (async () => {
+          // QueuePause es inmediato; el sync durable mantendrá la pausa hasta
+          // que la tipificación cambie la sesión desde wrap_up a available.
+          const results = await Promise.allSettled([
+            pauseAgentForWrapUp(ami, extension),
+            updateAgentDialerStatus({
+              profileId,
+              campaignId,
+              extension,
+              status: "wrap_up",
+            }),
+          ]);
+          for (const result of results) {
+            if (result.status === "rejected") {
+              logger.error({ err: result.reason, evt }, "protección de wrap_up falló");
+            }
+          }
+        })();
         return;
       }
 
@@ -220,12 +253,14 @@ export function registerEventRouter(ami: AmiClient, campaignIdByQueue: Map<strin
             ? "abandoned"
             : hangupCauseToStatus(evt.cause);
 
-        registerDialEvent({
-          dialAttemptId,
-          eventType,
-          hangupCause: String(evt.cause ?? "") || null,
-          payload: { cause_txt: evt["cause-txt"] ?? null },
-        }).catch((err) => logger.error({ err, evt }, "register_dial_event (hangup) falló"));
+        enqueueAttemptTask(dialAttemptId, "register_dial_event (hangup)", () =>
+          registerDialEvent({
+            dialAttemptId,
+            eventType,
+            hangupCause: String(evt.cause ?? "") || null,
+            payload: { cause_txt: evt["cause-txt"] ?? null },
+          })
+        );
         return;
       }
 
