@@ -57,6 +57,80 @@ export async function saveMyViewPreference(
   }
 }
 
+export type SavedView = {
+  id: string;
+  name: string;
+  config: unknown;
+  updated_at: string;
+};
+
+export async function listMySavedViews(viewKey: ViewKey): Promise<SavedView[]> {
+  const profile = await requireProfile();
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("user_saved_views")
+    .select("id, name, config, updated_at")
+    .eq("profile_id", profile.id)
+    .eq("view_key", viewKey)
+    .order("name");
+
+  if (error) throw new Error(error.message);
+  return (data ?? []) as SavedView[];
+}
+
+/**
+ * Guarda la vista actual con un nombre. Repetir un nombre sobrescribe esa
+ * vista, que es lo que la persona espera al "volver a guardar".
+ */
+export async function saveMyNamedView(
+  viewKey: ViewKey,
+  name: string,
+  config: unknown
+): Promise<{ ok: true; view: SavedView } | { ok: false; error: string }> {
+  try {
+    const profile = await requireProfile();
+    const trimmed = name.trim();
+    if (!trimmed) return { ok: false, error: "Ponle un nombre a la vista." };
+    if (trimmed.length > 60) return { ok: false, error: "El nombre no puede superar los 60 caracteres." };
+
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("user_saved_views")
+      .upsert(
+        {
+          profile_id: profile.id,
+          view_key: viewKey,
+          name: trimmed,
+          config: config as Record<string, unknown>,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "profile_id,view_key,name" }
+      )
+      .select("id, name, config, updated_at")
+      .single();
+
+    if (error) throw new Error(error.message);
+    return { ok: true, view: data as SavedView };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "No se pudo guardar la vista.";
+    return { ok: false, error: message };
+  }
+}
+
+export async function deleteMySavedView(viewId: string): Promise<void> {
+  const profile = await requireProfile();
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from("user_saved_views")
+    .delete()
+    .eq("id", viewId)
+    .eq("profile_id", profile.id);
+
+  if (error) throw new Error(error.message);
+}
+
 export async function resetMyViewPreference(viewKey: ViewKey): Promise<void> {
   const profile = await requireProfile();
   const supabase = await createClient();

@@ -8,6 +8,8 @@ import { forceAgentLogout, getAgentLiveStatus, getQueueHealth } from "@/app/acti
 import type { AgentLiveStatus, QueueHealth } from "@/lib/types";
 import { LEGAL_INTERCALL_BREAK_SECONDS } from "@/lib/intercall-break";
 import { useViewPreference } from "@/lib/use-view-preference";
+import type { MetricId } from "@/lib/metric-definitions";
+import { SavedViewsBar } from "@/components/saved-views-bar";
 import { cn } from "@/lib/utils";
 import {
   Button,
@@ -48,6 +50,10 @@ type WidgetId =
   | "completed"
   | "abandon-rate"
   | "no-answer-rate"
+  | "contact-rate"
+  | "effective-contacts"
+  | "attempts-per-contact"
+  | "sales-today"
   | "status-chart"
   | "campaign-chart"
   | "queues"
@@ -84,10 +90,14 @@ const DEFAULT_LAYOUT: WidgetLayout[] = [
   { i: "completed", x: 3, y: 6, w: 3, h: 3, minW: 2, minH: 2 },
   { i: "abandon-rate", x: 6, y: 6, w: 3, h: 3, minW: 2, minH: 2 },
   { i: "no-answer-rate", x: 9, y: 6, w: 3, h: 3, minW: 2, minH: 2 },
-  { i: "status-chart", x: 0, y: 9, w: 6, h: 6, minW: 4, minH: 5 },
-  { i: "campaign-chart", x: 6, y: 9, w: 6, h: 6, minW: 4, minH: 5 },
-  { i: "queues", x: 0, y: 15, w: 12, h: 6, minW: 6, minH: 3 },
-  { i: "agents", x: 0, y: 21, w: 12, h: 10, minW: 6, minH: 6 },
+  { i: "contact-rate", x: 0, y: 9, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "effective-contacts", x: 3, y: 9, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "attempts-per-contact", x: 6, y: 9, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "sales-today", x: 9, y: 9, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "status-chart", x: 0, y: 12, w: 6, h: 6, minW: 4, minH: 5 },
+  { i: "campaign-chart", x: 6, y: 12, w: 6, h: 6, minW: 4, minH: 5 },
+  { i: "queues", x: 0, y: 18, w: 12, h: 6, minW: 6, minH: 3 },
+  { i: "agents", x: 0, y: 24, w: 12, h: 10, minW: 6, minH: 6 },
 ];
 
 /** Orden canónico para el panel de tarjetas ocultas. */
@@ -115,6 +125,10 @@ const WIDGET_TITLE: Record<WidgetId, string> = {
   completed: "Completadas hoy",
   "abandon-rate": "Abandono hoy",
   "no-answer-rate": "Sin respuesta hoy",
+  "contact-rate": "Contactabilidad hoy",
+  "effective-contacts": "Contactos efectivos",
+  "attempts-per-contact": "Intentos por contacto",
+  "sales-today": "Ventas hoy",
   "status-chart": "Estados del equipo",
   "campaign-chart": "Actividad por campaña",
   queues: "Salud de campañas",
@@ -134,6 +148,10 @@ const WIDGET_KICKER: Record<WidgetId, string> = {
   completed: "RESULTADO",
   "abandon-rate": "GUARDARRAÍL",
   "no-answer-rate": "CONTACTO",
+  "contact-rate": "EFECTIVIDAD",
+  "effective-contacts": "CONVERSACIONES",
+  "attempts-per-contact": "COSTO DE CONTACTO",
+  "sales-today": "RESULTADO COMERCIAL",
   "status-chart": "LECTURA DEL EQUIPO",
   "campaign-chart": "PULSO DE CAMPAÑAS",
   queues: "SALUD OPERACIONAL",
@@ -195,7 +213,7 @@ function formatInt(value: number): string {
   return value.toLocaleString("es-CL");
 }
 
-function MetricWidget({ label, value, hint, tone = "default", metric, children, kicker }: { label: string; value: string | number; hint?: ReactNode; tone?: "default" | "warn" | "danger" | "good"; metric?: "ocupacion" | "abandono"; children?: ReactNode; kicker: string }) {
+function MetricWidget({ label, value, hint, tone = "default", metric, children, kicker }: { label: string; value: string | number; hint?: ReactNode; tone?: "default" | "warn" | "danger" | "good"; metric?: MetricId; children?: ReactNode; kicker: string }) {
   const color = tone === "danger" ? "text-danger" : tone === "warn" ? "text-warning" : tone === "good" ? "text-success" : "text-foreground";
   return (
     <div className="relative flex h-full min-h-32 flex-col justify-between overflow-hidden">
@@ -337,9 +355,16 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
   const connected = agents.length - groups.offline;
   const occupancy = connected > 0 ? Math.round(((groups.on_call + groups.wrap_up) / connected) * 100) : 0;
   const alerts = agents.filter((agent) => agentDisplay(agent, now).alert).length;
-  const totals = useMemo(() => queues.reduce((all, queue) => ({ inFlight: all.inFlight + queue.in_flight, answered: all.answered + queue.answered_today, completed: all.completed + queue.completed_today, abandoned: all.abandoned + queue.abandoned_today, noAnswer: all.noAnswer + queue.no_answer_today }), { inFlight: 0, answered: 0, completed: 0, abandoned: 0, noAnswer: 0 }), [queues]);
+  const totals = useMemo(() => queues.reduce((all, queue) => ({ inFlight: all.inFlight + queue.in_flight, attempts: all.attempts + (queue.attempts_today ?? 0), answered: all.answered + queue.answered_today, completed: all.completed + queue.completed_today, abandoned: all.abandoned + queue.abandoned_today, noAnswer: all.noAnswer + queue.no_answer_today, managements: all.managements + (queue.managements_today ?? 0), contacts: all.contacts + (queue.effective_contacts_today ?? 0), sales: all.sales + (queue.sales_today ?? 0) }), { inFlight: 0, attempts: 0, answered: 0, completed: 0, abandoned: 0, noAnswer: 0, managements: 0, contacts: 0, sales: 0 }), [queues]);
   const abandonRate = totals.answered + totals.abandoned > 0 ? Math.round((totals.abandoned / (totals.answered + totals.abandoned)) * 100) : 0;
   const noAnswerRate = totals.answered + totals.noAnswer > 0 ? Math.round((totals.noAnswer / (totals.answered + totals.noAnswer)) * 100) : 0;
+  // Contactabilidad sobre gestiones cerradas, no sobre intentos: mide en cuántas
+  // de las que el ejecutivo trabajó se logró hablar con la persona.
+  const contactRate = totals.managements > 0 ? Math.round((totals.contacts / totals.managements) * 100) : 0;
+  // Cuántas marcaciones cuesta cada conversación. Sin contactos todavía no hay
+  // razón que calcular: se muestra guion, no un cero que parezca eficiencia.
+  const attemptsPerContact = totals.contacts > 0 ? totals.attempts / totals.contacts : null;
+  const conversionRate = totals.contacts > 0 ? Math.round((totals.sales / totals.contacts) * 100) : 0;
   const campaignOptions = useMemo(() => [...new Set(agents.map((agent) => agent.campaign_name).filter((name): name is string => Boolean(name)))].sort(), [agents]);
   const normalizedTerm = term.trim().toLocaleLowerCase("es-CL");
   const filteredAgents = useMemo(() => agents.filter((agent) => {
@@ -430,6 +455,10 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
     completed: <MetricWidget kicker={WIDGET_KICKER.completed} label="Completadas hoy" value={formatInt(totals.completed)} hint={totals.answered ? `${Math.round((totals.completed / totals.answered) * 100)}% de las contestadas` : "Sin llamadas contestadas"} />,
     "abandon-rate": <MetricWidget kicker={WIDGET_KICKER["abandon-rate"]} label="Abandono hoy" metric="abandono" value={`${abandonRate}%`} hint={`${formatInt(totals.abandoned)} abandonadas · umbral ${THRESHOLDS.abandonRate}%`} tone={abandonRate > THRESHOLDS.abandonRate ? "danger" : "good"} />,
     "no-answer-rate": <MetricWidget kicker={WIDGET_KICKER["no-answer-rate"]} label="Sin respuesta hoy" value={`${noAnswerRate}%`} hint={`${formatInt(totals.noAnswer)} intentos sin respuesta`} tone={noAnswerRate >= 70 ? "warn" : "default"} />,
+    "contact-rate": <MetricWidget kicker={WIDGET_KICKER["contact-rate"]} label="Contactabilidad hoy" metric="contactabilidad" value={`${contactRate}%`} hint={totals.managements ? `${formatInt(totals.contacts)} de ${formatInt(totals.managements)} gestiones cerradas` : "Sin gestiones cerradas todavía"} tone={totals.managements > 0 && contactRate < 30 ? "warn" : "default"} />,
+    "effective-contacts": <MetricWidget kicker={WIDGET_KICKER["effective-contacts"]} label="Contactos efectivos" value={formatInt(totals.contacts)} hint={`${formatInt(totals.managements)} gestiones cerradas hoy`} />,
+    "attempts-per-contact": <MetricWidget kicker={WIDGET_KICKER["attempts-per-contact"]} label="Intentos por contacto" metric="intentos_por_contacto" value={attemptsPerContact === null ? "—" : attemptsPerContact.toFixed(1)} hint={attemptsPerContact === null ? "Aún sin contactos efectivos" : `${formatInt(totals.attempts)} intentos · ${formatInt(totals.contacts)} contactos`} tone={attemptsPerContact !== null && attemptsPerContact > 15 ? "warn" : "default"} />,
+    "sales-today": <MetricWidget kicker={WIDGET_KICKER["sales-today"]} label="Ventas hoy" value={formatInt(totals.sales)} hint={totals.contacts ? `${conversionRate}% de los contactos efectivos` : "Sin contactos efectivos todavía"} tone={totals.sales > 0 ? "good" : "default"} />,
     "status-chart": (
       <div className="h-[19.5rem]">
         <div className="flex items-start justify-between gap-4">
@@ -555,6 +584,19 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
           </Button>
         </div>
       </dialog>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <SavedViewsBar<MonitorPreference>
+          viewKey="live-monitor"
+          currentConfig={{ layout: safeLayout, hidden }}
+          onApply={(config) =>
+            setPreference({
+              layout: config.layout ?? DEFAULT_LAYOUT,
+              hidden: config.hidden ?? [],
+            })
+          }
+        />
+      </div>
+
       <div className="flex flex-wrap items-center justify-end gap-2">
         {hiddenWidgets.length > 0 && (
           <div className="mr-auto flex flex-wrap items-center gap-2">

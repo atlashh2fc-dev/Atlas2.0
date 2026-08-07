@@ -308,11 +308,18 @@ export interface QueueHealth {
   campaign_id: string;
   campaign_name: string;
   queue_name: string;
+  campaign_type: CampaignDirection;
   in_flight: number;
+  attempts_today: number;
   answered_today: number;
   abandoned_today: number;
   completed_today: number;
   no_answer_today: number;
+  /** Gestiones cerradas hoy: el trabajo del ejecutivo, no el del marcador. */
+  managements_today: number;
+  /** Gestiones donde se habló con la persona: denominador real de la conversión. */
+  effective_contacts_today: number;
+  sales_today: number;
 }
 
 export interface CallMetricsReportRow {
