@@ -60,6 +60,21 @@ export default async function CampaignDialerPage({ params }: { params: Promise<{
           <Field
             label={
               <LabelWithHelp
+                label="Dirección de la campaña"
+                help="Decide qué familia de indicadores se reporta. En saliente se miden contactabilidad, penetración de base e intentos por contacto; en entrante, nivel de servicio y espera en cola. En mixta se reportan ambas por separado, nunca promediadas."
+              />
+            }
+          >
+            <Select name="campaign_type" defaultValue={config?.campaign_type ?? "outbound"}>
+              <option value="outbound">Saliente · el discador origina las llamadas</option>
+              <option value="inbound">Entrante · el cliente llama y espera en cola</option>
+              <option value="blending">Mixta · ambas direcciones</option>
+            </Select>
+          </Field>
+
+          <Field
+            label={
+              <LabelWithHelp
                 label="Modo de discado"
                 help="Selecciona un modo para ver debajo una explicación de cómo se originan y se entregan las llamadas."
               />

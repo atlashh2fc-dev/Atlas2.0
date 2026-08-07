@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
 import type { AgentActivityReportRow, CallMetricsReportRow } from "@/lib/types";
+import type { CampaignDirection } from "@/lib/metric-definitions";
 
 /**
  * Reporte histórico de métricas de llamadas (volumen por resultado, ring
@@ -51,10 +52,33 @@ export async function getAgentActivityReport(
 }
 
 /** Lista simple de campañas para el filtro del reporte de métricas de llamadas. */
-export async function listCampaignsForReports(): Promise<{ id: string; name: string }[]> {
+export type ReportCampaign = {
+  id: string;
+  name: string;
+  /** Dirección declarada; decide qué familia de KPIs corresponde mostrar. */
+  direction: CampaignDirection;
+};
+
+export async function listCampaignsForReports(): Promise<ReportCampaign[]> {
   await requireProfile(["admin", "supervisor"]);
   const supabase = await createClient();
-  const { data, error } = await supabase.from("campaigns").select("id, name").order("name");
+  const { data, error } = await supabase
+    .from("campaigns")
+    .select("id, name, dialer_campaign_configs(campaign_type)")
+    .order("name");
   if (error) throw new Error(error.message);
-  return data ?? [];
+
+  return (data ?? []).map((campaign) => {
+    // El embed llega como arreglo cuando PostgREST no puede probar que la
+    // relación es uno a uno. Una campaña sin configuración de discado todavía
+    // no marca: se asume saliente, que es lo que hace el motor.
+    const config = campaign.dialer_campaign_configs as
+      | { campaign_type: string }
+      | { campaign_type: string }[]
+      | null;
+    const raw = Array.isArray(config) ? config[0]?.campaign_type : config?.campaign_type;
+    const direction: CampaignDirection =
+      raw === "inbound" || raw === "blending" ? raw : "outbound";
+    return { id: campaign.id, name: campaign.name, direction };
+  });
 }

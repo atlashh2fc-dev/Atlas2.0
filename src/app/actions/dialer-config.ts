@@ -63,6 +63,13 @@ export async function upsertDialerCampaignConfig(formData: FormData) {
 
   const amdEnabled = formData.get("amd_enabled") === "true";
 
+  // Dirección de la campaña: decide qué familia de KPIs se reporta. Cualquier
+  // valor inesperado cae a saliente, que es lo que hace el motor por defecto.
+  const rawCampaignType = String(formData.get("campaign_type") ?? "outbound");
+  const campaignType = ["outbound", "inbound", "blending"].includes(rawCampaignType)
+    ? rawCampaignType
+    : "outbound";
+
   // Política de compromisos agendados: a la hora acordada la llamada le entra
   // al ejecutivo que la agendó, no al pool.
   const personalCallbackEnabled = formData.get("personal_callback_enabled") === "true";
@@ -84,6 +91,7 @@ export async function upsertDialerCampaignConfig(formData: FormData) {
   const { error } = await supabase.from("dialer_campaign_configs").upsert(
     {
       campaign_id: campaignId,
+      campaign_type: campaignType,
       dial_mode: dialMode,
       max_dial_ratio: maxDialRatio,
       caller_id: callerId,

@@ -10,6 +10,7 @@ import {
 import type { AgentActivityReportRow, CallMetricsReportRow } from "@/lib/types";
 import {
   Button,
+  Callout,
   Card,
   DataTable,
   Field,
@@ -21,6 +22,13 @@ import {
   type Column,
 } from "@/components/ui";
 import { formatReportRangeLabel, resolveReportRange, toDateInput } from "@/lib/report-range";
+import {
+  CAMPAIGN_DIRECTION_LABELS,
+  metricAppliesTo,
+  type CampaignDirection,
+  type MetricId,
+} from "@/lib/metric-definitions";
+import type { ReportCampaign } from "@/app/actions/dialer-reports";
 
 const ABANDON_ALERT_RATE = 6;
 
@@ -58,14 +66,18 @@ export function DialerReports() {
   const from = toDateInput(range.from);
   const to = toDateInput(range.to);
   const [campaignId, setCampaignId] = useState<string>("");
-  const [campaigns, setCampaigns] = useState<{ id: string; name: string }[]>([]);
+  const [campaigns, setCampaigns] = useState<ReportCampaign[]>([]);
   const [callMetrics, setCallMetrics] = useState<CallMetricsReportRow[]>([]);
   const [agentActivity, setAgentActivity] = useState<AgentActivityReportRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
 
-  const selectedCampaignName = campaigns.find((campaign) => campaign.id === campaignId)?.name ?? null;
+  const selectedCampaign = campaigns.find((campaign) => campaign.id === campaignId) ?? null;
+  const selectedCampaignName = selectedCampaign?.name ?? null;
+  // Sin campaña elegida se muestran todas las columnas: el consolidado puede
+  // mezclar direcciones y ocultar una familia escondería datos reales.
+  const direction: CampaignDirection = selectedCampaign?.direction ?? "blending";
 
   useEffect(() => {
     listCampaignsForReports().then(setCampaigns).catch(() => {});
@@ -110,8 +122,8 @@ export function DialerReports() {
   );
   const abandonRate = totals.answered > 0 ? (totals.abandoned / totals.answered) * 100 : null;
 
-  const metricColumns = useMemo<Column<CallMetricsReportRow>[]>(
-    () => [
+  const metricColumns = useMemo<Column<CallMetricsReportRow>[]>(() => {
+    const columns: Column<CallMetricsReportRow>[] = [
       { id: "fecha", header: "Fecha", value: (row) => row.report_date, cell: (row) => formatDate(row.report_date) },
       { id: "campana", header: "Campaña", value: (row) => row.campaign_name },
       { id: "intentos", header: "Intentos", align: "right", value: (row) => row.total_attempts },
@@ -167,9 +179,15 @@ export function DialerReports() {
         value: (row) => row.service_level_20s,
         cell: (row) => formatPercent(row.service_level_20s),
       },
-    ],
-    []
-  );
+    ];
+
+    // En una campaña saliente no hay cola donde esperar: el nivel de servicio a
+    // 20 s y la espera promedio no tienen sujeto y solo inducen a error.
+    return columns.filter((column) => {
+      const metricId = (column as { metric?: MetricId }).metric;
+      return !metricId || metricAppliesTo(metricId, direction);
+    });
+  }, [direction]);
 
   const activityColumns = useMemo<Column<AgentActivityReportRow>[]>(
     () => [
@@ -274,14 +292,31 @@ export function DialerReports() {
             <option value="">Todas</option>
             {campaigns.map((campaign) => (
               <option key={campaign.id} value={campaign.id}>
-                {campaign.name}
+                {campaign.name} · {CAMPAIGN_DIRECTION_LABELS[campaign.direction]}
               </option>
             ))}
           </Select>
         </Field>
 
+        {selectedCampaign && (
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs font-medium text-muted-foreground">Dirección</span>
+            <span className="text-sm font-semibold text-foreground">
+              {CAMPAIGN_DIRECTION_LABELS[selectedCampaign.direction]}
+            </span>
+          </div>
+        )}
+
         {loading && <LoadingState label="Actualizando el reporte" compact />}
       </Card>
+
+      {direction === "outbound" && (
+        <Callout tone="info">
+          Campaña saliente: no se muestran nivel de servicio ni espera en cola, porque en discado
+          saliente nadie espera a ser atendido. El abandono acá mide sobremarcación del discador —
+          llamadas conectadas sin ejecutivo libre—, no calidad de atención.
+        </Callout>
+      )}
 
       {error && (
         <Card className="flex items-center gap-3">

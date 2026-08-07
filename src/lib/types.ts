@@ -1,3 +1,5 @@
+import type { CampaignDirection } from "@/lib/metric-definitions";
+
 export type AppRole = "agente" | "supervisor" | "admin";
 
 export interface Profile {
@@ -221,6 +223,8 @@ export const DIAL_MODES: { value: DialMode; label: string; description: string }
 
 export interface DialerCampaignConfig {
   campaign_id: string;
+  /** Dirección de la campaña: decide qué familia de KPIs se reporta. */
+  campaign_type: CampaignDirection;
   dial_mode: DialMode;
   max_dial_ratio: number;
   caller_id: string | null;
