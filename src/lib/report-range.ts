@@ -66,30 +66,107 @@ export type ReportRangeParams = {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * Zona horaria de la operación.
+ *
+ * El período NO puede calcularse con los métodos locales de `Date`: el server
+ * component corre en Vercel con el proceso en UTC, así que "hoy" arrancaba a
+ * las 00:00 UTC — las 20:00 del día anterior en Chile— y el reporte de "Hoy"
+ * mostraba media jornada de ayer. Tampoco sirve la zona del navegador: dos
+ * personas mirando el mismo enlace verían cifras distintas.
+ */
+export const REPORT_TIME_ZONE = "America/Santiago";
+
+type ZonedParts = { year: number; month: number; day: number };
+
+function partsIn(date: Date, timeZone: string): ZonedParts & { hour: number; minute: number; second: number } {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  const parts: Record<string, string> = {};
+  for (const part of formatter.formatToParts(date)) {
+    if (part.type !== "literal") parts[part.type] = part.value;
+  }
+  return {
+    year: Number(parts.year),
+    month: Number(parts.month),
+    day: Number(parts.day),
+    // `hour12: false` puede devolver 24 en la medianoche de algunos entornos.
+    hour: Number(parts.hour) % 24,
+    minute: Number(parts.minute),
+    second: Number(parts.second),
+  };
+}
+
+/** Desfase de la zona respecto de UTC para ese instante concreto. */
+function zoneOffsetMs(date: Date, timeZone: string): number {
+  const parts = partsIn(date, timeZone);
+  const asUtc = Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour,
+    parts.minute,
+    parts.second
+  );
+  return asUtc - Math.floor(date.getTime() / 1000) * 1000;
+}
+
+/**
+ * Instante exacto de una hora de pared en la zona de la operación.
+ *
+ * Se resuelve en dos pasadas porque Chile cambia de horario en septiembre y
+ * abril: el desfase depende del instante que se está calculando.
+ */
+function instantFromZoned(
+  { year, month, day }: ZonedParts,
+  time: { hour: number; minute: number; second: number; ms: number }
+): Date {
+  const wallClock = Date.UTC(year, month - 1, day, time.hour, time.minute, time.second, time.ms);
+  const firstGuess = wallClock - zoneOffsetMs(new Date(wallClock), REPORT_TIME_ZONE);
+  const secondOffset = zoneOffsetMs(new Date(firstGuess), REPORT_TIME_ZONE);
+  return new Date(wallClock - secondOffset);
+}
+
+function partsOf(date: Date): ZonedParts {
+  const parts = partsIn(date, REPORT_TIME_ZONE);
+  return { year: parts.year, month: parts.month, day: parts.day };
+}
+
 export function startOfDay(date: Date): Date {
-  const value = new Date(date);
-  value.setHours(0, 0, 0, 0);
-  return value;
+  return instantFromZoned(partsOf(date), { hour: 0, minute: 0, second: 0, ms: 0 });
 }
 
 export function endOfDay(date: Date): Date {
-  const value = new Date(date);
-  value.setHours(23, 59, 59, 999);
-  return value;
+  return instantFromZoned(partsOf(date), { hour: 23, minute: 59, second: 59, ms: 999 });
 }
 
 export function addDays(date: Date, days: number): Date {
-  const value = new Date(date);
-  value.setDate(value.getDate() + days);
-  return value;
+  const { year, month, day } = partsOf(date);
+  // El desplazamiento se hace sobre el día calendario y recién después se
+  // resuelve el instante: sumar 24 h se equivoca en el cambio de horario.
+  const shifted = new Date(Date.UTC(year, month - 1, day + days));
+  return instantFromZoned(
+    {
+      year: shifted.getUTCFullYear(),
+      month: shifted.getUTCMonth() + 1,
+      day: shifted.getUTCDate(),
+    },
+    { hour: 0, minute: 0, second: 0, ms: 0 }
+  );
 }
 
-/** `YYYY-MM-DD` en hora local: `toISOString()` desplaza el día en Chile (UTC-3/-4). */
+/** `YYYY-MM-DD` del día en la zona de la operación. */
 export function toDateInput(date: Date): string {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  const { year, month, day } = partsOf(date);
+  return `${year}-${`${month}`.padStart(2, "0")}-${`${day}`.padStart(2, "0")}`;
 }
 
 function parseDateInput(value: string | undefined): Date | null {
@@ -97,24 +174,28 @@ function parseDateInput(value: string | undefined): Date | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
   if (!match) return null;
   const [, year, month, day] = match;
-  // Construcción explícita en hora local; `new Date("2026-08-07")` es UTC.
-  const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+  const parsed = instantFromZoned(
+    { year: Number(year), month: Number(month), day: Number(day) },
+    { hour: 0, minute: 0, second: 0, ms: 0 }
+  );
   if (Number.isNaN(parsed.getTime())) return null;
-  if (parsed.getMonth() !== Number(month) - 1 || parsed.getDate() !== Number(day)) return null;
+  // Rechaza fechas imposibles (31 de febrero) que `Date` normalizaría en
+  // silencio al mes siguiente.
+  if (toDateInput(parsed) !== `${year}-${month}-${day}`) return null;
   return parsed;
 }
 
 /** Lunes como primer día: es la semana laboral con la que se mide la operación. */
 function startOfWeek(date: Date): Date {
-  const value = startOfDay(date);
-  const weekday = (value.getDay() + 6) % 7;
-  return addDays(value, -weekday);
+  const { year, month, day } = partsOf(date);
+  // El día de la semana se toma del calendario de la zona, no del proceso.
+  const weekday = (new Date(Date.UTC(year, month - 1, day)).getUTCDay() + 6) % 7;
+  return addDays(startOfDay(date), -weekday);
 }
 
 function startOfMonth(date: Date): Date {
-  const value = startOfDay(date);
-  value.setDate(1);
-  return value;
+  const { year, month } = partsOf(date);
+  return instantFromZoned({ year, month, day: 1 }, { hour: 0, minute: 0, second: 0, ms: 0 });
 }
 
 function presetBounds(preset: ReportPreset, today: Date): { from: Date; to: Date } {
@@ -135,9 +216,15 @@ function presetBounds(preset: ReportPreset, today: Date): { from: Date; to: Date
       return { from: startOfMonth(today), to: endOfDay(today) };
     case "mes_pasado": {
       const thisMonth = startOfMonth(today);
-      const lastMonth = new Date(thisMonth);
-      lastMonth.setMonth(lastMonth.getMonth() - 1);
-      return { from: lastMonth, to: endOfDay(addDays(thisMonth, -1)) };
+      const { year, month } = partsOf(thisMonth);
+      const lastMonth =
+        month === 1
+          ? { year: year - 1, month: 12, day: 1 }
+          : { year, month: month - 1, day: 1 };
+      return {
+        from: instantFromZoned(lastMonth, { hour: 0, minute: 0, second: 0, ms: 0 }),
+        to: endOfDay(addDays(thisMonth, -1)),
+      };
     }
     case "7d":
       return { from: startOfDay(addDays(today, -6)), to: endOfDay(today) };
@@ -204,6 +291,7 @@ export function resolveReportRange(
     to = bounds.to;
   }
 
+  // Redondeo, no truncamiento: en el cambio de horario un día dura 23 o 25 h.
   const days = Math.max(1, Math.round((endOfDay(to).getTime() - from.getTime()) / DAY_MS));
   // El comparativo es el tramo de igual duración que termina justo antes. Antes
   // se restaban 30 días siempre, así que cualquier otro rango comparaba contra
@@ -233,6 +321,7 @@ export function reportRangeSearchParams(
 
 export function formatReportRangeLabel(range: ReportRange): string {
   const formatter = new Intl.DateTimeFormat("es-CL", {
+    timeZone: REPORT_TIME_ZONE,
     day: "2-digit",
     month: "2-digit",
     year: "numeric",

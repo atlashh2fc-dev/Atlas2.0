@@ -7,9 +7,6 @@ import {
   CartesianGrid,
   Cell,
   ComposedChart,
-  Funnel,
-  FunnelChart,
-  LabelList,
   Line,
   ResponsiveContainer,
   Tooltip,
@@ -18,6 +15,7 @@ import {
 } from "recharts";
 import type { CampaignDashboardSummary as CampaignDashboardSummaryData, CampaignDashboardSummaryMetric } from "@/lib/types";
 import { CALL_REASONS } from "@/lib/call-typification";
+import { REPORT_TIME_ZONE } from "@/lib/report-range";
 
 interface Props {
   summary: CampaignDashboardSummaryData;
@@ -39,6 +37,62 @@ const CHART_COLORS = [
 
 function fmtInt(n: number): string {
   return Math.round(n).toLocaleString("es-CL");
+}
+
+/** El período pertenece a la operación, no al huso de quien mira el reporte. */
+function formatOperationDate(value: string): string {
+  return new Date(value).toLocaleDateString("es-CL", { timeZone: REPORT_TIME_ZONE });
+}
+
+/**
+ * Embudo de gestión.
+ *
+ * Reemplaza al `FunnelChart` de recharts, que dibuja cada etapa proporcional a
+ * su valor: con una base de 68.815 registros y 70 gestiones, las cuatro etapas
+ * siguientes medían menos de un píxel y el gráfico se veía vacío. Acá la barra
+ * conserva la proporción pero nunca baja de un mínimo visible, y el dato que
+ * importa —cuánto se conserva de una etapa a la siguiente— va escrito.
+ */
+function FunnelStages({ stages }: { stages: { name: string; value: number }[] }) {
+  const base = stages[0]?.value ?? 0;
+
+  return (
+    <ol className="space-y-3">
+      {stages.map((stage, index) => {
+        const previous = index > 0 ? stages[index - 1].value : null;
+        const shareOfBase = base > 0 ? stage.value / base : 0;
+        const stepConversion = previous && previous > 0 ? stage.value / previous : null;
+        // Sin el mínimo, cualquier etapa por debajo del 1% de la base
+        // desaparece y no se distingue de un cero.
+        const width = stage.value > 0 ? Math.max(shareOfBase * 100, 1.5) : 0;
+
+        return (
+          <li key={stage.name}>
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+              <span className="text-sm font-medium text-foreground">{stage.name}</span>
+              <span className="flex items-baseline gap-2">
+                <span className="text-sm font-semibold tabular-nums text-foreground">
+                  {fmtInt(stage.value)}
+                </span>
+                {stepConversion !== null && (
+                  <span className="text-xs tabular-nums text-muted-foreground">
+                    {fmtPct(stepConversion)} de {stages[index - 1].name.toLowerCase()}
+                  </span>
+                )}
+              </span>
+            </div>
+            <div className="mt-1.5 h-2.5 w-full overflow-hidden rounded-full bg-surface-muted">
+              <div
+                className="h-full rounded-full bg-primary"
+                style={{ width: `${width}%` }}
+                role="presentation"
+              />
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
 }
 
 function fmtPct(n: number | null): string {
@@ -111,8 +165,10 @@ export function CampaignDashboardSummary({ summary }: Props) {
   return (
     <div className="space-y-6">
       <div className="rounded-xl border border-border bg-surface p-4 text-xs text-muted-foreground">
-        Período analizado: {new Date(summary.range.from).toLocaleDateString("es-CL")} -{" "}
-        {new Date(summary.range.to).toLocaleDateString("es-CL")}
+        {/* Con la zona del navegador, quien mire desde otro huso vería un día
+            distinto al del reporte. El período es el de la operación. */}
+        Período analizado: {formatOperationDate(summary.range.from)} -{" "}
+        {formatOperationDate(summary.range.to)}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
@@ -126,23 +182,7 @@ export function CampaignDashboardSummary({ summary }: Props) {
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-xl border border-border bg-surface p-5">
           <h3 className="mb-3 text-sm font-semibold text-foreground">Embudo de gestión</h3>
-          <ResponsiveContainer width="100%" height={280}>
-            <FunnelChart>
-              <Tooltip
-                contentStyle={{
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  fontSize: 12,
-                }}
-                formatter={(value) => fmtInt(Number(value))}
-              />
-              <Funnel dataKey="value" data={summary.funnel} isAnimationActive>
-                <LabelList position="right" dataKey="name" fill="var(--foreground)" stroke="none" fontSize={12} />
-                <LabelList position="center" dataKey="value" fill="var(--primary-foreground)" stroke="none" fontSize={13} fontWeight={600} />
-              </Funnel>
-            </FunnelChart>
-          </ResponsiveContainer>
+          <FunnelStages stages={summary.funnel} />
         </div>
 
         <div className="rounded-xl border border-border bg-surface p-5">
