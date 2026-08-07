@@ -29,24 +29,42 @@ export function SlideOver({
   children: ReactNode;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
+  // `onClose` suele llegar como función inline, así que cambia de identidad en
+  // cada render del padre. Si el efecto dependiera de ella, se reejecutaría
+  // constantemente y devolvería el foco al panel mientras el usuario escribe:
+  // en el CTI, que re-renderiza cada segundo, eso obligaba a volver a pinchar
+  // el campo después de cada dígito.
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!open) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") onCloseRef.current();
     };
     window.addEventListener("keydown", onKeyDown);
 
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    panelRef.current?.querySelector<HTMLElement>("[data-autofocus], input, select, textarea, button")?.focus();
+
+    // El botón de cerrar precede a los campos en el DOM, así que un selector
+    // combinado se lo llevaba siempre: `data-autofocus` se busca aparte para
+    // que el formulario reciba el foco de entrada.
+    const panel = panelRef.current;
+    const target =
+      panel?.querySelector<HTMLElement>("[data-autofocus]") ??
+      panel?.querySelector<HTMLElement>("input, select, textarea, button");
+    target?.focus();
 
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       document.body.style.overflow = previousOverflow;
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
