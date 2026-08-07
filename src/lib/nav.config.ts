@@ -141,6 +141,9 @@ const CONSOLE: NavSpace = {
           tabs: [
             { label: "Gestión", href: "/dashboard/reportes" },
             { label: "Discador", href: "/dashboard/reportes/discador" },
+            // Señales de tipificación automatizada: es información sobre el
+            // desempeño individual que puede escalar a un proceso disciplinario.
+            { label: "Integridad", href: "/dashboard/reportes/integridad", roles: ["admin", "supervisor"] },
           ],
         },
       ],
