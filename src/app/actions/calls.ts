@@ -125,10 +125,25 @@ export type PendingCallManagement = {
   callId: string | null;
 };
 
+/** Intentos que el motor todavía puede convertir en una gestión abierta. */
+const LIVE_DIAL_ATTEMPT_STATUSES = [
+  "queued",
+  "originating",
+  "ringing",
+  "answered",
+  "bridged",
+] as const;
+
 /**
- * Destino único del botón "Completar tipificación" del CTI. Primero recupera
- * la gestión abierta; si el screen-pop no alcanzó a crearla, usa el último
- * intento de la campaña que mantiene al ejecutivo en ACW para abrir su ficha.
+ * Destino único del botón "Completar tipificación" del CTI. Recupera la
+ * gestión abierta del ejecutivo; si no existe ninguna y tampoco hay un intento
+ * vivo que vaya a crearla, la sesión quedó colgada en ACW y se libera.
+ *
+ * El formulario de tipificación solo se renderiza sobre una `call` con
+ * `ended_at` nulo (ver `getOpenCall`). Antes, sin esa llamada, este botón
+ * mandaba al ejecutivo a la ficha del último intento —una pantalla sin
+ * formulario— y lo dejaba encerrado en "falta tipificar" sin poder recibir
+ * llamadas ni cambiar de estado.
  */
 export async function getMyPendingCallManagement(): Promise<PendingCallManagement | null> {
   const { supabase, userId } = await requireAgent();
@@ -147,25 +162,43 @@ export async function getMyPendingCallManagement(): Promise<PendingCallManagemen
   const admin = createAdminClient();
   const { data: sessions, error: sessionsError } = await admin
     .from("dialer_agent_sessions")
-    .select("campaign_id")
+    .select("id, campaign_id")
     .eq("profile_id", userId)
     .eq("status", "wrap_up")
     .order("updated_at", { ascending: false })
     .limit(1);
   if (sessionsError) throw new Error(sessionsError.message);
-  const campaignId = sessions?.[0]?.campaign_id;
-  if (!campaignId) return null;
+  const session = sessions?.[0];
+  if (!session) return null;
 
-  const { data: attempts, error: attemptsError } = await admin
+  // Un intento en curso significa que el screen-pop todavía puede crear la
+  // gestión: ahí sí conviene abrir la ficha y esperar, no liberar el ACW.
+  const { data: liveAttempts, error: liveError } = await admin
     .from("dial_attempts")
     .select("lead_id")
     .eq("agent_id", userId)
-    .eq("campaign_id", campaignId)
-    .in("status", ["completed", "bridged", "answered"])
+    .eq("campaign_id", session.campaign_id)
+    .in("status", LIVE_DIAL_ATTEMPT_STATUSES)
     .order("updated_at", { ascending: false })
     .limit(1);
-  if (attemptsError) throw new Error(attemptsError.message);
-  return attempts?.[0] ? { leadId: attempts[0].lead_id, callId: null } : null;
+  if (liveError) throw new Error(liveError.message);
+  if (liveAttempts?.[0]) {
+    return { leadId: liveAttempts[0].lead_id, callId: null };
+  }
+
+  const { error: releaseError } = await admin
+    .from("dialer_agent_sessions")
+    .update({ status: "available", updated_at: new Date().toISOString() })
+    .eq("id", session.id)
+    .eq("status", "wrap_up");
+  if (releaseError) {
+    console.error("[calls.getMyPendingCallManagement] release failed", {
+      sessionId: session.id,
+      error: releaseError.message,
+    });
+    throw new Error(releaseError.message);
+  }
+  return null;
 }
 
 /**

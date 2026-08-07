@@ -1007,8 +1007,11 @@ export function CtiBar({ profile }: { profile: Profile }) {
     try {
       const pending = await getMyPendingCallManagement();
       if (!pending) {
+        // Ya no hay gestión abierta: la acción liberó el ACW colgado, así que
+        // esto no es un error sino el desbloqueo. El estado se refresca solo
+        // con el sondeo del modo de operación.
         setCallError(
-          "No encontramos la gestión pendiente. Abre Mi historial o pide a soporte revisar la llamada."
+          "No quedaban gestiones por tipificar. Tu estado volvió a disponible."
         );
         return;
       }
