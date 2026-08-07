@@ -15,6 +15,7 @@ import Link from "next/link";
 import { Button, Card, InfoTooltip, Select } from "@/components/ui";
 import { metricDefinition, type MetricId } from "@/lib/metric-definitions";
 import { resolveCampaignScope } from "@/lib/campaign-scope";
+import { formatReportRangeLabel, resolveReportRange, toDateInput } from "@/lib/report-range";
 
 type SupervisorReportKpis = {
   base_total: number;
@@ -204,37 +205,20 @@ function ChartPanel({
   );
 }
 
-const DASHBOARD_WINDOW_DAYS = 30;
-
-function startOfDay(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function endOfDay(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(23, 59, 59, 999);
-  return d;
-}
-
-function addDays(date: Date, days: number): Date {
-  const d = new Date(date);
-  d.setDate(d.getDate() + days);
-  return d;
-}
-
 export default async function ReportesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ campaign?: string }>;
+  searchParams: Promise<{ campaign?: string; preset?: string; from?: string; to?: string }>;
 }) {
   const profile = await requireProfile(["supervisor", "admin"]);
-  const { campaign: campaignParam } = await searchParams;
+  const { campaign: campaignParam, preset, from, to } = await searchParams;
   const campaignScope = await resolveCampaignScope(campaignParam);
   const supabase = await createClient();
-  const dashboardTo = endOfDay(new Date());
-  const dashboardFrom = startOfDay(addDays(dashboardTo, -(DASHBOARD_WINDOW_DAYS - 1)));
+  // El período llega por la URL desde el selector del layout; ya no hay una
+  // ventana fija de 30 días decidida acá.
+  const range = resolveReportRange({ preset, from, to });
+  const dashboardFrom = range.from;
+  const dashboardTo = range.to;
 
   if (profile.role === "supervisor") {
     const [{ data, error }, { data: campaignRows }] = await Promise.all([
@@ -287,8 +271,11 @@ export default async function ReportesPage({
     return (
       <div className="space-y-6">
         <p className="text-sm text-muted-foreground">
-          {`${selectedCampaign ? `${selectedCampaign.name} · ` : "Todos tus equipos · "}últimos ${DASHBOARD_WINDOW_DAYS} días · ${formatDate(report.range.from)} a ${formatDate(report.range.to)}`}
+          {`${selectedCampaign ? `${selectedCampaign.name} · ` : "Todos tus equipos · "}${formatReportRangeLabel(range)}`}
         </p>
+        {range.notice && (
+          <p className="text-sm text-warning">{range.notice}</p>
+        )}
 
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <MetricCard
@@ -397,16 +384,15 @@ export default async function ReportesPage({
   const campaigns = campaignList ?? [];
   const selectedCampaignId = campaigns.some((campaign) => campaign.id === campaignScope) ? campaignScope : null;
   const selectedCampaign = campaigns.find((c) => c.id === selectedCampaignId) ?? null;
-  const loadedFrom = startOfDay(addDays(dashboardFrom, -DASHBOARD_WINDOW_DAYS));
-  const previousTo = new Date(dashboardFrom.getTime() - 1);
-
   let dashboardSummary: CampaignDashboardSummaryData | null = null;
 
   const { data, error } = await supabase.rpc("get_crm_dashboard_summary", {
     p_from: dashboardFrom.toISOString(),
     p_to: dashboardTo.toISOString(),
-    p_previous_from: loadedFrom.toISOString(),
-    p_previous_to: previousTo.toISOString(),
+    // El comparativo sigue al período elegido: antes restaba 30 días siempre,
+    // así que cualquier otra ventana habría comparado contra un tramo ajeno.
+    p_previous_from: range.previousFrom.toISOString(),
+    p_previous_to: range.previousTo.toISOString(),
     p_campaign_id: selectedCampaignId,
   });
 
@@ -416,13 +402,25 @@ export default async function ReportesPage({
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">
-          {selectedCampaign
-            ? `${selectedCampaign.name} · KPIs, embudo y seguimiento de la campaña.`
-            : "Todas las campañas · KPIs consolidados."}
-        </p>
+        <div className="space-y-1">
+          <p className="text-sm text-muted-foreground">
+            {selectedCampaign
+              ? `${selectedCampaign.name} · KPIs, embudo y seguimiento de la campaña.`
+              : "Todas las campañas · KPIs consolidados."}
+          </p>
+          {range.notice && <p className="text-sm text-warning">{range.notice}</p>}
+        </div>
         {campaigns.length > 0 && (
           <form className="flex items-center gap-2">
+            {/* El form navega por GET: sin esto, cambiar de campaña borraría el
+                período elegido y volvería al de por defecto. */}
+            <input type="hidden" name="preset" value={range.preset} />
+            {range.preset === "custom" && (
+              <>
+                <input type="hidden" name="from" value={toDateInput(range.from)} />
+                <input type="hidden" name="to" value={toDateInput(range.to)} />
+              </>
+            )}
             <Select name="campaign" defaultValue={selectedCampaignId ?? ""} className="w-auto">
               <option value="">Todas las campañas</option>
               {campaigns.map((c) => (

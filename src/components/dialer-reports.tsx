@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   getAgentActivityReport,
   getCallMetricsReport,
@@ -13,32 +14,15 @@ import {
   DataTable,
   Field,
   InfoTooltip,
-  Input,
   LoadingState,
   MetricCard,
   SectionCard,
   Select,
   type Column,
 } from "@/components/ui";
-
-const RANGE_PRESETS = [
-  { id: "hoy", label: "Hoy", days: 0 },
-  { id: "7d", label: "7 días", days: 6 },
-  { id: "30d", label: "30 días", days: 29 },
-] as const;
+import { formatReportRangeLabel, resolveReportRange, toDateInput } from "@/lib/report-range";
 
 const ABANDON_ALERT_RATE = 6;
-
-function isoDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-function rangeFor(days: number): { from: string; to: string } {
-  const to = new Date();
-  const from = new Date();
-  from.setDate(from.getDate() - days);
-  return { from: isoDate(from), to: isoDate(to) };
-}
 
 function formatDate(value: string): string {
   const date = new Date(`${value}T00:00:00`);
@@ -62,9 +46,17 @@ function formatPercent(value: number | null | undefined): string {
 }
 
 export function DialerReports() {
-  const [{ from, to }, setRange] = useState(() => rangeFor(6));
-  const [pendingFrom, setPendingFrom] = useState(from);
-  const [pendingTo, setPendingTo] = useState(to);
+  // El período lo fija el selector del layout de Reportes y viaja por la URL,
+  // así el rango se conserva al saltar entre Gestión y Discador. Antes vivía en
+  // el estado de este componente y se perdía en cada cambio de pestaña.
+  const searchParams = useSearchParams();
+  const range = resolveReportRange({
+    preset: searchParams.get("preset") ?? undefined,
+    from: searchParams.get("from") ?? undefined,
+    to: searchParams.get("to") ?? undefined,
+  });
+  const from = toDateInput(range.from);
+  const to = toDateInput(range.to);
   const [campaignId, setCampaignId] = useState<string>("");
   const [campaigns, setCampaigns] = useState<{ id: string; name: string }[]>([]);
   const [callMetrics, setCallMetrics] = useState<CallMetricsReportRow[]>([]);
@@ -104,13 +96,6 @@ export function DialerReports() {
       disposed = true;
     };
   }, [from, to, campaignId, reloadToken]);
-
-  const applyRange = useCallback((next: { from: string; to: string }) => {
-    setLoading(true);
-    setPendingFrom(next.from);
-    setPendingTo(next.to);
-    setRange(next);
-  }, []);
 
   const totals = callMetrics.reduce(
     (accumulator, row) => {
@@ -273,29 +258,11 @@ export function DialerReports() {
   return (
     <div className="space-y-6">
       <Card className="flex flex-wrap items-end gap-3">
-        <div className="flex items-end gap-1.5">
-          {RANGE_PRESETS.map((preset) => {
-            const range = rangeFor(preset.days);
-            const active = from === range.from && to === range.to;
-            return (
-              <Button
-                key={preset.id}
-                variant={active ? "primary" : "secondary"}
-                size="sm"
-                onClick={() => applyRange(range)}
-              >
-                {preset.label}
-              </Button>
-            );
-          })}
+        <div className="flex flex-col gap-0.5">
+          <span className="text-xs font-medium text-muted-foreground">Período analizado</span>
+          <span className="text-sm font-semibold text-foreground">{formatReportRangeLabel(range)}</span>
         </div>
 
-        <Field label="Desde" className="w-auto">
-          <Input type="date" value={pendingFrom} onChange={(event) => setPendingFrom(event.target.value)} />
-        </Field>
-        <Field label="Hasta" className="w-auto">
-          <Input type="date" value={pendingTo} onChange={(event) => setPendingTo(event.target.value)} />
-        </Field>
         <Field label="Campaña" className="w-auto">
           <Select
             value={campaignId}
@@ -313,7 +280,6 @@ export function DialerReports() {
           </Select>
         </Field>
 
-        <Button onClick={() => applyRange({ from: pendingFrom, to: pendingTo })}>Aplicar</Button>
         {loading && <LoadingState label="Actualizando el reporte" compact />}
       </Card>
 
