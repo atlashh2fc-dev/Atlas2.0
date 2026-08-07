@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { setCampaignWorkflow } from "@/app/actions/campaigns";
-import { CampaignDashboardSummary } from "@/components/campaign-dashboard-summary";
+import { CampaignDashboardSummary, type ContactabilityHour } from "@/components/campaign-dashboard-summary";
 import type {
   CampaignDashboardSummary as CampaignDashboardSummaryData,
   DialerCampaignConfig,
@@ -42,6 +42,12 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
   const from = startOfDay(addDays(to, -(DASHBOARD_WINDOW_DAYS - 1)));
   const previousFrom = startOfDay(addDays(from, -DASHBOARD_WINDOW_DAYS));
   const previousTo = new Date(from.getTime() - 1);
+
+  const { data: hourly } = await supabase.rpc("get_contactability_by_hour", {
+    p_from: from.toISOString(),
+    p_to: to.toISOString(),
+    p_campaign_id: id,
+  });
 
   const [
     { data: summary, error: summaryError },
@@ -175,7 +181,10 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
       {summaryError ? (
         <Card className="text-sm text-danger">No se pudo cargar el resumen: {summaryError.message}</Card>
       ) : (
-        <CampaignDashboardSummary summary={summary as CampaignDashboardSummaryData} />
+        <CampaignDashboardSummary
+          summary={summary as CampaignDashboardSummaryData}
+          hourly={(hourly ?? []) as ContactabilityHour[]}
+        />
       )}
     </div>
   );

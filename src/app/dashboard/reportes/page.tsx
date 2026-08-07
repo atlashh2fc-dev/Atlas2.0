@@ -2,7 +2,7 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { ReactNode } from "react";
 import type { CampaignDashboardSummary as CampaignDashboardSummaryData } from "@/lib/types";
-import { CampaignDashboardSummary } from "@/components/campaign-dashboard-summary";
+import { CampaignDashboardSummary, type ContactabilityHour } from "@/components/campaign-dashboard-summary";
 import {
   SupervisorAgentFocusChart,
   SupervisorDailyChart,
@@ -386,6 +386,12 @@ export default async function ReportesPage({
   const selectedCampaign = campaigns.find((c) => c.id === selectedCampaignId) ?? null;
   let dashboardSummary: CampaignDashboardSummaryData | null = null;
 
+  const { data: hourlyData } = await supabase.rpc("get_contactability_by_hour", {
+    p_from: dashboardFrom.toISOString(),
+    p_to: dashboardTo.toISOString(),
+    p_campaign_id: selectedCampaignId,
+  });
+
   const { data, error } = await supabase.rpc("get_crm_dashboard_summary", {
     p_from: dashboardFrom.toISOString(),
     p_to: dashboardTo.toISOString(),
@@ -440,7 +446,13 @@ export default async function ReportesPage({
         </Card>
       )}
 
-      {dashboardSummary && <CampaignDashboardSummary key={selectedCampaignId ?? "all"} summary={dashboardSummary} />}
+      {dashboardSummary && (
+        <CampaignDashboardSummary
+          key={selectedCampaignId ?? "all"}
+          summary={dashboardSummary}
+          hourly={(hourlyData ?? []) as ContactabilityHour[]}
+        />
+      )}
     </div>
   );
 }

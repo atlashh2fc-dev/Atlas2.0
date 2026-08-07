@@ -17,8 +17,19 @@ import type { CampaignDashboardSummary as CampaignDashboardSummaryData, Campaign
 import { CALL_REASONS } from "@/lib/call-typification";
 import { REPORT_TIME_ZONE } from "@/lib/report-range";
 
+export type ContactabilityHour = {
+  hora: number;
+  label: string;
+  gestiones: number;
+  contactos: number;
+  ventas: number;
+  /** Null cuando no hubo gestiones: no es 0 %, es ausencia de dato. */
+  contactabilidad: number | null;
+};
+
 interface Props {
   summary: CampaignDashboardSummaryData;
+  hourly: ContactabilityHour[];
 }
 
 const REASON_LABEL = new Map(CALL_REASONS.map((r) => [r.value, r.label]));
@@ -42,6 +53,94 @@ function fmtInt(n: number): string {
 /** El período pertenece a la operación, no al huso de quien mira el reporte. */
 function formatOperationDate(value: string): string {
   return new Date(value).toLocaleDateString("es-CL", { timeZone: REPORT_TIME_ZONE });
+}
+
+/**
+ * Contactabilidad por franja horaria.
+ *
+ * Ocupa el lugar del "Mix de productos comerciales", que salía siempre vacío
+ * porque se alimentaba de un campo que nadie carga. Es la lectura que en
+ * outbound decide la programación del día: en qué horas contesta la gente.
+ */
+function ContactabilityByHour({ data }: { data: ContactabilityHour[] }) {
+  // Se recorta al tramo con actividad. Mostrar de 00:00 a 23:00 dejaría el
+  // gráfico casi todo vacío y aplastaría las horas que importan.
+  const active = data.filter((row) => row.gestiones > 0);
+  const first = data.findIndex((row) => row.gestiones > 0);
+  const last = data.length - 1 - [...data].reverse().findIndex((row) => row.gestiones > 0);
+  const window = first === -1 ? [] : data.slice(first, last + 1);
+
+  const best = active.reduce<ContactabilityHour | null>((top, row) => {
+    // Se exige un mínimo de gestiones: una hora con 1 llamada contestada da
+    // 100 % y no dice nada de cuándo conviene marcar.
+    if (row.gestiones < 5) return top;
+    if (!top || (row.contactabilidad ?? 0) > (top.contactabilidad ?? 0)) return row;
+    return top;
+  }, null);
+
+  return (
+    <div className="rounded-xl border border-border bg-surface p-5">
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="text-sm font-semibold text-foreground">Contactabilidad por hora</h3>
+        {best && (
+          <span className="text-xs text-muted-foreground">
+            Mejor franja: <span className="font-medium text-foreground">{best.label}</span> ·{" "}
+            {fmtPct((best.contactabilidad ?? 0) / 100)}
+          </span>
+        )}
+      </div>
+
+      {window.length === 0 ? (
+        <p className="py-16 text-center text-sm text-muted-foreground">
+          Sin gestiones cerradas en el período.
+        </p>
+      ) : (
+        <ResponsiveContainer width="100%" height={280}>
+          <ComposedChart data={window}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+            <XAxis dataKey="label" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} />
+            <YAxis yAxisId="left" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
+            <YAxis
+              yAxisId="right"
+              orientation="right"
+              domain={[0, 100]}
+              unit="%"
+              tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+            />
+            <Tooltip
+              contentStyle={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                fontSize: 12,
+              }}
+              formatter={(value, name) =>
+                name === "contactabilidad"
+                  ? [`${Number(value).toFixed(1)}%`, "Contactabilidad"]
+                  : [fmtInt(Number(value)), name === "contactos" ? "Contactos" : "Gestiones"]
+              }
+            />
+            <Bar yAxisId="left" dataKey="gestiones" fill="var(--muted-foreground)" radius={[4, 4, 0, 0]} />
+            <Bar yAxisId="left" dataKey="contactos" fill="var(--primary)" radius={[4, 4, 0, 0]} />
+            <Line
+              yAxisId="right"
+              type="monotone"
+              dataKey="contactabilidad"
+              stroke="var(--success)"
+              strokeWidth={2}
+              dot={false}
+              connectNulls={false}
+            />
+          </ComposedChart>
+        </ResponsiveContainer>
+      )}
+
+      <p className="mt-2 text-xs text-muted-foreground">
+        Barras: gestiones cerradas y cuántas terminaron en conversación. Línea: porcentaje de
+        contacto de esa hora.
+      </p>
+    </div>
+  );
 }
 
 /**
@@ -147,7 +246,7 @@ function ratio(current: number, total: number): number {
   return total > 0 ? current / total : 0;
 }
 
-export function CampaignDashboardSummary({ summary }: Props) {
+export function CampaignDashboardSummary({ summary, hourly }: Props) {
   const kpis = summary.kpis;
   const contactabilidad = {
     current: ratio(kpis.contactadas.current, kpis.gestionadas.current),
@@ -230,37 +329,7 @@ export function CampaignDashboardSummary({ summary }: Props) {
           </ResponsiveContainer>
         </div>
 
-        <div className="rounded-xl border border-border bg-surface p-5">
-          <h3 className="mb-3 text-sm font-semibold text-foreground">Mix de productos comerciales</h3>
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={summary.products}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis
-                dataKey="product"
-                tick={{ fontSize: 9, fill: "var(--muted-foreground)" }}
-                angle={-25}
-                textAnchor="end"
-                height={60}
-                interval={0}
-              />
-              <YAxis tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
-              <Tooltip
-                contentStyle={{
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  fontSize: 12,
-                }}
-                formatter={(value) => [fmtInt(Number(value)), "Cotizaciones/ventas"] as [string, string]}
-              />
-              <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                {summary.products.map((entry, i) => (
-                  <Cell key={entry.product} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        <ContactabilityByHour data={hourly} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
