@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { Bar, BarChart, Cell, Label, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import ReactGridLayout, { useContainerWidth, verticalCompactor, type Layout, type LayoutItem } from "react-grid-layout";
-import { LogOut, RotateCcw } from "lucide-react";
+import { LogOut, Plus, RotateCcw, X } from "lucide-react";
 import { forceAgentLogout, getAgentLiveStatus, getQueueHealth } from "@/app/actions/supervision";
 import type { AgentLiveStatus, QueueHealth } from "@/lib/types";
 import { LEGAL_INTERCALL_BREAK_SECONDS } from "@/lib/intercall-break";
-import { usePersistentState } from "@/lib/persistent-state";
+import { useViewPreference } from "@/lib/use-view-preference";
 import { cn } from "@/lib/utils";
 import {
   Button,
@@ -89,6 +89,37 @@ const DEFAULT_LAYOUT: WidgetLayout[] = [
   { i: "queues", x: 0, y: 15, w: 12, h: 6, minW: 6, minH: 3 },
   { i: "agents", x: 0, y: 21, w: 12, h: 10, minW: 6, minH: 6 },
 ];
+
+/** Orden canónico para el panel de tarjetas ocultas. */
+const WIDGET_ORDER: WidgetId[] = DEFAULT_LAYOUT.map((item) => item.i);
+
+type MonitorPreference = {
+  layout: WidgetLayout[];
+  /** Tarjetas que el supervisor sacó de su vista. */
+  hidden: WidgetId[];
+};
+
+const DEFAULT_PREFERENCE: MonitorPreference = { layout: DEFAULT_LAYOUT, hidden: [] };
+
+/** Nombre de cada tarjeta para los controles de quitar y reponer. */
+const WIDGET_TITLE: Record<WidgetId, string> = {
+  occupancy: "Ocupación del equipo",
+  connected: "Equipo conectado",
+  available: "Disponibles",
+  "on-call": "En llamada",
+  "wrap-up": "En cierre",
+  paused: "En pausa",
+  alerts: "Alertas operativas",
+  campaigns: "Campañas activas",
+  answered: "Contestadas hoy",
+  completed: "Completadas hoy",
+  "abandon-rate": "Abandono hoy",
+  "no-answer-rate": "Sin respuesta hoy",
+  "status-chart": "Estados del equipo",
+  "campaign-chart": "Actividad por campaña",
+  queues: "Salud de campañas",
+  agents: "Detalle de ejecutivos",
+};
 
 const WIDGET_KICKER: Record<WidgetId, string> = {
   occupancy: "CAPACIDAD",
@@ -223,8 +254,55 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
   const [logoutPending, startLogoutTransition] = useTransition();
   const logoutDialogRef = useRef<HTMLDialogElement>(null);
   const { toast } = useToast();
-  const [layout, setLayout] = usePersistentState<WidgetLayout[]>("atlas:live-monitor-layout:v2", DEFAULT_LAYOUT);
+  // La vista es de la persona, no del navegador: se guarda en la cuenta para
+  // que cada supervisor arme su monitor y lo encuentre igual desde donde entre.
+  const [preference, setPreference] = useViewPreference<MonitorPreference>(
+    "live-monitor",
+    DEFAULT_PREFERENCE
+  );
+  // Estabiliza la referencia: una preferencia guardada antes de esta versión no
+  // trae `hidden`, y el `?? []` crearía un arreglo nuevo en cada render.
+  const hidden = useMemo(() => preference.hidden ?? [], [preference.hidden]);
+  const hiddenSet = useMemo(() => new Set<WidgetId>(hidden), [hidden]);
+  const hiddenWidgets = useMemo(
+    () => WIDGET_ORDER.filter((id) => hiddenSet.has(id)),
+    [hiddenSet]
+  );
   const { width, containerRef } = useContainerWidth();
+
+  const setLayout = useCallback(
+    (nextLayout: WidgetLayout[]) => {
+      setPreference({ layout: nextLayout, hidden });
+    },
+    [setPreference, hidden]
+  );
+
+  const hideWidget = useCallback(
+    (id: WidgetId) => {
+      setPreference({
+        layout: preference.layout.filter((item) => item.i !== id),
+        hidden: [...hidden.filter((value) => value !== id), id],
+      });
+    },
+    [setPreference, preference.layout, hidden]
+  );
+
+  const showWidget = useCallback(
+    (id: WidgetId) => {
+      const fallback = DEFAULT_LAYOUT.find((item) => item.i === id);
+      // Vuelve al final de la grilla: reinsertarla en su hueco original
+      // desordenaría lo que el supervisor ya acomodó.
+      const maxY = preference.layout.reduce((max, item) => Math.max(max, item.y + item.h), 0);
+      setPreference({
+        layout: [
+          ...preference.layout,
+          { ...(fallback ?? { i: id, x: 0, y: 0, w: 3, h: 3, minW: 2, minH: 2 }), x: 0, y: maxY },
+        ],
+        hidden: hidden.filter((value) => value !== id),
+      });
+    },
+    [setPreference, preference.layout, hidden]
+  );
 
   useEffect(() => {
     let disposed = false;
@@ -435,9 +513,13 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
 
   if (loading) return <LoadingState label="Estamos conectando el monitor en vivo" className="rounded-xl border border-border bg-surface px-5 py-4" />;
   if (error) return <p className="text-sm text-danger">Error: {error}</p>;
-  const safeLayout = layout.length === DEFAULT_LAYOUT.length && DEFAULT_LAYOUT.every((item) => layout.some((saved) => saved.i === item.i))
-    ? layout
-    : DEFAULT_LAYOUT;
+  // Se reconstruye desde el catálogo, no desde lo guardado: así una tarjeta
+  // nueva del producto aparece sola y una preferencia vieja o corrupta no deja
+  // el monitor en blanco. Lo oculto se respeta; lo que falte se repone.
+  const safeLayout: WidgetLayout[] = WIDGET_ORDER.filter((id) => !hiddenSet.has(id)).map((id) => {
+    const saved = preference.layout?.find((item) => item.i === id);
+    return saved ?? DEFAULT_LAYOUT.find((item) => item.i === id)!;
+  });
 
   return (
     <div className="space-y-4">
@@ -473,8 +555,35 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
           </Button>
         </div>
       </dialog>
-      <div className="flex justify-end">
-        <Button variant="secondary" size="sm" onClick={() => setLayout(DEFAULT_LAYOUT)} title="Restaurar orden y tamaños iniciales"><RotateCcw size={14} aria-hidden="true" />Restaurar vista</Button>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {hiddenWidgets.length > 0 && (
+          <div className="mr-auto flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-muted-foreground">
+              {hiddenWidgets.length === 1 ? "Tarjeta oculta:" : "Tarjetas ocultas:"}
+            </span>
+            {hiddenWidgets.map((id) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => showWidget(id)}
+                title="Volver a mostrar esta tarjeta"
+                className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs font-medium text-muted-foreground transition hover:bg-surface-muted hover:text-foreground"
+              >
+                <Plus size={12} aria-hidden="true" />
+                {WIDGET_TITLE[id]}
+              </button>
+            ))}
+          </div>
+        )}
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => setPreference(DEFAULT_PREFERENCE)}
+          title="Restaurar orden, tamaños y tarjetas iniciales"
+        >
+          <RotateCcw size={14} aria-hidden="true" />
+          Restaurar vista
+        </Button>
       </div>
       <div ref={containerRef}>
         <ReactGridLayout
@@ -489,7 +598,19 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
         >
           {safeLayout.map((item) => (
             <div key={item.i}>
-              <Card className="h-full overflow-hidden rounded-xl border-border bg-surface p-5 shadow-sm transition-shadow hover:shadow-md">
+              <Card className="group relative h-full overflow-hidden rounded-xl border-border bg-surface p-5 shadow-sm transition-shadow hover:shadow-md">
+                {/* `data-no-drag` evita que quitar la tarjeta se interprete
+                    como el inicio de un arrastre. */}
+                <button
+                  type="button"
+                  data-no-drag
+                  onClick={() => hideWidget(item.i)}
+                  title={`Quitar ${WIDGET_TITLE[item.i]} de mi vista`}
+                  aria-label={`Quitar ${WIDGET_TITLE[item.i]} de mi vista`}
+                  className="absolute right-2 top-2 z-10 rounded-md p-1 text-muted-foreground opacity-0 transition hover:bg-surface-muted hover:text-danger focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100"
+                >
+                  <X size={14} aria-hidden="true" />
+                </button>
                 {widgets[item.i]}
               </Card>
             </div>
