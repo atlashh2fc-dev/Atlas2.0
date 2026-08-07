@@ -125,6 +125,17 @@ export type PendingCallManagement = {
   callId: string | null;
 };
 
+export type AgendaCallbackManagement = {
+  leadId: string;
+  callId: string;
+  campaignId: string;
+  /** Móvil en E.164, ya normalizado desde el formato con que llegó la base. */
+  phone: string;
+  /** Los 8 dígitos del abonado, que es lo que marca el CTI. */
+  subscriber: string;
+  fullName: string | null;
+};
+
 /** Intentos que el motor todavía puede convertir en una gestión abierta. */
 const LIVE_DIAL_ATTEMPT_STATUSES = [
   "queued",
@@ -199,6 +210,59 @@ export async function getMyPendingCallManagement(): Promise<PendingCallManagemen
     throw new Error(releaseError.message);
   }
   return null;
+}
+
+/**
+ * Abre la gestión para llamar un compromiso de la agenda propia.
+ *
+ * El discado automático entrega estos callbacks solo dentro de su ventana y
+ * solo si el ejecutivo estaba disponible; pasado ese rato el compromiso queda
+ * vencido en "Mi agenda" y el marcado manual está bloqueado por ser campaña
+ * automática. Esta acción es la vía de rescate: deja una `call` abierta sobre
+ * el lead —que además reserva al ejecutivo frente al motor— para que el CTI
+ * origine y la gestión termine tipificada como cualquier otra.
+ */
+export async function beginAgendaCallback(
+  leadId: string
+): Promise<CallActionResult<AgendaCallbackManagement>> {
+  try {
+    const { supabase } = await requireAgent();
+    const { data, error } = await supabase.rpc("begin_agent_agenda_callback", {
+      p_lead_id: leadId,
+    });
+    if (error) throw new Error(error.message);
+
+    const value = data && typeof data === "object" ? (data as Record<string, unknown>) : null;
+    const callId = value?.call_id;
+    const campaignId = value?.campaign_id;
+    const phone = value?.phone;
+    const subscriber = value?.subscriber;
+    if (
+      typeof callId !== "string" ||
+      typeof campaignId !== "string" ||
+      typeof phone !== "string" ||
+      typeof subscriber !== "string"
+    ) {
+      throw new Error("La llamada de agenda no devolvió una gestión válida.");
+    }
+
+    revalidatePath(`/dashboard/leads/${leadId}`);
+    revalidatePath("/dashboard/agenda");
+
+    return {
+      ok: true,
+      data: {
+        leadId,
+        callId,
+        campaignId,
+        phone,
+        subscriber,
+        fullName: typeof value?.full_name === "string" ? value.full_name : null,
+      },
+    };
+  } catch (error) {
+    return callActionError("beginAgendaCallback", error, { leadId });
+  }
 }
 
 /**

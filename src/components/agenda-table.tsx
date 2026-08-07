@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
-import { Badge, DataTable, buttonClasses, type Column } from "@/components/ui";
+import { Badge, DataTable, type Column } from "@/components/ui";
+import { AgendaCallButton } from "@/components/agenda-call-button";
 
 export type AgendaRow = {
   id: string;
@@ -70,11 +70,7 @@ const COLUMNS: Column<AgendaRow>[] = [
     header: "",
     align: "right",
     sortable: false,
-    cell: (row) => (
-      <Link href={`/dashboard/leads/${row.id}`} className={buttonClasses({ size: "sm" })}>
-        Llamar ahora
-      </Link>
-    ),
+    cell: (row) => <AgendaCallButton leadId={row.id} fullName={row.full_name} />,
   },
 ];
 

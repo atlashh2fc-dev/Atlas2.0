@@ -41,6 +41,7 @@ import {
   heartbeat,
 } from "@/app/actions/agent-status";
 import {
+  beginAgendaCallback,
   beginManualCallManagement,
   discardCallTechnicalError,
   getMyPendingCallManagement,
@@ -55,7 +56,9 @@ import {
 } from "@/lib/intercall-break";
 import { cn } from "@/lib/utils";
 import {
+  AGENT_DIAL_REQUEST_EVENT,
   AGENT_FORCE_LOGOUT_EVENT,
+  type AgentDialRequestEventDetail,
   type AgentForceLogoutEventDetail,
 } from "@/lib/agent-control";
 
@@ -366,6 +369,25 @@ export function CtiBar({ profile }: { profile: Profile }) {
     window.addEventListener(AGENT_FORCE_LOGOUT_EVENT, onForceLogout);
     return () => window.removeEventListener(AGENT_FORCE_LOGOUT_EVENT, onForceLogout);
   }, [profile.role]);
+
+  // El handler se toma por ref porque depende del estado vivo del teléfono
+  // (registro SIP, llamada en curso) y el listener se suscribe una sola vez.
+  const startAgendaCallbackRef = useRef<(detail: AgentDialRequestEventDetail) => Promise<void>>(
+    async () => {}
+  );
+
+  useEffect(() => {
+    const onDialRequest = (event: Event) => {
+      const detail = (event as CustomEvent<AgentDialRequestEventDetail>).detail;
+      if (!detail?.leadId) return;
+      void startAgendaCallbackRef.current(detail).catch((err) =>
+        console.error("CTI: no se pudo iniciar la llamada de agenda", err)
+      );
+    };
+
+    window.addEventListener(AGENT_DIAL_REQUEST_EVENT, onDialRequest);
+    return () => window.removeEventListener(AGENT_DIAL_REQUEST_EVENT, onDialRequest);
+  }, []);
 
   useEffect(() => {
     getMySipCredentials()
@@ -1191,8 +1213,18 @@ export function CtiBar({ profile }: { profile: Profile }) {
     incomingInviteHandlerRef.current = handleIncomingInvite;
   });
 
-  async function handleCall() {
-    const target = fullChileMobile(subscriber);
+  /**
+   * `preopened` llega cuando la gestión ya fue abierta por otra pantalla (hoy
+   * el rescate de agenda): el destino y la campaña vienen resueltos por el
+   * servidor y no hay que volver a pedir una llamada manual, que además está
+   * bloqueada cuando la campaña es automática.
+   */
+  async function handleCall(preopened?: {
+    management: ManualCallManagement;
+    subscriber: string;
+    contactName: string | null;
+  }) {
+    const target = fullChileMobile(preopened?.subscriber ?? subscriber);
     if (!target) {
       setCallError("Ingresa los 8 dígitos del móvil.");
       return;
@@ -1202,9 +1234,10 @@ export function CtiBar({ profile }: { profile: Profile }) {
       return;
     }
 
-    let management: ManualCallManagement | null = null;
+    let management: ManualCallManagement | null = preopened?.management ?? null;
+    const contactName = preopened ? preopened.contactName : selectedName;
     try {
-      if (profile.role === "agente") {
+      if (profile.role === "agente" && !management) {
         const campaignId =
           manualCampaignId ||
           (operatingMode?.mode === "manual" && operatingMode.campaigns.length === 1
@@ -1217,7 +1250,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
         const result = await beginManualCallManagement({
           campaignId,
           phone: target,
-          contactName: selectedName,
+          contactName,
           entryMode: "before_dial",
         });
         if (!result.ok) {
@@ -1225,8 +1258,8 @@ export function CtiBar({ profile }: { profile: Profile }) {
           return;
         }
         management = result.data;
-        manualManagementRef.current = management;
       }
+      if (management) manualManagementRef.current = management;
 
       const callAttempt = callAttemptRef.current + 1;
       callAttemptRef.current = callAttempt;
@@ -1297,7 +1330,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
       });
 
       await inviter.invite();
-      rememberRecent(target, selectedName);
+      rememberRecent(target, contactName);
     } catch (err) {
       console.error("CTI: fallo al originar llamada", err);
       stopLocalRingback();
@@ -1310,6 +1343,45 @@ export function CtiBar({ profile }: { profile: Profile }) {
       setCallError("No se pudo iniciar la llamada. Reintenta en unos segundos.");
     }
   }
+
+  /**
+   * Rescate de un compromiso de la agenda. La gestión la abre el servidor —es
+   * lo único que puede saltarse el bloqueo de marcado manual en campañas
+   * automáticas— y aquí solo se origina y se hace screen-pop de la ficha.
+   */
+  async function startAgendaCallback(detail: AgentDialRequestEventDetail) {
+    setExpanded(true);
+    setCallError(null);
+
+    if (callState !== "idle") {
+      setCallError("Termina la llamada en curso antes de marcar otro compromiso.");
+      return;
+    }
+
+    const result = await beginAgendaCallback(detail.leadId);
+    if (!result.ok) {
+      setCallError(result.error);
+      return;
+    }
+
+    const { leadId, callId, campaignId, subscriber: target, fullName } = result.data;
+    setSelectedName(fullName);
+    setSubscriber(target);
+
+    // La ficha se abre antes de que conteste, igual que en el discado
+    // automático: el ejecutivo necesita el contexto durante la conversación.
+    router.push(`/dashboard/leads/${leadId}`);
+
+    await handleCall({
+      management: { leadId, callId, campaignId, leadCreated: false, leadReused: true },
+      subscriber: target,
+      contactName: fullName,
+    });
+  }
+
+  useEffect(() => {
+    startAgendaCallbackRef.current = startAgendaCallback;
+  });
 
   async function handleHangup() {
     const session = sessionRef.current;
@@ -2161,7 +2233,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
                     {callError && <p className="mb-2 text-center text-xs text-danger">{callError}</p>}
                     <button
                       type="button"
-                      onClick={handleCall}
+                      onClick={() => void handleCall()}
                       disabled={
                         !validNumber ||
                         regState !== "registered" ||

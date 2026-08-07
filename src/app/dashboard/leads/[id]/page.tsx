@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, CalendarClock, PencilLine } from "lucide-react";
 import { LEAD_STATUSES } from "@/lib/types";
 import { getOpenCall, getRevisableCall } from "@/app/actions/calls";
+import { AgendaCallButton } from "@/components/agenda-call-button";
 import { CallTypificationForm } from "@/components/call-typification-form";
 import { CallTimer } from "@/components/call-timer";
 import { LeadTimeline, type TimelineEntry } from "@/components/lead-timeline";
@@ -170,6 +171,17 @@ export default async function LeadDetailPage({
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {call && <CallTimer startedAt={call.started_at} endedAt={call.ended_at} />}
+            {/* Sin gestión abierta, un compromiso propio se puede marcar desde
+                aquí aunque la campaña sea automática: el discador solo entrega
+                el callback dentro de su ventana y después queda incallable. */}
+            {canManageCall && !call && lead.next_action_at && lead.managed_by === profile.id && (
+              <AgendaCallButton
+                leadId={lead.id}
+                fullName={lead.full_name}
+                variant="secondary"
+                label={overdue ? "Llamar compromiso vencido" : "Llamar ahora"}
+              />
+            )}
             {revisableCall && !correctionRequested && (
               <Link
                 href={`/dashboard/leads/${lead.id}?corregir=1`}
