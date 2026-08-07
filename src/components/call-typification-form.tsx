@@ -556,7 +556,10 @@ export function CallTypificationForm({
           </div>
         )}
 
-        <div className="flex flex-wrap items-center gap-2">
+        {/* pr-16: el teléfono flotante vive en esta misma esquina; incluso
+            minimizado a burbuja hay que dejarle su hueco para no tapar las
+            acciones de la derecha. */}
+        <div className="flex flex-wrap items-center gap-2 pr-16">
           {!revision && (
             <button
               type="button"

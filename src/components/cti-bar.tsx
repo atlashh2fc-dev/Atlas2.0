@@ -12,6 +12,7 @@ import {
   LoaderCircle,
   Mic,
   MicOff,
+  Minus,
   Phone,
   PhoneOff,
   Search,
@@ -66,6 +67,13 @@ const MOBILE_SUBSCRIBER_DIGITS = 8;
 const MAX_RECONNECT_DELAY_MS = 15_000;
 /** Reintentos silenciosos antes de avisarle al ejecutivo que su teléfono no conecta. */
 const MAX_SILENT_RECONNECT_ATTEMPTS = 3;
+/**
+ * El teléfono es un panel fijo abajo a la derecha y ahí mismo viven las barras
+ * de acción de otras pantallas (por ejemplo el "Guardar y terminar" de la
+ * tipificación). Minimizarlo a una burbuja libera esa esquina; la preferencia
+ * se recuerda para no obligar al ejecutivo a repetirlo en cada gestión.
+ */
+const CTI_MINIMIZED_KEY = "atlas.cti.minimized";
 
 type RegState = "idle" | "connecting" | "registered" | "error";
 type PhoneIssue = AgentPhoneTelemetryPhase | null;
@@ -207,6 +215,13 @@ export function CtiBar({ profile }: { profile: Profile }) {
   const [callStartedAt, setCallStartedAt] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [expanded, setExpanded] = useState(false);
+  // Arranca desplegado en el servidor y en el primer render del cliente: leer
+  // localStorage durante el montaje rompería la hidratación.
+  const [minimizedPref, setMinimizedPref] = useState(false);
+  // Con llamada en curso el panel se despliega igual: minimizado no habría
+  // forma de colgar, silenciar ni ver quién llama. Al volver a reposo manda de
+  // nuevo la preferencia del ejecutivo.
+  const minimized = minimizedPref && callState === "idle";
   const [view, setView] = useState<DialerView>("keypad");
   const [contacts, setContacts] = useState<DialerContact[]>([]);
   const [contactsLoading, setContactsLoading] = useState(true);
@@ -413,6 +428,32 @@ export function CtiBar({ profile }: { profile: Profile }) {
       clearInterval(historyTimer);
     };
   }, [profile.role]);
+
+  useEffect(() => {
+    let disposed = false;
+    try {
+      if (window.localStorage.getItem(CTI_MINIMIZED_KEY) === "1") {
+        queueMicrotask(() => {
+          if (!disposed) setMinimizedPref(true);
+        });
+      }
+    } catch {
+      /* la preferencia es opcional: si el storage falla, el panel queda visible */
+    }
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
+  const toggleMinimized = useCallback((next: boolean) => {
+    setMinimizedPref(next);
+    try {
+      if (next) window.localStorage.setItem(CTI_MINIMIZED_KEY, "1");
+      else window.localStorage.removeItem(CTI_MINIMIZED_KEY);
+    } catch {
+      /* la preferencia es opcional */
+    }
+  }, []);
 
   useEffect(() => {
     let disposed = false;
@@ -1416,6 +1457,31 @@ export function CtiBar({ profile }: { profile: Profile }) {
       )
     : [];
 
+  if (minimized) {
+    // El <audio> tiene que seguir montado: es el destino del stream SIP y
+    // desmontarlo cortaría el audio de una llamada que entre estando minimizado.
+    return (
+      <>
+        <audio ref={audioRef} autoPlay className="hidden" />
+        <button
+          type="button"
+          onClick={() => toggleMinimized(false)}
+          title="Abrir Teléfono Atlas"
+          aria-label="Abrir Teléfono Atlas"
+          className="fixed bottom-4 right-4 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-[#12333b] text-white shadow-2xl transition hover:brightness-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
+          <Phone size={20} />
+          <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-surface">
+            <StatusDot
+              tone={inAutomaticWrapUp ? "warning" : regTone}
+              className="h-2.5 w-2.5"
+            />
+          </span>
+        </button>
+      </>
+    );
+  }
+
   return (
     <div className="fixed bottom-4 right-4 z-50 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-[1.75rem] border border-border bg-surface shadow-2xl">
       <audio ref={audioRef} autoPlay className="hidden" />
@@ -1539,28 +1605,44 @@ export function CtiBar({ profile }: { profile: Profile }) {
         )
       ) : (
         <>
-          <button
-            type="button"
-            onClick={() => setExpanded((value) => !value)}
-            className="flex w-full items-center justify-between gap-3 bg-[#12333b] px-5 py-4 text-left text-white"
-            aria-expanded={expanded}
-          >
-            <span className="flex min-w-0 items-center gap-3">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10">
-                <Phone size={19} />
-              </span>
-              <span className="min-w-0">
-                <span className="block truncate text-sm font-semibold">
-                  Teléfono Atlas · {profile.full_name.split(" ")[0]}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setExpanded((value) => !value)}
+              className="flex w-full items-center justify-between gap-3 bg-[#12333b] py-4 pl-5 pr-14 text-left text-white"
+              aria-expanded={expanded}
+            >
+              <span className="flex min-w-0 items-center gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10">
+                  <Phone size={19} />
                 </span>
-                <span className="mt-0.5 flex items-center gap-1.5 text-xs text-white/70">
-                  <StatusDot tone={regTone} className="h-2 w-2" />
-                  {statusLabel}
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold">
+                    Teléfono Atlas · {profile.full_name.split(" ")[0]}
+                  </span>
+                  <span className="mt-0.5 flex items-center gap-1.5 text-xs text-white/70">
+                    <StatusDot tone={regTone} className="h-2 w-2" />
+                    {statusLabel}
+                  </span>
                 </span>
               </span>
-            </span>
-            {expanded ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
-          </button>
+              {expanded ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+            </button>
+
+            {!activeCall && (
+              // Colapsar el panel no basta: la cabecera sigue cubriendo la
+              // esquina donde otras pantallas dejan sus botones de guardado.
+              <button
+                type="button"
+                onClick={() => toggleMinimized(true)}
+                title="Minimizar teléfono"
+                aria-label="Minimizar teléfono"
+                className="absolute right-4 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-white/70 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+              >
+                <Minus size={18} />
+              </button>
+            )}
+          </div>
 
           {inAutomaticWrapUp && !expanded && (
             <div className="border-b border-warning/30 bg-warning-bg p-2.5">
