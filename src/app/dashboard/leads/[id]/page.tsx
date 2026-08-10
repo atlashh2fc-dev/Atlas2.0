@@ -11,8 +11,9 @@ import { CallTimer } from "@/components/call-timer";
 import { LeadTimeline, type TimelineEntry } from "@/components/lead-timeline";
 import { buildCallReasonCatalogFromWorkflow, getReasonConfig } from "@/lib/call-typification";
 import { metricDefinition } from "@/lib/metric-definitions";
+import { completeKovacsDemoAssignment } from "@/app/actions/lead-orchestrator";
 import type { Campaign, Lead, Profile, Team, Workflow, WorkflowStep, WorkflowStepBranch } from "@/lib/types";
-import { Badge, Card, InfoTooltip, PageHeader, buttonClasses } from "@/components/ui";
+import { ActionForm, ActionSubmit, Badge, Callout, Card, InfoTooltip, PageHeader, buttonClasses } from "@/components/ui";
 import type { ReactNode } from "react";
 
 /** Fila etiqueta/valor de la columna de identidad. */
@@ -83,11 +84,11 @@ export default async function LeadDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tipificar?: string | string[]; corregir?: string | string[] }>;
+  searchParams: Promise<{ tipificar?: string | string[]; corregir?: string | string[]; orquestado?: string | string[] }>;
 }) {
   const profile = await requireProfile();
   const { id } = await params;
-  const { tipificar, corregir } = await searchParams;
+  const { tipificar, corregir, orquestado } = await searchParams;
   const prioritizeTypification = tipificar === "1";
   const correctionRequested = corregir === "1";
   const supabase = await createClient();
@@ -105,6 +106,16 @@ export default async function LeadDetailPage({
     ([, value]) =>
       typeof value === "string" || typeof value === "number" || typeof value === "boolean"
   );
+
+  const { data: orchestratorAssignment } = profile.role === "agente"
+    ? await supabase
+        .from("lead_orchestrator_assignments")
+        .select("id, priority_reason, status, claimed_at")
+        .eq("lead_id", id)
+        .eq("agent_id", profile.id)
+        .in("status", ["delivered", "opened"])
+        .maybeSingle()
+    : { data: null };
 
   const effectiveWorkflowId = lead.workflow_id ?? campaign?.workflow_id ?? null;
   const workflow = record.workflow;
@@ -207,6 +218,29 @@ export default async function LeadDetailPage({
           </div>
         }
       />
+
+      {orchestratorAssignment && (
+        <Callout tone="info">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="font-medium text-foreground">Lead entregado por el motor de priorización</p>
+              <p className="mt-1 text-sm">
+                Ganó por <strong>{orchestratorAssignment.priority_reason}</strong>. El motor evaluó la base y lo reservó exclusivamente para este ejecutivo.
+              </p>
+            </div>
+            {campaign?.name === "Kovacs" && (
+              <ActionForm action={completeKovacsDemoAssignment} success="Demo cerrada; el motor buscará el siguiente lead">
+                <input type="hidden" name="lead_id" value={lead.id} />
+                <ActionSubmit size="sm" pendingLabel="Cerrando…">Cerrar demo y recibir siguiente</ActionSubmit>
+              </ActionForm>
+            )}
+          </div>
+        </Callout>
+      )}
+
+      {orquestado === "1" && !orchestratorAssignment && campaign?.name === "Kovacs" && (
+        <Callout tone="warning">Esta entrega demo ya fue cerrada o liberada. Espera la siguiente asignación del motor.</Callout>
+      )}
 
       {campaignData.length > 0 && (
         <section className="rounded-2xl border border-border bg-surface p-5">

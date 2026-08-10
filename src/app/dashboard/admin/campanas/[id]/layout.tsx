@@ -100,6 +100,7 @@ export default async function CampaignDetailLayout({
           { label: "Resumen", href: base },
           { label: "Base", href: `${base}/base` },
           { label: "Ejecutivos", href: `${base}/ejecutivos` },
+          { label: "Priorización", href: `${base}/priorizacion` },
           { label: "Discado", href: `${base}/discado` },
         ]}
       />

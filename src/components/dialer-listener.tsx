@@ -32,6 +32,16 @@ export function DialerListener({ userId }: { userId: string }) {
   useEffect(() => {
     const supabase = createClient();
 
+    // Un ejecutivo que opera solo el motor de leads no tiene ni necesita SIP.
+    // El RPC valida esa condición en servidor y no toca a los agentes del CTI.
+    const publishLeadAvailability = () => {
+      void supabase.rpc("heartbeat_my_lead_orchestrator").then(({ error }) => {
+        if (error) console.error("Motor de leads: heartbeat falló", error);
+      });
+    };
+    publishLeadAvailability();
+    const heartbeatId = window.setInterval(publishLeadAvailability, 20_000);
+
     const channel = supabase
       .channel(`dialer-listener-${userId}`)
       .on(
@@ -39,21 +49,30 @@ export function DialerListener({ userId }: { userId: string }) {
         { event: "INSERT", schema: "public", table: "call_events" },
         (payload) => {
           const row = payload.new as CallEventRow;
-          if (row.event_type !== "dialer.incoming_call") return;
+          if (!["dialer.incoming_call", "lead_orchestrator.assigned"].includes(row.event_type)) return;
           if (row.agent_id !== userId) return;
           if (lastHandledId.current === row.id) return;
           lastHandledId.current = row.id;
+
+          if (row.event_type === "lead_orchestrator.assigned") {
+            void supabase.rpc("open_my_lead_orchestrator_assignment", { p_lead_id: row.lead_id });
+          }
 
           // La ruta lleva una marca explícita para que la ficha priorice la
           // tipificación por sobre el resto del CRM. El agente llega a la
           // información del cliente desde el primer timbre y, al colgar, el
           // CTI vuelve a esta misma ficha si se había navegado a otra parte.
-          router.push(`/dashboard/leads/${row.lead_id}?tipificar=1`);
+          router.push(
+            row.event_type === "lead_orchestrator.assigned"
+              ? `/dashboard/leads/${row.lead_id}?orquestado=1`
+              : `/dashboard/leads/${row.lead_id}?tipificar=1`
+          );
         }
       )
       .subscribe();
 
     return () => {
+      window.clearInterval(heartbeatId);
       supabase.removeChannel(channel);
     };
   }, [userId, router]);
