@@ -169,6 +169,27 @@ export function toDateInput(date: Date): string {
   return `${year}-${`${month}`.padStart(2, "0")}-${`${day}`.padStart(2, "0")}`;
 }
 
+/** `YYYY-MM-DDTHH:mm` en la zona operativa, para inputs `datetime-local`. */
+export function toDateTimeInput(date: Date): string {
+  const { year, month, day, hour, minute } = partsIn(date, REPORT_TIME_ZONE);
+  const pad = (value: number) => `${value}`.padStart(2, "0");
+  return `${year}-${pad(month)}-${pad(day)}T${pad(hour)}:${pad(minute)}`;
+}
+
+/** Interpreta un `datetime-local` como hora de pared de la operación chilena. */
+export function parseDateTimeInput(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value.trim());
+  if (!match) return null;
+  const [, year, month, day, hour, minute] = match;
+  const parsed = instantFromZoned(
+    { year: Number(year), month: Number(month), day: Number(day) },
+    { hour: Number(hour), minute: Number(minute), second: 0, ms: 0 }
+  );
+  if (Number.isNaN(parsed.getTime())) return null;
+  return toDateTimeInput(parsed) === value.trim() ? parsed : null;
+}
+
 function parseDateInput(value: string | undefined): Date | null {
   if (!value) return null;
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());

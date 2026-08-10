@@ -908,6 +908,9 @@ export async function discardCallTechnicalError(input: { callId: string; leadId:
       status: null,
       outcome: null,
       reason: null,
+      next_action_at: null,
+      next_action_window: null,
+      callback_owner_user_id: null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", callId)

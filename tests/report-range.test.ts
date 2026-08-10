@@ -3,10 +3,12 @@ import test from "node:test";
 
 import {
   MAX_REPORT_RANGE_DAYS,
+  parseDateTimeInput,
   REPORT_TIME_ZONE,
   resolveReportRange,
   reportRangeSearchParams,
   toDateInput,
+  toDateTimeInput,
 } from "../src/lib/report-range.ts";
 
 // Viernes 7 de agosto de 2026, 11:30 en Chile (15:30 UTC, invierno: UTC-4).
@@ -107,6 +109,11 @@ test("de noche en Chile el día sigue siendo el de acá, aunque en UTC ya cambi�
   const range = resolveReportRange({ preset: "hoy" }, NOCHE_CHILENA);
   assert.equal(toDateInput(range.from), "2026-08-07");
   assert.equal(toDateInput(range.to), "2026-08-07");
+});
+
+test("datetime-local usa la hora de Chile aunque el proceso esté en UTC", () => {
+  assert.equal(toDateTimeInput(new Date("2026-08-10T16:00:00Z")), "2026-08-10T12:00");
+  assert.equal(parseDateTimeInput("2026-08-10T12:00")?.toISOString(), "2026-08-10T16:00:00.000Z");
 });
 
 test("el comparativo de 'Hoy' es el día anterior completo", () => {

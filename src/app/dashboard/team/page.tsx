@@ -22,6 +22,7 @@ import {
   Tr,
 } from "@/components/ui";
 import { CallbacksPanel, type CallbackRow } from "@/components/callbacks-panel";
+import { REPORT_TIME_ZONE, toDateTimeInput } from "@/lib/report-range";
 import {
   TeamAgentsTable,
   TeamLeadsAssignment,
@@ -58,9 +59,15 @@ function one<T>(value: T | T[] | null): T | null {
 
 /** Convierte un ISO timestamp al formato que espera <input type="datetime-local">. */
 function toDatetimeLocal(iso: string): string {
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return toDateTimeInput(new Date(iso));
+}
+
+function formatAgendaDateTime(iso: string): string {
+  return new Date(iso).toLocaleString("es-CL", {
+    dateStyle: "short",
+    timeStyle: "short",
+    timeZone: REPORT_TIME_ZONE,
+  });
 }
 
 const TEAM_REPORT_WINDOW_DAYS = 180;
@@ -152,7 +159,7 @@ function AgendaTable({
                 <Td muted>{managerName}</Td>
                 <Td className={overdue ? "font-medium text-danger" : "text-foreground"}>
                   {overdue ? "Vencida: " : ""}
-                  {new Date(lead.next_action_at!).toLocaleString("es-CL")}
+                  {formatAgendaDateTime(lead.next_action_at!)}
                 </Td>
                 <Td>
                   <ReassignForm lead={lead} agents={agents} />

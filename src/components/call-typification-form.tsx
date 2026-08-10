@@ -130,6 +130,10 @@ export function CallTypificationForm({
   );
   const reasonConfig = getReasonConfigFrom(catalog, reason);
   const showAgendaBlock = reasonConfig?.agenda === "required" || reasonConfig?.agenda === "optional";
+  // Una corrección puede partir de una gestión que sí tenía agenda. Si la
+  // nueva tipificación no la admite, la fecha antigua nunca debe viajar oculta
+  // en el payload aunque el estado de React todavía no se haya actualizado.
+  const closureNextActionAt = reasonConfig?.agenda === "none" ? null : localInputToIso(nextActionAt);
   const showEquifaxBlock = reason === "COTIZACION ENVIADA" || outcome === "sale";
   const inferredNextActionWindow = localInputToWindow(nextActionAt);
   const legalBreakRemaining = Math.max(
@@ -146,7 +150,7 @@ export function CallTypificationForm({
           outcome,
           reason: reason || null,
           notes,
-          next_action_at: localInputToIso(nextActionAt),
+          next_action_at: closureNextActionAt,
           equifax_products: equifaxProducts,
           equifax_uf_amount: equifaxUf ? Number(equifaxUf) : null,
           equifax_recipient_email: equifaxEmail || null,
@@ -155,7 +159,7 @@ export function CallTypificationForm({
         },
         catalog
       ),
-    [catalog, status, outcome, reason, notes, nextActionAt, equifaxProducts, equifaxUf, equifaxEmail, lead.email]
+    [catalog, status, outcome, reason, notes, closureNextActionAt, equifaxProducts, equifaxUf, equifaxEmail, lead.email]
   );
 
   function resetSelection() {
@@ -182,6 +186,7 @@ export function CallTypificationForm({
     setReason(option.value);
     setStatus(option.status);
     setOutcome(option.outcome);
+    if (option.agenda === "none") setNextActionAt("");
     setMessage(null);
     setAttemptedClose(false);
   }
@@ -255,7 +260,7 @@ export function CallTypificationForm({
         outcome,
         reason: reason || null,
         notes: notes || null,
-        next_action_at: localInputToIso(nextActionAt),
+        next_action_at: closureNextActionAt,
         equifax_products: equifaxProducts,
         equifax_uf_amount: equifaxUf ? Number(equifaxUf) : null,
         equifax_recipient_email: equifaxEmail || null,

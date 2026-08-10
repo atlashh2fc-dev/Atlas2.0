@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildCallReasonCatalogFromWorkflow } from "../src/lib/call-typification.ts";
+import {
+  buildCallReasonCatalogFromWorkflow,
+  validateCallClosure,
+} from "../src/lib/call-typification.ts";
 import { validateWorkflow } from "../src/lib/workflow-validation.ts";
 import type { WorkflowStep, WorkflowStepBranch } from "../src/lib/types.ts";
 
@@ -92,4 +95,21 @@ test("workflow validation rejects empty choices and duplicate default branches",
   const errors = validateWorkflow(steps, branches).filter((issue) => issue.level === "error");
   assert.ok(errors.some((issue) => issue.message.includes("campo de selección sin opciones")));
   assert.ok(errors.some((issue) => issue.message.includes("salidas por defecto")));
+});
+
+test("a non-agenda typification rejects a stale hidden schedule", () => {
+  const errors = validateCallClosure({
+    status: "connected",
+    outcome: "not_interested",
+    reason: "NO CALIFICA",
+    notes: null,
+    next_action_at: "2026-08-10T16:00:00.000Z",
+    equifax_products: [],
+    equifax_uf_amount: null,
+    equifax_recipient_email: null,
+    lead_email: null,
+    contact_email: null,
+  });
+
+  assert.ok(errors.some((error) => error.includes("no admite una agenda")));
 });

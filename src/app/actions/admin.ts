@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 import type { AppRole } from "@/lib/types";
 import { requireProfile } from "@/lib/auth";
+import { parseDateTimeInput } from "@/lib/report-range";
 
 export async function createUserAccount(formData: FormData) {
   await requireProfile(["admin"]);
@@ -300,6 +301,8 @@ export async function reassignAgenda(formData: FormData) {
   if (!leadId || !agentId) {
     throw new Error("Debes seleccionar el ejecutivo al que reasignar la agenda.");
   }
+  const nextActionAt = nextActionAtRaw ? parseDateTimeInput(nextActionAtRaw) : null;
+  if (nextActionAtRaw && !nextActionAt) throw new Error("La fecha de agenda no es válida.");
 
   const supabase = await createClient();
   const { error } = await supabase.rpc("assign_lead", {
@@ -308,7 +311,7 @@ export async function reassignAgenda(formData: FormData) {
     p_reason: "Reasignación de agenda desde Mi equipo",
     p_source: "team.agenda_reassignment_form",
     p_set_managed_by: true,
-    p_next_action_at: nextActionAtRaw ? new Date(nextActionAtRaw).toISOString() : null,
+    p_next_action_at: nextActionAt?.toISOString() ?? null,
   });
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/team");
@@ -332,8 +335,8 @@ export async function rescheduleCallbacks(
   const ids = [...new Set(leadIds)];
   if (ids.length === 0) return { ok: 0, error: "No hay compromisos seleccionados." };
 
-  const when = new Date(nextActionAt);
-  if (Number.isNaN(when.getTime())) return { ok: 0, error: "La fecha no es válida." };
+  const when = parseDateTimeInput(nextActionAt);
+  if (!when) return { ok: 0, error: "La fecha no es válida." };
 
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("reschedule_callbacks", {

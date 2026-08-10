@@ -655,6 +655,9 @@ export function validateCallClosure(payload: CallClosurePayload, catalog: CallRe
   if (reasonConfig.agenda === "required" && !hasAgenda) {
     errors.push("Esta tipificacion requiere fecha y hora de agenda.");
   }
+  if (reasonConfig.agenda === "none" && hasAgenda) {
+    errors.push("Esta tipificacion no admite una agenda.");
+  }
   if (reasonConfig.agenda === "optional" && !hasAgenda && !hasNotes) {
     errors.push("Si no agendas fecha/hora, deja una observacion con el proximo paso.");
   }
