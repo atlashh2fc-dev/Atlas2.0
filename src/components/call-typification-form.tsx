@@ -28,6 +28,7 @@ import {
   INTERCALL_BREAK_STORAGE_KEY,
   readLegalIntercallBreakUntil,
 } from "@/lib/intercall-break";
+import { AppointmentScheduleEmbed } from "@/components/appointment-schedule-embed";
 
 function isoToLocalInput(iso: string | null): string {
   if (!iso) return "";
@@ -57,12 +58,15 @@ export function CallTypificationForm({
   lead,
   call,
   reasonCatalog,
+  appointmentScheduleUrl,
   priority = false,
   revision = false,
 }: {
   lead: Lead;
   call: Call;
   reasonCatalog?: CallReasonConfig[];
+  /** Agenda pública específica de la campaña, mostrada dentro del CRM. */
+  appointmentScheduleUrl?: string | null;
   /** La gestión llegó desde una llamada: debe dominar la pantalla. */
   priority?: boolean;
   /** Corrige una gestión ya cerrada sin crear una llamada ficticia. */
@@ -448,9 +452,19 @@ export function CallTypificationForm({
 
           {showAgendaBlock && (
             <div className="rounded-lg border border-border bg-background p-4">
-              <div className="mb-3 flex items-center gap-2">
-                <CalendarClock size={16} className="text-warning" />
-                <h3 className="text-sm font-semibold text-foreground">Agenda requerida</h3>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <CalendarClock size={16} className="text-warning" />
+                  <h3 className="text-sm font-semibold text-foreground">
+                    {reasonConfig?.agenda === "required" ? "Agenda requerida" : "Agenda"}
+                  </h3>
+                </div>
+                {appointmentScheduleUrl && (
+                  <AppointmentScheduleEmbed
+                    title="Disponibilidad · Abogado Legal"
+                    url={appointmentScheduleUrl}
+                  />
+                )}
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
