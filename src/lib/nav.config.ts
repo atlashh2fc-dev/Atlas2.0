@@ -5,7 +5,6 @@ import {
   CircleHelp,
   Database,
   LayoutDashboard,
-  MailCheck,
   Megaphone,
   PhoneCall,
   Plug,
@@ -113,6 +112,14 @@ const CONSOLE: NavSpace = {
           match: ["/dashboard/leads", "/dashboard/llamadas"],
         },
         {
+          id: "campanas-operativas",
+          label: "Campañas",
+          href: "/dashboard/campanas",
+          icon: Megaphone,
+          roles: OPERACION,
+          description: "Operación y canales habilitados por campaña",
+        },
+        {
           id: "agenda",
           label: "Mi agenda",
           href: "/dashboard/agenda",
@@ -120,16 +127,6 @@ const CONSOLE: NavSpace = {
           roles: ["agente"],
           description: "Seguimientos de hoy y vencidos",
           badge: "overdue-agenda",
-        },
-        {
-          id: "campanas-mail",
-          // "Bandeja mail" y no "Campañas mail": evita compartir la primera palabra
-          // con "Campañas" (Administración) en la búsqueda global.
-          label: "Bandeja mail",
-          href: "/dashboard/mail",
-          icon: MailCheck,
-          roles: OPERACION,
-          description: "Leads con apertura o click, listos para asignar",
         },
         {
           id: "reportes",
