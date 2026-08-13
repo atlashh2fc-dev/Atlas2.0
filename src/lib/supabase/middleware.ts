@@ -5,7 +5,15 @@ import { NextResponse, type NextRequest } from "next/server";
 // propia pantalla lo explica y ofrece pedir otro, en vez de rebotar al login sin
 // decir nada. `/api/status` tiene que responder antes de autenticar: es lo que
 // le dice al ejecutivo si el problema es el sistema o su contraseña.
-const PUBLIC_PATHS = ["/login", "/auth", "/forgot-password", "/reset-password", "/api/status"];
+const PUBLIC_PATHS = [
+  "/login",
+  "/auth",
+  "/forgot-password",
+  "/reset-password",
+  "/api/status",
+  // Vercel Cron no tiene sesión web; la ruta valida CRON_SECRET antes de operar.
+  "/api/mail/inbound/sync",
+];
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });

@@ -3,11 +3,63 @@
 import { revalidatePath } from "next/cache";
 
 import { requireProfile } from "@/lib/auth";
+import {
+  deleteAbogadoLegalEmails,
+  syncAbogadoLegalInbox,
+  type InboundDeleteResult,
+  type InboundSyncResult,
+} from "@/lib/inbound-mail";
 import { createClient } from "@/lib/supabase/server";
 
 export type MailBulkAssignmentResult = { ok: number; skipped: number; error: string | null };
 
 const MAIL_BULK_ASSIGNMENT_MAX = 100;
+
+export type InboundConversionResult = {
+  ok: boolean;
+  leadId?: string;
+  error?: string;
+};
+
+export async function syncInboundMailbox(): Promise<InboundSyncResult> {
+  await requireProfile(["supervisor", "admin"]);
+  const result = await syncAbogadoLegalInbox();
+  revalidatePath("/dashboard/correo-abogado-legal");
+  return result;
+}
+
+export async function deleteInboundEmails(emailIds: string[]): Promise<InboundDeleteResult> {
+  await requireProfile(["supervisor", "admin"]);
+  const result = await deleteAbogadoLegalEmails(emailIds);
+  revalidatePath("/dashboard/correo-abogado-legal");
+  return result;
+}
+
+export async function convertInboundEmail(
+  emailId: string,
+  agentId: string,
+  phone: string,
+  fullName: string
+): Promise<InboundConversionResult> {
+  await requireProfile(["supervisor", "admin"]);
+  if (!emailId) return { ok: false, error: "Falta seleccionar el correo." };
+  if (!agentId) return { ok: false, error: "Selecciona un ejecutivo." };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("convert_inbound_email_to_lead", {
+    p_email_id: emailId,
+    p_agent_id: agentId,
+    p_phone: phone.trim() || null,
+    p_full_name: fullName.trim() || null,
+  });
+
+  if (error) return { ok: false, error: error.message };
+  const payload = data as { lead_id?: string } | null;
+  revalidatePath("/dashboard/correo-abogado-legal");
+  revalidatePath("/dashboard/leads");
+  revalidatePath("/dashboard/team");
+  return { ok: true, leadId: payload?.lead_id };
+}
 
 export async function assignMailEngagementLead(formData: FormData) {
   await requireProfile(["supervisor", "admin"]);

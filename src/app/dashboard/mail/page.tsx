@@ -103,20 +103,29 @@ function MetricCard({ label, value, detail }: { label: string; value: string; de
 function CampaignFilterForm({
   campaigns,
   selectedMailCampaignId,
+  campaignId,
+  campaignContextId,
+  umbrella,
   compact = false,
 }: {
   campaigns: MailCampaign[];
   selectedMailCampaignId: string | null;
+  campaignId?: string | null;
+  campaignContextId?: string | null;
+  umbrella?: string | null;
   compact?: boolean;
 }) {
   return (
     <form className="flex flex-wrap items-center gap-2">
+      {campaignId && <input type="hidden" name="campaign" value={campaignId} />}
+      {campaignContextId && <input type="hidden" name="campaignContext" value={campaignContextId} />}
+      {umbrella && <input type="hidden" name="umbrella" value={umbrella} />}
       <Select
         name="mailCampaign"
         defaultValue={selectedMailCampaignId ?? ""}
         className={compact ? "w-72" : "w-64"}
       >
-        <option value="">Todas las campañas mail Equifax</option>
+        <option value="">Todas las campañas de correo</option>
         {campaigns.map((campaign) => (
           <option key={campaign.id} value={campaign.id}>
             {campaign.name}
@@ -178,8 +187,18 @@ function encodeCursor(row: MailQueueRow): string {
   ).toString("base64url");
 }
 
-function mailHref(mailCampaignId: string | null, bucket = "all", cursor?: string): string {
+function mailHref(
+  mailCampaignId: string | null,
+  bucket = "all",
+  cursor?: string,
+  campaignId?: string | null,
+  campaignContextId?: string | null,
+  umbrella?: string | null
+): string {
   const params = new URLSearchParams();
+  if (campaignId) params.set("campaign", campaignId);
+  if (campaignContextId) params.set("campaignContext", campaignContextId);
+  if (umbrella) params.set("umbrella", umbrella);
   if (mailCampaignId) params.set("mailCampaign", mailCampaignId);
   if (bucket !== "all") params.set("queue", bucket);
   if (cursor) params.set("cursor", cursor);
@@ -190,12 +209,13 @@ function mailHref(mailCampaignId: string | null, bucket = "all", cursor?: string
 async function fetchMailOperationalPage(
   supabase: Awaited<ReturnType<typeof createClient>>,
   selectedMailCampaignId: string | null,
+  selectedCampaignId: string | null,
   bucket: string,
   cursor: MailCursor | null
 ) {
   const { data, error } = await supabase.rpc("get_mail_operational_queue_page", {
     p_mail_campaign_id: selectedMailCampaignId,
-    p_campaign_id: null,
+    p_campaign_id: selectedCampaignId,
     p_bucket: bucket,
     p_limit: MAIL_PAGE_SIZE + 1,
     p_after_work_rank: cursor?.workRank ?? null,
@@ -217,10 +237,25 @@ async function fetchMailOperationalPage(
 export default async function MailDashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ mailCampaign?: string; queue?: string; cursor?: string }>;
+  searchParams: Promise<{
+    campaign?: string;
+    campaignContext?: string;
+    umbrella?: string;
+    mailCampaign?: string;
+    queue?: string;
+    cursor?: string;
+  }>;
 }) {
   const profile = await requireProfile(["supervisor", "admin"]);
-  const { mailCampaign, queue: queueParam, cursor: cursorParam } = await searchParams;
+  const {
+    campaign,
+    campaignContext,
+    umbrella,
+    mailCampaign,
+    queue: queueParam,
+    cursor: cursorParam,
+  } = await searchParams;
+  const selectedCampaignId = campaign || null;
   const selectedMailCampaignId = mailCampaign || null;
   const activeBucket = queueParam && MAIL_BUCKETS.has(queueParam) ? queueParam : "all";
   const cursor = decodeCursor(cursorParam);
@@ -243,8 +278,17 @@ export default async function MailDashboardPage({
     else agentsQuery.eq("id", "00000000-0000-0000-0000-000000000000");
   }
 
+  let mailCampaignsQuery = supabase
+    .from("mail_campaigns")
+    .select("id, name, campaign_id, umbrella_key, status")
+    .eq("status", "active")
+    .order("updated_at", { ascending: false });
+  if (selectedCampaignId) mailCampaignsQuery = mailCampaignsQuery.eq("campaign_id", selectedCampaignId);
+  if (umbrella) mailCampaignsQuery = mailCampaignsQuery.eq("umbrella_key", umbrella);
+
   const [
     { data: mailCampaigns },
+    { data: selectedCampaign },
     { data: reportData, error: reportError },
     { data: agentSummaryData, error: agentSummaryError },
     { data: bucketData, error: bucketError },
@@ -252,24 +296,23 @@ export default async function MailDashboardPage({
     { data: agents },
   ] =
     await Promise.all([
-      supabase
-        .from("mail_campaigns")
-        .select("id, name, campaign_id, umbrella_key, status")
-        .eq("umbrella_key", "equifax")
-        .order("updated_at", { ascending: false }),
+      mailCampaignsQuery,
+      selectedCampaignId || campaignContext
+        ? supabase.from("campaigns").select("id,name").eq("id", selectedCampaignId ?? campaignContext).maybeSingle()
+        : Promise.resolve({ data: null }),
       supabase.rpc("get_mail_engagement_report_read_model", {
         p_mail_campaign_id: selectedMailCampaignId,
-        p_campaign_id: null,
+        p_campaign_id: selectedCampaignId,
       }),
       supabase.rpc("get_mail_agent_control_summary_read_model", {
         p_mail_campaign_id: selectedMailCampaignId,
-        p_campaign_id: null,
+        p_campaign_id: selectedCampaignId,
       }),
       supabase.rpc("get_mail_operational_bucket_summary", {
         p_mail_campaign_id: selectedMailCampaignId,
-        p_campaign_id: null,
+        p_campaign_id: selectedCampaignId,
       }),
-      fetchMailOperationalPage(supabase, selectedMailCampaignId, activeBucket, cursor),
+      fetchMailOperationalPage(supabase, selectedMailCampaignId, selectedCampaignId, activeBucket, cursor),
       agentsQuery,
     ]);
 
@@ -341,9 +384,9 @@ export default async function MailDashboardPage({
   );
   const totalPrioritized = selectedMailCampaignId ? reports[0]?.hot_leads ?? 0 : totals.hot;
   const nextQueueHref = hasMoreQueue && queue.length > 0
-    ? mailHref(selectedMailCampaignId, activeBucket, encodeCursor(queue[queue.length - 1]))
+    ? mailHref(selectedMailCampaignId, activeBucket, encodeCursor(queue[queue.length - 1]), selectedCampaignId, campaignContext, umbrella)
     : null;
-  const resetQueueHref = mailHref(selectedMailCampaignId, activeBucket);
+  const resetQueueHref = mailHref(selectedMailCampaignId, activeBucket, undefined, selectedCampaignId, campaignContext, umbrella);
   const bucketTone: Record<string, MailControlBucket["tone"]> = {
     overdue: "danger",
     unassigned: "warning",
@@ -359,7 +402,7 @@ export default async function MailDashboardPage({
       label: "Toda la cola",
       count: totalPrioritized,
       description: "Visión completa, ordenada por urgencia",
-      href: mailHref(selectedMailCampaignId),
+      href: mailHref(selectedMailCampaignId, "all", undefined, selectedCampaignId, campaignContext, umbrella),
       tone: "info",
     },
     ...bucketSummary
@@ -373,7 +416,7 @@ export default async function MailDashboardPage({
           : bucket.oldest_event_at
             ? `Señal más antigua ${formatDate(bucket.oldest_event_at)}`
             : "Sin oportunidades en esta prioridad",
-        href: mailHref(selectedMailCampaignId, bucket.bucket),
+        href: mailHref(selectedMailCampaignId, bucket.bucket, undefined, selectedCampaignId, campaignContext, umbrella),
         tone: bucketTone[bucket.bucket] ?? "neutral",
       })),
   ];
@@ -397,9 +440,17 @@ export default async function MailDashboardPage({
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Bandeja mail"
+        title={selectedCampaign ? `Señales de correo · ${selectedCampaign.name}` : "Señales de correo"}
         description="Leads con apertura o click, listos para asignación manual."
-        actions={<CampaignFilterForm campaigns={campaigns} selectedMailCampaignId={selectedMailCampaignId} />}
+        actions={
+          <CampaignFilterForm
+            campaigns={campaigns}
+            selectedMailCampaignId={selectedMailCampaignId}
+            campaignId={selectedCampaignId}
+            campaignContextId={campaignContext}
+            umbrella={umbrella}
+          />
+        }
       />
 
       <MailWorkspace
