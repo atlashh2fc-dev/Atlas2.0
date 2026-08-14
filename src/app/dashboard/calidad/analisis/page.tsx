@@ -5,6 +5,11 @@ import { fetchQualityAnalysis } from "@/lib/quality-analysis";
 import { resolveReportRange } from "@/lib/report-range";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import {
+  isSecretariaVirtualAuditCampaign,
+  SECRETARIA_VIRTUAL_RUBRIC_NAME,
+  SECRETARIA_VIRTUAL_RUBRIC_VERSION,
+} from "@/lib/secretaria-virtual-quality-rubric";
 import { Badge, Callout, MetricCard, SectionCard, Table, Tbody, Td, Th, Thead, Tr } from "@/components/ui";
 
 function formatDuration(seconds: number) {
@@ -26,6 +31,13 @@ const STATUS = {
   processing: { label: "Procesando", tone: "info" as const },
   completed: { label: "Completada", tone: "success" as const },
   failed: { label: "Con error", tone: "danger" as const },
+};
+
+const EVALUATION_VERDICT = {
+  cumple: { label: "Cumple", tone: "success" as const },
+  parcial: { label: "Parcial", tone: "warning" as const },
+  no_cumple: { label: "No cumple", tone: "danger" as const },
+  no_evaluable: { label: "No evaluable", tone: "neutral" as const },
 };
 
 export default async function CalidadAnalisisPage({
@@ -90,11 +102,44 @@ export default async function CalidadAnalisisPage({
           <BrainCircuit size={17} className="mt-0.5 flex-shrink-0" />
           <span>
             {mercuryConfigured
-              ? "Mercury 2 está configurado. Las evaluaciones comenzarán cuando exista una pauta activa y versionada."
-              : "La evaluación con Mercury 2 queda pendiente de una clave nueva y de la pauta; no se asignarán puntajes sin esos dos requisitos."}
+              ? `${SECRETARIA_VIRTUAL_RUBRIC_NAME} · pauta v${SECRETARIA_VIRTUAL_RUBRIC_VERSION} activa. Los puntajes de Mercury 2 son apoyo para revisión humana, no una decisión disciplinaria automática.`
+              : `${SECRETARIA_VIRTUAL_RUBRIC_NAME} · pauta v${SECRETARIA_VIRTUAL_RUBRIC_VERSION} lista. Falta configurar una clave nueva como INCEPTION_API_KEY para ejecutar auditorías.`}
           </span>
         </span>
       </Callout>
+
+      <SectionCard
+        title="Auditoría · Secretaría Virtual"
+        description="Solo llamadas outbound transcritas; Secretaría Virtual - Inbound queda fuera de esta pauta."
+      >
+        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-5">
+          <MetricCard
+            label="Auditables"
+            value={analysis.summary.auditableRecordings.toLocaleString("es-CL")}
+            hint="Transcritas con pauta aplicable"
+          />
+          <MetricCard
+            label="Auditadas"
+            value={analysis.summary.evaluated.toLocaleString("es-CL")}
+            tone="good"
+          />
+          <MetricCard
+            label="Pendientes"
+            value={analysis.summary.evaluationPending.toLocaleString("es-CL")}
+            hint={analysis.summary.evaluationProcessing ? `${analysis.summary.evaluationProcessing} procesando` : undefined}
+            tone="warn"
+          />
+          <MetricCard
+            label="Promedio"
+            value={analysis.summary.evaluated ? `${analysis.summary.averageScore.toLocaleString("es-CL", { maximumFractionDigits: 1 })}/100` : "—"}
+          />
+          <MetricCard
+            label="Con error"
+            value={analysis.summary.evaluationFailed.toLocaleString("es-CL")}
+            tone={analysis.summary.evaluationFailed ? "danger" : "default"}
+          />
+        </div>
+      </SectionCard>
 
       <SectionCard
         title="Actividad reciente"
@@ -111,18 +156,40 @@ export default async function CalidadAnalisisPage({
               <Th>Campaña</Th>
               <Th>Ejecutivo</Th>
               <Th>Estado</Th>
+              <Th>Auditoría</Th>
               <Th>Idioma</Th>
               <Th align="right">Caracteres</Th>
             </Thead>
             <Tbody>
               {analysis.recent.map((row) => {
                 const status = STATUS[row.status];
+                const evaluationVerdict = row.evaluationVerdict
+                  ? EVALUATION_VERDICT[row.evaluationVerdict]
+                  : null;
                 return (
                   <Tr key={row.recordingId}>
                     <Td>{formatDateTime(row.recordingStartedAt)}</Td>
                     <Td>{row.campaignName}</Td>
                     <Td>{row.agentName}</Td>
                     <Td><Badge tone={status.tone}>{status.label}</Badge></Td>
+                    <Td>
+                      {evaluationVerdict && row.evaluationScore !== null ? (
+                        <span className="flex items-center gap-2 whitespace-nowrap">
+                          <Badge tone={evaluationVerdict.tone}>{evaluationVerdict.label}</Badge>
+                          <span className="text-xs tabular-nums text-muted-foreground">
+                            {row.evaluationScore.toLocaleString("es-CL", { maximumFractionDigits: 1 })}/100
+                          </span>
+                        </span>
+                      ) : row.evaluationStatus === "processing" ? (
+                        <Badge tone="info">Auditando</Badge>
+                      ) : row.evaluationStatus === "failed" ? (
+                        <Badge tone="danger">Con error</Badge>
+                      ) : isSecretariaVirtualAuditCampaign(row.campaignName) && row.status === "completed" ? (
+                        <Badge tone="neutral">Pendiente</Badge>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </Td>
                     <Td muted>{row.languageCode ?? "—"}</Td>
                     <Td align="right">{row.transcriptCharacters.toLocaleString("es-CL")}</Td>
                   </Tr>

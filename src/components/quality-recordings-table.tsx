@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Badge, DataTable, type Column } from "@/components/ui";
 import { RecordingAudioPlayer } from "@/components/recording-audio-player";
+import { RecordingQualityEvaluationControl } from "@/components/recording-quality-evaluation-control";
 import { RecordingTranscriptionControl } from "@/components/recording-transcription-control";
 import type { QualityRecordingRow } from "@/lib/quality-recordings";
 import {
@@ -180,6 +181,23 @@ const columns: Column<QualityRecordingRow>[] = [
         initialStatus={row.transcriptionStatus}
         eligible={row.transcriptionEligibility.eligible}
         eligibilityLabel={row.transcriptionEligibility.label}
+      />
+    ),
+  },
+  {
+    id: "evaluation",
+    header: "Auditoría",
+    tooltip: "Puntaje asistido por Mercury 2 contra la pauta versionada de la campaña; requiere revisión humana.",
+    value: (row) => row.evaluationScore,
+    sortable: false,
+    cell: (row) => (
+      <RecordingQualityEvaluationControl
+        recordingId={row.id}
+        campaignName={row.campaignName}
+        transcriptionStatus={row.transcriptionStatus}
+        initialStatus={row.evaluationStatus}
+        initialScore={row.evaluationScore}
+        initialVerdict={row.evaluationVerdict}
       />
     ),
   },

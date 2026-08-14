@@ -22,6 +22,7 @@ export default async function GrabacionesPage({
   }>;
 }) {
   const profile = await requireProfile(["admin", "supervisor"]);
+  const mercuryConfigured = Boolean(process.env.INCEPTION_API_KEY?.trim());
   const params = await searchParams;
   const supabase = await createClient();
   const relatedDataClient = createAdminClient();
@@ -117,6 +118,11 @@ export default async function GrabacionesPage({
       <Callout tone="info">
         La transcripción se habilita solo para ventas o rechazos de más de 2 minutos con audio íntegro. Las demás llamadas no consumen cuota.
       </Callout>
+      {!mercuryConfigured && (
+        <Callout tone="warning">
+          La pauta v1 de Secretaría Virtual ya está cargada. Falta configurar una clave nueva como <code>INCEPTION_API_KEY</code> para ejecutar la auditoría con Mercury 2.
+        </Callout>
+      )}
 
       <section aria-labelledby="quality-recordings-title">
         <div className="mb-3">

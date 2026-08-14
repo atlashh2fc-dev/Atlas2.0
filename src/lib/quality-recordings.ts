@@ -5,6 +5,10 @@ import {
   evaluateQualityTranscriptionEligibility,
   type QualityTranscriptionEligibility,
 } from "@/lib/quality-transcription-policy";
+import {
+  SECRETARIA_VIRTUAL_RUBRIC_KEY,
+  SECRETARIA_VIRTUAL_RUBRIC_VERSION,
+} from "@/lib/secretaria-virtual-quality-rubric";
 
 export const RECORDINGS_PAGE_SIZE = 50;
 
@@ -18,6 +22,8 @@ export type RecordingStatus =
   | "deleted";
 export type RecordingDisconnectParty = "caller" | "agent" | "transfer";
 export type QualityTranscriptionStatus = "pending" | "processing" | "completed" | "failed";
+export type QualityEvaluationStatus = "pending" | "processing" | "completed" | "failed";
+export type QualityEvaluationVerdict = "cumple" | "parcial" | "no_cumple" | "no_evaluable";
 
 export type RecordingFilters = {
   campaign: string;
@@ -51,6 +57,9 @@ export type QualityRecordingRow = {
   status: RecordingStatus;
   transcriptionStatus: QualityTranscriptionStatus | null;
   transcriptionEligibility: QualityTranscriptionEligibility;
+  evaluationStatus: QualityEvaluationStatus | null;
+  evaluationScore: number | null;
+  evaluationVerdict: QualityEvaluationVerdict | null;
 };
 
 export type QualityRecordingsPage = {
@@ -167,7 +176,14 @@ export async function fetchQualityRecordings(
     const campaignIdSet = [...new Set(recordings.map((recording) => recording.campaign_id))];
     const callIdSet = [...new Set(recordings.map((recording) => recording.call_id))];
 
-    const [leadsResult, agentsResult, campaignsResult, callsResult, transcriptionsResult] = await Promise.all([
+    const [
+      leadsResult,
+      agentsResult,
+      campaignsResult,
+      callsResult,
+      transcriptionsResult,
+      evaluationsResult,
+    ] = await Promise.all([
       leadIdSet.length
         ? relatedDataClient.from("leads").select("id, full_name, rut").in("id", leadIdSet)
         : Promise.resolve({ data: [], error: null }),
@@ -186,6 +202,14 @@ export async function fetchQualityRecordings(
             .select("recording_id, status")
             .in("recording_id", recordings.map((recording) => recording.id))
         : Promise.resolve({ data: [], error: null }),
+      recordings.length
+        ? supabase
+            .from("call_quality_evaluations")
+            .select("recording_id, status, overall_score, verdict")
+            .in("recording_id", recordings.map((recording) => recording.id))
+            .eq("rubric_key", SECRETARIA_VIRTUAL_RUBRIC_KEY)
+            .eq("rubric_version", SECRETARIA_VIRTUAL_RUBRIC_VERSION)
+        : Promise.resolve({ data: [], error: null }),
     ]);
 
     const relatedError =
@@ -193,7 +217,8 @@ export async function fetchQualityRecordings(
       agentsResult.error ??
       campaignsResult.error ??
       callsResult.error ??
-      transcriptionsResult.error;
+      transcriptionsResult.error ??
+      evaluationsResult.error;
     if (relatedError) throw new Error(relatedError.message);
 
     const leads = new Map(
@@ -217,6 +242,16 @@ export async function fetchQualityRecordings(
         transcription.status as QualityTranscriptionStatus,
       ])
     );
+    const evaluations = new Map(
+      (evaluationsResult.data ?? []).map((evaluation) => [
+        evaluation.recording_id as string,
+        evaluation as {
+          status: QualityEvaluationStatus;
+          overall_score: number | string | null;
+          verdict: QualityEvaluationVerdict | null;
+        },
+      ])
+    );
 
     return {
       rows: recordings.map((recording) => {
@@ -226,6 +261,7 @@ export async function fetchQualityRecordings(
           recording.duration_seconds === null ? null : Number(recording.duration_seconds);
         const queueTalkSeconds =
           recording.queue_talk_seconds === null ? null : Number(recording.queue_talk_seconds);
+        const evaluation = evaluations.get(recording.id);
         return {
           id: recording.id,
           callId: recording.call_id,
@@ -255,6 +291,12 @@ export async function fetchQualityRecordings(
             queueTalkSeconds,
             outcome: call?.outcome ?? null,
           }),
+          evaluationStatus: evaluation?.status ?? null,
+          evaluationScore:
+            evaluation?.overall_score === null || evaluation?.overall_score === undefined
+              ? null
+              : Number(evaluation.overall_score),
+          evaluationVerdict: evaluation?.verdict ?? null,
         };
       }),
       total,
