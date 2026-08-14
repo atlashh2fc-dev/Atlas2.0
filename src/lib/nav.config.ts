@@ -147,10 +147,15 @@ const CONSOLE: NavSpace = {
         {
           id: "calidad",
           label: "Calidad",
-          href: "/dashboard/calidad",
+          href: "/dashboard/calidad/grabaciones",
           icon: Headphones,
           roles: OPERACION,
-          description: "Grabaciones post-llamada para revisión y control de calidad",
+          description: "Grabaciones, transcripciones y análisis de calidad",
+          match: ["/dashboard/calidad"],
+          tabs: [
+            { label: "Grabaciones", href: "/dashboard/calidad/grabaciones" },
+            { label: "Reportes y análisis", href: "/dashboard/calidad/analisis" },
+          ],
         },
       ],
     },

@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Badge, DataTable, type Column } from "@/components/ui";
 import { RecordingAudioPlayer } from "@/components/recording-audio-player";
+import { RecordingTranscriptionControl } from "@/components/recording-transcription-control";
 import type { QualityRecordingRow } from "@/lib/quality-recordings";
 import {
   classifyRecordingIntegrity,
@@ -162,6 +163,26 @@ const columns: Column<QualityRecordingRow>[] = [
     sortable: false,
     cell: (row) => <RecordingAudioPlayer recordingId={row.id} playable={row.status === "ready"} />,
   },
+  {
+    id: "transcription",
+    header: "Transcripción",
+    value: (row) => {
+      if (row.transcriptionStatus === "completed") return "Completada";
+      if (row.transcriptionStatus === "processing") return "Procesando";
+      if (row.transcriptionStatus === "failed") return "Con error";
+      return "Pendiente";
+    },
+    sortable: false,
+    cell: (row) => (
+      <RecordingTranscriptionControl
+        recordingId={row.id}
+        playable={row.status === "ready"}
+        initialStatus={row.transcriptionStatus}
+        eligible={row.transcriptionEligibility.eligible}
+        eligibilityLabel={row.transcriptionEligibility.label}
+      />
+    ),
+  },
 ];
 
 export function QualityRecordingsTable({
@@ -186,7 +207,7 @@ export function QualityRecordingsTable({
     const params = new URLSearchParams(searchParams.toString());
     if (nextPage <= 1) params.delete("page");
     else params.set("page", String(nextPage));
-    router.push(`/dashboard/calidad${params.size ? `?${params.toString()}` : ""}`);
+    router.push(`/dashboard/calidad/grabaciones${params.size ? `?${params.toString()}` : ""}`);
   };
 
   return (

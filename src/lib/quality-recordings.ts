@@ -1,6 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Profile } from "@/lib/types";
 import { resolveReportRange } from "@/lib/report-range";
+import {
+  evaluateQualityTranscriptionEligibility,
+  type QualityTranscriptionEligibility,
+} from "@/lib/quality-transcription-policy";
 
 export const RECORDINGS_PAGE_SIZE = 50;
 
@@ -13,6 +17,7 @@ export type RecordingStatus =
   | "archived"
   | "deleted";
 export type RecordingDisconnectParty = "caller" | "agent" | "transfer";
+export type QualityTranscriptionStatus = "pending" | "processing" | "completed" | "failed";
 
 export type RecordingFilters = {
   campaign: string;
@@ -33,6 +38,7 @@ export type QualityRecordingRow = {
   typification: string | null;
   callEndedAt: string | null;
   callDiscardedReason: string | null;
+  callOutcome: string | null;
   disconnectParty: RecordingDisconnectParty | null;
   queueTalkSeconds: number | null;
   leadName: string;
@@ -43,6 +49,8 @@ export type QualityRecordingRow = {
   sizeBytes: number | null;
   endedAt: string | null;
   status: RecordingStatus;
+  transcriptionStatus: QualityTranscriptionStatus | null;
+  transcriptionEligibility: QualityTranscriptionEligibility;
 };
 
 export type QualityRecordingsPage = {
@@ -159,7 +167,7 @@ export async function fetchQualityRecordings(
     const campaignIdSet = [...new Set(recordings.map((recording) => recording.campaign_id))];
     const callIdSet = [...new Set(recordings.map((recording) => recording.call_id))];
 
-    const [leadsResult, agentsResult, campaignsResult, callsResult] = await Promise.all([
+    const [leadsResult, agentsResult, campaignsResult, callsResult, transcriptionsResult] = await Promise.all([
       leadIdSet.length
         ? relatedDataClient.from("leads").select("id, full_name, rut").in("id", leadIdSet)
         : Promise.resolve({ data: [], error: null }),
@@ -170,11 +178,22 @@ export async function fetchQualityRecordings(
         ? relatedDataClient.from("campaigns").select("id, name").in("id", campaignIdSet)
         : Promise.resolve({ data: [], error: null }),
       callIdSet.length
-        ? relatedDataClient.from("calls").select("id, reason, ended_at, discarded_reason").in("id", callIdSet)
+        ? relatedDataClient.from("calls").select("id, reason, outcome, ended_at, discarded_reason").in("id", callIdSet)
+        : Promise.resolve({ data: [], error: null }),
+      recordings.length
+        ? supabase
+            .from("call_transcriptions")
+            .select("recording_id, status")
+            .in("recording_id", recordings.map((recording) => recording.id))
         : Promise.resolve({ data: [], error: null }),
     ]);
 
-    const relatedError = leadsResult.error ?? agentsResult.error ?? campaignsResult.error ?? callsResult.error;
+    const relatedError =
+      leadsResult.error ??
+      agentsResult.error ??
+      campaignsResult.error ??
+      callsResult.error ??
+      transcriptionsResult.error;
     if (relatedError) throw new Error(relatedError.message);
 
     const leads = new Map(
@@ -189,7 +208,13 @@ export async function fetchQualityRecordings(
     const calls = new Map(
       (callsResult.data ?? []).map((call) => [
         call.id as string,
-        call as { reason: string | null; ended_at: string | null; discarded_reason: string | null },
+        call as { reason: string | null; outcome: string | null; ended_at: string | null; discarded_reason: string | null },
+      ])
+    );
+    const transcriptions = new Map(
+      (transcriptionsResult.data ?? []).map((transcription) => [
+        transcription.recording_id as string,
+        transcription.status as QualityTranscriptionStatus,
       ])
     );
 
@@ -197,6 +222,10 @@ export async function fetchQualityRecordings(
       rows: recordings.map((recording) => {
         const lead = leads.get(recording.lead_id);
         const call = calls.get(recording.call_id);
+        const durationSeconds =
+          recording.duration_seconds === null ? null : Number(recording.duration_seconds);
+        const queueTalkSeconds =
+          recording.queue_talk_seconds === null ? null : Number(recording.queue_talk_seconds);
         return {
           id: recording.id,
           callId: recording.call_id,
@@ -208,18 +237,24 @@ export async function fetchQualityRecordings(
           typification: call?.reason ?? null,
           callEndedAt: call?.ended_at ?? null,
           callDiscardedReason: call?.discarded_reason ?? null,
+          callOutcome: call?.outcome ?? null,
           disconnectParty: recording.disconnect_party,
-          queueTalkSeconds:
-            recording.queue_talk_seconds === null ? null : Number(recording.queue_talk_seconds),
+          queueTalkSeconds,
           leadName: lead?.full_name ?? "Cliente no disponible",
           rut: lead?.rut ?? "Sin RUT",
           startedAt: recording.started_at,
           endedAt: recording.ended_at,
-          durationSeconds:
-            recording.duration_seconds === null ? null : Number(recording.duration_seconds),
+          durationSeconds,
           codec: recording.codec,
           sizeBytes: recording.size_bytes === null ? null : Number(recording.size_bytes),
           status: recording.status,
+          transcriptionStatus: transcriptions.get(recording.id) ?? null,
+          transcriptionEligibility: evaluateQualityTranscriptionEligibility({
+            recordingStatus: recording.status,
+            durationSeconds,
+            queueTalkSeconds,
+            outcome: call?.outcome ?? null,
+          }),
         };
       }),
       total,
