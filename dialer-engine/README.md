@@ -20,6 +20,9 @@ el razonamiento completo de por qué vive aparte y cómo se integra.
    `AgentConnect`, `Hangup`, `QueueMemberStatus`) a `register_dial_event` /
    `update_agent_dialer_status`, que a su vez alimentan `call_events` — el
    mismo canal que ya usa `DialerListener` en el CRM para el screen-pop.
+5. Opcionalmente inicia `MixMonitor` sólo en `AgentConnect` y lo detiene en
+   `AgentComplete`/`Hangup`. Al cerrar el audio, Asterisk ejecuta un script
+   mínimo que convierte WAV a Opus y lo entrega al endpoint privado del motor.
 
 ## Requisitos en Asterisk
 
@@ -69,3 +72,38 @@ Ver la sección "AWS" en `docs/dialer-engine-architecture.md`. Resumen: EC2
 (o un contenedor con red persistente hacia el AMI, no Lambda/Fargate con
 scale-to-zero) en la misma VPC/región que Asterisk, `Dockerfile` incluido,
 health check en `/health` para el target group.
+
+## Grabaciones (dos EC2, sin filesystem compartido ni secretos en Asterisk)
+
+`dialer-engine` y `asterisk-atlas` están en instancias distintas. El motor vía
+AMI ordena a Asterisk escribir `RECORDING_SPOOL_DIR/<dial_attempt_id>.wav` y
+configura como comando post-MixMonitor el script incluido:
+
+```text
+dialer-engine/scripts/atlas-recording-upload
+  → /usr/local/bin/atlas-recording-upload (root:root, 0755)
+```
+
+El script sólo necesita `ffmpeg`, `ffprobe` y `curl`; no recibe la service role.
+Por llamada obtiene un token aleatorio de 256 bits que el motor guarda sólo
+como SHA-256 y que expira. Genera Opus mono 8 kHz/24 kbps y hace POST al motor
+por la red privada. El motor valida token/expiración, calcula por sí mismo el
+SHA-256 y tamaño, sube a `YYYY/MM/DD/<dial_attempt_id>.opus` y deja la fila
+`ready`. La subida nunca usa overwrite: si el objeto existe exige que hash y
+tamaño coincidan. El script elimina el WAV sólo tras recibir HTTP 2xx.
+
+Al recibir `AgentComplete`, el motor conserva `Reason` (`caller`, `agent` o
+`transfer`) y `TalkTime`. Calidad muestra el lado técnico que finalizó el tramo
+y compara ese tiempo con la duración real del archivo para detectar audios
+truncados. `agent` describe el canal del lado ejecutivo; no prueba por sí solo
+que la persona haya pulsado intencionalmente “Colgar”.
+
+Para una caída prolongada del motor/Supabase, instala también
+`scripts/atlas-recording-retry.{service,timer}` en `/etc/systemd/system/` y
+habilita el timer. El script conserva un sidecar mode 0600 con el token efímero
+de esa llamada hasta que sube correctamente; nunca persiste la service role.
+
+El endpoint `/internal/recordings/:dial_attempt_id/ingest` debe quedar limitado
+por Security Group a la EC2 de Asterisk. El bucket debe ser privado; si es
+público, el motor falla al habilitar grabaciones. La service role permanece
+exclusivamente en la EC2 del dialer y jamás se entrega a Asterisk o al navegador.

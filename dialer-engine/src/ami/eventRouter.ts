@@ -8,7 +8,14 @@ import {
 } from "../supabaseClient";
 import { getProfileIdForExtension } from "../dialer/agentDirectory";
 import { pauseAgentForWrapUp } from "../dialer/agentPause";
-import { normalizeAmiUniqueId, queueMemberDialerStatus } from "./eventSemantics";
+import {
+  normalizeAmiUniqueId,
+  normalizeCallDisconnectParty,
+  normalizeQueueTalkSeconds,
+  queueMemberDialerStatus,
+} from "./eventSemantics";
+import type { RecordingCoordinator } from "../recording/types";
+import { AttemptEventLifecycle } from "./eventLifecycle";
 
 // uniqueid del canal saliente (la pata que originamos) -> dial_attempt_id.
 // Se puebla en OriginateResponse (ActionID = dial_attempt_id) y se limpia en Hangup.
@@ -34,12 +41,34 @@ const voicemailAttemptIds = new Set<string>();
 // Answered/AgentConnect y la transición terminal hacía que se perdieran el
 // bridge y la llamada. Esta cola conserva el orden por intento sin serializar
 // llamadas independientes.
-const taskTailByAttemptId = new Map<string, Promise<void>>();
+const taskTailByAttemptId = new Map<string, Promise<unknown>>();
+const attemptLifecycle = new AttemptEventLifecycle();
+const correlationCleanupTimers = new Map<string, NodeJS.Timeout>();
+const CORRELATION_CLEANUP_MS = 30_000;
+
+function cleanupAttemptCorrelation(dialAttemptId: string): void {
+  for (const [knownUniqueId, knownAttemptId] of attemptByUniqueId) {
+    if (knownAttemptId === dialAttemptId) attemptByUniqueId.delete(knownUniqueId);
+  }
+  answerStateByAttemptId.delete(dialAttemptId);
+  voicemailAttemptIds.delete(dialAttemptId);
+  attemptLifecycle.clear(dialAttemptId);
+  const timer = correlationCleanupTimers.get(dialAttemptId);
+  if (timer) clearTimeout(timer);
+  correlationCleanupTimers.delete(dialAttemptId);
+}
+
+function scheduleAttemptCorrelationCleanup(dialAttemptId: string): void {
+  if (correlationCleanupTimers.has(dialAttemptId)) return;
+  const timer = setTimeout(() => cleanupAttemptCorrelation(dialAttemptId), CORRELATION_CLEANUP_MS);
+  timer.unref();
+  correlationCleanupTimers.set(dialAttemptId, timer);
+}
 
 function enqueueAttemptTask(
   dialAttemptId: string,
   eventName: string,
-  task: () => Promise<void>
+  task: () => Promise<unknown>
 ): void {
   const previous = taskTailByAttemptId.get(dialAttemptId) ?? Promise.resolve();
   const current = previous
@@ -67,6 +96,7 @@ function attemptIdFromEvent(evt: Record<string, unknown>): string | undefined {
     evt.linkedid,
     evt.bridgeduniqueid,
     evt.destuniqueid,
+    evt.destlinkedid,
   ]) {
     const id = String(value ?? "");
     const attemptId = attemptByUniqueId.get(id);
@@ -89,7 +119,11 @@ function hangupCauseToStatus(cause: unknown): "no_answer" | "busy" | "failed" | 
  * Supabase. Cualquier evento sin dial_attempt_id conocido se ignora (por
  * ejemplo, llamadas entrantes fuera del ciclo de discado outbound).
  */
-export function registerEventRouter(ami: AmiClient, campaignIdByQueue: Map<string, string>) {
+export function registerEventRouter(
+  ami: AmiClient,
+  campaignIdByQueue: Map<string, string>,
+  recording?: RecordingCoordinator
+) {
   ami.on("managerevent", (evt) => {
     const event = String(evt.event ?? "").toLowerCase();
 
@@ -147,6 +181,19 @@ export function registerEventRouter(ami: AmiClient, campaignIdByQueue: Map<strin
         const profileId = extension ? getProfileIdForExtension(extension) : undefined;
         if (!dialAttemptId) return;
 
+        // Propaga la correlación a todas las patas informadas por Queue para
+        // que AgentComplete/Hangup puedan detener la misma grabación.
+        for (const value of [
+          evt.uniqueid,
+          evt.linkedid,
+          evt.bridgeduniqueid,
+          evt.destuniqueid,
+          evt.destlinkedid,
+        ]) {
+          const id = String(value ?? "");
+          if (id) attemptByUniqueId.set(id, dialAttemptId);
+        }
+
         const state = answerStateByAttemptId.get(dialAttemptId) ?? { answered: false, bridged: false };
         state.bridged = true;
         answerStateByAttemptId.set(dialAttemptId, state);
@@ -160,7 +207,7 @@ export function registerEventRouter(ami: AmiClient, campaignIdByQueue: Map<strin
               return;
             }
 
-            await registerDialEvent({
+            const callId = await registerDialEvent({
               dialAttemptId,
               eventType: "bridged",
               agentId: profileId,
@@ -168,6 +215,23 @@ export function registerEventRouter(ami: AmiClient, campaignIdByQueue: Map<strin
             });
 
             const effects: Promise<unknown>[] = [emitIncomingDialEvent(dialAttemptId, profileId)];
+            const channel = String(evt.channel ?? "");
+            if (recording && callId && channel) {
+              effects.push(
+                recording.start({
+                  dialAttemptId,
+                  callId,
+                  agentId: profileId,
+                  campaignId,
+                  channel,
+                })
+              );
+            } else if (recording && (!callId || !channel)) {
+              logger.error(
+                { dialAttemptId, callId, channel },
+                "No se inició grabación: AgentConnect sin call_id/canal"
+              );
+            }
             if (campaignId) {
               effects.push(
                 updateAgentDialerStatus({
@@ -203,6 +267,22 @@ export function registerEventRouter(ami: AmiClient, campaignIdByQueue: Map<strin
         return;
 
       case "agentcomplete": {
+        const dialAttemptId = attemptIdFromEvent(evt);
+        const disconnectParty = normalizeCallDisconnectParty(evt.reason);
+        const queueTalkSeconds = normalizeQueueTalkSeconds(evt.talktime);
+        if (dialAttemptId && recording) {
+          // Comparte la cola del AgentConnect: así la fila/grant de grabación
+          // siempre existe antes de guardar Reason/TalkTime, incluso en
+          // llamadas de pocos segundos.
+          enqueueAttemptTask(dialAttemptId, "cierre de grabación en AgentComplete", () =>
+            recording.stop(dialAttemptId, { disconnectParty, queueTalkSeconds })
+          );
+        }
+        if (dialAttemptId) {
+          const lifecycle = attemptLifecycle.registerAgentComplete(dialAttemptId);
+          if (lifecycle.cleanup) cleanupAttemptCorrelation(dialAttemptId);
+          else scheduleAttemptCorrelationCleanup(dialAttemptId);
+        }
         const queue = String(evt.queue ?? "");
         const campaignId = campaignIdByQueue.get(queue);
         const extension = extensionFromInterface(evt.interface ?? evt.membername);
@@ -231,12 +311,19 @@ export function registerEventRouter(ami: AmiClient, campaignIdByQueue: Map<strin
       }
 
       case "hangup": {
-        const uniqueId = String(evt.uniqueid ?? "");
-        const dialAttemptId = attemptByUniqueId.get(uniqueId);
+        const dialAttemptId = attemptIdFromEvent(evt);
         if (!dialAttemptId) return;
-        attemptByUniqueId.delete(uniqueId);
-
+        // Ambas patas del bridge generan Hangup. Sólo la primera determina el
+        // estado terminal; la correlación se conserva para un AgentComplete
+        // tardío, que es quien informa qué lado terminó la conversación.
         const state = answerStateByAttemptId.get(dialAttemptId);
+        const lifecycle = attemptLifecycle.registerHangup(dialAttemptId, state?.bridged === true);
+        if (lifecycle.duplicate) return;
+        if (recording) {
+          void recording.stop(dialAttemptId).catch((err) =>
+            logger.error({ err, dialAttemptId }, "StopMixMonitor de respaldo en Hangup falló")
+          );
+        }
         answerStateByAttemptId.delete(dialAttemptId);
 
         const wasVoicemail = voicemailAttemptIds.delete(dialAttemptId);
@@ -261,6 +348,11 @@ export function registerEventRouter(ami: AmiClient, campaignIdByQueue: Map<strin
             payload: { cause_txt: evt["cause-txt"] ?? null },
           })
         );
+        if (lifecycle.cleanup) {
+          cleanupAttemptCorrelation(dialAttemptId);
+        } else {
+          scheduleAttemptCorrelationCleanup(dialAttemptId);
+        }
         return;
       }
 

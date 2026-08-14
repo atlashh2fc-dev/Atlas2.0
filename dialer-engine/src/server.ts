@@ -9,6 +9,9 @@ import { ensureAgentEndpoints, ensureAmdContext } from "./asterisk/configSync";
 import { syncAgentPauseStates } from "./dialer/agentPause";
 import { checkAgentHeartbeats } from "./dialer/agentHeartbeat";
 import { AGENT_CONTROL_POLL_MS, processAgentControlCommands } from "./dialer/agentControl";
+import { AmiRecordingController } from "./recording/controller";
+import { assertPrivateRecordingBucket } from "./recording/storage";
+import { registerRecordingIngestRoute } from "./recording/ingest";
 
 const AGENT_DIRECTORY_REFRESH_MS = 10_000;
 const AGENT_PAUSE_SYNC_MS = 10_000;
@@ -21,6 +24,21 @@ async function main() {
 
   const ami = connectAmi();
 
+  const recording = config.recording.enabled
+    ? new AmiRecordingController(
+        ami,
+        config.recording.spoolDir,
+        config.recording.bucket,
+        config.recording.ingestBaseUrl,
+        config.recording.uploadCommand,
+        config.recording.ingestTokenTtlSeconds
+      )
+    : undefined;
+  if (recording) {
+    // Falla cerrado si alguien convirtió accidentalmente el bucket en público.
+    await assertPrivateRecordingBucket(config.recording.bucket);
+  }
+
   // Contexto de dialplan para AMD (dialer_campaign_configs.amd_enabled) — se
   // crea una sola vez, idempotente (no pisa nada si ya existe).
   await ensureAmdContext(ami).catch((err) => logger.error({ err }, "ensureAmdContext falló al arrancar"));
@@ -29,7 +47,7 @@ async function main() {
   // dialer_campaign_configs (así el event router puede mapear
   // QueueMemberStatus a la campaña correcta sin config duplicada).
   const queueToCampaignId = new Map<string, string>();
-  registerEventRouter(ami, queueToCampaignId);
+  registerEventRouter(ami, queueToCampaignId, recording);
 
   // Directorio agente<->extensión: fuente de verdad viva en Supabase
   // (agent_sip_credentials), con el AGENT_EXTENSION_MAP estático del .env
@@ -97,12 +115,21 @@ async function main() {
   // Health-check HTTP: lo único que expone este servicio por red además de
   // AMI/Supabase. Un ALB/target group de AWS le pega a /health.
   const app = express();
+  if (recording) {
+    registerRecordingIngestRoute(app, {
+      bucket: config.recording.bucket,
+      maxUploadMb: config.recording.maxUploadMb,
+      retryAttempts: config.recording.retryAttempts,
+      retryBaseMs: config.recording.retryBaseMs,
+    });
+  }
   app.get("/health", (_req, res) => {
     const amiConnected = ami.isConnected();
     res.status(amiConnected ? 200 : 503).json({
       ok: amiConnected,
       ami: amiConnected ? "connected" : "disconnected",
       campaigns: config.campaignIds.length,
+      recording: config.recording.enabled ? "enabled" : "disabled",
     });
   });
   app.listen(config.port, () => logger.info({ port: config.port }, "Health check escuchando"));

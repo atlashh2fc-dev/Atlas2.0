@@ -1,6 +1,5 @@
-import { createClient } from "@supabase/supabase-js";
-import WebSocket from "ws";
-import { config } from "./config";
+import { supabase } from "./supabase";
+export { supabase } from "./supabase";
 
 /**
  * Cliente único con la service_role key. Bypassa RLS y es el único que puede
@@ -21,11 +20,6 @@ import { config } from "./config";
  */
 const OPEN_CALL_MAX_AGE_MS = 4 * 60 * 60 * 1000;
 export const STALE_QUEUED_SECONDS = 5 * 60;
-
-export const supabase = createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {
-  auth: { persistSession: false, autoRefreshToken: false },
-  realtime: { transport: WebSocket as unknown as never },
-});
 
 export type ClaimedTarget = {
   dial_attempt_id: string;
@@ -53,8 +47,8 @@ export async function registerDialEvent(params: {
   amiUniqueId?: string | null;
   amiChannel?: string | null;
   hangupCause?: string | null;
-}) {
-  const { error } = await supabase.rpc("register_dial_event", {
+}): Promise<string | null> {
+  const { data, error } = await supabase.rpc("register_dial_event", {
     p_dial_attempt_id: params.dialAttemptId,
     p_event_type: params.eventType,
     p_payload: params.payload ?? {},
@@ -64,6 +58,7 @@ export async function registerDialEvent(params: {
     p_hangup_cause: params.hangupCause ?? null,
   });
   if (error) throw new Error(`register_dial_event: ${error.message}`);
+  return typeof data === "string" ? data : null;
 }
 
 /**

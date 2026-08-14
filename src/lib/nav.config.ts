@@ -4,6 +4,7 @@ import {
   CalendarClock,
   CircleHelp,
   Database,
+  Headphones,
   LayoutDashboard,
   Megaphone,
   PhoneCall,
@@ -142,6 +143,14 @@ const CONSOLE: NavSpace = {
             // desempeño individual que puede escalar a un proceso disciplinario.
             { label: "Integridad", href: "/dashboard/reportes/integridad", roles: ["admin", "supervisor"] },
           ],
+        },
+        {
+          id: "calidad",
+          label: "Calidad",
+          href: "/dashboard/calidad",
+          icon: Headphones,
+          roles: OPERACION,
+          description: "Grabaciones post-llamada para revisión y control de calidad",
         },
       ],
     },

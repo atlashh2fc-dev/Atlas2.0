@@ -1,0 +1,84 @@
+#!/bin/sh
+set -eu
+
+umask 077
+
+upload_one() {
+  dial_attempt_id=$1
+  token=$2
+  ingest_base_url=${3%/}
+  wav_path=$4
+  expires_epoch=$5
+
+  now=$(date +%s)
+  if [ "$now" -ge "$expires_epoch" ]; then
+    echo "token expirado para ${dial_attempt_id}; se conserva el audio" >&2
+    return 75
+  fi
+
+  opus_path="${wav_path%.wav}.opus"
+  partial_path="${opus_path}.partial"
+  if [ ! -s "$opus_path" ]; then
+    ffmpeg -hide_banner -loglevel error -y -i "$wav_path" \
+      -vn -ac 1 -ar 8000 -c:a libopus -b:a 24k -vbr on \
+      -compression_level 10 -application voip -f opus "$partial_path"
+    mv "$partial_path" "$opus_path"
+  fi
+
+  duration=$(ffprobe -v error -show_entries format=duration \
+    -of default=noprint_wrappers=1:nokey=1 "$opus_path")
+
+  curl --fail --silent --show-error \
+    --retry 5 --retry-delay 2 --retry-max-time 180 --retry-all-errors \
+    --connect-timeout 5 --max-time 120 \
+    -X POST "${ingest_base_url}/${dial_attempt_id}/ingest" \
+    -H "Authorization: Bearer ${token}" \
+    -H "Content-Type: audio/ogg" \
+    -H "X-Recording-Duration-Seconds: ${duration}" \
+    --data-binary "@${opus_path}"
+
+  rm -f "$wav_path" "$opus_path" "${wav_path%.wav}.upload"
+}
+
+if [ "${1:-}" = "--retry-spool" ]; then
+  [ "$#" -eq 2 ] || { echo "uso: atlas-recording-upload --retry-spool <spool_dir>" >&2; exit 64; }
+  spool_dir=$2
+  for job_path in "$spool_dir"/*.upload; do
+    [ -f "$job_path" ] || continue
+    lock_path="${job_path}.lock"
+    mkdir "$lock_path" 2>/dev/null || continue
+    trap 'rmdir "$lock_path" 2>/dev/null || true' EXIT INT TERM
+    IFS='|' read -r saved_id saved_token saved_url saved_wav saved_expiry < "$job_path"
+    upload_one "$saved_id" "$saved_token" "$saved_url" "$saved_wav" "$saved_expiry" || true
+    rmdir "$lock_path" 2>/dev/null || true
+    trap - EXIT INT TERM
+  done
+  exit 0
+fi
+
+if [ "$#" -ne 5 ]; then
+  echo "uso: atlas-recording-upload <dial_attempt_id> <token> <ingest_base_url> <wav_path> <expires_epoch>" >&2
+  exit 64
+fi
+
+dial_attempt_id=$1
+token=$2
+ingest_base_url=${3%/}
+wav_path=$4
+expires_epoch=$5
+
+case "$dial_attempt_id" in
+  *[!a-zA-Z0-9-]*) echo "dial_attempt_id inválido" >&2; exit 64 ;;
+esac
+
+case "$expires_epoch" in
+  *[!0-9]*) echo "expiración inválida" >&2; exit 64 ;;
+esac
+
+# Sidecar 0600 para reintentos del timer. Contiene sólo un token efímero de
+# esta llamada, nunca la service_role. Se elimina junto al audio tras HTTP 2xx.
+job_path="${wav_path%.wav}.upload"
+printf '%s|%s|%s|%s|%s\n' \
+  "$dial_attempt_id" "$token" "$ingest_base_url" "$wav_path" "$expires_epoch" > "$job_path"
+
+upload_one "$dial_attempt_id" "$token" "$ingest_base_url" "$wav_path" "$expires_epoch"

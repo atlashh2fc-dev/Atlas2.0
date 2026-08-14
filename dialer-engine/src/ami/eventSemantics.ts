@@ -5,6 +5,8 @@ export type DialerAgentStatus =
   | "on_call"
   | "paused";
 
+export type CallDisconnectParty = "caller" | "agent" | "transfer";
+
 const INVALID_AMI_UNIQUE_IDS = new Set(["", "unknown", "<unknown>", "null", "none"]);
 
 /**
@@ -15,6 +17,23 @@ const INVALID_AMI_UNIQUE_IDS = new Set(["", "unknown", "<unknown>", "null", "non
 export function normalizeAmiUniqueId(value: unknown): string | null {
   const normalized = String(value ?? "").trim();
   return INVALID_AMI_UNIQUE_IDS.has(normalized.toLowerCase()) ? null : normalized;
+}
+
+/**
+ * AgentComplete.Reason es la señal autoritativa de app_queue para saber qué
+ * extremo terminó la conversación. No inferimos este dato desde Cause=16,
+ * porque "normal clearing" puede provenir tanto del cliente como del agente.
+ */
+export function normalizeCallDisconnectParty(value: unknown): CallDisconnectParty | null {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return normalized === "caller" || normalized === "agent" || normalized === "transfer"
+    ? normalized
+    : null;
+}
+
+export function normalizeQueueTalkSeconds(value: unknown): number | null {
+  const seconds = Number(value);
+  return Number.isInteger(seconds) && seconds >= 0 ? seconds : null;
 }
 
 /**

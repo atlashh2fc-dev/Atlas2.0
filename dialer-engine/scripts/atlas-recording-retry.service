@@ -1,0 +1,9 @@
+[Unit]
+Description=Atlas retry pending call recording uploads
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=asterisk
+Group=asterisk
+ExecStart=/usr/local/bin/atlas-recording-upload --retry-spool /var/spool/atlas-recordings

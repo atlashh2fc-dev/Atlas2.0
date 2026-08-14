@@ -29,6 +29,27 @@ const envSchema = z.object({
 
   TICK_MS: z.coerce.number().int().positive().default(3000),
   PORT: z.coerce.number().int().positive().default(8080),
+
+  // Grabaciones post-bridge. Esta ruta pertenece al filesystem remoto de
+  // Asterisk; el motor sólo la envía en la acción AMI MixMonitor.
+  RECORDING_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  RECORDING_SPOOL_DIR: z
+    .string()
+    .regex(/^\/[a-zA-Z0-9._/-]+$/, "RECORDING_SPOOL_DIR debe ser un path absoluto seguro")
+    .default("/var/spool/atlas-recordings"),
+  RECORDING_BUCKET: z.string().min(1).default("call-recordings"),
+  RECORDING_INGEST_BASE_URL: z.string().url().default("http://127.0.0.1:8080/internal/recordings"),
+  RECORDING_UPLOAD_COMMAND: z
+    .string()
+    .regex(/^\/[a-zA-Z0-9._/-]+$/, "RECORDING_UPLOAD_COMMAND debe ser un path absoluto seguro")
+    .default("/usr/local/bin/atlas-recording-upload"),
+  RECORDING_INGEST_TOKEN_TTL_SECONDS: z.coerce.number().int().min(300).max(86_400).default(43_200),
+  RECORDING_MAX_UPLOAD_MB: z.coerce.number().int().min(1).max(500).default(100),
+  RECORDING_RETRY_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(4),
+  RECORDING_RETRY_BASE_MS: z.coerce.number().int().positive().default(1000),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -73,4 +94,16 @@ export const config = {
 
   tickMs: env.TICK_MS,
   port: env.PORT,
+
+  recording: {
+    enabled: env.RECORDING_ENABLED,
+    spoolDir: env.RECORDING_SPOOL_DIR,
+    bucket: env.RECORDING_BUCKET,
+    ingestBaseUrl: env.RECORDING_INGEST_BASE_URL.replace(/\/$/, ""),
+    uploadCommand: env.RECORDING_UPLOAD_COMMAND,
+    ingestTokenTtlSeconds: env.RECORDING_INGEST_TOKEN_TTL_SECONDS,
+    maxUploadMb: env.RECORDING_MAX_UPLOAD_MB,
+    retryAttempts: env.RECORDING_RETRY_ATTEMPTS,
+    retryBaseMs: env.RECORDING_RETRY_BASE_MS,
+  },
 };
