@@ -107,14 +107,12 @@ export default async function CalidadAnalisisPage({
         ) : (
           <Table>
             <Thead>
-              <Tr>
-                <Th>Fecha de llamada</Th>
-                <Th>Campaña</Th>
-                <Th>Ejecutivo</Th>
-                <Th>Estado</Th>
-                <Th>Idioma</Th>
-                <Th align="right">Caracteres</Th>
-              </Tr>
+              <Th>Fecha de llamada</Th>
+              <Th>Campaña</Th>
+              <Th>Ejecutivo</Th>
+              <Th>Estado</Th>
+              <Th>Idioma</Th>
+              <Th align="right">Caracteres</Th>
             </Thead>
             <Tbody>
               {analysis.recent.map((row) => {
