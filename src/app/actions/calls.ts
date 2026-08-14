@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 import {
   CALL_REASONS,
+  type CallAgendaPayload,
   buildCallReasonCatalogFromWorkflow,
   validateCallClosure,
   type CallStatus,
@@ -638,14 +639,10 @@ export async function saveCallProgress(input: {
 }
 
 /** Guardar agenda (fecha/hora de próximo contacto) sin cerrar la llamada. */
-export async function saveCallAgenda(input: {
-  callId: string;
-  leadId: string;
-  nextActionAt: string;
-}): Promise<CallActionResult> {
+export async function saveCallAgenda(input: CallAgendaPayload): Promise<CallActionResult> {
   try {
     const { supabase, userId } = await requireAgent();
-    const { callId, leadId, nextActionAt } = input;
+    const { callId, leadId, nextActionAt, notes } = input;
     const campaignId = await getLeadCampaignId(supabase, leadId);
     await assertIntercallBreakCompleted({ userId, campaignId });
 
@@ -663,6 +660,7 @@ export async function saveCallAgenda(input: {
     const { error } = await supabase
       .from("calls")
       .update({
+        notes,
         next_action_at: nextActionAt,
         next_action_window: inferNextActionWindow(nextActionAt),
         callback_owner_user_id: userId,
@@ -681,11 +679,26 @@ export async function saveCallAgenda(input: {
       lead_id: leadId,
       agent_id: userId,
       event_type: "call.agenda_saved",
-      payload: { next_action_at: nextActionAt, next_action_window: inferNextActionWindow(nextActionAt) },
+      payload: {
+        next_action_at: nextActionAt,
+        next_action_window: inferNextActionWindow(nextActionAt),
+        notes_saved: Boolean(notes),
+      },
     });
     if (eventError) throw new Error(eventError.message);
 
+    // Igual que "Guardar avance", conserva el último contexto operativo sin
+    // borrar una observación previa cuando la agenda se guarda sin texto.
+    if (notes) {
+      const { error: leadError } = await supabase
+        .from("leads")
+        .update({ observacion_actual: notes })
+        .eq("id", leadId);
+      if (leadError) throw new Error(leadError.message);
+    }
+
     revalidatePath(`/dashboard/leads/${leadId}`);
+    revalidatePath("/dashboard/agenda");
     return { ok: true, data: null };
   } catch (error) {
     return callActionError("saveCallAgenda", error, { callId: input.callId, leadId: input.leadId });

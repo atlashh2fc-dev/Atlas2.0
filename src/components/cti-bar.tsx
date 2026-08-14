@@ -27,6 +27,7 @@ import {
   listMyAutomaticDialHistory,
   listMyDialerContacts,
   reportAgentPhoneTelemetry,
+  setMyActiveCampaign,
   type AgentPhoneTelemetryPhase,
   type AgentDialerHistoryItem,
   type AgentDialerOperatingMode,
@@ -242,8 +243,10 @@ export function CtiBar({ profile }: { profile: Profile }) {
   >(
     profile.role === "agente"
       ? undefined
-      : { mode: "manual", campaigns: [], session: null }
+      : { mode: "manual", active_campaign_id: null, campaigns: [], session: null }
   );
+  const [switchingCampaign, setSwitchingCampaign] = useState(false);
+  const [campaignSwitchError, setCampaignSwitchError] = useState<string | null>(null);
   const [automaticHistory, setAutomaticHistory] = useState<AgentDialerHistoryItem[]>([]);
   const [manualCampaignId, setManualCampaignId] = useState("");
   const [manualRecoveryOpen, setManualRecoveryOpen] = useState(false);
@@ -565,6 +568,24 @@ export function CtiBar({ profile }: { profile: Profile }) {
       setStatusError(err instanceof Error ? err.message : "No se pudo guardar el estado.");
     } finally {
       setSavingStatus(false);
+    }
+  }
+
+  async function handleActiveCampaignChange(campaignId: string) {
+    if (!campaignId || operatingMode?.active_campaign_id === campaignId) return;
+    setSwitchingCampaign(true);
+    setCampaignSwitchError(null);
+    try {
+      await setMyActiveCampaign(campaignId);
+      setOperatingMode((current) =>
+        current ? { ...current, active_campaign_id: campaignId, session: null } : current
+      );
+    } catch (err) {
+      setCampaignSwitchError(
+        err instanceof Error ? err.message : "No se pudo cambiar la campaña activa."
+      );
+    } finally {
+      setSwitchingCampaign(false);
     }
   }
 
@@ -1510,6 +1531,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
   const automaticOperationalAvailable =
     regState === "registered" &&
     agentCanCall &&
+    Boolean(operatingMode?.active_campaign_id) &&
     automaticSessionStatus === "available";
   const operationalStatusValue = inAutomaticWrapUp ? "__acw" : currentReasonId ?? "";
   const operationalStatusLabel = inLegalIntercallBreak
@@ -1523,6 +1545,9 @@ export function CtiBar({ profile }: { profile: Profile }) {
     manualCampaignId || (manualCampaigns.length === 1 ? manualCampaigns[0].id : "");
   const manualRecoveryCampaign = operatingMode?.campaigns.find(
     (campaign) => campaign.id === manualRecoveryCampaignId
+  );
+  const activeAutomaticCampaign = operatingMode?.campaigns.find(
+    (campaign) => campaign.id === operatingMode.active_campaign_id
   );
   const incomingFields = incomingContext
     ? Object.entries(incomingContext.extra).filter(
@@ -1850,6 +1875,8 @@ export function CtiBar({ profile }: { profile: Profile }) {
                                 ? "Conectando teléfono..."
                               : !agentCanCall
                                 ? `AUX · ${currentReason?.label ?? "Pausa"}`
+                                : !operatingMode.active_campaign_id
+                                  ? "Elige una campaña"
                                 : inLegalIntercallBreak
                                   ? `Interrupción legal · ${legalBreakRemaining}s`
                                   : inAutomaticWrapUp
@@ -1892,6 +1919,8 @@ export function CtiBar({ profile }: { profile: Profile }) {
                       <p className="mt-3 text-xs leading-relaxed text-white/65">
                         {!agentCanCall
                           ? "Mientras estés en AUX no se asignarán llamadas automáticas."
+                          : !operatingMode.active_campaign_id
+                            ? "Selecciona el skill que operarás ahora para entrar solamente a esa cola."
                           : inLegalIntercallBreak
                             ? "Interrupción efectiva protegida: durante estos 10 segundos no debes realizar tipificación ni otra tarea."
                             : inAutomaticWrapUp
@@ -1922,16 +1951,39 @@ export function CtiBar({ profile }: { profile: Profile }) {
                       )}
 
                       {operatingMode.campaigns.length > 0 && (
-                        <div className="mt-4 flex flex-wrap gap-1.5">
-                          {operatingMode.campaigns.map((campaign) => (
-                            <span
-                              key={campaign.id}
-                              className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-medium text-white/75"
-                            >
-                              {campaign.name}
+                        <label className="mt-4 block">
+                          <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.12em] text-white/55">
+                            Campaña activa
+                          </span>
+                          <select
+                            value={operatingMode.active_campaign_id ?? ""}
+                            onChange={(event) => void handleActiveCampaignChange(event.target.value)}
+                            disabled={switchingCampaign || activeCall || inAutomaticWrapUp}
+                            className="w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs font-semibold text-white outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                            aria-label="Campaña activa para recibir llamadas"
+                          >
+                            <option value="" className="text-foreground">Seleccionar campaña…</option>
+                            {operatingMode.campaigns
+                              .filter((campaign) => campaign.dial_mode !== "manual")
+                              .map((campaign) => (
+                                <option key={campaign.id} value={campaign.id} className="text-foreground">
+                                  {campaign.name}
+                                </option>
+                              ))}
+                          </select>
+                          <span className="mt-1.5 block text-[10px] text-white/55">
+                            {switchingCampaign
+                              ? "Cambiando de cola…"
+                              : activeAutomaticCampaign
+                                ? `Recibirás llamadas de ${activeAutomaticCampaign.name}.`
+                                : "No recibirás llamadas hasta elegir una campaña."}
+                          </span>
+                          {campaignSwitchError && (
+                            <span role="alert" className="mt-1.5 block text-[10px] font-medium text-red-200">
+                              {campaignSwitchError}
                             </span>
-                          ))}
-                        </div>
+                          )}
+                        </label>
                       )}
                     </div>
                   </div>

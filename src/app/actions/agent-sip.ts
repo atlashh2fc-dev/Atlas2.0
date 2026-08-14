@@ -46,6 +46,7 @@ export type AgentDialerSessionStatus =
 
 export type AgentDialerOperatingMode = {
   mode: "manual" | "automatic";
+  active_campaign_id: string | null;
   campaigns: Array<{
     id: string;
     name: string;
@@ -58,6 +59,21 @@ export type AgentDialerOperatingMode = {
     since: string;
   } | null;
 };
+
+/**
+ * Cambia el skill operativo del ejecutivo. La RPC valida membresia y evita
+ * cambios mientras exista una llamada o tipificacion en curso.
+ */
+export async function setMyActiveCampaign(campaignId: string): Promise<void> {
+  await requireProfile(["agente"]);
+  if (!campaignId) throw new Error("Selecciona una campaña.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("set_my_active_campaign", {
+    p_campaign_id: campaignId,
+  });
+  if (error) throw new Error(error.message);
+}
 
 export type AgentDialerHistoryItem = {
   id: string;
@@ -389,7 +405,7 @@ export async function getMyDialerOperatingMode(): Promise<AgentDialerOperatingMo
 
   const campaignIds = [...new Set((memberships ?? []).map((row) => row.campaign_id))];
   if (campaignIds.length === 0) {
-    return { mode: "manual", campaigns: [], session: null };
+    return { mode: "manual", active_campaign_id: null, campaigns: [], session: null };
   }
 
   const [{ data: configs, error: configsError }, { data: campaigns, error: campaignsError }] =
@@ -423,13 +439,29 @@ export async function getMyDialerOperatingMode(): Promise<AgentDialerOperatingMo
     .filter((config) => config.dial_mode !== "manual")
     .map((config) => config.id);
 
+  const { data: selection, error: selectionError } = await admin
+    .from("agent_active_campaigns")
+    .select("campaign_id")
+    .eq("profile_id", profile.id)
+    .maybeSingle();
+  if (selectionError) throw new Error(selectionError.message);
+
+  const selectedAutomaticCampaignId = automaticCampaignIds.includes(selection?.campaign_id ?? "")
+    ? selection?.campaign_id ?? null
+    : automaticCampaignIds.length === 1
+      ? automaticCampaignIds[0]
+      : null;
+
   const { data: session, error: sessionError } =
     automaticCampaignIds.length > 0
       ? await admin
           .from("dialer_agent_sessions")
           .select("campaign_id, status, last_state_change_at")
           .eq("profile_id", profile.id)
-          .in("campaign_id", automaticCampaignIds)
+          .in(
+            "campaign_id",
+            selectedAutomaticCampaignId ? [selectedAutomaticCampaignId] : automaticCampaignIds
+          )
           .order("updated_at", { ascending: false })
           .limit(1)
           .maybeSingle()
@@ -439,6 +471,7 @@ export async function getMyDialerOperatingMode(): Promise<AgentDialerOperatingMo
 
   return {
     mode: automaticCampaignIds.length > 0 ? "automatic" : "manual",
+    active_campaign_id: selectedAutomaticCampaignId,
     campaigns: activeConfigs,
     session: session
       ? {

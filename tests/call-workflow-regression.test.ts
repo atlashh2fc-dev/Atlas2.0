@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildCallAgendaPayload,
   buildCallReasonCatalogFromWorkflow,
   validateCallClosure,
 } from "../src/lib/call-typification.ts";
@@ -112,4 +113,31 @@ test("a non-agenda typification rejects a stale hidden schedule", () => {
   });
 
   assert.ok(errors.some((error) => error.includes("no admite una agenda")));
+});
+
+test("agenda persistence includes the executive observation", () => {
+  assert.deepEqual(
+    buildCallAgendaPayload({
+      callId: "call-1",
+      leadId: "lead-1",
+      nextActionAt: "2026-08-15T15:00:00.000Z",
+      notes: "Cliente pidió revisar la propuesta antes de volver a llamar.",
+    }),
+    {
+      callId: "call-1",
+      leadId: "lead-1",
+      nextActionAt: "2026-08-15T15:00:00.000Z",
+      notes: "Cliente pidió revisar la propuesta antes de volver a llamar.",
+    }
+  );
+
+  assert.equal(
+    buildCallAgendaPayload({
+      callId: "call-1",
+      leadId: "lead-1",
+      nextActionAt: "2026-08-15T15:00:00.000Z",
+      notes: "   ",
+    }).notes,
+    null
+  );
 });

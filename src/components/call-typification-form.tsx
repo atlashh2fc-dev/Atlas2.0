@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, CalendarClock, CheckCircle2, Clock3, ShieldCheck } from "lucide-react";
+import { AlertCircle, CalendarClock, CheckCircle2, Clock3, MessageSquare, ShieldCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { Call, Lead } from "@/lib/types";
 import {
   CALL_REASONS,
   EQUIFAX_PRODUCTS,
+  buildCallAgendaPayload,
   getCascadeReasonOptionsFrom,
   getCascadeResultOptionsFrom,
   getCascadeStateOptionsFrom,
@@ -28,6 +29,7 @@ import {
   INTERCALL_BREAK_STORAGE_KEY,
   readLegalIntercallBreakUntil,
 } from "@/lib/intercall-break";
+import { AppointmentScheduleEmbed } from "@/components/appointment-schedule-embed";
 
 function isoToLocalInput(iso: string | null): string {
   if (!iso) return "";
@@ -57,12 +59,15 @@ export function CallTypificationForm({
   lead,
   call,
   reasonCatalog,
+  appointmentScheduleUrl,
   priority = false,
   revision = false,
 }: {
   lead: Lead;
   call: Call;
   reasonCatalog?: CallReasonConfig[];
+  /** Agenda pública específica de la campaña, mostrada dentro del CRM. */
+  appointmentScheduleUrl?: string | null;
   /** La gestión llegó desde una llamada: debe dominar la pantalla. */
   priority?: boolean;
   /** Corrige una gestión ya cerrada sin crear una llamada ficticia. */
@@ -228,12 +233,22 @@ export function CallTypificationForm({
     setPending("agenda");
     setMessage(null);
     try {
-      const result = await saveCallAgenda({ callId: call.id, leadId: lead.id, nextActionAt: iso });
+      const result = await saveCallAgenda(
+        buildCallAgendaPayload({
+          callId: call.id,
+          leadId: lead.id,
+          nextActionAt: iso,
+          notes,
+        })
+      );
       if (!result.ok) {
         setMessage({ type: "error", text: result.error });
         return;
       }
-      setMessage({ type: "success", text: "Agenda guardada." });
+      setMessage({
+        type: "success",
+        text: notes.trim() ? "Agenda y observación guardadas." : "Agenda guardada.",
+      });
     } catch (e) {
       setMessage({ type: "error", text: e instanceof Error ? e.message : "Error al guardar agenda." });
     } finally {
@@ -331,6 +346,21 @@ export function CallTypificationForm({
             <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
               Esta llamada queda en cierre hasta que selecciones un motivo y guardes la gestión.
             </p>
+          </div>
+        </div>
+      )}
+      {!revision && !call.notes && lead.observacion_actual?.trim() && (
+        <div className="flex items-start gap-3 rounded-2xl border border-border bg-surface-muted px-4 py-3">
+          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface text-primary">
+            <MessageSquare size={17} aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-foreground">Última observación registrada</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {lead.tipificacion_actual ?? "Gestión anterior"}
+              {lead.managed_at ? ` · ${new Date(lead.managed_at).toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short", timeZone: "America/Santiago" })}` : ""}
+            </p>
+            <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">{lead.observacion_actual}</p>
           </div>
         </div>
       )}
@@ -448,9 +478,19 @@ export function CallTypificationForm({
 
           {showAgendaBlock && (
             <div className="rounded-lg border border-border bg-background p-4">
-              <div className="mb-3 flex items-center gap-2">
-                <CalendarClock size={16} className="text-warning" />
-                <h3 className="text-sm font-semibold text-foreground">Agenda requerida</h3>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <CalendarClock size={16} className="text-warning" />
+                  <h3 className="text-sm font-semibold text-foreground">
+                    {reasonConfig?.agenda === "required" ? "Agenda requerida" : "Agenda"}
+                  </h3>
+                </div>
+                {appointmentScheduleUrl && (
+                  <AppointmentScheduleEmbed
+                    title="Disponibilidad · Abogado Legal"
+                    url={appointmentScheduleUrl}
+                  />
+                )}
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
@@ -476,7 +516,11 @@ export function CallTypificationForm({
                   disabled={pending !== null}
                   className="mt-3 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-surface-muted disabled:opacity-50"
                 >
-                  {pending === "agenda" ? "Guardando agenda..." : "Guardar agenda"}
+                  {pending === "agenda"
+                    ? "Guardando agenda..."
+                    : notes.trim()
+                      ? "Guardar agenda y observación"
+                      : "Guardar agenda"}
                 </button>
               )}
             </div>

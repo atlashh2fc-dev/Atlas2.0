@@ -15,6 +15,7 @@ import { completeKovacsDemoAssignment } from "@/app/actions/lead-orchestrator";
 import type { Campaign, Lead, Profile, Team, Workflow, WorkflowStep, WorkflowStepBranch } from "@/lib/types";
 import { ActionForm, ActionSubmit, Badge, Callout, Card, InfoTooltip, PageHeader, buttonClasses } from "@/components/ui";
 import type { ReactNode } from "react";
+import { getCampaignAppointmentScheduleUrl } from "@/lib/campaign-appointment-schedules";
 
 /** Fila etiqueta/valor de la columna de identidad. */
 function InfoRow({ label, children }: { label: ReactNode; children: ReactNode }) {
@@ -99,6 +100,7 @@ export default async function LeadDetailPage({
   const record = lead360 as Lead360;
   const lead = record.lead;
   const campaign = record.campaign;
+  const appointmentScheduleUrl = getCampaignAppointmentScheduleUrl(campaign?.name);
   const assignedProfile = record.assigned_profile;
   const team = record.team;
   const contacts = record.contacts ?? [];
@@ -272,6 +274,7 @@ export default async function LeadDetailPage({
             lead={lead}
             call={call}
             reasonCatalog={reasonCatalog}
+            appointmentScheduleUrl={appointmentScheduleUrl}
             priority={prioritizeTypification}
           />
         </section>
@@ -283,6 +286,7 @@ export default async function LeadDetailPage({
             lead={lead}
             call={revisableCall}
             reasonCatalog={reasonCatalog}
+            appointmentScheduleUrl={appointmentScheduleUrl}
             revision
           />
         </section>

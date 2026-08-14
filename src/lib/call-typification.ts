@@ -433,6 +433,32 @@ export interface CallClosurePayload {
   lead_email?: string | null;
 }
 
+export interface CallAgendaPayload {
+  callId: string;
+  leadId: string;
+  nextActionAt: string;
+  notes: string | null;
+}
+
+/**
+ * Contrato compartido por la UI y la acción de agenda. Mantener las notas en
+ * este payload evita que el CTA confirme un guardado que sólo existió en el
+ * estado local del navegador.
+ */
+export function buildCallAgendaPayload(input: {
+  callId: string;
+  leadId: string;
+  nextActionAt: string;
+  notes: string;
+}): CallAgendaPayload {
+  return {
+    callId: input.callId,
+    leadId: input.leadId,
+    nextActionAt: input.nextActionAt,
+    notes: input.notes.trim() ? input.notes : null,
+  };
+}
+
 function normalizeText(value: string | null | undefined) {
   return String(value ?? "")
     .trim()
