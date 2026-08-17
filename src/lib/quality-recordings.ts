@@ -47,6 +47,7 @@ export type QualityRecordingRow = {
   callOutcome: string | null;
   disconnectParty: RecordingDisconnectParty | null;
   queueTalkSeconds: number | null;
+  talkTimeSource: "asterisk_queue" | "dial_attempt" | "unavailable";
   leadName: string;
   rut: string;
   startedAt: string;
@@ -73,6 +74,7 @@ export type QualityRecordingsPage = {
 
 type RecordingRecord = {
   id: string;
+  dial_attempt_id: string;
   call_id: string;
   lead_id: string;
   campaign_id: string;
@@ -135,7 +137,7 @@ export async function fetchQualityRecordings(
     let query = supabase
       .from("call_recordings")
       .select(
-        "id, call_id, lead_id, campaign_id, agent_id, started_at, ended_at, duration_seconds, codec, size_bytes, disconnect_party, queue_talk_seconds, status",
+        "id, dial_attempt_id, call_id, lead_id, campaign_id, agent_id, started_at, ended_at, duration_seconds, codec, size_bytes, disconnect_party, queue_talk_seconds, status",
         { count: "exact" }
       )
       .neq("status", "deleted")
@@ -175,12 +177,14 @@ export async function fetchQualityRecordings(
     const agentIdSet = [...new Set(recordings.map((recording) => recording.agent_id))];
     const campaignIdSet = [...new Set(recordings.map((recording) => recording.campaign_id))];
     const callIdSet = [...new Set(recordings.map((recording) => recording.call_id))];
+    const dialAttemptIdSet = [...new Set(recordings.map((recording) => recording.dial_attempt_id))];
 
     const [
       leadsResult,
       agentsResult,
       campaignsResult,
       callsResult,
+      dialAttemptsResult,
       transcriptionsResult,
       evaluationsResult,
     ] = await Promise.all([
@@ -195,6 +199,12 @@ export async function fetchQualityRecordings(
         : Promise.resolve({ data: [], error: null }),
       callIdSet.length
         ? relatedDataClient.from("calls").select("id, reason, outcome, ended_at, discarded_reason").in("id", callIdSet)
+        : Promise.resolve({ data: [], error: null }),
+      dialAttemptIdSet.length
+        ? relatedDataClient
+            .from("dial_attempts")
+            .select("id, bridged_at, ended_at")
+            .in("id", dialAttemptIdSet)
         : Promise.resolve({ data: [], error: null }),
       recordings.length
         ? supabase
@@ -217,6 +227,7 @@ export async function fetchQualityRecordings(
       agentsResult.error ??
       campaignsResult.error ??
       callsResult.error ??
+      dialAttemptsResult.error ??
       transcriptionsResult.error ??
       evaluationsResult.error;
     if (relatedError) throw new Error(relatedError.message);
@@ -234,6 +245,12 @@ export async function fetchQualityRecordings(
       (callsResult.data ?? []).map((call) => [
         call.id as string,
         call as { reason: string | null; outcome: string | null; ended_at: string | null; discarded_reason: string | null },
+      ])
+    );
+    const dialAttempts = new Map(
+      (dialAttemptsResult.data ?? []).map((attempt) => [
+        attempt.id as string,
+        attempt as { bridged_at: string | null; ended_at: string | null },
       ])
     );
     const transcriptions = new Map(
@@ -259,8 +276,17 @@ export async function fetchQualityRecordings(
         const call = calls.get(recording.call_id);
         const durationSeconds =
           recording.duration_seconds === null ? null : Number(recording.duration_seconds);
-        const queueTalkSeconds =
+        const exactQueueTalkSeconds =
           recording.queue_talk_seconds === null ? null : Number(recording.queue_talk_seconds);
+        const attempt = dialAttempts.get(recording.dial_attempt_id);
+        const attemptTalkSeconds =
+          attempt?.bridged_at && attempt.ended_at
+            ? Math.max(
+                0,
+                (new Date(attempt.ended_at).getTime() - new Date(attempt.bridged_at).getTime()) / 1000
+              )
+            : null;
+        const queueTalkSeconds = exactQueueTalkSeconds ?? attemptTalkSeconds;
         const evaluation = evaluations.get(recording.id);
         return {
           id: recording.id,
@@ -276,6 +302,12 @@ export async function fetchQualityRecordings(
           callOutcome: call?.outcome ?? null,
           disconnectParty: recording.disconnect_party,
           queueTalkSeconds,
+          talkTimeSource:
+            exactQueueTalkSeconds !== null
+              ? "asterisk_queue"
+              : attemptTalkSeconds !== null
+                ? "dial_attempt"
+                : "unavailable",
           leadName: lead?.full_name ?? "Cliente no disponible",
           rut: lead?.rut ?? "Sin RUT",
           startedAt: recording.started_at,

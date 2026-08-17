@@ -21,6 +21,11 @@ import { AttemptEventLifecycle } from "./eventLifecycle";
 // Se puebla en OriginateResponse (ActionID = dial_attempt_id) y se limpia en Hangup.
 const attemptByUniqueId = new Map<string, string>();
 
+// extensión del miembro de Queue -> intento actualmente bridgeado. Algunos
+// Asterisk omiten Uniqueid/Linkedid en AgentComplete; la extensión sigue
+// siendo inequívoca porque un agente sólo puede atender una llamada a la vez.
+const attemptByAgentExtension = new Map<string, string>();
+
 // dial_attempt_id -> si el cliente contestó y si llegó a bridgearse con un
 // agente. Si contestó pero nunca hubo bridge antes del hangup, es un
 // abandono real (el discador dejó a alguien esperando sin agente
@@ -49,6 +54,9 @@ const CORRELATION_CLEANUP_MS = 30_000;
 function cleanupAttemptCorrelation(dialAttemptId: string): void {
   for (const [knownUniqueId, knownAttemptId] of attemptByUniqueId) {
     if (knownAttemptId === dialAttemptId) attemptByUniqueId.delete(knownUniqueId);
+  }
+  for (const [extension, knownAttemptId] of attemptByAgentExtension) {
+    if (knownAttemptId === dialAttemptId) attemptByAgentExtension.delete(extension);
   }
   answerStateByAttemptId.delete(dialAttemptId);
   voicemailAttemptIds.delete(dialAttemptId);
@@ -180,6 +188,7 @@ export function registerEventRouter(
         const extension = extensionFromInterface(evt.interface ?? evt.membername);
         const profileId = extension ? getProfileIdForExtension(extension) : undefined;
         if (!dialAttemptId) return;
+        if (extension) attemptByAgentExtension.set(extension, dialAttemptId);
 
         // Propaga la correlación a todas las patas informadas por Queue para
         // que AgentComplete/Hangup puedan detener la misma grabación.
@@ -267,9 +276,16 @@ export function registerEventRouter(
         return;
 
       case "agentcomplete": {
-        const dialAttemptId = attemptIdFromEvent(evt);
-        const disconnectParty = normalizeCallDisconnectParty(evt.reason);
-        const queueTalkSeconds = normalizeQueueTalkSeconds(evt.talktime);
+        const extension = extensionFromInterface(evt.interface ?? evt.membername);
+        const dialAttemptId =
+          attemptIdFromEvent(evt) ??
+          (extension ? attemptByAgentExtension.get(extension) : undefined);
+        const disconnectParty = normalizeCallDisconnectParty(
+          evt.reason ?? evt["disconnect-reason"]
+        );
+        const queueTalkSeconds = normalizeQueueTalkSeconds(
+          evt.talktime ?? evt.talk_time ?? evt["talk-time"]
+        );
         if (dialAttemptId && recording) {
           // Comparte la cola del AgentConnect: así la fila/grant de grabación
           // siempre existe antes de guardar Reason/TalkTime, incluso en
@@ -282,10 +298,19 @@ export function registerEventRouter(
           const lifecycle = attemptLifecycle.registerAgentComplete(dialAttemptId);
           if (lifecycle.cleanup) cleanupAttemptCorrelation(dialAttemptId);
           else scheduleAttemptCorrelationCleanup(dialAttemptId);
+        } else {
+          logger.warn(
+            {
+              extension,
+              queue: evt.queue ?? null,
+              uniqueid: evt.uniqueid ?? null,
+              linkedid: evt.linkedid ?? null,
+            },
+            "AgentComplete sin correlación; no se pudo guardar lado/TalkTime"
+          );
         }
         const queue = String(evt.queue ?? "");
         const campaignId = campaignIdByQueue.get(queue);
-        const extension = extensionFromInterface(evt.interface ?? evt.membername);
         const profileId = extension ? getProfileIdForExtension(extension) : undefined;
         if (!campaignId || !extension || !profileId) return;
 

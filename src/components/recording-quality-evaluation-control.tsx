@@ -65,14 +65,18 @@ function formatTimestamp(seconds: number | undefined) {
 export function RecordingQualityEvaluationControl({
   recordingId,
   campaignName,
+  playable,
   transcriptionStatus,
+  eligible,
   initialStatus,
   initialScore,
   initialVerdict,
 }: {
   recordingId: string;
   campaignName: string;
+  playable: boolean;
   transcriptionStatus: "pending" | "processing" | "completed" | "failed" | null;
+  eligible: boolean;
   initialStatus: QualityEvaluationStatus | null;
   initialScore: number | null;
   initialVerdict: QualityEvaluationVerdict | null;
@@ -85,18 +89,36 @@ export function RecordingQualityEvaluationControl({
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [evaluation, setEvaluation] = useState<EvaluationPayload | null>(null);
+  const [transcriptionReady, setTranscriptionReady] = useState(transcriptionStatus === "completed");
 
   if (!isSecretariaVirtualAuditCampaign(campaignName)) {
     return <span className="whitespace-nowrap text-xs text-muted-foreground">Sin pauta</span>;
   }
-  if (transcriptionStatus !== "completed") {
-    return <span className="whitespace-nowrap text-xs text-muted-foreground">Requiere texto</span>;
+  if (!playable) {
+    return <span className="whitespace-nowrap text-xs text-muted-foreground">Sin audio</span>;
+  }
+  if (transcriptionStatus === "processing" && !transcriptionReady && status !== "completed") {
+    return (
+      <Badge tone="info">
+        <LoaderCircle size={13} className="animate-spin" />
+        Transcribiendo
+      </Badge>
+    );
   }
 
   const request = async (method: "GET" | "POST") => {
     const response = await fetch(
       `/api/calidad/grabaciones/${encodeURIComponent(recordingId)}/evaluate`,
-      { method, cache: "no-store" }
+      {
+        method,
+        cache: "no-store",
+        ...(method === "POST"
+          ? {
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ overrideSelection: !eligible }),
+            }
+          : {}),
+      }
     );
     const payload = (await response.json()) as EvaluationPayload;
     if (!response.ok) throw new Error(payload.error ?? payload.message ?? "No se pudo procesar la auditoría.");
@@ -107,6 +129,30 @@ export function RecordingQualityEvaluationControl({
     setLoading(true);
     setStatus("processing");
     try {
+      if (!transcriptionReady) {
+        const transcriptionResponse = await fetch(
+          `/api/calidad/grabaciones/${encodeURIComponent(recordingId)}/transcribe`,
+          {
+            method: "POST",
+            cache: "no-store",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ overrideSelection: !eligible }),
+          }
+        );
+        const transcriptionPayload = (await transcriptionResponse.json()) as {
+          status?: string;
+          error?: string;
+          message?: string;
+        };
+        if (!transcriptionResponse.ok || transcriptionPayload.status !== "completed") {
+          throw new Error(
+            transcriptionPayload.error ??
+              transcriptionPayload.message ??
+              "No se pudo preparar la transcripción para evaluar el guion."
+          );
+        }
+        setTranscriptionReady(true);
+      }
       const payload = await request("POST");
       setStatus(payload.status === "not_applicable" ? null : payload.status ?? "completed");
       setScore(payload.score ?? null);
@@ -162,9 +208,19 @@ export function RecordingQualityEvaluationControl({
           Auditando
         </Badge>
       ) : (
-        <Button type="button" variant="secondary" size="sm" onClick={evaluate}>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={evaluate}
+          title={
+            transcriptionReady
+              ? "Evalúa el apego al guion vigente"
+              : "Transcribe la llamada y luego evalúa su apego al guion"
+          }
+        >
           {status === "failed" ? <RotateCcw size={14} /> : <BrainCircuit size={14} />}
-          {status === "failed" ? "Reintentar" : "Auditar"}
+          {status === "failed" ? "Reintentar" : "Evaluar script"}
         </Button>
       )}
 

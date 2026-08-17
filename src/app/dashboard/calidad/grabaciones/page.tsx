@@ -116,7 +116,7 @@ export default async function GrabacionesPage({
       </FilterBar>
 
       <Callout tone="info">
-        La transcripción se habilita solo para ventas o rechazos de más de 2 minutos con audio íntegro. Las demás llamadas no consumen cuota.
+        Atlas selecciona automáticamente ventas o rechazos de más de 2 minutos con audio íntegro. En cualquier otra grabación disponible puedes usar “Transcribir igual”; “Evaluar script” prepara el texto y muestra el apego a la pauta en un solo paso.
       </Callout>
       {!mercuryConfigured && (
         <Callout tone="warning">

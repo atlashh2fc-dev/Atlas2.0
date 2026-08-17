@@ -133,8 +133,17 @@ export async function POST(
     queueTalkSeconds: recording.queue_talk_seconds === null ? null : Number(recording.queue_talk_seconds),
     outcome: call.outcome as string | null,
   });
-  if (!eligibility.eligible) {
-    return json({ error: `Esta llamada no fue seleccionada: ${eligibility.label}.` }, 422);
+  const body = await request.json().catch(() => ({})) as { overrideSelection?: unknown };
+  const overrideSelection = body.overrideSelection === true;
+  if (!eligibility.eligible && !overrideSelection) {
+    return json(
+      {
+        error: `Esta llamada no fue seleccionada automáticamente: ${eligibility.label}. Puedes transcribirla manualmente.`,
+        code: "manual_override_required",
+        eligibility,
+      },
+      422
+    );
   }
 
   const sizeBytes = Number(recording.size_bytes ?? 0);

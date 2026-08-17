@@ -171,7 +171,7 @@ export async function GET(
 }
 
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
@@ -189,8 +189,17 @@ export async function POST(
     return json({ error: "No se pudo validar la tipificación de la llamada." }, 500);
   }
   const eligibility = auditEligibility(authorized.recording, outcome);
-  if (!eligibility.eligible) {
-    return json({ error: `Esta llamada no fue seleccionada: ${eligibility.label}.` }, 422);
+  const body = await request.json().catch(() => ({})) as { overrideSelection?: unknown };
+  const overrideSelection = body.overrideSelection === true;
+  if (!eligibility.eligible && !overrideSelection) {
+    return json(
+      {
+        error: `Esta llamada no fue seleccionada automáticamente: ${eligibility.label}. Puedes evaluarla manualmente.`,
+        code: "manual_override_required",
+        eligibility,
+      },
+      422
+    );
   }
 
   const apiKey = process.env.INCEPTION_API_KEY?.trim();

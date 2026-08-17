@@ -53,7 +53,7 @@ const DISCONNECT_PARTY: Record<
 
 function disconnectPartyLabel(row: QualityRecordingRow) {
   if (row.disconnectParty) return DISCONNECT_PARTY[row.disconnectParty]?.label ?? "No determinado";
-  return row.endedAt ? "Sin registro" : "En curso";
+  return row.endedAt ? "No informado" : "En curso";
 }
 
 const columns: Column<QualityRecordingRow>[] = [
@@ -97,7 +97,7 @@ const columns: Column<QualityRecordingRow>[] = [
   {
     id: "disconnectParty",
     header: "Lado que finalizó",
-    tooltip: "Lado técnico cuyo canal terminó el tramo de cola según Asterisk; no prueba intención humana.",
+    tooltip: "Lado técnico informado por AgentComplete. El motor también correlaciona por extensión cuando Asterisk omite los IDs; no prueba intención humana.",
     value: disconnectPartyLabel,
     cell: (row) => {
       if (!row.disconnectParty) {
@@ -113,7 +113,7 @@ const columns: Column<QualityRecordingRow>[] = [
   {
     id: "integrity",
     header: "Integridad",
-    tooltip: "Compara la duración del archivo con el TalkTime informado por Asterisk, con 2 segundos de tolerancia.",
+    tooltip: "Compara la duración del archivo con TalkTime de Asterisk; si falta, usa el tramo bridgeado durable. Tolerancia: 2 segundos.",
     value: (row) => {
       const integrity = classifyRecordingIntegrity(row);
       if (integrity === "complete") return "Completa";
@@ -123,7 +123,19 @@ const columns: Column<QualityRecordingRow>[] = [
     },
     cell: (row) => {
       const integrity = classifyRecordingIntegrity(row);
-      if (integrity === "complete") return <Badge tone="success">Completa</Badge>;
+      if (integrity === "complete") {
+        return (
+          <span
+            title={
+              row.talkTimeSource === "dial_attempt"
+                ? "Verificada contra la duración bridgeada de la llamada."
+                : "Verificada contra TalkTime de Asterisk."
+            }
+          >
+            <Badge tone="success">Completa</Badge>
+          </span>
+        );
+      }
       if (integrity === "incomplete") return <Badge tone="danger">Incompleta</Badge>;
       return (
         <span className="whitespace-nowrap text-muted-foreground">
@@ -165,6 +177,25 @@ const columns: Column<QualityRecordingRow>[] = [
     cell: (row) => <RecordingAudioPlayer recordingId={row.id} playable={row.status === "ready"} />,
   },
   {
+    id: "evaluation",
+    header: "Apego al script",
+    tooltip: "Transcribe si hace falta y puntúa el apego al guion vigente con Mercury 2; requiere revisión humana.",
+    value: (row) => row.evaluationScore,
+    sortable: false,
+    cell: (row) => (
+      <RecordingQualityEvaluationControl
+        recordingId={row.id}
+        campaignName={row.campaignName}
+        playable={row.status === "ready"}
+        transcriptionStatus={row.transcriptionStatus}
+        eligible={row.transcriptionEligibility.eligible}
+        initialStatus={row.evaluationStatus}
+        initialScore={row.evaluationScore}
+        initialVerdict={row.evaluationVerdict}
+      />
+    ),
+  },
+  {
     id: "transcription",
     header: "Transcripción",
     value: (row) => {
@@ -181,23 +212,6 @@ const columns: Column<QualityRecordingRow>[] = [
         initialStatus={row.transcriptionStatus}
         eligible={row.transcriptionEligibility.eligible}
         eligibilityLabel={row.transcriptionEligibility.label}
-      />
-    ),
-  },
-  {
-    id: "evaluation",
-    header: "Auditoría",
-    tooltip: "Puntaje asistido por Mercury 2 contra la pauta versionada de la campaña; requiere revisión humana.",
-    value: (row) => row.evaluationScore,
-    sortable: false,
-    cell: (row) => (
-      <RecordingQualityEvaluationControl
-        recordingId={row.id}
-        campaignName={row.campaignName}
-        transcriptionStatus={row.transcriptionStatus}
-        initialStatus={row.evaluationStatus}
-        initialScore={row.evaluationScore}
-        initialVerdict={row.evaluationVerdict}
       />
     ),
   },

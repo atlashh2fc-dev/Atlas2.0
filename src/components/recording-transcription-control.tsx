@@ -53,7 +53,16 @@ export function RecordingTranscriptionControl({
   const request = async (method: "GET" | "POST") => {
     const response = await fetch(
       `/api/calidad/grabaciones/${encodeURIComponent(recordingId)}/transcribe`,
-      { method, cache: "no-store" }
+      {
+        method,
+        cache: "no-store",
+        ...(method === "POST"
+          ? {
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ overrideSelection: !eligible }),
+            }
+          : {}),
+      }
     );
     const payload = (await response.json()) as TranscriptionPayload;
     if (!response.ok) throw new Error(payload.error ?? payload.message ?? "No se pudo procesar la transcripción.");
@@ -102,14 +111,6 @@ export function RecordingTranscriptionControl({
 
   if (!playable) return <span className="text-xs text-muted-foreground">No disponible</span>;
 
-  if (!eligible && status !== "completed" && status !== "processing") {
-    return (
-      <span className="whitespace-nowrap text-xs text-muted-foreground" title={eligibilityLabel}>
-        No seleccionada
-      </span>
-    );
-  }
-
   return (
     <>
       {status === "completed" ? (
@@ -123,9 +124,15 @@ export function RecordingTranscriptionControl({
           Procesando
         </Badge>
       ) : (
-        <Button type="button" variant="secondary" size="sm" onClick={transcribe}>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={transcribe}
+          title={!eligible ? `Fuera de la selección automática: ${eligibilityLabel}` : undefined}
+        >
           {status === "failed" ? <RotateCcw size={14} /> : <WandSparkles size={14} />}
-          {status === "failed" ? "Reintentar" : "Transcribir"}
+          {status === "failed" ? "Reintentar" : eligible ? "Transcribir" : "Transcribir igual"}
         </Button>
       )}
 
@@ -133,7 +140,7 @@ export function RecordingTranscriptionControl({
         open={open}
         onClose={() => setOpen(false)}
         title="Transcripción de la llamada"
-        description="Generada con Groq Whisper Large V3. No distingue automáticamente entre ejecutivo y cliente."
+        description="Generada con Groq Whisper Large V3. El resultado de apego se abre desde la columna “Apego al script”."
         width="lg"
       >
         {loading && !transcription?.text ? (
