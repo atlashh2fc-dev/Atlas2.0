@@ -130,6 +130,35 @@ export async function updateUserRole(formData: FormData) {
   revalidatePath("/dashboard/admin/usuarios");
 }
 
+/**
+ * Permite que un administrador defina una contraseña nueva para otra cuenta.
+ * La service role permanece en el servidor; la contraseña se entrega
+ * directamente a Supabase Auth y nunca se persiste en `profiles`.
+ */
+export async function updateUserPassword(formData: FormData) {
+  await requireProfile(["admin"]);
+
+  const userId = String(formData.get("user_id") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+  const confirmation = String(formData.get("password_confirmation") ?? "");
+
+  if (!userId) throw new Error("No se identificó el usuario a actualizar.");
+  if (password.length < 8) {
+    throw new Error("La contraseña debe tener al menos 8 caracteres.");
+  }
+  if (password !== confirmation) {
+    throw new Error("Las contraseñas no coinciden.");
+  }
+
+  const admin = createAdminClient();
+  const { data, error } = await admin.auth.admin.updateUserById(userId, { password });
+
+  if (error) throw new Error(error.message);
+  if (data.user.id !== userId) {
+    throw new Error("Supabase no confirmó el cambio de contraseña.");
+  }
+}
+
 export async function toggleUserActive(formData: FormData) {
   await requireProfile(["admin"]);
   const userId = formData.get("user_id") as string;

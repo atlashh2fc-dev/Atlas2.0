@@ -6,6 +6,7 @@ import { bulkSetUserActive, toggleUserActive } from "@/app/actions/admin";
 import type { AppRole } from "@/lib/types";
 import { UserRoleForm } from "@/components/user-role-form";
 import { AgentCampaignsDialog } from "@/components/agent-campaigns-dialog";
+import { UserPasswordDialog } from "@/components/user-password-dialog";
 import {
   ActionForm,
   ActionSubmit,
@@ -77,12 +78,15 @@ export function UsersTable({
         header: "Usuario",
         value: (row) => row.full_name,
         cell: (row) => (
-          <span className="block">
-            <span className="font-medium text-foreground">{row.full_name}</span>
-            <span className="mt-0.5 block break-all text-xs text-muted-foreground">{row.email}</span>
-            {row.role === "agente" && row.supervisor_name && (
-              <span className="mt-1 block text-xs text-muted-foreground">Supervisor: {row.supervisor_name}</span>
-            )}
+          <span className="block space-y-2">
+            <span className="block">
+              <span className="font-medium text-foreground">{row.full_name}</span>
+              <span className="mt-0.5 block break-all text-xs text-muted-foreground">{row.email}</span>
+              {row.role === "agente" && row.supervisor_name && (
+                <span className="mt-1 block text-xs text-muted-foreground">Supervisor: {row.supervisor_name}</span>
+              )}
+            </span>
+            <UserPasswordDialog user={{ id: row.id, fullName: row.full_name, email: row.email }} />
           </span>
         ),
       },
