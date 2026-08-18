@@ -12,12 +12,15 @@ import { AGENT_CONTROL_POLL_MS, processAgentControlCommands } from "./dialer/age
 import { AmiRecordingController } from "./recording/controller";
 import { assertPrivateRecordingBucket } from "./recording/storage";
 import { registerRecordingIngestRoute } from "./recording/ingest";
+import { OperationalHealthTracker } from "./operationalHealth";
+import { publishOperationalHealth } from "./operationalHealthPublisher";
 
 const AGENT_DIRECTORY_REFRESH_MS = 10_000;
 const AGENT_PAUSE_SYNC_MS = 10_000;
 const AGENT_HEARTBEAT_CHECK_MS = 30_000;
 
 async function main() {
+  const health = new OperationalHealthTracker();
   if (config.campaignIds.length === 0) {
     logger.warn("DIALER_CAMPAIGN_IDS vacío: el motor no originará llamadas hasta configurarlo.");
   }
@@ -55,31 +58,56 @@ async function main() {
   // Cada refresh también aprovisiona en Asterisk (vía AMI) cualquier
   // extensión nueva y reconcilia las claves SIP existentes con la fuente de
   // verdad, corrigiendo divergencias DB↔PBX sin recargar si ya coinciden.
-  await refreshAgentDirectory(config.agentExtensionMap);
-  await ensureAgentEndpoints(ami, getActiveCredentials()).catch((err) =>
-    logger.error({ err }, "Sync inicial de extensiones PJSIP falló")
-  );
+  const syncAgentDirectoryAndEndpoints = async () => {
+    const directoryOk = await refreshAgentDirectory(config.agentExtensionMap);
+    if (directoryOk) health.success("agentDirectory");
+    else health.failure("agentDirectory", "supabase_agent_directory_failed");
+
+    try {
+      const report = await ensureAgentEndpoints(ami, getActiveCredentials());
+      if (report.ok) health.success("agentConfigSync");
+      else health.failure("agentConfigSync", "ami_agent_config_failed");
+    } catch (err) {
+      health.failure("agentConfigSync", "agent_config_unhandled_error");
+      logger.error({ err }, "Sync de extensiones PJSIP falló");
+    }
+  };
+  await syncAgentDirectoryAndEndpoints();
   setInterval(() => {
-    refreshAgentDirectory(config.agentExtensionMap)
-      .then(() => ensureAgentEndpoints(ami, getActiveCredentials()))
-      .catch((err) => logger.error({ err }, "Sync de directorio de agentes falló"));
+    syncAgentDirectoryAndEndpoints().catch((err) => {
+      health.failure("agentDirectory", "agent_directory_unhandled_error");
+      logger.error({ err }, "Sync de directorio de agentes falló");
+    });
   }, AGENT_DIRECTORY_REFRESH_MS);
 
   // Estado del agente (AUX o cierre/tipificación): se sincroniza a QueuePause
   // antes de iniciar el pacing y luego continuamente. Así un reinicio del
   // motor no abre una ventana donde un agente en wrap_up reciba otra llamada.
-  await syncAgentPauseStates(ami, { force: true }).catch((err) =>
-    logger.error({ err }, "Sync inicial de pausas de agente falló")
-  );
+  await syncAgentPauseStates(ami, { force: true })
+    .then(() => health.success("agentPauseSync"))
+    .catch((err) => {
+      health.failure("agentPauseSync", "agent_pause_sync_failed");
+      logger.error({ err }, "Sync inicial de pausas de agente falló");
+    });
   setInterval(() => {
-    syncAgentPauseStates(ami).catch((err) => logger.error({ err }, "Sync de pausas de agente falló"));
+    syncAgentPauseStates(ami)
+      .then(() => health.success("agentPauseSync"))
+      .catch((err) => {
+        health.failure("agentPauseSync", "agent_pause_sync_failed");
+        logger.error({ err }, "Sync de pausas de agente falló");
+      });
   }, AGENT_PAUSE_SYNC_MS);
 
   // Heartbeat: fuerza "Desconectado" a agentes que cerraron la pestaña/
   // navegador sin pasar por "Cerrar sesión" (markAgentLoggedOut cubre el
   // logout explícito; esto cubre el resto).
   setInterval(() => {
-    checkAgentHeartbeats().catch((err) => logger.error({ err }, "Chequeo de heartbeats falló"));
+    checkAgentHeartbeats()
+      .then(() => health.success("agentHeartbeat"))
+      .catch((err) => {
+        health.failure("agentHeartbeat", "agent_heartbeat_failed");
+        logger.error({ err }, "Chequeo de heartbeats falló");
+      });
   }, AGENT_HEARTBEAT_CHECK_MS);
 
   // Plano de control durable para cierres administrativos. Single-flight y
@@ -88,7 +116,9 @@ async function main() {
     setTimeout(async () => {
       try {
         await processAgentControlCommands(ami);
+        health.success("agentControl");
       } catch (err) {
+        health.failure("agentControl", "agent_control_failed");
         logger.error({ err }, "Procesamiento de cierres remotos falló");
       } finally {
         scheduleAgentControl();
@@ -102,8 +132,11 @@ async function main() {
   const scheduleCampaignTick = () => {
     setTimeout(async () => {
       try {
-        await runCampaignTick(ami, config.campaignIds, queueToCampaignId);
+        const report = await runCampaignTick(ami, config.campaignIds, queueToCampaignId);
+        if (report.ok) health.success("campaignLoop");
+        else health.failure("campaignLoop", "campaign_tick_partial_failure");
       } catch (err) {
+        health.failure("campaignLoop", "campaign_tick_unhandled_error");
         logger.error({ err }, "runCampaignTick falló");
       } finally {
         scheduleCampaignTick();
@@ -123,16 +156,35 @@ async function main() {
       retryBaseMs: config.recording.retryBaseMs,
     });
   }
-  app.get("/health", (_req, res) => {
-    const amiConnected = ami.isConnected();
-    res.status(amiConnected ? 200 : 503).json({
-      ok: amiConnected,
-      ami: amiConnected ? "connected" : "disconnected",
-      campaigns: config.campaignIds.length,
-      recording: config.recording.enabled ? "enabled" : "disabled",
+  const currentHealth = () =>
+    health.snapshot({
+      amiConnected: ami.isConnected(),
+      campaignCount: config.campaignIds.length,
+      recordingEnabled: config.recording.enabled,
+      release: config.release,
+      tickMs: config.tickMs,
     });
+  app.get("/health", (_req, res) => {
+    const snapshot = currentHealth();
+    res.status(snapshot.ok ? 200 : 503).json(snapshot);
   });
   app.listen(config.port, () => logger.info({ port: config.port }, "Health check escuchando"));
+
+  const scheduleHealthPublish = () => {
+    setTimeout(async () => {
+      try {
+        const published = await publishOperationalHealth(currentHealth());
+        if (published) health.success("healthPublish");
+        else health.failure("healthPublish", "supabase_health_publish_failed");
+      } catch (err) {
+        health.failure("healthPublish", "health_publish_unhandled_error");
+        logger.error({ err }, "Publicación de salud operacional falló");
+      } finally {
+        scheduleHealthPublish();
+      }
+    }, 10_000);
+  };
+  scheduleHealthPublish();
 }
 
 main().catch((err) => {

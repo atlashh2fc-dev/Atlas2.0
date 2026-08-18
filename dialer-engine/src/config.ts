@@ -29,6 +29,7 @@ const envSchema = z.object({
 
   TICK_MS: z.coerce.number().int().positive().default(3000),
   PORT: z.coerce.number().int().positive().default(8080),
+  ATLAS_RELEASE: z.string().trim().min(1).default("unknown"),
 
   // Grabaciones post-bridge. Esta ruta pertenece al filesystem remoto de
   // Asterisk; el motor sólo la envía en la acción AMI MixMonitor.
@@ -94,6 +95,7 @@ export const config = {
 
   tickMs: env.TICK_MS,
   port: env.PORT,
+  release: env.ATLAS_RELEASE,
 
   recording: {
     enabled: env.RECORDING_ENABLED,

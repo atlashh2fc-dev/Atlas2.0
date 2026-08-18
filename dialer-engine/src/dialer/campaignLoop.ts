@@ -47,15 +47,35 @@ type CampaignConfig = {
  * en DIALER_CAMPAIGN_IDS. server.ts lo agenda en modo single-flight: el
  * siguiente ciclo comienza únicamente después de terminar el actual.
  */
-export async function runCampaignTick(ami: AmiClient, campaignIds: string[], queueToCampaignId: Map<string, string>) {
-  if (campaignIds.length === 0) return;
+export type CampaignTickReport = {
+  ok: boolean;
+  configuredCampaigns: number;
+  readyQueues: number;
+  queueFailures: number;
+  campaignFailures: number;
+};
+
+export async function runCampaignTick(
+  ami: AmiClient,
+  campaignIds: string[],
+  queueToCampaignId: Map<string, string>
+): Promise<CampaignTickReport> {
+  if (campaignIds.length === 0) {
+    return { ok: true, configuredCampaigns: 0, readyQueues: 0, queueFailures: 0, campaignFailures: 0 };
+  }
 
   let configs: CampaignConfig[];
   try {
     configs = (await getActiveCampaignConfigs(campaignIds)) as CampaignConfig[];
   } catch (err) {
     logger.error({ err }, "No se pudo leer dialer_campaign_configs");
-    return;
+    return {
+      ok: false,
+      configuredCampaigns: campaignIds.length,
+      readyQueues: 0,
+      queueFailures: campaignIds.length,
+      campaignFailures: 0,
+    };
   }
 
   // Fase 1: dejar colas, miembros y pausas consistentes antes de originar.
@@ -63,6 +83,8 @@ export async function runCampaignTick(ami: AmiClient, campaignIds: string[], que
   // la ventana previa al sync de AUX.
   const queueReadyCampaignIds = new Set<string>();
   let queueMembershipChanged = false;
+  let queueFailures = 0;
+  let campaignFailures = 0;
   for (const cfg of configs) {
     queueToCampaignId.set(cfg.queue_name, cfg.campaign_id);
 
@@ -77,6 +99,7 @@ export async function runCampaignTick(ami: AmiClient, campaignIds: string[], que
         || queueMembershipChanged;
       queueReadyCampaignIds.add(cfg.campaign_id);
     } catch (err) {
+      queueFailures += 1;
       logger.error({ err, campaignId: cfg.campaign_id }, "Sync de cola/extensiones falló");
     }
   }
@@ -225,7 +248,16 @@ export async function runCampaignTick(ami: AmiClient, campaignIds: string[], que
         }
       }
     } catch (err) {
+      campaignFailures += 1;
       logger.error({ err, campaignId: cfg.campaign_id }, "Tick de campaña falló");
     }
   }
+
+  return {
+    ok: queueFailures === 0 && campaignFailures === 0,
+    configuredCampaigns: configs.length,
+    readyQueues: queueReadyCampaignIds.size,
+    queueFailures,
+    campaignFailures,
+  };
 }

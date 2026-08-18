@@ -73,6 +73,27 @@ Ver la sección "AWS" en `docs/dialer-engine-architecture.md`. Resumen: EC2
 scale-to-zero) en la misma VPC/región que Asterisk, `Dockerfile` incluido,
 health check en `/health` para el target group.
 
+En la EC2 de producción el proceso debe ejecutarse exclusivamente mediante
+`systemd`, usando `scripts/atlas-dialer-engine.service`. El binario Node 22 se
+instala en `/opt/atlas-node`, el artefacto en `/opt/atlas-dialer-engine`, los
+secretos permanecen en `/opt/atlas-dialer-engine/.env` y el SHA desplegado se
+inyecta desde `/etc/atlas-dialer-engine/release.env`. Nunca levantar una copia
+manual/PM2 en paralelo: dos motores pueden reclamar u originar llamadas a la
+vez.
+
+Verificaciones mínimas después de cada despliegue:
+
+```bash
+systemctl is-active atlas-dialer-engine
+curl -fsS http://127.0.0.1:8080/health
+journalctl -u atlas-dialer-engine --since "5 minutes ago" --no-pager
+```
+
+`/health` incluye release, versión de Node, conexión AMI y frescura de los
+ciclos críticos. El mismo snapshot se publica cada 10 segundos en
+`dialer_operational_health`; el CRM lo usa para informar una caída sin abrir
+el puerto 8080 a Internet.
+
 ## Grabaciones (dos EC2, sin filesystem compartido ni secretos en Asterisk)
 
 `dialer-engine` y `asterisk-atlas` están en instancias distintas. El motor vía

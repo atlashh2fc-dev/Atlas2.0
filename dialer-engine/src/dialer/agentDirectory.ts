@@ -30,7 +30,7 @@ export function getActiveCredentials(): AgentCredential[] {
   return Array.from(credentialsByExtension.values());
 }
 
-export async function refreshAgentDirectory(staticFallback: Record<string, string>): Promise<void> {
+export async function refreshAgentDirectory(staticFallback: Record<string, string>): Promise<boolean> {
   try {
     const { data, error } = await supabase
       .from("agent_sip_credentials")
@@ -52,7 +52,9 @@ export async function refreshAgentDirectory(staticFallback: Record<string, strin
 
     extensionToProfileId = nextMap;
     credentialsByExtension = nextCreds;
+    return true;
   } catch (err) {
     logger.error({ err }, "No se pudo refrescar agent_sip_credentials; se mantiene el directorio anterior");
+    return false;
   }
 }

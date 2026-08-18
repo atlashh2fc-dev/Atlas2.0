@@ -217,18 +217,22 @@ async function ensureAgentTemplates(
 export async function ensureAgentEndpoints(
   ami: AmiClient,
   agents: { extension: string; sipPassword: string }[]
-): Promise<void> {
-  if (agents.length === 0) return;
+): Promise<{ ok: boolean; checked: number; failed: number }> {
+  if (agents.length === 0) return { ok: true, checked: 0, failed: 0 };
 
   let snapshot: ConfigSnapshot;
   try {
     snapshot = await getConfigSnapshot(ami, "pjsip.conf");
   } catch (err) {
     logger.error({ err }, "GetConfig pjsip.conf falló; se salta el sync de extensiones este ciclo");
-    return;
+    return { ok: false, checked: agents.length, failed: agents.length };
   }
 
-  if (!(await ensureAgentTemplates(ami, snapshot.categories))) return;
+  if (!(await ensureAgentTemplates(ami, snapshot.categories))) {
+    return { ok: false, checked: agents.length, failed: agents.length };
+  }
+
+  let failed = 0;
 
   for (const agent of agents) {
     const authCat = `${agent.extension}-auth`;
@@ -285,6 +289,7 @@ export async function ensureAgentEndpoints(
           "Configuración PJSIP de agente reconciliada con el directorio"
         );
       } catch (err) {
+        failed += 1;
         logger.error(
           { err, extension: agent.extension },
           "No se pudo reconciliar el endpoint PJSIP del agente"
@@ -319,9 +324,11 @@ export async function ensureAgentEndpoints(
       snapshot.categories.add(authCat);
       logger.info({ extension: agent.extension }, "Endpoint PJSIP creado para agente nuevo");
     } catch (err) {
+      failed += 1;
       logger.error({ err, extension: agent.extension }, "No se pudo crear el endpoint PJSIP del agente");
     }
   }
+  return { ok: failed === 0, checked: agents.length, failed };
 }
 
 /**

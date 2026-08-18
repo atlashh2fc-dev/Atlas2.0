@@ -1,0 +1,25 @@
+[Unit]
+Description=Atlas 2.0 Dialer Engine
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/atlas-dialer-engine
+Environment=NODE_ENV=production
+EnvironmentFile=/opt/atlas-dialer-engine/.env
+EnvironmentFile=-/etc/atlas-dialer-engine/release.env
+ExecStart=/opt/atlas-node/bin/node /opt/atlas-dialer-engine/dist/server.js
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGTERM
+SyslogIdentifier=atlas-dialer-engine
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
