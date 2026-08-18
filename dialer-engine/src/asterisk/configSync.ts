@@ -587,7 +587,11 @@ export async function syncQueueMembers(
       Queue: queueName,
       Interface: `PJSIP/${ext}`,
       MemberName: ext,
-      Paused: "false",
+      // Todo miembro nuevo nace cerrado. campaignLoop fuerza inmediatamente
+      // el sync del estado CRM y solo ahi despausa a quien esta Disponible.
+      // Evita una ventana de entrega si la cola se recrea durante un AUX o
+      // una llamada manual hibrida.
+      Paused: "true",
     });
     changed = true;
     logger.info({ queueName, ext }, "Agente agregado a la cola");

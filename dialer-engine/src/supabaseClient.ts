@@ -125,7 +125,7 @@ export async function updateAgentDialerStatus(params: {
   profileId: string;
   campaignId: string;
   extension: string;
-  status: "offline" | "available" | "ringing" | "on_call" | "wrap_up" | "paused";
+  status: "offline" | "available" | "ringing" | "on_call" | "wrap_up" | "paused" | "pausing";
 }) {
   // Los eventos genéricos de QueueMember pueden informar "disponible"
   // después de AgentComplete. No deben sacar al ejecutivo de wrap-up: esa
@@ -357,6 +357,37 @@ export type AgentControlCommand = {
   previous_phone_status: string | null;
   reason: string | null;
 };
+
+export type AgentHybridManualRequest = {
+  request_id: string;
+  profile_id: string;
+  extension: string;
+};
+
+export async function claimAgentHybridManualRequests(
+  workerId: string,
+  limit = 5
+): Promise<AgentHybridManualRequest[]> {
+  const { data, error } = await supabase.rpc("claim_agent_hybrid_manual_requests", {
+    p_worker_id: workerId,
+    p_limit: limit,
+  });
+  if (error) throw new Error(`claim_agent_hybrid_manual_requests: ${error.message}`);
+  return (data ?? []) as AgentHybridManualRequest[];
+}
+
+export async function completeAgentHybridManualRequest(params: {
+  requestId: string;
+  success: boolean;
+  error?: string | null;
+}): Promise<void> {
+  const { error } = await supabase.rpc("complete_agent_hybrid_manual_request", {
+    p_request_id: params.requestId,
+    p_success: params.success,
+    p_error: params.error ?? null,
+  });
+  if (error) throw new Error(`complete_agent_hybrid_manual_request: ${error.message}`);
+}
 
 export async function claimAgentControlCommands(
   workerId: string,

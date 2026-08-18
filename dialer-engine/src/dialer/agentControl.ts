@@ -2,8 +2,11 @@ import { hostname } from "node:os";
 import type AmiClient from "asterisk-manager";
 import { logger } from "../logger";
 import {
+  claimAgentHybridManualRequests,
   claimAgentControlCommands,
+  completeAgentHybridManualRequest,
   completeAgentControlCommand,
+  type AgentHybridManualRequest,
   type AgentControlCommand,
 } from "../supabaseClient";
 import { amiAction, updateAgentSipPassword } from "../asterisk/configSync";
@@ -134,7 +137,53 @@ async function executeCommand(ami: AmiClient, command: AgentControlCommand) {
   return result;
 }
 
+async function executeHybridManualRequest(
+  ami: AmiClient,
+  request: AgentHybridManualRequest
+): Promise<void> {
+  await amiAction(ami, {
+    Action: "QueuePause",
+    Interface: `PJSIP/${request.extension}`,
+    Paused: "true",
+    Reason: "Llamada manual desde Atlas",
+  });
+
+  // QueuePause impide nuevas entregas. CoreShowChannels cierra la carrera con
+  // un INVITE automatico o callback que ya estuviera saliendo al confirmar la
+  // orden: nunca habilitamos el teclado mientras exista un canal del agente.
+  const channels = await listAgentChannels(ami, request.extension);
+  if (channels.length > 0) {
+    throw new Error(`La extension todavia tiene ${channels.length} canal(es) activo(s).`);
+  }
+}
+
+async function processHybridManualRequests(ami: AmiClient): Promise<void> {
+  const requests = await claimAgentHybridManualRequests(workerId);
+  for (const request of requests) {
+    try {
+      await executeHybridManualRequest(ami, request);
+      await completeAgentHybridManualRequest({ requestId: request.request_id, success: true });
+      logger.info(
+        { requestId: request.request_id, profileId: request.profile_id, extension: request.extension },
+        "Modo hibrido confirmado por PBX"
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await completeAgentHybridManualRequest({
+        requestId: request.request_id,
+        success: false,
+        error: message,
+      });
+      logger.info(
+        { requestId: request.request_id, profileId: request.profile_id, error: message },
+        "Modo hibrido aun no esta libre; se reintentara"
+      );
+    }
+  }
+}
+
 export async function processAgentControlCommands(ami: AmiClient): Promise<void> {
+  await processHybridManualRequests(ami);
   const commands = await claimAgentControlCommands(workerId);
   for (const command of commands) {
     try {

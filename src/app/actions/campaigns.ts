@@ -111,6 +111,40 @@ export async function removeCampaignAgent(formData: FormData) {
   revalidatePath("/dashboard/admin/usuarios");
 }
 
+export async function setCampaignAgentManualDial(formData: FormData) {
+  await requireProfile(["admin"]);
+  const campaignId = formData.get("campaign_id") as string;
+  const membershipId = formData.get("membership_id") as string;
+  const enabled = formData.get("enabled") === "true";
+  if (!campaignId || !membershipId) throw new Error("Asignación inválida.");
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("campaign_agents")
+    .update({ manual_dial_enabled: enabled })
+    .eq("id", membershipId)
+    .eq("campaign_id", campaignId);
+
+  if (error) throw new Error(error.message);
+  revalidatePath(`/dashboard/admin/campanas/${campaignId}/ejecutivos`);
+}
+
+export async function setCampaignManualDialForAll(formData: FormData) {
+  await requireProfile(["admin"]);
+  const campaignId = formData.get("campaign_id") as string;
+  const enabled = formData.get("enabled") === "true";
+  if (!campaignId) throw new Error("Campaña inválida.");
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("campaign_agents")
+    .update({ manual_dial_enabled: enabled })
+    .eq("campaign_id", campaignId);
+
+  if (error) throw new Error(error.message);
+  revalidatePath(`/dashboard/admin/campanas/${campaignId}/ejecutivos`);
+}
+
 export async function addCampaignAgentSchedule(formData: FormData) {
   await requireProfile(["admin"]);
   const campaignId = formData.get("campaign_id") as string;

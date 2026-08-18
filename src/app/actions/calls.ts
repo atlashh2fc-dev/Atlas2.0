@@ -48,6 +48,13 @@ async function releaseAgentFromWrapUp(userId: string, campaignId: string | null)
   if (error) throw new Error(error.message);
 }
 
+async function restoreAgentFromHybridManualMode(
+  supabase: Awaited<ReturnType<typeof createClient>>
+) {
+  const { error } = await supabase.rpc("exit_agent_hybrid_manual_mode");
+  if (error) throw new Error(error.message);
+}
+
 async function getLeadCampaignId(
   supabase: Awaited<ReturnType<typeof createClient>>,
   leadId: string
@@ -290,7 +297,7 @@ export async function beginManualCallManagement(input: {
 }): Promise<CallActionResult<ManualCallManagement>> {
   try {
     const { supabase } = await requireAgent();
-    const { data, error } = await supabase.rpc("begin_agent_manual_call_management", {
+    const { data, error } = await supabase.rpc("begin_agent_manual_call_management_api", {
       p_campaign_id: input.campaignId,
       p_phone: input.phone,
       p_full_name: input.contactName?.trim() || null,
@@ -799,6 +806,7 @@ export async function closeCall(input: {
     const cleanupResults = await Promise.allSettled([
       clearLegalIntercallBreak(userId),
       releaseAgentFromWrapUp(userId, lead.campaign_id),
+      restoreAgentFromHybridManualMode(supabase),
     ]);
     cleanupResults.forEach((result, index) => {
       if (result.status === "rejected") {
@@ -806,7 +814,12 @@ export async function closeCall(input: {
           callId,
           leadId,
           userId,
-          cleanup: index === 0 ? "intercall_break" : "wrap_up",
+          cleanup:
+            index === 0
+              ? "intercall_break"
+              : index === 1
+                ? "wrap_up"
+                : "hybrid_manual_mode",
           error: result.reason instanceof Error ? result.reason.message : String(result.reason),
         });
       }
@@ -942,6 +955,7 @@ export async function discardCallTechnicalError(input: { callId: string; leadId:
 
   await clearLegalIntercallBreak(userId);
   await releaseAgentFromWrapUp(userId, lead.campaign_id);
+  await restoreAgentFromHybridManualMode(supabase);
 
   revalidatePath(`/dashboard/leads/${leadId}`);
   revalidatePath("/dashboard/leads");

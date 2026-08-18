@@ -5,6 +5,8 @@ import {
   addCampaignAgentSchedule,
   removeCampaignAgent,
   removeCampaignAgentSchedule,
+  setCampaignAgentManualDial,
+  setCampaignManualDialForAll,
 } from "@/app/actions/campaigns";
 import { ActionForm, ActionSubmit, SectionCard } from "@/components/ui";
 
@@ -27,7 +29,7 @@ export default async function CampaignAgentsPage({ params }: { params: Promise<{
   const [{ data: members }, { data: agents }] = await Promise.all([
     supabase
       .from("campaign_agents")
-      .select("id, profile_id, schedule_required, profiles(full_name, email)")
+      .select("id, profile_id, schedule_required, manual_dial_enabled, profiles(full_name, email)")
       .eq("campaign_id", id)
       .order("assigned_at", { ascending: true }),
     supabase.from("profiles").select("id, full_name, email").eq("role", "agente").order("full_name"),
@@ -60,8 +62,27 @@ export default async function CampaignAgentsPage({ params }: { params: Promise<{
     <div className="space-y-5">
       <SectionCard
         title={`Ejecutivos asignados (${(members ?? []).length})`}
-        description="Un ejecutivo puede estar en varias campañas. En discado automático, define horarios sin traslape para que reciba llamadas solo de la campaña de su turno."
+        description="El permiso híbrido habilita llamadas manuales seguras dentro de esta misma campaña, sin duplicar campañas, colas ni gestiones."
       >
+        {(members ?? []).length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 border-b border-border p-4">
+            <span className="mr-auto text-xs text-muted-foreground">
+              Puedes habilitar algunos ejecutivos o todos.
+            </span>
+            <ActionForm action={setCampaignManualDialForAll} success="Modo híbrido habilitado para todos">
+              <input type="hidden" name="campaign_id" value={id} />
+              <input type="hidden" name="enabled" value="true" />
+              <ActionSubmit size="sm" pendingLabel="Habilitando…">Habilitar todos</ActionSubmit>
+            </ActionForm>
+            <ActionForm action={setCampaignManualDialForAll} success="Modo híbrido deshabilitado para todos">
+              <input type="hidden" name="campaign_id" value={id} />
+              <input type="hidden" name="enabled" value="false" />
+              <ActionSubmit variant="secondary" size="sm" pendingLabel="Deshabilitando…">
+                Deshabilitar todos
+              </ActionSubmit>
+            </ActionForm>
+          </div>
+        )}
         <div className="divide-y divide-border">
           {(members ?? []).length === 0 && (
             <p className="p-5 text-sm text-muted-foreground">
@@ -84,13 +105,29 @@ export default async function CampaignAgentsPage({ params }: { params: Promise<{
                     <p className="text-sm font-medium text-foreground">{profile?.full_name ?? "—"}</p>
                     <p className="text-xs text-muted-foreground">{profile?.email ?? "—"}</p>
                   </div>
-                  <ActionForm action={removeCampaignAgent} success="Ejecutivo quitado de la campaña">
-                    <input type="hidden" name="campaign_id" value={id} />
-                    <input type="hidden" name="membership_id" value={member.id} />
-                    <ActionSubmit variant="secondary" size="sm" pendingLabel="Quitando…">
-                      Quitar
-                    </ActionSubmit>
-                  </ActionForm>
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${member.manual_dial_enabled ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"}`}>
+                      {member.manual_dial_enabled ? "Híbrido habilitado" : "Solo automático"}
+                    </span>
+                    <ActionForm
+                      action={setCampaignAgentManualDial}
+                      success={member.manual_dial_enabled ? "Modo híbrido deshabilitado" : "Modo híbrido habilitado"}
+                    >
+                      <input type="hidden" name="campaign_id" value={id} />
+                      <input type="hidden" name="membership_id" value={member.id} />
+                      <input type="hidden" name="enabled" value={member.manual_dial_enabled ? "false" : "true"} />
+                      <ActionSubmit variant="secondary" size="sm" pendingLabel="Guardando…">
+                        {member.manual_dial_enabled ? "Deshabilitar híbrido" : "Habilitar híbrido"}
+                      </ActionSubmit>
+                    </ActionForm>
+                    <ActionForm action={removeCampaignAgent} success="Ejecutivo quitado de la campaña">
+                      <input type="hidden" name="campaign_id" value={id} />
+                      <input type="hidden" name="membership_id" value={member.id} />
+                      <ActionSubmit variant="secondary" size="sm" pendingLabel="Quitando…">
+                        Quitar
+                      </ActionSubmit>
+                    </ActionForm>
+                  </div>
                 </div>
 
                 <div className="mt-2 flex flex-wrap items-center gap-2">

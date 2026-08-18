@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, CalendarClock, CheckCircle2, Clock3, MessageSquare, ShieldCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { notifyAgentManagementClosed } from "@/lib/agent-control";
 import type { Call, Lead } from "@/lib/types";
 import {
   CALL_REASONS,
@@ -287,6 +288,7 @@ export function CallTypificationForm({
         setMessage({ type: "error", text: result.error });
         return;
       }
+      if (!revision) notifyAgentManagementClosed();
       router.replace(revision ? `/dashboard/leads/${lead.id}` : "/dashboard/leads");
       router.refresh();
     } catch (e) {
@@ -312,6 +314,7 @@ export function CallTypificationForm({
     setMessage(null);
     try {
       await discardCallTechnicalError({ callId: call.id, leadId: lead.id, reason: discardReason.trim() });
+      notifyAgentManagementClosed();
       router.push("/dashboard/leads");
       router.refresh();
     } catch (e) {

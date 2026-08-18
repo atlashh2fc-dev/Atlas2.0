@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import test from "node:test";
 import type AmiClient from "asterisk-manager";
 import {
   ensureAgentEndpoints,
   ensureQueue,
   parseConfigSnapshot,
+  syncQueueMembers,
   updateAgentSipPassword,
 } from "./configSync";
 
@@ -125,4 +127,30 @@ test("agrega ringinuse=no a una cola existente sin esa protección", async () =>
   assert.equal(update["Action-000002"], "Append");
   assert.equal(update["Var-000002"], "ringinuse");
   assert.equal(update["Value-000002"], "no");
+});
+
+test("un miembro nuevo entra pausado hasta reconciliar su estado CRM", async () => {
+  const events = new EventEmitter();
+  const actions: AmiAction[] = [];
+  const ami = Object.assign(events, {
+    action(action: AmiAction, callback: (error: unknown, response?: unknown) => void) {
+      actions.push(action);
+      callback(null, { Response: "Success" });
+      if (action.Action === "QueueStatus") {
+        queueMicrotask(() => {
+          events.emit("managerevent", {
+            event: "QueueStatusComplete",
+            actionid: action.actionid,
+          });
+        });
+      }
+    },
+  }) as unknown as AmiClient;
+
+  const changed = await syncQueueMembers(ami, "secretaria_virtual", ["6015"]);
+
+  assert.equal(changed, true);
+  const queueAdd = actions.find((action) => action.Action === "QueueAdd");
+  assert.equal(queueAdd?.Interface, "PJSIP/6015");
+  assert.equal(queueAdd?.Paused, "true");
 });

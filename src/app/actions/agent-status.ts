@@ -41,23 +41,7 @@ export async function markAgentLoggedOut(): Promise<void> {
   const profile = await getCurrentProfile();
   if (!profile) return;
   const supabase = await createClient();
-
-  const { data: reason, error: reasonError } = await supabase
-    .from("agent_status_reasons")
-    .select("id")
-    .eq("code", "desconectado")
-    .maybeSingle();
-  if (reasonError) throw new Error(reasonError.message);
-  if (!reason) return; // migración no aplicada aún; no bloquear el logout por esto.
-
-  const { error } = await supabase.from("agent_current_status").upsert(
-    {
-      profile_id: profile.id,
-      reason_id: reason.id,
-      since: new Date().toISOString(),
-    },
-    { onConflict: "profile_id" }
-  );
+  const { error } = await supabase.rpc("mark_my_agent_logged_out");
   if (error) throw new Error(error.message);
 }
 
@@ -114,16 +98,34 @@ export async function getMyCurrentStatus(): Promise<{ reason: AgentStatusReason 
  * las que el agente sea miembro — no hace falta tocar el servidor a mano.
  */
 export async function setMyCurrentStatus(reasonId: string): Promise<void> {
-  const profile = await requireProfile();
+  await requireProfile();
   const supabase = await createClient();
-  const { error } = await supabase.from("agent_current_status").upsert(
-    {
-      profile_id: profile.id,
-      reason_id: reasonId,
-      since: new Date().toISOString(),
-    },
-    { onConflict: "profile_id" }
-  );
+  const { error } = await supabase.rpc("set_my_agent_current_status", {
+    p_reason_id: reasonId,
+  });
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Saca temporalmente al ejecutivo de sus colas automaticas para que pueda
+ * originar una llamada auditada dentro de una campaña donde tiene permiso.
+ */
+export async function enterMyHybridManualMode(campaignId: string): Promise<void> {
+  await requireProfile(["agente"]);
+  if (!campaignId) throw new Error("Selecciona la campaña de la llamada manual.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("enter_agent_hybrid_manual_mode", {
+    p_campaign_id: campaignId,
+  });
+  if (error) throw new Error(error.message);
+}
+
+/** Vuelve a Disponible solo si no queda llamada ni gestion manual abierta. */
+export async function exitMyHybridManualMode(): Promise<void> {
+  await requireProfile(["agente"]);
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("exit_agent_hybrid_manual_mode");
   if (error) throw new Error(error.message);
 }
 

@@ -12,6 +12,13 @@ export type AgentForceLogoutEventDetail = {
  */
 export const AGENT_DIAL_REQUEST_EVENT = "atlas:agent-dial-request";
 
+/** La ficha avisa al CTI que una gestion termino para refrescar su modo. */
+export const AGENT_MANAGEMENT_CLOSED_EVENT = "atlas:agent-management-closed";
+
+export function notifyAgentManagementClosed() {
+  window.dispatchEvent(new Event(AGENT_MANAGEMENT_CLOSED_EVENT));
+}
+
 export type AgentDialRequestEventDetail = {
   leadId: string;
   /** Solo para feedback inmediato en el CTI: el teléfono real lo resuelve el servidor. */
@@ -23,4 +30,3 @@ export function requestAgentDial(detail: AgentDialRequestEventDetail) {
     new CustomEvent<AgentDialRequestEventDetail>(AGENT_DIAL_REQUEST_EVENT, { detail })
   );
 }
-

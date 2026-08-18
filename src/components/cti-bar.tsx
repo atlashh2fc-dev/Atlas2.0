@@ -37,6 +37,8 @@ import {
 import {
   listActiveStatusReasons,
   getMyCurrentStatus,
+  enterMyHybridManualMode,
+  exitMyHybridManualMode,
   markAgentUnavailable,
   setMyCurrentStatus,
   heartbeat,
@@ -59,6 +61,7 @@ import { cn } from "@/lib/utils";
 import {
   AGENT_DIAL_REQUEST_EVENT,
   AGENT_FORCE_LOGOUT_EVENT,
+  AGENT_MANAGEMENT_CLOSED_EVENT,
   type AgentDialRequestEventDetail,
   type AgentForceLogoutEventDetail,
 } from "@/lib/agent-control";
@@ -243,12 +246,20 @@ export function CtiBar({ profile }: { profile: Profile }) {
   >(
     profile.role === "agente"
       ? undefined
-      : { mode: "manual", active_campaign_id: null, campaigns: [], session: null }
+      : {
+          mode: "manual",
+          active_campaign_id: null,
+          hybrid_manual_status: null,
+          campaigns: [],
+          session: null,
+        }
   );
   const [switchingCampaign, setSwitchingCampaign] = useState(false);
   const [campaignSwitchError, setCampaignSwitchError] = useState<string | null>(null);
   const [automaticHistory, setAutomaticHistory] = useState<AgentDialerHistoryItem[]>([]);
   const [manualCampaignId, setManualCampaignId] = useState("");
+  const [hybridManualMode, setHybridManualMode] = useState(false);
+  const [hybridTransitionPending, setHybridTransitionPending] = useState(false);
   const [manualRecoveryOpen, setManualRecoveryOpen] = useState(false);
   const [manualRecoveryCampaignId, setManualRecoveryCampaignId] = useState("");
   const [manualRecoveryPhone, setManualRecoveryPhone] = useState("");
@@ -505,12 +516,18 @@ export function CtiBar({ profile }: { profile: Profile }) {
       .then(async ([reasons, current]) => {
         if (disposed) return;
         const available = reasons.find((reason) => !reason.is_pause) ?? null;
+        const currentIsHybrid = current?.reason.code === "llamada_manual";
         const currentIsSelectable = Boolean(
-          current && reasons.some((reason) => reason.id === current.reason.id)
+          currentIsHybrid || (current && reasons.some((reason) => reason.id === current.reason.id))
         );
         const selected = currentIsSelectable ? current?.reason ?? null : available;
-        setStatusReasons(reasons);
+        setStatusReasons(
+          currentIsHybrid && current
+            ? [...reasons.filter((reason) => reason.id !== current.reason.id), current.reason]
+            : reasons
+        );
         setCurrentReasonId(selected?.id ?? null);
+        setHybridManualMode(currentIsHybrid);
 
         // Solo se declara Disponible cuando el teléfono está realmente
         // registrado: marcarlo antes hacía que el discador entregara llamadas
@@ -524,6 +541,30 @@ export function CtiBar({ profile }: { profile: Profile }) {
       disposed = true;
     };
   }, [profile.role]);
+
+  const refreshCurrentAgentStatus = useCallback(async () => {
+    if (profile.role !== "agente") return;
+    const current = await getMyCurrentStatus();
+    if (!current) return;
+    setStatusReasons((reasons) =>
+      reasons.some((reason) => reason.id === current.reason.id)
+        ? reasons
+        : [...reasons, current.reason]
+    );
+    setCurrentReasonId(current.reason.id);
+    setHybridManualMode(current.reason.code === "llamada_manual");
+  }, [profile.role]);
+
+  useEffect(() => {
+    if (profile.role !== "agente") return;
+    const onManagementClosed = () => {
+      void refreshCurrentAgentStatus().catch((err) =>
+        console.error("CTI: no se pudo refrescar el modo tras cerrar la gestión", err)
+      );
+    };
+    window.addEventListener(AGENT_MANAGEMENT_CLOSED_EVENT, onManagementClosed);
+    return () => window.removeEventListener(AGENT_MANAGEMENT_CLOSED_EVENT, onManagementClosed);
+  }, [profile.role, refreshCurrentAgentStatus]);
 
   useEffect(() => {
     if (profile.role !== "agente") return;
@@ -586,6 +627,43 @@ export function CtiBar({ profile }: { profile: Profile }) {
       );
     } finally {
       setSwitchingCampaign(false);
+    }
+  }
+
+  async function handleEnterHybridManualMode() {
+    if (!effectiveManualCampaignId) {
+      setCallError("Selecciona la campaña donde se registrará la llamada manual.");
+      return;
+    }
+    setHybridTransitionPending(true);
+    setCallError(null);
+    try {
+      await enterMyHybridManualMode(effectiveManualCampaignId);
+      await refreshCurrentAgentStatus();
+      setExpanded(true);
+    } catch (err) {
+      setCallError(
+        err instanceof Error ? err.message : "No se pudo activar la llamada manual."
+      );
+    } finally {
+      setHybridTransitionPending(false);
+    }
+  }
+
+  async function handleExitHybridManualMode() {
+    setHybridTransitionPending(true);
+    setCallError(null);
+    try {
+      await exitMyHybridManualMode();
+      await refreshCurrentAgentStatus();
+      setSubscriber("");
+      setSelectedName(null);
+    } catch (err) {
+      setCallError(
+        err instanceof Error ? err.message : "No se pudo volver al discado automático."
+      );
+    } finally {
+      setHybridTransitionPending(false);
     }
   }
 
@@ -1077,9 +1155,11 @@ export function CtiBar({ profile }: { profile: Profile }) {
       callId: management.callId,
       leadId: management.leadId,
       reason: "La llamada manual no llegó a establecerse.",
-    }).catch((err) =>
-      console.error("CTI: no se pudo descartar la gestión manual no conectada", err)
-    );
+    })
+      .then(() => refreshCurrentAgentStatus())
+      .catch((err) =>
+        console.error("CTI: no se pudo descartar la gestión manual no conectada", err)
+      );
   }
 
   function openManualRecovery() {
@@ -1153,7 +1233,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async function handleIncomingInvite(invitation: any) {
-    if (sessionRef.current) {
+    if (sessionRef.current || hybridManualMode) {
       invitation.reject?.().catch(() => {});
       return;
     }
@@ -1261,8 +1341,8 @@ export function CtiBar({ profile }: { profile: Profile }) {
       if (profile.role === "agente" && !management) {
         const campaignId =
           manualCampaignId ||
-          (operatingMode?.mode === "manual" && operatingMode.campaigns.length === 1
-            ? operatingMode.campaigns[0].id
+          (operatingMode?.campaigns.filter((campaign) => campaign.manual_dial_enabled).length === 1
+            ? operatingMode.campaigns.find((campaign) => campaign.manual_dial_enabled)?.id ?? ""
             : "");
         if (!campaignId) {
           setCallError("Selecciona la campaña donde se registrará la llamada.");
@@ -1505,9 +1585,9 @@ export function CtiBar({ profile }: { profile: Profile }) {
           ? "Micrófono bloqueado"
           : "Teléfono desconectado";
   const currentReason = statusReasons.find((reason) => reason.id === currentReasonId) ?? null;
-  const availableReasons = statusReasons.filter((reason) => !reason.is_pause);
+  const availableReasons = statusReasons.filter((reason) => !reason.is_pause && !reason.is_system);
   const auxReasons = statusReasons.filter(
-    (reason) => reason.is_pause && reason.code !== "auxiliar"
+    (reason) => reason.is_pause && !reason.is_system && reason.code !== "auxiliar"
   );
   const agentCanCall = profile.role !== "agente" || currentReason === null || !currentReason.is_pause;
   const automaticSessionStatus =
@@ -1540,9 +1620,13 @@ export function CtiBar({ profile }: { profile: Profile }) {
   const validNumber = subscriber.length === MOBILE_SUBSCRIBER_DIGITS;
   const activeCall =
     callState === "in_call" || callState === "calling" || callState === "ringing";
-  const manualCampaigns = operatingMode?.mode === "manual" ? operatingMode.campaigns : [];
+  const manualCampaigns =
+    operatingMode?.campaigns.filter((campaign) => campaign.manual_dial_enabled) ?? [];
   const effectiveManualCampaignId =
     manualCampaignId || (manualCampaigns.length === 1 ? manualCampaigns[0].id : "");
+  const hybridQueueReady = operatingMode?.hybrid_manual_status === "ready";
+  const manualDialAllowed =
+    profile.role !== "agente" || (hybridManualMode ? hybridQueueReady : agentCanCall);
   const manualRecoveryCampaign = operatingMode?.campaigns.find(
     (campaign) => campaign.id === manualRecoveryCampaignId
   );
@@ -1663,10 +1747,13 @@ export function CtiBar({ profile }: { profile: Profile }) {
             onChange={(event) => handleStatusChange(event.target.value)}
             // Nunca se bloquea del todo: aunque esté cerrando la gestión, el
             // ejecutivo tiene que poder irse a AUX (baño, colación).
-            disabled={savingStatus}
+            disabled={savingStatus || hybridManualMode}
             className="border-0 bg-surface-muted font-semibold"
             aria-label="Estado del agente"
           >
+            {hybridManualMode && currentReason && (
+              <option value={currentReason.id}>AUX · Llamada manual</option>
+            )}
             {inAutomaticWrapUp && (
               <option value="__acw">{operationalStatusLabel}</option>
             )}
@@ -1859,7 +1946,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
                   <LoaderCircle className="animate-spin" size={18} />
                   Cargando modo operativo...
                 </div>
-              ) : operatingMode.mode === "automatic" ? (
+              ) : operatingMode.mode === "automatic" && !hybridManualMode ? (
                 <div>
                   <div className="px-4 py-4">
                     <div className="rounded-2xl bg-[#12333b] px-4 py-4 text-white shadow-inner">
@@ -1929,6 +2016,48 @@ export function CtiBar({ profile }: { profile: Profile }) {
                                 ? "El discador asignará la próxima llamada. No necesitas marcar ni confirmar manualmente."
                                 : "Validando tu disponibilidad con la cola automática."}
                       </p>
+
+                      {manualCampaigns.length > 0 && !inAutomaticWrapUp && (
+                        <div className="mt-4 rounded-xl border border-white/15 bg-white/5 p-3">
+                          <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/55">
+                            Marcación manual
+                          </p>
+                          {manualCampaigns.length > 1 && (
+                            <select
+                              value={effectiveManualCampaignId}
+                              onChange={(event) => setManualCampaignId(event.target.value)}
+                              disabled={hybridTransitionPending}
+                              className="mt-2 w-full rounded-lg border border-white/15 bg-white/10 px-2.5 py-2 text-xs font-semibold text-white outline-none disabled:opacity-60"
+                              aria-label="Campaña para la llamada manual"
+                            >
+                              <option value="" className="text-foreground">Seleccionar campaña…</option>
+                              {manualCampaigns.map((campaign) => (
+                                <option key={campaign.id} value={campaign.id} className="text-foreground">
+                                  {campaign.name}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => void handleEnterHybridManualMode()}
+                            disabled={
+                              hybridTransitionPending ||
+                              activeCall ||
+                              regState !== "registered" ||
+                              !effectiveManualCampaignId
+                            }
+                            className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-white px-3 py-2.5 text-xs font-bold text-[#12333b] transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {hybridTransitionPending ? (
+                              <LoaderCircle className="animate-spin" size={15} />
+                            ) : (
+                              <Phone size={15} />
+                            )}
+                            {hybridTransitionPending ? "Saliendo de la cola…" : "Hacer llamada manual"}
+                          </button>
+                        </div>
+                      )}
 
                       {automaticSessionStatus === "wrap_up" && operatingMode.session && (
                         <div className="mt-4 flex flex-wrap gap-2">
@@ -2048,6 +2177,28 @@ export function CtiBar({ profile }: { profile: Profile }) {
               ) : (
                 <>
                   <div className="px-4 pt-4">
+                    {hybridManualMode && (
+                      <div className="mb-3 rounded-xl border border-primary/20 bg-primary/5 p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-bold text-foreground">Modo llamada manual</p>
+                            <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+                              {hybridQueueReady
+                                ? "La PBX confirmó que estás fuera de la cola automática."
+                                : "Esperando confirmación de pausa desde Asterisk…"}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void handleExitHybridManualMode()}
+                            disabled={hybridTransitionPending || activeCall}
+                            className="shrink-0 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-[11px] font-semibold text-foreground disabled:opacity-50"
+                          >
+                            {hybridTransitionPending ? "Saliendo…" : "Cancelar"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     <div className="rounded-2xl bg-[#12333b] px-4 py-4 text-white shadow-inner">
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/55">
@@ -2115,7 +2266,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
                           </Select>
                         ) : (
                           <p className="rounded-lg bg-warning-bg px-3 py-2 text-xs text-warning">
-                            No tienes una campaña manual activa. Pide que configuren la campaña en modo Manual antes de marcar.
+                            No tienes habilitado el modo híbrido en ninguna campaña activa.
                           </p>
                         )}
                       </label>
@@ -2289,7 +2440,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
                       disabled={
                         !validNumber ||
                         regState !== "registered" ||
-                        !agentCanCall ||
+                        !manualDialAllowed ||
                         (profile.role === "agente" && !effectiveManualCampaignId)
                       }
                       className={cn(
@@ -2314,7 +2465,9 @@ export function CtiBar({ profile }: { profile: Profile }) {
                         ? statusLabel
                         : regState !== "registered"
                           ? "Preparando teléfono..."
-                        : !agentCanCall
+                        : hybridManualMode && !hybridQueueReady
+                          ? "Esperando pausa de Asterisk…"
+                        : !manualDialAllowed
                           ? "Ponte disponible para llamar"
                           : profile.role === "agente" && !effectiveManualCampaignId
                             ? "Selecciona una campaña"

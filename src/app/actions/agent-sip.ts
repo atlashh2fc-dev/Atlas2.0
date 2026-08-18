@@ -42,15 +42,19 @@ export type AgentDialerSessionStatus =
   | "available"
   | "ringing"
   | "on_call"
-  | "wrap_up";
+  | "wrap_up"
+  | "paused"
+  | "pausing";
 
 export type AgentDialerOperatingMode = {
   mode: "manual" | "automatic";
   active_campaign_id: string | null;
+  hybrid_manual_status: "pending" | "processing" | "ready" | null;
   campaigns: Array<{
     id: string;
     name: string;
     dial_mode: "manual" | "preview" | "progressive" | "predictive";
+    manual_dial_enabled: boolean;
     wrapup_seconds: number;
   }>;
   session: {
@@ -398,17 +402,30 @@ export async function getMyDialerOperatingMode(): Promise<AgentDialerOperatingMo
 
   const { data: memberships, error: membershipsError } = await admin
     .from("campaign_agents")
-    .select("campaign_id")
+    .select("campaign_id, manual_dial_enabled")
     .eq("profile_id", profile.id);
 
   if (membershipsError) throw new Error(membershipsError.message);
 
   const campaignIds = [...new Set((memberships ?? []).map((row) => row.campaign_id))];
+  const manualDialPermissions = new Map(
+    (memberships ?? []).map((row) => [row.campaign_id, row.manual_dial_enabled === true])
+  );
   if (campaignIds.length === 0) {
-    return { mode: "manual", active_campaign_id: null, campaigns: [], session: null };
+    return {
+      mode: "manual",
+      active_campaign_id: null,
+      hybrid_manual_status: null,
+      campaigns: [],
+      session: null,
+    };
   }
 
-  const [{ data: configs, error: configsError }, { data: campaigns, error: campaignsError }] =
+  const [
+    { data: configs, error: configsError },
+    { data: campaigns, error: campaignsError },
+    { data: hybridRequest, error: hybridRequestError },
+  ] =
     await Promise.all([
       admin
         .from("dialer_campaign_configs")
@@ -420,10 +437,16 @@ export async function getMyDialerOperatingMode(): Promise<AgentDialerOperatingMo
         .select("id, name")
         .in("id", campaignIds)
         .eq("is_active", true),
+      admin
+        .from("agent_hybrid_manual_requests")
+        .select("status")
+        .eq("profile_id", profile.id)
+        .maybeSingle(),
     ]);
 
   if (configsError) throw new Error(configsError.message);
   if (campaignsError) throw new Error(campaignsError.message);
+  if (hybridRequestError) throw new Error(hybridRequestError.message);
 
   const activeCampaignNames = new Map((campaigns ?? []).map((row) => [row.id, row.name]));
   const activeConfigs = (configs ?? [])
@@ -432,6 +455,8 @@ export async function getMyDialerOperatingMode(): Promise<AgentDialerOperatingMo
       id: config.campaign_id,
       name: activeCampaignNames.get(config.campaign_id) ?? "Campaña",
       dial_mode: config.dial_mode as AgentDialerOperatingMode["campaigns"][number]["dial_mode"],
+      manual_dial_enabled:
+        config.dial_mode === "manual" || manualDialPermissions.get(config.campaign_id) === true,
       wrapup_seconds: config.wrapup_seconds,
     }));
 
@@ -472,6 +497,12 @@ export async function getMyDialerOperatingMode(): Promise<AgentDialerOperatingMo
   return {
     mode: automaticCampaignIds.length > 0 ? "automatic" : "manual",
     active_campaign_id: selectedAutomaticCampaignId,
+    hybrid_manual_status:
+      hybridRequest?.status === "pending" ||
+      hybridRequest?.status === "processing" ||
+      hybridRequest?.status === "ready"
+        ? hybridRequest.status
+        : null,
     campaigns: activeConfigs,
     session: session
       ? {
