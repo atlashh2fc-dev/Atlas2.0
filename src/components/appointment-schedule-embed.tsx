@@ -1,16 +1,19 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId } from "react";
 import { CalendarDays, ExternalLink, X } from "lucide-react";
 
 export function AppointmentScheduleEmbed({
   title,
   url,
+  open,
+  onOpenChange,
 }: {
   title: string;
   url: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
   const titleId = useId();
   const descriptionId = useId();
 
@@ -21,7 +24,7 @@ export function AppointmentScheduleEmbed({
     document.body.style.overflow = "hidden";
 
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") onOpenChange(false);
     }
 
     window.addEventListener("keydown", handleKeyDown);
@@ -29,13 +32,13 @@ export function AppointmentScheduleEmbed({
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [open]);
+  }, [open, onOpenChange]);
 
   return (
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => onOpenChange(true)}
         className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary-hover"
       >
         <CalendarDays size={15} />
@@ -50,7 +53,7 @@ export function AppointmentScheduleEmbed({
           aria-labelledby={titleId}
           aria-describedby={descriptionId}
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setOpen(false);
+            if (event.target === event.currentTarget) onOpenChange(false);
           }}
         >
           <div className="flex h-[min(92vh,900px)] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
@@ -76,7 +79,7 @@ export function AppointmentScheduleEmbed({
                 </a>
                 <button
                   type="button"
-                  onClick={() => setOpen(false)}
+                  onClick={() => onOpenChange(false)}
                   className="rounded-lg p-2 text-muted-foreground hover:bg-surface-muted hover:text-foreground"
                   aria-label="Cerrar calendario"
                 >

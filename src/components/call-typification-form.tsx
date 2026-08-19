@@ -84,6 +84,7 @@ export function CallTypificationForm({
   const [attemptedClose, setAttemptedClose] = useState(false);
   const [pending, setPending] = useState<PendingAction>(null);
   const [message, setMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
+  const [appointmentScheduleOpen, setAppointmentScheduleOpen] = useState(false);
   const [legalBreakUntil, setLegalBreakUntil] = useState(() =>
     readLegalIntercallBreakUntil()
   );
@@ -184,6 +185,11 @@ export function CallTypificationForm({
     setStatus(option.status);
     setOutcome(option.outcome);
     if (option.agenda === "none") setNextActionAt("");
+    if (appointmentScheduleUrl && option.agenda !== "none") {
+      // El calendario debe aparecer al tipificar agenda, mientras el agente
+      // todavía puede completar la gestión, y nunca como efecto del corte.
+      setAppointmentScheduleOpen(true);
+    }
     setMessage(null);
     setAttemptedClose(false);
   }
@@ -363,6 +369,8 @@ export function CallTypificationForm({
                   <AppointmentScheduleEmbed
                     title="Disponibilidad · Abogado Legal"
                     url={appointmentScheduleUrl}
+                    open={appointmentScheduleOpen}
+                    onOpenChange={setAppointmentScheduleOpen}
                   />
                 )}
               </div>
