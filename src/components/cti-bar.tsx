@@ -272,6 +272,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
   const [currentReasonId, setCurrentReasonId] = useState<string | null>(null);
   const [savingStatus, setSavingStatus] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [statusLoading, setStatusLoading] = useState(profile.role === "agente");
   const [loadingCredential, setLoadingCredential] = useState(true);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -509,38 +510,70 @@ export function CtiBar({ profile }: { profile: Profile }) {
     };
   }, [recentStorageKey]);
 
-  useEffect(() => {
+  const loadAgentStatus = useCallback(async () => {
     if (profile.role !== "agente") return;
-    let disposed = false;
-    Promise.all([listActiveStatusReasons(), getMyCurrentStatus()])
-      .then(async ([reasons, current]) => {
-        if (disposed) return;
-        const available = reasons.find((reason) => !reason.is_pause) ?? null;
-        const currentIsHybrid = current?.reason.code === "llamada_manual";
-        const currentIsSelectable = Boolean(
-          currentIsHybrid || (current && reasons.some((reason) => reason.id === current.reason.id))
-        );
-        const selected = currentIsSelectable ? current?.reason ?? null : available;
-        setStatusReasons(
-          currentIsHybrid && current
-            ? [...reasons.filter((reason) => reason.id !== current.reason.id), current.reason]
-            : reasons
-        );
-        setCurrentReasonId(selected?.id ?? null);
-        setHybridManualMode(currentIsHybrid);
+    setStatusLoading(true);
+    setStatusError(null);
+    try {
+      // El catálogo AUX y el estado actual son independientes. Antes se
+      // cargaban con Promise.all: si una consulta fallaba, desaparecía el
+      // selector completo y el ejecutivo no tenía cómo reintentar.
+      const [reasonsResult, currentResult] = await Promise.allSettled([
+        listActiveStatusReasons(),
+        getMyCurrentStatus(),
+      ]);
 
-        // Solo se declara Disponible cuando el teléfono está realmente
-        // registrado: marcarlo antes hacía que el discador entregara llamadas
-        // a una extensión muerta y el cliente contestaba en el vacío.
-        if (!currentIsSelectable && available && registeredRef.current) {
-          await setMyCurrentStatus(available.id);
+      if (reasonsResult.status === "fulfilled") {
+        const reasons = reasonsResult.value;
+        setStatusReasons(reasons);
+
+        if (currentResult.status === "fulfilled") {
+          const current = currentResult.value;
+          const available = reasons.find((reason) => !reason.is_pause) ?? null;
+          const currentIsHybrid = current?.reason.code === "llamada_manual";
+          const currentIsSelectable = Boolean(
+            currentIsHybrid || (current && reasons.some((reason) => reason.id === current.reason.id))
+          );
+          const selected = currentIsSelectable ? current?.reason ?? null : available;
+          setStatusReasons(
+            currentIsHybrid && current
+              ? [...reasons.filter((reason) => reason.id !== current.reason.id), current.reason]
+              : reasons
+          );
+          setCurrentReasonId(selected?.id ?? null);
+          setHybridManualMode(currentIsHybrid);
+
+          // Solo se declara Disponible cuando el teléfono está realmente
+          // registrado: marcarlo antes hacía que el discador entregara llamadas
+          // a una extensión muerta y el cliente contestaba en el vacío.
+          if (!currentIsSelectable && available && registeredRef.current) {
+            await setMyCurrentStatus(available.id);
+          }
+        } else {
+          const available = reasons.find((reason) => !reason.is_pause) ?? null;
+          setCurrentReasonId((currentId) =>
+            currentId && reasons.some((reason) => reason.id === currentId)
+              ? currentId
+              : available?.id ?? null
+          );
+          setStatusError("Los AUX están disponibles, pero no se pudo leer tu estado actual.");
+          console.error("CTI: fallo al cargar estado actual", currentResult.reason);
         }
-      })
-      .catch((err) => console.error("CTI: fallo al cargar estado de agente", err));
-    return () => {
-      disposed = true;
-    };
+      } else {
+        setStatusError("No se pudieron cargar los AUX. Reintenta.");
+        console.error("CTI: fallo al cargar motivos AUX", reasonsResult.reason);
+      }
+    } catch (err) {
+      setStatusError("No se pudieron cargar los AUX. Reintenta.");
+      console.error("CTI: fallo al cargar estado de agente", err);
+    } finally {
+      setStatusLoading(false);
+    }
   }, [profile.role]);
+
+  useEffect(() => {
+    queueMicrotask(() => void loadAgentStatus());
+  }, [loadAgentStatus]);
 
   const refreshCurrentAgentStatus = useCallback(async () => {
     if (profile.role !== "agente") return;
@@ -1362,6 +1395,15 @@ export function CtiBar({ profile }: { profile: Profile }) {
       }
       if (management) manualManagementRef.current = management;
 
+      // En llamadas manuales/híbridas la ficha se abría recién al colgar.
+      // La gestión ya existe aquí, así que hacemos el screen-pop antes de
+      // originar para tener Agenda Reunión y notas durante la conversación.
+      if (profile.role === "agente" && management) {
+        setExpanded(false);
+        router.push(`/dashboard/leads/${management.leadId}?tipificar=1`);
+        router.refresh();
+      }
+
       const callAttempt = callAttemptRef.current + 1;
       callAttemptRef.current = callAttempt;
       setIsIncomingCall(false);
@@ -1571,7 +1613,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
     );
   }, [contacts, contactSearch]);
 
-  const showStatusSelector = profile.role === "agente" && statusReasons.length > 0;
+  const showStatusSelector = profile.role === "agente";
   if (!credential && !showStatusSelector) return null;
 
   const regTone: BadgeTone =
@@ -1649,36 +1691,52 @@ export function CtiBar({ profile }: { profile: Profile }) {
         <audio ref={audioRef} autoPlay className="hidden" />
         <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2">
           {showStatusSelector && (
-            <Select
-              fieldSize="sm"
-              value={operationalStatusValue}
-              onChange={(event) => handleStatusChange(event.target.value)}
-              disabled={savingStatus || hybridManualMode}
-              className="w-[min(17rem,calc(100vw-6rem))] border-border bg-surface font-semibold shadow-xl"
-              aria-label="Estado del agente"
-              title={statusError ?? "Disponible o AUX"}
-            >
-              {hybridManualMode && currentReason && (
-                <option value={currentReason.id}>AUX · Llamada manual</option>
+            <>
+              <Select
+                fieldSize="sm"
+                value={operationalStatusValue}
+                onChange={(event) => handleStatusChange(event.target.value)}
+                disabled={savingStatus || hybridManualMode || statusLoading || statusReasons.length === 0}
+                className="w-[min(17rem,calc(100vw-6rem))] border-border bg-surface font-semibold shadow-xl"
+                aria-label="Estado del agente"
+                title={statusError ?? "Disponible o AUX"}
+              >
+                {statusReasons.length === 0 && (
+                  <option value="">
+                    {statusLoading ? "Cargando Disponible / AUX..." : "AUX no disponible"}
+                  </option>
+                )}
+                {hybridManualMode && currentReason && (
+                  <option value={currentReason.id}>AUX · Llamada manual</option>
+                )}
+                {inAutomaticWrapUp && (
+                  <option value="__acw">{operationalStatusLabel}</option>
+                )}
+                {availableReasons.map((reason) => (
+                  <option key={reason.id} value={reason.id}>
+                    {reason.label}
+                  </option>
+                ))}
+                {auxReasons.length > 0 && (
+                  <optgroup label="AUX — selecciona un motivo">
+                    {auxReasons.map((reason) => (
+                      <option key={reason.id} value={reason.id}>
+                        AUX · {reason.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </Select>
+              {statusError && !statusLoading && (
+                <button
+                  type="button"
+                  onClick={() => void loadAgentStatus()}
+                  className="rounded-lg border border-border bg-surface px-2 py-1 text-xs font-semibold shadow-xl"
+                >
+                  Reintentar AUX
+                </button>
               )}
-              {inAutomaticWrapUp && (
-                <option value="__acw">{operationalStatusLabel}</option>
-              )}
-              {availableReasons.map((reason) => (
-                <option key={reason.id} value={reason.id}>
-                  {reason.label}
-                </option>
-              ))}
-              {auxReasons.length > 0 && (
-                <optgroup label="AUX — selecciona un motivo">
-                  {auxReasons.map((reason) => (
-                    <option key={reason.id} value={reason.id}>
-                      AUX · {reason.label}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-            </Select>
+            </>
           )}
           <button
             type="button"
@@ -1781,10 +1839,15 @@ export function CtiBar({ profile }: { profile: Profile }) {
             onChange={(event) => handleStatusChange(event.target.value)}
             // Nunca se bloquea del todo: aunque esté cerrando la gestión, el
             // ejecutivo tiene que poder irse a AUX (baño, colación).
-            disabled={savingStatus || hybridManualMode}
+            disabled={savingStatus || hybridManualMode || statusLoading || statusReasons.length === 0}
             className="border-0 bg-surface-muted font-semibold"
             aria-label="Estado del agente"
           >
+            {statusReasons.length === 0 && (
+              <option value="">
+                {statusLoading ? "Cargando Disponible / AUX..." : "AUX no disponible"}
+              </option>
+            )}
             {hybridManualMode && currentReason && (
               <option value={currentReason.id}>AUX · Llamada manual</option>
             )}
@@ -1808,9 +1871,20 @@ export function CtiBar({ profile }: { profile: Profile }) {
           </Select>
 
           {statusError && (
-            <span role="alert" className="text-xs text-danger">
-              {statusError}
-            </span>
+            <div className="ml-auto flex items-center gap-2">
+              <span role="alert" className="text-xs text-danger">
+                {statusError}
+              </span>
+              {!statusLoading && (
+                <button
+                  type="button"
+                  onClick={() => void loadAgentStatus()}
+                  className="rounded-lg border border-border px-2 py-1 text-xs font-semibold"
+                >
+                  Reintentar AUX
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}

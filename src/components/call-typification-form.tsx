@@ -188,9 +188,9 @@ export function CallTypificationForm({
     if (appointmentScheduleUrl && option.agenda !== "none") {
       // El calendario debe aparecer al tipificar agenda, mientras el agente
       // todavía puede completar la gestión, y nunca como efecto del corte.
-      // Abrirlo dentro del click evita depender del siguiente render de React
-      // y también evita que el navegador lo trate como un popup tardío.
-      window.open(appointmentScheduleUrl, "_blank", "noopener,noreferrer");
+      // Se usa el modal interno: una pestaña con window.open puede ser
+      // bloqueada por Chrome y deja al ejecutivo sin ninguna señal visible.
+      setAppointmentScheduleOpen(true);
     }
     setMessage(null);
     setAttemptedClose(false);
