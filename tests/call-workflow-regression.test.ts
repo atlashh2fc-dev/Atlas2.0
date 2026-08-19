@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildCallAgendaPayload,
   buildCallReasonCatalogFromWorkflow,
+  getCascadeStateOptionsFrom,
   validateCallClosure,
 } from "../src/lib/call-typification.ts";
 import { validateWorkflow } from "../src/lib/workflow-validation.ts";
@@ -75,6 +76,11 @@ test("Secretaria Virtual builds its own catalog from explicit workflow branches"
   );
   assert.equal(catalog.find((reason) => reason.value === "NO CONTESTA")?.status, "no_answer");
   assert.equal(catalog.find((reason) => reason.value === "VOLVER A LLAMAR")?.agenda, "required");
+  assert.deepEqual(
+    getCascadeStateOptionsFrom(catalog).map((state) => state.label),
+    ["CONTACTO", "NO CONTACTO"]
+  );
+  assert.equal(catalog.find((reason) => reason.value === "NO CONTESTA")?.stateLabel, "NO CONTACTO");
 });
 
 test("an empty choice workflow never produces a fallback catalog", () => {

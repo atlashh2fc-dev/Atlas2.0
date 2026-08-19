@@ -474,6 +474,9 @@ function normalizeKey(value: string | null | undefined) {
 function displayStateLabel(value: string) {
   const normalized = normalizeKey(value);
   if (normalized === "CONTACTO" || normalized === "NO CONTACTO") return normalized;
+  // "NO CONECTA" contiene la palabra "CONECTA". Resolver primero la
+  // negación evita colapsar ambas ramas del workflow bajo CONTACTO.
+  if (normalized.includes("NO CONECT") || normalized.includes("NO CONTACT")) return "NO CONTACTO";
   if (normalized.includes("CONECT")) return "CONTACTO";
   return "NO CONTACTO";
 }
@@ -664,7 +667,7 @@ export function validateCallClosure(payload: CallClosurePayload, catalog: CallRe
 
   const reasonConfig = getReasonConfigFrom(catalog, payload.reason);
   if (!reasonConfig) {
-    errors.push("La tipificacion seleccionada no pertenece al flujo Equifax.");
+    errors.push("La tipificacion seleccionada no pertenece al flujo de la campaña.");
     return errors;
   }
 

@@ -399,7 +399,7 @@ export function CallTypificationForm({
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold text-foreground">
-              {revision ? "Nueva tipificación" : "Tipificacion rapida Equifax"}
+              {revision ? "Nueva tipificación" : "Tipificación de llamada"}
             </h2>
             <p className="mt-1 text-xs text-muted-foreground">
               {revision
