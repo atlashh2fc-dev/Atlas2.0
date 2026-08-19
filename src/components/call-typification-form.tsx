@@ -1,17 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, CalendarClock, CheckCircle2, Clock3, MessageSquare, ShieldCheck } from "lucide-react";
+import { AlertCircle, CalendarClock, CheckCircle2, Clock3, MessageSquare } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { notifyAgentManagementClosed } from "@/lib/agent-control";
 import type { Call, Lead } from "@/lib/types";
 import {
   CALL_REASONS,
   EQUIFAX_PRODUCTS,
-  buildCallAgendaPayload,
-  getCascadeReasonOptionsFrom,
-  getCascadeResultOptionsFrom,
-  getCascadeStateOptionsFrom,
   getReasonConfigFrom,
   validateCallClosure,
   type CallOutcome,
@@ -22,8 +18,6 @@ import {
   closeCall,
   discardCallTechnicalError,
   reviseCallManagement,
-  saveCallAgenda,
-  saveCallProgress,
 } from "@/app/actions/calls";
 import {
   INTERCALL_BREAK_EVENT,
@@ -54,14 +48,13 @@ function localInputToWindow(value: string): string {
   return `${start}:00-${end}:00`;
 }
 
-type PendingAction = "progress" | "agenda" | "close" | "discard" | null;
+type PendingAction = "close" | "discard" | null;
 
 export function CallTypificationForm({
   lead,
   call,
   reasonCatalog,
   appointmentScheduleUrl,
-  priority = false,
   revision = false,
 }: {
   lead: Lead;
@@ -69,8 +62,6 @@ export function CallTypificationForm({
   reasonCatalog?: CallReasonConfig[];
   /** Agenda pública específica de la campaña, mostrada dentro del CRM. */
   appointmentScheduleUrl?: string | null;
-  /** La gestión llegó desde una llamada: debe dominar la pantalla. */
-  priority?: boolean;
   /** Corrige una gestión ya cerrada sin crear una llamada ficticia. */
   revision?: boolean;
 }) {
@@ -80,8 +71,6 @@ export function CallTypificationForm({
   // Equifax, porque ofrecería tipificaciones que la base luego rechazará.
   const catalog = reasonCatalog === undefined ? CALL_REASONS : reasonCatalog;
   const initialReason = getReasonConfigFrom(catalog, call.reason);
-  const [selectedState, setSelectedState] = useState(initialReason?.stateLabel ?? "");
-  const [selectedResult, setSelectedResult] = useState(initialReason?.resultLabel ?? "");
   const [status, setStatus] = useState<CallStatus | null>((call.status as CallStatus | null) ?? initialReason?.status ?? null);
   const [outcome, setOutcome] = useState<CallOutcome | null>((call.outcome as CallOutcome | null) ?? initialReason?.outcome ?? null);
   const [reason, setReason] = useState<string>(call.reason ?? "");
@@ -128,12 +117,34 @@ export function CallTypificationForm({
     return () => clearInterval(id);
   }, [legalBreakUntil, clockNow]);
 
-  const stateOptions = useMemo(() => getCascadeStateOptionsFrom(catalog), [catalog]);
-  const resultOptions = useMemo(() => getCascadeResultOptionsFrom(catalog, selectedState), [catalog, selectedState]);
-  const reasonOptions = useMemo(
-    () => getCascadeReasonOptionsFrom(catalog, selectedState, selectedResult),
-    [catalog, selectedState, selectedResult]
-  );
+  const reasonGroups = useMemo(() => {
+    const states = new Map<
+      string,
+      { label: string; orderIndex: number; reasons: CallReasonConfig[] }
+    >();
+
+    for (const option of catalog) {
+      const state = states.get(option.stateLabel) ?? {
+        label: option.stateLabel,
+        orderIndex: option.stateOrderIndex,
+        reasons: [],
+      };
+      state.reasons.push(option);
+      states.set(option.stateLabel, state);
+    }
+
+    return Array.from(states.values())
+      .sort((a, b) => a.orderIndex - b.orderIndex || a.label.localeCompare(b.label, "es"))
+      .map((state) => ({
+        ...state,
+        reasons: state.reasons.sort(
+          (a, b) =>
+            a.resultOrderIndex - b.resultOrderIndex ||
+            a.reasonOrderIndex - b.reasonOrderIndex ||
+            a.label.localeCompare(b.label, "es")
+        ),
+      }));
+  }, [catalog]);
   const reasonConfig = getReasonConfigFrom(catalog, reason);
   const showAgendaBlock = reasonConfig?.agenda === "required" || reasonConfig?.agenda === "optional";
   // Una corrección puede partir de una gestión que sí tenía agenda. Si la
@@ -168,26 +179,6 @@ export function CallTypificationForm({
     [catalog, status, outcome, reason, notes, closureNextActionAt, equifaxProducts, equifaxUf, equifaxEmail, lead.email]
   );
 
-  function resetSelection() {
-    setStatus(null);
-    setOutcome(null);
-    setReason("");
-    setMessage(null);
-    setAttemptedClose(false);
-  }
-
-  function handleStateSelect(value: string) {
-    setSelectedState(value);
-    const nextResults = getCascadeResultOptionsFrom(catalog, value);
-    setSelectedResult(nextResults.length === 1 ? nextResults[0].label : "");
-    resetSelection();
-  }
-
-  function handleResultSelect(value: string) {
-    setSelectedResult(value);
-    resetSelection();
-  }
-
   function handleReasonSelect(option: CallReasonConfig) {
     setReason(option.value);
     setStatus(option.status);
@@ -201,62 +192,6 @@ export function CallTypificationForm({
     setEquifaxProducts((prev) => (prev.includes(product) ? prev.filter((p) => p !== product) : [...prev, product]));
   }
 
-  async function handleSaveProgress() {
-    setPending("progress");
-    setMessage(null);
-    try {
-      const result = await saveCallProgress({
-        callId: call.id,
-        leadId: lead.id,
-        status,
-        outcome,
-        reason: reason || null,
-        notes: notes || null,
-      });
-      if (!result.ok) {
-        setMessage({ type: "error", text: result.error });
-        return;
-      }
-      setMessage({ type: "success", text: "Avance guardado." });
-    } catch (e) {
-      setMessage({ type: "error", text: e instanceof Error ? e.message : "Error al guardar avance." });
-    } finally {
-      setPending(null);
-    }
-  }
-
-  async function handleSaveAgenda() {
-    const iso = localInputToIso(nextActionAt);
-    if (!iso) {
-      setMessage({ type: "error", text: "Selecciona fecha y hora antes de guardar la agenda." });
-      return;
-    }
-    setPending("agenda");
-    setMessage(null);
-    try {
-      const result = await saveCallAgenda(
-        buildCallAgendaPayload({
-          callId: call.id,
-          leadId: lead.id,
-          nextActionAt: iso,
-          notes,
-        })
-      );
-      if (!result.ok) {
-        setMessage({ type: "error", text: result.error });
-        return;
-      }
-      setMessage({
-        type: "success",
-        text: notes.trim() ? "Agenda y observación guardadas." : "Agenda guardada.",
-      });
-    } catch (e) {
-      setMessage({ type: "error", text: e instanceof Error ? e.message : "Error al guardar agenda." });
-    } finally {
-      setPending(null);
-    }
-  }
-
   async function handleClose() {
     if (closeInFlightRef.current) return;
     setAttemptedClose(true);
@@ -268,6 +203,7 @@ export function CallTypificationForm({
     closeInFlightRef.current = true;
     setPending("close");
     setMessage(null);
+    let completed = false;
     try {
       const payload = {
         callId: call.id,
@@ -288,9 +224,14 @@ export function CallTypificationForm({
         setMessage({ type: "error", text: result.error });
         return;
       }
+      completed = true;
+      setMessage({ type: "success", text: "Tipificación guardada. Abriendo la siguiente gestión…" });
       if (!revision) notifyAgentManagementClosed();
-      router.replace(revision ? `/dashboard/leads/${lead.id}` : "/dashboard/leads");
-      router.refresh();
+      // Un cierre confirmado no debe volver a habilitar el botón mientras la
+      // navegación de Next termina. Una carga completa evita que una transición
+      // lenta deje el mismo formulario visible y haga que el ejecutivo vuelva a
+      // guardar una gestión que ya quedó cerrada.
+      window.location.assign(revision ? `/dashboard/leads/${lead.id}` : "/dashboard/leads");
     } catch (e) {
       console.error("No se pudo completar la acción de gestión", e);
       setMessage({
@@ -300,8 +241,10 @@ export function CallTypificationForm({
           : "No se pudo cerrar la gestión. Reintenta; si persiste, informa a supervisión.",
       });
     } finally {
-      closeInFlightRef.current = false;
-      setPending(null);
+      if (!completed) {
+        closeInFlightRef.current = false;
+        setPending(null);
+      }
     }
   }
 
@@ -339,19 +282,6 @@ export function CallTypificationForm({
           </div>
         </div>
       )}
-      {priority && (
-        <div className="flex items-start gap-3 rounded-2xl border border-primary/25 bg-primary/10 px-4 py-3 text-foreground">
-          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-            <ShieldCheck size={17} />
-          </span>
-          <div>
-            <p className="text-sm font-bold">Tipificación pendiente</p>
-            <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-              Esta llamada queda en cierre hasta que selecciones un motivo y guardes la gestión.
-            </p>
-          </div>
-        </div>
-      )}
       {!revision && !call.notes && lead.observacion_actual?.trim() && (
         <div className="flex items-start gap-3 rounded-2xl border border-border bg-surface-muted px-4 py-3">
           <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface text-primary">
@@ -370,14 +300,7 @@ export function CallTypificationForm({
       {legalBreakActive && (
         <div className="flex items-center gap-3 rounded-xl border border-warning/30 bg-warning-bg px-4 py-3 text-warning">
           <Clock3 className="shrink-0" size={20} />
-          <div>
-            <p className="text-sm font-semibold">
-              Interrupción legal · {legalBreakRemaining}s
-            </p>
-            <p className="mt-0.5 text-xs">
-              La tipificación se habilitará al completar los 10 segundos de descanso efectivo.
-            </p>
-          </div>
+          <p className="text-sm font-semibold">Disponible en {legalBreakRemaining}s</p>
         </div>
       )}
 
@@ -396,97 +319,45 @@ export function CallTypificationForm({
         className="space-y-4 border-0 p-0 disabled:cursor-not-allowed disabled:opacity-60"
       >
         <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
-        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold text-foreground">
-              {revision ? "Nueva tipificación" : "Tipificación de llamada"}
-            </h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {revision
-                ? "Selecciona el motivo correcto y agrega una agenda si deben volver a llamar."
-                : "Flujo definido por la campana. Selecciona motivo y cierra."}
-            </p>
-          </div>
-          {reasonConfig && (
-            <span className="rounded-full bg-accent px-2.5 py-1 text-xs font-medium text-accent-foreground">
-              {reasonConfig.agenda === "required" ? "Requiere agenda" : "Lista para cerrar"}
-            </span>
-          )}
-        </div>
+        <h2 className="mb-4 text-sm font-semibold text-foreground">
+          {revision ? "Corregir tipificación" : "Tipificar"}
+        </h2>
 
-        <div className="space-y-4">
-          <div>
-            <p className="mb-2 text-xs font-medium text-muted-foreground">1. Estado</p>
-            <div className="grid grid-cols-2 gap-2">
-              {stateOptions.map((option) => (
-                <button
-                  key={option.label}
-                  type="button"
-                  onClick={() => handleStateSelect(option.label)}
-                  className={`rounded-lg border px-4 py-3 text-left text-sm font-semibold transition-colors ${
-                    selectedState === option.label
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : "border-border bg-background text-foreground hover:bg-surface-muted"
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {selectedState && (
-            <div>
-              <p className="mb-2 text-xs font-medium text-muted-foreground">2. Resultado</p>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                {resultOptions.map((option) => (
+        <div className="space-y-5">
+          {reasonGroups.map((state) => (
+            <section key={state.label} aria-labelledby={`tipificacion-${state.label}`}>
+              <h3
+                id={`tipificacion-${state.label}`}
+                className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground"
+              >
+                {state.label}
+              </h3>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                {state.reasons.map((option) => (
                   <button
-                    key={option.label}
+                    key={`${option.stateLabel}-${option.resultLabel}-${option.value}`}
                     type="button"
-                    onClick={() => handleResultSelect(option.label)}
-                    className={`rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition-colors ${
-                      selectedResult === option.label
-                        ? "border-primary bg-primary/15 text-primary"
-                        : "border-border bg-background text-foreground hover:bg-surface-muted"
+                    onClick={() => handleReasonSelect(option)}
+                    aria-pressed={reason === option.value}
+                    className={`min-h-11 rounded-lg border px-3 py-2 text-left text-xs font-semibold uppercase transition-colors ${
+                      reason === option.value
+                        ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                        : "border-border bg-background text-foreground hover:border-primary/50 hover:bg-surface-muted"
                     }`}
                   >
                     {option.label}
                   </button>
                 ))}
               </div>
-            </div>
-          )}
-
-          {selectedResult && (
-            <div>
-              <p className="mb-2 text-xs font-medium text-muted-foreground">3. Motivo</p>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                {reasonOptions.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => handleReasonSelect(option)}
-                    className={`min-h-11 rounded-lg border px-3 py-2 text-left text-xs font-semibold uppercase transition-colors ${
-                      reason === option.value
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-border bg-background text-foreground hover:bg-surface-muted"
-                    }`}
-                  >
-                    {option.value}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+            </section>
+          ))}
 
           {showAgendaBlock && (
             <div className="rounded-lg border border-border bg-background p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <CalendarClock size={16} className="text-warning" />
-                  <h3 className="text-sm font-semibold text-foreground">
-                    {reasonConfig?.agenda === "required" ? "Agenda requerida" : "Agenda"}
-                  </h3>
+                  <h3 className="text-sm font-semibold text-foreground">Agenda</h3>
                 </div>
                 {appointmentScheduleUrl && (
                   <AppointmentScheduleEmbed
@@ -512,20 +383,6 @@ export function CallTypificationForm({
                   </div>
                 </div>
               </div>
-              {!revision && (
-                <button
-                  type="button"
-                  onClick={handleSaveAgenda}
-                  disabled={pending !== null}
-                  className="mt-3 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-surface-muted disabled:opacity-50"
-                >
-                  {pending === "agenda"
-                    ? "Guardando agenda..."
-                    : notes.trim()
-                      ? "Guardar agenda y observación"
-                      : "Guardar agenda"}
-                </button>
-              )}
             </div>
           )}
 
@@ -576,12 +433,12 @@ export function CallTypificationForm({
           )}
 
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Notas de gestion</label>
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Nota</label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
-              placeholder="Detalle breve o proximo paso..."
+              placeholder="Opcional"
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           </div>
@@ -612,17 +469,6 @@ export function CallTypificationForm({
             minimizado a burbuja hay que dejarle su hueco para no tapar las
             acciones de la derecha. */}
         <div className="flex flex-wrap items-center gap-2 pr-16">
-          {!revision && (
-            <button
-              type="button"
-              onClick={handleSaveProgress}
-              disabled={pending !== null}
-              className="rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-surface-muted disabled:opacity-50"
-            >
-              {pending === "progress" ? "Guardando..." : "Guardar avance"}
-            </button>
-          )}
-
           <button
             type="button"
             onClick={handleClose}
@@ -634,8 +480,8 @@ export function CallTypificationForm({
                 ? "Guardando corrección..."
                 : "Cerrando..."
               : revision
-                ? "Guardar corrección y agenda"
-                : "Guardar y terminar"}
+                ? "Confirmar"
+                : "Confirmar"}
           </button>
 
           {!revision && (

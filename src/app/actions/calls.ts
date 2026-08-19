@@ -31,10 +31,14 @@ async function clearLegalIntercallBreak(userId: string) {
   if (error) throw new Error(error.message);
 }
 
-async function releaseAgentFromWrapUp(userId: string, campaignId: string | null) {
-  if (!campaignId) return;
+async function releaseAgentFromWrapUp(userId: string) {
   const admin = createAdminClient();
   const now = new Date().toISOString();
+
+  // Un ejecutivo puede pertenecer a varias campañas, pero solo puede mantener
+  // una llamada a la vez. Al cerrar esa gestión hay que liberar cualquier ACW
+  // residual suyo: limitar el UPDATE a la campaña del lead dejó sesiones
+  // antiguas en wrap_up cuando el motor y la ficha no coincidían en campaña.
   const { error } = await admin
     .from("dialer_agent_sessions")
     .update({
@@ -43,7 +47,6 @@ async function releaseAgentFromWrapUp(userId: string, campaignId: string | null)
       updated_at: now,
     })
     .eq("profile_id", userId)
-    .eq("campaign_id", campaignId)
     .eq("status", "wrap_up");
   if (error) throw new Error(error.message);
 }
@@ -805,7 +808,7 @@ export async function closeCall(input: {
 
     const cleanupResults = await Promise.allSettled([
       clearLegalIntercallBreak(userId),
-      releaseAgentFromWrapUp(userId, lead.campaign_id),
+      releaseAgentFromWrapUp(userId),
       restoreAgentFromHybridManualMode(supabase),
     ]);
     cleanupResults.forEach((result, index) => {
@@ -954,7 +957,7 @@ export async function discardCallTechnicalError(input: { callId: string; leadId:
   });
 
   await clearLegalIntercallBreak(userId);
-  await releaseAgentFromWrapUp(userId, lead.campaign_id);
+  await releaseAgentFromWrapUp(userId);
   await restoreAgentFromHybridManualMode(supabase);
 
   revalidatePath(`/dashboard/leads/${leadId}`);

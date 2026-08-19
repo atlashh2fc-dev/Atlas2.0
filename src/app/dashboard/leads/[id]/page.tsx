@@ -89,8 +89,7 @@ export default async function LeadDetailPage({
 }) {
   const profile = await requireProfile();
   const { id } = await params;
-  const { tipificar, corregir, orquestado } = await searchParams;
-  const prioritizeTypification = tipificar === "1";
+  const { corregir, orquestado } = await searchParams;
   const correctionRequested = corregir === "1";
   const supabase = await createClient();
 
@@ -275,7 +274,6 @@ export default async function LeadDetailPage({
             call={call}
             reasonCatalog={reasonCatalog}
             appointmentScheduleUrl={appointmentScheduleUrl}
-            priority={prioritizeTypification}
           />
         </section>
       )}
