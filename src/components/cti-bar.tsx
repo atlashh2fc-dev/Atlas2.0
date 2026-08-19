@@ -1647,21 +1647,55 @@ export function CtiBar({ profile }: { profile: Profile }) {
     return (
       <>
         <audio ref={audioRef} autoPlay className="hidden" />
-        <button
-          type="button"
-          onClick={() => toggleMinimized(false)}
-          title="Abrir Teléfono Atlas"
-          aria-label="Abrir Teléfono Atlas"
-          className="fixed bottom-4 right-4 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-[#12333b] text-white shadow-2xl transition hover:brightness-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-        >
-          <Phone size={20} />
-          <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-surface">
-            <StatusDot
-              tone={inAutomaticWrapUp ? "warning" : regTone}
-              className="h-2.5 w-2.5"
-            />
-          </span>
-        </button>
+        <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2">
+          {showStatusSelector && (
+            <Select
+              fieldSize="sm"
+              value={operationalStatusValue}
+              onChange={(event) => handleStatusChange(event.target.value)}
+              disabled={savingStatus || hybridManualMode}
+              className="w-[min(17rem,calc(100vw-6rem))] border-border bg-surface font-semibold shadow-xl"
+              aria-label="Estado del agente"
+              title={statusError ?? "Disponible o AUX"}
+            >
+              {hybridManualMode && currentReason && (
+                <option value={currentReason.id}>AUX · Llamada manual</option>
+              )}
+              {inAutomaticWrapUp && (
+                <option value="__acw">{operationalStatusLabel}</option>
+              )}
+              {availableReasons.map((reason) => (
+                <option key={reason.id} value={reason.id}>
+                  {reason.label}
+                </option>
+              ))}
+              {auxReasons.length > 0 && (
+                <optgroup label="AUX — selecciona un motivo">
+                  {auxReasons.map((reason) => (
+                    <option key={reason.id} value={reason.id}>
+                      AUX · {reason.label}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </Select>
+          )}
+          <button
+            type="button"
+            onClick={() => toggleMinimized(false)}
+            title="Abrir Teléfono Atlas"
+            aria-label="Abrir Teléfono Atlas"
+            className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#12333b] text-white shadow-2xl transition hover:brightness-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            <Phone size={20} />
+            <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-surface">
+              <StatusDot
+                tone={inAutomaticWrapUp ? "warning" : regTone}
+                className="h-2.5 w-2.5"
+              />
+            </span>
+          </button>
+        </div>
       </>
     );
   }
