@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, BarChart3, ChevronRight, Mail, Phone, Users } from "lucide-react";
+import { ArrowLeft, BarChart3, Bot, ChevronRight, Mail, Phone, Users } from "lucide-react";
 
 import { requireProfile } from "@/lib/auth";
 import { campaignCapabilityKey } from "@/lib/campaign-capabilities";
@@ -25,12 +25,17 @@ export default async function OperationalCampaignPage({ params }: { params: Prom
     if (!(scope ?? []).some((campaign: { id: string }) => campaign.id === id)) notFound();
   }
 
-  const [campaignResult, leadResult, mailResult, mailboxResult, dialerResult] = await Promise.all([
+  const [campaignResult, leadResult, mailResult, mailboxResult, dialerResult, aiVoiceResult] = await Promise.all([
     supabase.from("campaigns").select("id,name,description,is_active").eq("id", id).single(),
     supabase.from("leads").select("id", { count: "exact", head: true }).eq("campaign_id", id),
     supabase.from("mail_campaigns").select("id,name,status,campaign_id,umbrella_key").eq("status", "active"),
     supabase.from("inbound_mailboxes").select("id,address,label").eq("campaign_id", id).eq("active", true),
     supabase.from("dialer_campaign_configs").select("campaign_id,dial_mode,is_active").eq("campaign_id", id).maybeSingle(),
+    supabase
+      .from("ai_voice_campaign_configs")
+      .select("campaign_id,provider,is_active,phone_number_id")
+      .eq("campaign_id", id)
+      .maybeSingle(),
   ]);
 
   const campaign = campaignResult.data;
@@ -53,6 +58,20 @@ export default async function OperationalCampaignPage({ params }: { params: Prom
       href: `/dashboard/leads?campaign=${id}`,
       icon: Phone,
       badge: dialerResult.data.is_active ? "En operación" : "Disponible",
+    });
+  }
+
+  if (aiVoiceResult.data && profile.role === "admin") {
+    capabilities.push({
+      title: "Voz IA",
+      description: "Configura y supervisa las llamadas automáticas de ElevenLabs.",
+      href: `/dashboard/admin/campanas/${id}/ia`,
+      icon: Bot,
+      badge: aiVoiceResult.data.is_active
+        ? "En ejecución"
+        : aiVoiceResult.data.phone_number_id
+          ? "Detenida"
+          : "Pendiente de troncal",
     });
   }
 
