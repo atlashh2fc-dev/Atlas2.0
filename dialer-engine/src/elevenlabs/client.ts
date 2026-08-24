@@ -68,34 +68,50 @@ export function toChileE164(phone: string): string {
   return `+${digits}`;
 }
 
-export async function startElevenLabsOutboundCall(params: {
+export type ElevenLabsOutboundCallParams = {
   apiKey: string;
   agentId: string;
   phoneNumberId: string;
   toNumber: string;
   campaignId: string;
-  dialAttemptId: string;
-  leadId: string;
+  dialAttemptId?: string;
+  leadId?: string;
+  testCallId?: string;
   contactName: string;
-}): Promise<ElevenLabsOutboundCall> {
+};
+
+export function buildElevenLabsOutboundCallPayload(params: ElevenLabsOutboundCallParams) {
+  if ((!params.dialAttemptId || !params.leadId) && !params.testCallId) {
+    throw new Error("Falta el identificador Atlas de la llamada saliente.");
+  }
+
+  const dynamicVariables: Record<string, string> = {
+    atlas_campaign_id: params.campaignId,
+    contact_name: params.contactName,
+  };
+  if (params.dialAttemptId) dynamicVariables.atlas_dial_attempt_id = params.dialAttemptId;
+  if (params.leadId) dynamicVariables.atlas_lead_id = params.leadId;
+  if (params.testCallId) dynamicVariables.atlas_test_call_id = params.testCallId;
+
+  return {
+    agent_id: params.agentId,
+    agent_phone_number_id: params.phoneNumberId,
+    to_number: toChileE164(params.toNumber),
+    conversation_initiation_client_data: {
+      dynamic_variables: dynamicVariables,
+    },
+  };
+}
+
+export async function startElevenLabsOutboundCall(
+  params: ElevenLabsOutboundCallParams
+): Promise<ElevenLabsOutboundCall> {
   return elevenLabsRequest<ElevenLabsOutboundCall>(
     params.apiKey,
     "/sip-trunk/outbound-call",
     {
       method: "POST",
-      body: JSON.stringify({
-        agent_id: params.agentId,
-        agent_phone_number_id: params.phoneNumberId,
-        to_number: toChileE164(params.toNumber),
-        conversation_initiation_client_data: {
-          dynamic_variables: {
-            atlas_campaign_id: params.campaignId,
-            atlas_dial_attempt_id: params.dialAttemptId,
-            atlas_lead_id: params.leadId,
-            contact_name: params.contactName,
-          },
-        },
-      }),
+      body: JSON.stringify(buildElevenLabsOutboundCallPayload(params)),
     }
   );
 }

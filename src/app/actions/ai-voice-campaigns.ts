@@ -1,6 +1,7 @@
 "use server";
 
 import { requireProfile } from "@/lib/auth";
+import { normalizeChilePhone } from "@/lib/chile-phone";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
@@ -56,5 +57,48 @@ export async function upsertAiVoiceCampaignConfig(formData: FormData) {
 
   revalidatePath("/dashboard/admin/campanas");
   revalidatePath(campaignPath(campaignId));
+  revalidatePath(`${campaignPath(campaignId)}/ia`);
+}
+
+export async function requestAiVoiceTestCall(formData: FormData) {
+  const admin = await requireProfile(["admin"]);
+
+  const campaignId = String(formData.get("campaign_id") ?? "").trim();
+  const rawContactName = String(formData.get("contact_name") ?? "").trim();
+  const contactName = rawContactName || "Prueba";
+  const phone = normalizeChilePhone(String(formData.get("phone") ?? ""));
+
+  if (!campaignId) throw new Error("Falta la campaña.");
+  if (contactName.length > 120) throw new Error("El nombre no puede superar 120 caracteres.");
+
+  const supabase = await createClient();
+  const { data: config, error: configError } = await supabase
+    .from("ai_voice_campaign_configs")
+    .select("phone_number_id,campaigns(is_active)")
+    .eq("campaign_id", campaignId)
+    .maybeSingle();
+
+  if (configError) throw new Error(configError.message);
+  if (!config) throw new Error("Configura primero el agente de voz de esta campaña.");
+  if (!config.phone_number_id) throw new Error("Falta conectar el número / troncal SIP de ElevenLabs.");
+
+  const relatedCampaign = config.campaigns as unknown;
+  const campaign = Array.isArray(relatedCampaign)
+    ? (relatedCampaign[0] as { is_active: boolean } | undefined) ?? null
+    : (relatedCampaign as { is_active: boolean } | null);
+  if (!campaign?.is_active) throw new Error("La campaña general debe estar habilitada para realizar una prueba.");
+
+  const { error } = await supabase.from("ai_voice_test_calls").insert({
+    campaign_id: campaignId,
+    requested_by: admin.id,
+    contact_name: contactName,
+    phone,
+  });
+
+  if (error?.code === "23505") {
+    throw new Error("Ese número ya tiene una prueba pendiente o en curso.");
+  }
+  if (error) throw new Error(error.message);
+
   revalidatePath(`${campaignPath(campaignId)}/ia`);
 }

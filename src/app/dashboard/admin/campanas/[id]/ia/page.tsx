@@ -1,4 +1,7 @@
-import { upsertAiVoiceCampaignConfig } from "@/app/actions/ai-voice-campaigns";
+import {
+  requestAiVoiceTestCall,
+  upsertAiVoiceCampaignConfig,
+} from "@/app/actions/ai-voice-campaigns";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { AiVoiceCampaignConfig } from "@/lib/types";
@@ -23,6 +26,7 @@ const TEST_AGENT_ID = "agent_5001m0trhg8cfhs98qhw1bpayagf";
 
 const STATUS_LABELS: Record<string, string> = {
   queued: "En cola",
+  claiming: "Preparando",
   originating: "Originando",
   ringing: "Timbrando",
   answered: "Conversando",
@@ -36,7 +40,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 function statusTone(status: string): "success" | "warning" | "danger" | "neutral" {
   if (status === "completed") return "success";
-  if (["queued", "originating", "ringing", "answered", "bridged"].includes(status)) return "warning";
+  if (["queued", "claiming", "originating", "ringing", "answered", "bridged"].includes(status)) return "warning";
   if (["failed", "busy", "no_answer", "voicemail"].includes(status)) return "danger";
   return "neutral";
 }
@@ -46,7 +50,7 @@ export default async function AiVoiceCampaignPage({ params }: { params: Promise<
   const { id } = await params;
   const supabase = await createClient();
 
-  const [configResult, campaignResult, leadCountResult, memberCountResult, attemptsResult] = await Promise.all([
+  const [configResult, campaignResult, leadCountResult, memberCountResult, attemptsResult, testCallsResult] = await Promise.all([
     supabase.from("ai_voice_campaign_configs").select("*").eq("campaign_id", id).maybeSingle(),
     supabase.from("campaigns").select("is_active").eq("id", id).single(),
     supabase.from("leads").select("id", { count: "exact", head: true }).eq("campaign_id", id),
@@ -58,13 +62,21 @@ export default async function AiVoiceCampaignPage({ params }: { params: Promise<
       .eq("attempt_kind", "ai_voice")
       .order("created_at", { ascending: false })
       .limit(50),
+    supabase
+      .from("ai_voice_test_calls")
+      .select("id,contact_name,phone,status,provider_conversation_id,provider_result,hangup_cause,created_at,ended_at")
+      .eq("campaign_id", id)
+      .order("created_at", { ascending: false })
+      .limit(25),
   ]);
 
   if (configResult.error) throw new Error(configResult.error.message);
+  if (testCallsResult.error) throw new Error(testCallsResult.error.message);
   const config = configResult.data as AiVoiceCampaignConfig | null;
   const leadCount = leadCountResult.count ?? 0;
   const memberCount = memberCountResult.count ?? 0;
   const attempts = attemptsResult.data ?? [];
+  const testCalls = testCallsResult.data ?? [];
   const readyForActivation = Boolean(
     campaignResult.data?.is_active &&
       leadCount > 0 &&
@@ -156,7 +168,76 @@ export default async function AiVoiceCampaignPage({ params }: { params: Promise<
       </SectionCard>
 
       <SectionCard
-        title="Prueba controlada"
+        title="Llamada manual de prueba"
+        description="Ingresa un número y Paula llamará apenas el motor tome la solicitud. Esto no enciende la campaña automática ni modifica su base."
+        actions={<Badge tone={config?.phone_number_id ? "success" : "danger"}>{config?.phone_number_id ? "Lista para probar" : "Falta troncal"}</Badge>}
+      >
+        <ActionForm
+          action={requestAiVoiceTestCall}
+          success="Prueba encolada: el bot llamará en unos segundos"
+          className="grid gap-4 border-b border-border p-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
+        >
+          <input type="hidden" name="campaign_id" value={id} />
+
+          <Field label="Nombre (opcional)">
+            <Input name="contact_name" placeholder="Matías" maxLength={120} />
+          </Field>
+
+          <Field label="Teléfono de prueba">
+            <Input
+              name="phone"
+              type="tel"
+              required
+              inputMode="tel"
+              autoComplete="tel"
+              placeholder="+56 9 1234 5678"
+            />
+          </Field>
+
+          <ActionSubmit disabled={!config?.phone_number_id} pendingLabel="Encolando…">
+            Llamar ahora
+          </ActionSubmit>
+        </ActionForm>
+
+        <Table>
+          <Thead>
+            <Th>Contacto</Th>
+            <Th>Teléfono</Th>
+            <Th>Estado</Th>
+            <Th>Resultado</Th>
+            <Th>Solicitud</Th>
+          </Thead>
+          <Tbody>
+            {testCalls.length === 0 && (
+              <TableEmpty colSpan={5}>Aún no hay pruebas manuales.</TableEmpty>
+            )}
+            {testCalls.map((testCall) => {
+              const result = (testCall.provider_result ?? {}) as Record<string, unknown>;
+              const resultText =
+                (typeof result.summary === "string" && result.summary) ||
+                testCall.hangup_cause ||
+                testCall.provider_conversation_id ||
+                "—";
+              return (
+                <Tr key={testCall.id}>
+                  <Td strong>{testCall.contact_name}</Td>
+                  <Td muted>{testCall.phone}</Td>
+                  <Td>
+                    <Badge tone={statusTone(testCall.status)}>
+                      {STATUS_LABELS[testCall.status] ?? testCall.status}
+                    </Badge>
+                  </Td>
+                  <Td muted>{resultText}</Td>
+                  <Td muted>{new Date(testCall.created_at).toLocaleString("es-CL")}</Td>
+                </Tr>
+              );
+            })}
+          </Tbody>
+        </Table>
+      </SectionCard>
+
+      <SectionCard
+        title="Historial de la base automática"
         description={`${leadCount.toLocaleString("es-CL")} contacto(s) en la base · concurrencia ${config?.max_concurrent_calls ?? 1} · sin agentes humanos`}
       >
         <Table>

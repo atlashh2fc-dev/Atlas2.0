@@ -48,6 +48,24 @@ export type AiVoiceAttempt = {
   provider_result: Record<string, unknown>;
 };
 
+export type AiVoiceTestCall = {
+  id: string;
+  campaign_id: string;
+  status: string;
+  provider_conversation_id: string;
+  provider_call_id: string | null;
+  provider_result: Record<string, unknown>;
+};
+
+export type ClaimedAiVoiceTestCall = {
+  test_call_id: string;
+  campaign_id: string;
+  phone: string;
+  contact_name: string;
+  agent_id: string;
+  phone_number_id: string;
+};
+
 export async function claimNextDialTargets(campaignId: string, batchSize: number): Promise<ClaimedTarget[]> {
   if (batchSize <= 0) return [];
   const { data, error } = await supabase.rpc("claim_next_dial_targets", {
@@ -114,6 +132,50 @@ export async function registerAiVoiceEvent(params: {
     p_hangup_cause: params.hangupCause ?? null,
   });
   if (error) throw new Error(`register_ai_voice_event: ${error.message}`);
+}
+
+export async function claimNextAiVoiceTestCalls(
+  campaignIds: string[],
+  batchSize: number
+): Promise<ClaimedAiVoiceTestCall[]> {
+  if (campaignIds.length === 0 || batchSize <= 0) return [];
+  const { data, error } = await supabase.rpc("claim_next_ai_voice_test_calls", {
+    p_campaign_ids: campaignIds,
+    p_batch_size: batchSize,
+  });
+  if (error) throw new Error(`claim_next_ai_voice_test_calls: ${error.message}`);
+  return (data ?? []) as ClaimedAiVoiceTestCall[];
+}
+
+export async function getActiveAiVoiceTestCalls(campaignIds: string[]): Promise<AiVoiceTestCall[]> {
+  if (campaignIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from("ai_voice_test_calls")
+    .select("id,campaign_id,status,provider_conversation_id,provider_call_id,provider_result")
+    .in("campaign_id", campaignIds)
+    .not("provider_conversation_id", "is", null)
+    .in("status", ["originating", "ringing", "answered"]);
+  if (error) throw new Error(`ai_voice_test_calls (active): ${error.message}`);
+  return (data ?? []) as AiVoiceTestCall[];
+}
+
+export async function registerAiVoiceTestCallEvent(params: {
+  testCallId: string;
+  status: string;
+  providerConversationId?: string | null;
+  providerCallId?: string | null;
+  result?: Record<string, unknown>;
+  hangupCause?: string | null;
+}): Promise<void> {
+  const { error } = await supabase.rpc("register_ai_voice_test_call_event", {
+    p_test_call_id: params.testCallId,
+    p_status: params.status,
+    p_provider_conversation_id: params.providerConversationId ?? null,
+    p_provider_call_id: params.providerCallId ?? null,
+    p_result: params.result ?? {},
+    p_hangup_cause: params.hangupCause ?? null,
+  });
+  if (error) throw new Error(`register_ai_voice_test_call_event: ${error.message}`);
 }
 
 export async function registerDialEvent(params: {

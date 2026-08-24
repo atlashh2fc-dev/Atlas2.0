@@ -7,10 +7,13 @@ import {
 import { mapElevenLabsStatus } from "../elevenlabs/status";
 import { logger } from "../logger";
 import {
+  claimNextAiVoiceTestCalls,
   claimNextAiVoiceTargets,
   getActiveAiVoiceAttempts,
   getActiveAiVoiceCampaignConfigs,
+  getActiveAiVoiceTestCalls,
   registerAiVoiceEvent,
+  registerAiVoiceTestCallEvent,
 } from "../supabaseClient";
 
 const MAX_AI_BATCH_PER_TICK = 3;
@@ -54,6 +57,88 @@ async function reconcileCampaign(campaignId: string, apiKey: string): Promise<vo
   }
 }
 
+async function reconcileManualTestCalls(campaignIds: string[], apiKey: string): Promise<void> {
+  const testCalls = await getActiveAiVoiceTestCalls(campaignIds);
+  for (const testCall of testCalls) {
+    try {
+      const conversation = await getElevenLabsConversation(apiKey, testCall.provider_conversation_id);
+      const previousProviderStatus = testCall.provider_result?.provider_status;
+      if (previousProviderStatus === conversation.status && conversation.status !== "done") continue;
+
+      await registerAiVoiceTestCallEvent({
+        testCallId: testCall.id,
+        status: mapElevenLabsStatus(conversation.status),
+        providerConversationId: conversation.conversation_id,
+        providerCallId: testCall.provider_call_id,
+        result: conversationResult(conversation),
+        hangupCause: conversation.status === "failed"
+          ? conversation.metadata?.termination_reason ?? "ELEVENLABS_FAILED"
+          : null,
+      });
+    } catch (err) {
+      logger.error(
+        { err, campaignId: testCall.campaign_id, testCallId: testCall.id, conversationId: testCall.provider_conversation_id },
+        "No se pudo reconciliar la prueba manual de ElevenLabs"
+      );
+    }
+  }
+}
+
+async function startManualTestCalls(campaignIds: string[], apiKey: string): Promise<boolean> {
+  let ok = true;
+  const testCalls = await claimNextAiVoiceTestCalls(campaignIds, MAX_AI_BATCH_PER_TICK);
+
+  for (const testCall of testCalls) {
+    try {
+      const outbound = await startElevenLabsOutboundCall({
+        apiKey,
+        agentId: testCall.agent_id,
+        phoneNumberId: testCall.phone_number_id,
+        toNumber: testCall.phone,
+        campaignId: testCall.campaign_id,
+        testCallId: testCall.test_call_id,
+        contactName: testCall.contact_name,
+      });
+
+      if (!outbound.success || !outbound.conversation_id) {
+        throw new Error(outbound.message || "ElevenLabs no devolvió conversation_id");
+      }
+
+      await registerAiVoiceTestCallEvent({
+        testCallId: testCall.test_call_id,
+        status: "originating",
+        providerConversationId: outbound.conversation_id,
+        providerCallId: outbound.sip_call_id ?? null,
+        result: {
+          provider_status: "initiated",
+          provider_message: outbound.message,
+        },
+      });
+      logger.info(
+        {
+          campaignId: testCall.campaign_id,
+          testCallId: testCall.test_call_id,
+          conversationId: outbound.conversation_id,
+        },
+        "Prueba manual IA iniciada"
+      );
+    } catch (err) {
+      ok = false;
+      logger.error({ err, testCall }, "No se pudo iniciar la prueba manual IA");
+      await registerAiVoiceTestCallEvent({
+        testCallId: testCall.test_call_id,
+        status: "failed",
+        result: { stage: "elevenlabs_outbound_call" },
+        hangupCause: err instanceof Error ? err.message.slice(0, 500) : "ELEVENLABS_OUTBOUND_FAILED",
+      }).catch((registerErr) =>
+        logger.error({ err: registerErr, testCall }, "No se pudo terminalizar la prueba manual IA")
+      );
+    }
+  }
+
+  return ok;
+}
+
 export async function runAiVoiceCampaignTick(): Promise<{ ok: boolean; configuredCampaigns: number }> {
   if (config.aiVoiceCampaignIds.length === 0) {
     return { ok: true, configuredCampaigns: 0 };
@@ -65,6 +150,14 @@ export async function runAiVoiceCampaignTick(): Promise<{ ok: boolean; configure
 
   const configs = await getActiveAiVoiceCampaignConfigs(config.aiVoiceCampaignIds);
   let ok = true;
+
+  try {
+    await reconcileManualTestCalls(config.aiVoiceCampaignIds, config.elevenLabsApiKey);
+    if (!(await startManualTestCalls(config.aiVoiceCampaignIds, config.elevenLabsApiKey))) ok = false;
+  } catch (err) {
+    ok = false;
+    logger.error({ err }, "Falló el ciclo de pruebas manuales IA");
+  }
 
   for (const aiConfig of configs) {
     try {
