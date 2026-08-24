@@ -45,6 +45,43 @@ function statusTone(status: string): "success" | "warning" | "danger" | "neutral
   return "neutral";
 }
 
+function providerErrorDetail(result: Record<string, unknown>): { code: number | null; reason: string | null } {
+  const providerError = result.provider_error;
+  if (!providerError || typeof providerError !== "object" || Array.isArray(providerError)) {
+    return { code: null, reason: null };
+  }
+  const record = providerError as Record<string, unknown>;
+  return {
+    code: typeof record.code === "number" ? record.code : null,
+    reason: typeof record.reason === "string" && record.reason.trim() ? record.reason.trim() : null,
+  };
+}
+
+function testCallResultText(testCall: {
+  status: string;
+  provider_result: unknown;
+  hangup_cause: string | null;
+  provider_conversation_id: string | null;
+}): string {
+  const result = (testCall.provider_result ?? {}) as Record<string, unknown>;
+  const summary = typeof result.summary === "string" && result.summary.trim() ? result.summary.trim() : null;
+  if (summary) return summary;
+
+  if (testCall.status === "busy") return "Número ocupado o llamada rechazada temporalmente (SIP 486).";
+
+  const providerError = providerErrorDetail(result);
+  if (providerError.code === 4300 || /daily call limit/i.test(providerError.reason ?? "")) {
+    return "Límite diario de 5 llamadas de ElevenLabs alcanzado.";
+  }
+  if (providerError.reason) return providerError.reason;
+  if (testCall.hangup_cause) return testCall.hangup_cause;
+
+  if (["queued", "claiming", "originating", "ringing", "answered"].includes(testCall.status)) {
+    return testCall.provider_conversation_id ?? "Procesando…";
+  }
+  return "ElevenLabs no informó el motivo.";
+}
+
 export default async function AiVoiceCampaignPage({ params }: { params: Promise<{ id: string }> }) {
   await requireProfile(["admin"]);
   const { id } = await params;
@@ -212,12 +249,7 @@ export default async function AiVoiceCampaignPage({ params }: { params: Promise<
               <TableEmpty colSpan={5}>Aún no hay pruebas manuales.</TableEmpty>
             )}
             {testCalls.map((testCall) => {
-              const result = (testCall.provider_result ?? {}) as Record<string, unknown>;
-              const resultText =
-                (typeof result.summary === "string" && result.summary) ||
-                testCall.hangup_cause ||
-                testCall.provider_conversation_id ||
-                "—";
+              const resultText = testCallResultText(testCall);
               return (
                 <Tr key={testCall.id}>
                   <Td strong>{testCall.contact_name}</Td>

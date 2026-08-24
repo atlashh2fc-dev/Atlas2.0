@@ -22,6 +22,11 @@ export type ElevenLabsConversation = {
   metadata?: {
     call_duration_secs?: number;
     termination_reason?: string;
+    error?: {
+      code?: number;
+      reason?: string;
+      error_type?: string;
+    } | null;
   };
   analysis?: {
     call_successful?: string;

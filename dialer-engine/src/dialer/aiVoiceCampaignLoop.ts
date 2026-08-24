@@ -4,7 +4,11 @@ import {
   startElevenLabsOutboundCall,
   type ElevenLabsConversation,
 } from "../elevenlabs/client";
-import { mapElevenLabsStatus } from "../elevenlabs/status";
+import {
+  classifyElevenLabsOutboundFailure,
+  elevenLabsConversationFailureReason,
+  mapElevenLabsStatus,
+} from "../elevenlabs/status";
 import { logger } from "../logger";
 import {
   claimNextAiVoiceTestCalls,
@@ -26,6 +30,7 @@ function conversationResult(conversation: ElevenLabsConversation): Record<string
     call_successful: conversation.analysis?.call_successful ?? null,
     summary: conversation.analysis?.transcript_summary ?? null,
     has_user_audio: conversation.has_user_audio ?? null,
+    provider_error: conversation.metadata?.error ?? null,
   };
 }
 
@@ -45,7 +50,7 @@ async function reconcileCampaign(campaignId: string, apiKey: string): Promise<vo
         providerCallId: attempt.provider_call_id,
         result: conversationResult(conversation),
         hangupCause: conversation.status === "failed"
-          ? conversation.metadata?.termination_reason ?? "ELEVENLABS_FAILED"
+          ? elevenLabsConversationFailureReason(conversation) ?? "ELEVENLABS_FAILED"
           : null,
       });
     } catch (err) {
@@ -72,7 +77,7 @@ async function reconcileManualTestCalls(campaignIds: string[], apiKey: string): 
         providerCallId: testCall.provider_call_id,
         result: conversationResult(conversation),
         hangupCause: conversation.status === "failed"
-          ? conversation.metadata?.termination_reason ?? "ELEVENLABS_FAILED"
+          ? elevenLabsConversationFailureReason(conversation) ?? "ELEVENLABS_FAILED"
           : null,
       });
     } catch (err) {
@@ -127,7 +132,7 @@ async function startManualTestCalls(campaignIds: string[], apiKey: string): Prom
       logger.error({ err, testCall }, "No se pudo iniciar la prueba manual IA");
       await registerAiVoiceTestCallEvent({
         testCallId: testCall.test_call_id,
-        status: "failed",
+        status: classifyElevenLabsOutboundFailure(err),
         result: { stage: "elevenlabs_outbound_call" },
         hangupCause: err instanceof Error ? err.message.slice(0, 500) : "ELEVENLABS_OUTBOUND_FAILED",
       }).catch((registerErr) =>
@@ -208,7 +213,7 @@ export async function runAiVoiceCampaignTick(): Promise<{ ok: boolean; configure
           logger.error({ err, target }, "No se pudo iniciar la llamada IA");
           await registerAiVoiceEvent({
             dialAttemptId: target.dial_attempt_id,
-            status: "failed",
+            status: classifyElevenLabsOutboundFailure(err),
             result: { stage: "elevenlabs_outbound_call" },
             hangupCause: err instanceof Error ? err.message.slice(0, 500) : "ELEVENLABS_OUTBOUND_FAILED",
           }).catch((registerErr) =>
