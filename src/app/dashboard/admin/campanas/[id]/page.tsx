@@ -6,6 +6,7 @@ import { setCampaignWorkflow } from "@/app/actions/campaigns";
 import { CampaignDashboardSummary, type ContactabilityHour } from "@/components/campaign-dashboard-summary";
 import type {
   CampaignDashboardSummary as CampaignDashboardSummaryData,
+  AiVoiceCampaignConfig,
   DialerCampaignConfig,
 } from "@/lib/types";
 import { ActionForm, ActionSubmit, Card, Field, SectionCard, Select } from "@/components/ui";
@@ -54,6 +55,7 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
     { count: leadCount },
     { count: memberCount },
     { data: dialerConfig },
+    { data: aiVoiceConfig },
     { data: workflows },
   ] = await Promise.all([
     supabase.rpc("get_campaign_dashboard_summary", {
@@ -66,26 +68,28 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
     supabase.from("leads").select("id", { count: "exact", head: true }).eq("campaign_id", id),
     supabase.from("campaign_agents").select("id", { count: "exact", head: true }).eq("campaign_id", id),
     supabase.from("dialer_campaign_configs").select("*").eq("campaign_id", id).maybeSingle(),
+    supabase.from("ai_voice_campaign_configs").select("*").eq("campaign_id", id).maybeSingle(),
     // Solo flujos publicados: un borrador no debería quedar operando una campaña.
     supabase.from("workflows").select("id, name").eq("status", "published").order("name"),
   ]);
 
   const dialer = dialerConfig as DialerCampaignConfig | null;
+  const aiVoice = aiVoiceConfig as AiVoiceCampaignConfig | null;
   const usesSiptel = dialer?.trunk_context === "siptel";
   const base = `/dashboard/admin/campanas/${id}`;
 
   const setupItems = [
     {
       label: "Flujo de gestión",
-      detail: campaign.workflow_id ? "Asignado" : "Asigna el guion que verán los ejecutivos",
-      done: Boolean(campaign.workflow_id),
-      href: `${base}#flujo`,
+      detail: aiVoice ? "El guion vive en el agente ElevenLabs" : campaign.workflow_id ? "Asignado" : "Asigna el guion que verán los ejecutivos",
+      done: aiVoice ? true : Boolean(campaign.workflow_id),
+      href: aiVoice ? `${base}/ia` : `${base}#flujo`,
     },
     {
       label: "Ejecutivos",
-      detail: (memberCount ?? 0) > 0 ? `${memberCount} asignados` : "Asigna al menos un ejecutivo",
-      done: (memberCount ?? 0) > 0,
-      href: `${base}/ejecutivos`,
+      detail: aiVoice ? ((memberCount ?? 0) === 0 ? "No aplica · campaña solo IA" : "Retira los ejecutivos asignados") : (memberCount ?? 0) > 0 ? `${memberCount} asignados` : "Asigna al menos un ejecutivo",
+      done: aiVoice ? (memberCount ?? 0) === 0 : (memberCount ?? 0) > 0,
+      href: aiVoice ? `${base}/ia` : `${base}/ejecutivos`,
     },
     {
       label: "Base de registros",
@@ -98,15 +102,21 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
     },
     {
       label: "Discador",
-      detail: dialer
+      detail: aiVoice
+        ? aiVoice.is_active
+          ? "Agente ElevenLabs activo"
+          : aiVoice.phone_number_id
+            ? "Troncal listo; falta iniciar la IA"
+            : "Falta conectar el troncal SIP"
+        : dialer
         ? !usesSiptel
           ? "Revisa la ruta saliente: solo Siptel está habilitado"
           : dialer.is_active
             ? "Configurado y activo"
             : "Configurado, falta iniciarlo"
         : "Configura la cola y el modo de discado",
-      done: Boolean(dialer?.is_active && usesSiptel),
-      href: `${base}/discado`,
+      done: aiVoice ? Boolean(aiVoice.is_active && aiVoice.phone_number_id) : Boolean(dialer?.is_active && usesSiptel),
+      href: aiVoice ? `${base}/ia` : `${base}/discado`,
     },
   ];
   const pending = setupItems.filter((item) => !item.done).length;
@@ -147,8 +157,8 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
         </div>
       </SectionCard>
 
-      <div id="flujo" />
-      <SectionCard
+      {!aiVoice && <div id="flujo" />}
+      {!aiVoice && <SectionCard
         title="Flujo de gestión"
         description="Es el guion que los ejecutivos siguen al atender los registros de esta campaña."
       >
@@ -176,7 +186,7 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
             Editar o crear un flujo
           </Link>
         </ActionForm>
-      </SectionCard>
+      </SectionCard>}
 
       {summaryError ? (
         <Card className="text-sm text-danger">No se pudo cargar el resumen: {summaryError.message}</Card>

@@ -245,6 +245,18 @@ export interface DialerCampaignConfig {
   updated_at: string;
 }
 
+export interface AiVoiceCampaignConfig {
+  campaign_id: string;
+  provider: "elevenlabs";
+  agent_id: string;
+  phone_number_id: string | null;
+  max_concurrent_calls: number;
+  max_attempts_per_contact: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface AgentSipCredential {
   id: string;
   profile_id: string;

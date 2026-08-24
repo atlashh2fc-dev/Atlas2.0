@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, Play, Square } from "lucide-react";
 import { toggleCampaignActive } from "@/app/actions/campaigns";
 import { setDialerCampaignActive } from "@/app/actions/dialer-config";
-import type { DialerCampaignConfig } from "@/lib/types";
+import type { AiVoiceCampaignConfig, DialerCampaignConfig } from "@/lib/types";
 import { ActionForm, ActionSubmit, Badge, NavTabs, PageHeader } from "@/components/ui";
 
 /**
@@ -24,13 +24,15 @@ export default async function CampaignDetailLayout({
   const { id } = await params;
   const supabase = await createClient();
 
-  const [{ data: campaign }, { data: dialerConfig }] = await Promise.all([
+  const [{ data: campaign }, { data: dialerConfig }, { data: aiConfig }] = await Promise.all([
     supabase.from("campaigns").select("*").eq("id", id).single(),
     supabase.from("dialer_campaign_configs").select("*").eq("campaign_id", id).maybeSingle(),
+    supabase.from("ai_voice_campaign_configs").select("*").eq("campaign_id", id).maybeSingle(),
   ]);
   if (!campaign) notFound();
 
   const dialer = dialerConfig as DialerCampaignConfig | null;
+  const aiVoice = aiConfig as AiVoiceCampaignConfig | null;
   const usesSiptel = dialer?.trunk_context === "siptel";
   const base = `/dashboard/admin/campanas/${id}`;
 
@@ -54,7 +56,13 @@ export default async function CampaignDetailLayout({
               {campaign.is_active ? "Campaña activa" : "Campaña inactiva"}
             </Badge>
 
-            {dialer && usesSiptel && (
+            {aiVoice && (
+              <Badge tone={aiVoice.is_active ? "success" : "danger"}>
+                {aiVoice.is_active ? "IA en ejecución" : "IA detenida"}
+              </Badge>
+            )}
+
+            {dialer && !aiVoice && usesSiptel && (
               <ActionForm
                 action={setDialerCampaignActive}
                 success={dialer.is_active ? "Discado detenido" : "Discado iniciado"}
@@ -96,13 +104,21 @@ export default async function CampaignDetailLayout({
       />
 
       <NavTabs
-        tabs={[
-          { label: "Resumen", href: base },
-          { label: "Base", href: `${base}/base` },
-          { label: "Ejecutivos", href: `${base}/ejecutivos` },
-          { label: "Priorización", href: `${base}/priorizacion` },
-          { label: "Discado", href: `${base}/discado` },
-        ]}
+        tabs={
+          aiVoice
+            ? [
+                { label: "Resumen", href: base },
+                { label: "Base", href: `${base}/base` },
+                { label: "Agente IA", href: `${base}/ia` },
+              ]
+            : [
+                { label: "Resumen", href: base },
+                { label: "Base", href: `${base}/base` },
+                { label: "Ejecutivos", href: `${base}/ejecutivos` },
+                { label: "Priorización", href: `${base}/priorizacion` },
+                { label: "Discado", href: `${base}/discado` },
+              ]
+        }
       />
 
       {children}

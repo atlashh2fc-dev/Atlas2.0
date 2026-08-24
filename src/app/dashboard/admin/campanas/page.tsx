@@ -41,7 +41,7 @@ export default async function CampaignsPage({
 
   // Conteos por campaña con `head: true`: antes esta pantalla se traía el
   // campaign_id de todos los leads de la base para contarlos en memoria.
-  const [counts, dialerConfigs, memberRows] = await Promise.all([
+  const [counts, dialerConfigs, aiVoiceConfigs, memberRows] = await Promise.all([
     Promise.all(
       list.map(async (campaign) => {
         const [{ count: total }, { count: pending }] = await Promise.all([
@@ -56,11 +56,13 @@ export default async function CampaignsPage({
       })
     ),
     supabase.from("dialer_campaign_configs").select("campaign_id, dial_mode, is_active, trunk_context"),
+    supabase.from("ai_voice_campaign_configs").select("campaign_id, is_active, phone_number_id"),
     supabase.from("campaign_agents").select("campaign_id"),
   ]);
 
   const countById = new Map(counts.map((row) => [row.id, row]));
   const dialerByCampaign = new Map((dialerConfigs.data ?? []).map((config) => [config.campaign_id, config]));
+  const aiVoiceByCampaign = new Map((aiVoiceConfigs.data ?? []).map((config) => [config.campaign_id, config]));
   const agentsByCampaign = new Map<string, number>();
   for (const row of memberRows.data ?? []) {
     agentsByCampaign.set(row.campaign_id, (agentsByCampaign.get(row.campaign_id) ?? 0) + 1);
@@ -108,6 +110,7 @@ export default async function CampaignsPage({
             )}
             {list.map((campaign) => {
               const dialer = dialerByCampaign.get(campaign.id);
+              const aiVoice = aiVoiceByCampaign.get(campaign.id);
               const usesSiptel = dialer?.trunk_context === "siptel";
               const dialModeLabel = dialer
                 ? DIAL_MODES.find((mode) => mode.value === (dialer.dial_mode as DialMode))?.label
@@ -137,7 +140,7 @@ export default async function CampaignsPage({
                     {(numbers?.pending ?? 0).toLocaleString("es-CL")}
                   </Td>
                   <Td align="right">
-                    {agentCount === 0 ? <span className="text-warning">0</span> : agentCount}
+                    {aiVoice ? <span className="text-muted-foreground">No aplica</span> : agentCount === 0 ? <span className="text-warning">0</span> : agentCount}
                   </Td>
                   <Td>
                     <Badge tone={campaign.is_active ? "success" : "danger"}>
@@ -145,7 +148,14 @@ export default async function CampaignsPage({
                     </Badge>
                   </Td>
                   <Td>
-                    {dialer ? (
+                    {aiVoice ? (
+                      <div className="space-y-1">
+                        <Badge tone={aiVoice.is_active ? "success" : "danger"}>
+                          {aiVoice.is_active ? "IA en ejecución" : "IA detenida"}
+                        </Badge>
+                        <p className="text-xs text-muted-foreground">ElevenLabs · sin ejecutivos</p>
+                      </div>
+                    ) : dialer ? (
                       <div className="space-y-1">
                         <Badge tone={!usesSiptel ? "warning" : dialer.is_active ? "success" : "danger"}>
                           {!usesSiptel ? "Ruta por revisar" : dialer.is_active ? "En ejecución" : "Detenido"}
@@ -158,7 +168,15 @@ export default async function CampaignsPage({
                   </Td>
                   <Td align="right">
                     <div className="flex items-center justify-end gap-2">
-                      {dialer && usesSiptel ? (
+                      {aiVoice ? (
+                        <Link
+                          href={`/dashboard/admin/campanas/${campaign.id}/ia`}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-medium text-foreground hover:bg-surface-muted"
+                        >
+                          <Settings2 className="h-3.5 w-3.5" />
+                          Configurar IA
+                        </Link>
+                      ) : dialer && usesSiptel ? (
                         <ActionForm
                           action={setDialerCampaignActive}
                           success={dialer.is_active ? "Discado detenido" : "Discado iniciado"}

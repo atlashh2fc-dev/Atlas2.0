@@ -60,6 +60,12 @@ Ver `.env.example`. Las críticas:
   dos fuentes de verdad.
 - `DIALER_CAMPAIGN_IDS`: solo las campañas con discado outbound activo pasan
   por el loop de pacing.
+- `AI_VOICE_CAMPAIGN_IDS`: lista separada de campañas atendidas exclusivamente
+  por IA. No usan `campaign_agents`, extensiones ni Queue humana. Requieren
+  `ELEVENLABS_API_KEY` en la EC2 y una fila activa en
+  `ai_voice_campaign_configs` con el número/troncal SIP importado.
+- `ELEVENLABS_API_KEY`: secreto exclusivo del motor. Nunca se guarda en
+  Supabase, Vercel, el navegador ni los registros de la campaña.
 - `DIAL_PREFIX`: prefijo que el carrier requiere delante del destino. Para
   Siptel Chile es `85848994`. El motor elimina separadores y el signo `+` del
   teléfono antes de armar el Request-URI, por lo que los leads deben estar en

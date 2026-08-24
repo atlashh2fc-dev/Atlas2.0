@@ -26,6 +26,8 @@ const envSchema = z.object({
 
   AGENT_EXTENSION_MAP: z.string().default("{}"),
   DIALER_CAMPAIGN_IDS: z.string().default(""),
+  AI_VOICE_CAMPAIGN_IDS: z.string().default(""),
+  ELEVENLABS_API_KEY: z.string().min(1).optional(),
 
   TICK_MS: z.coerce.number().int().positive().default(3000),
   PORT: z.coerce.number().int().positive().default(8080),
@@ -92,6 +94,8 @@ export const config = {
   ) as Record<string, string>,
 
   campaignIds: env.DIALER_CAMPAIGN_IDS.split(",").map((s) => s.trim()).filter(Boolean),
+  aiVoiceCampaignIds: env.AI_VOICE_CAMPAIGN_IDS.split(",").map((s) => s.trim()).filter(Boolean),
+  elevenLabsApiKey: env.ELEVENLABS_API_KEY,
 
   tickMs: env.TICK_MS,
   port: env.PORT,

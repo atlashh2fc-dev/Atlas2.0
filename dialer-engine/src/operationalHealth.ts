@@ -2,6 +2,7 @@ export type OperationalCheckName =
   | "agentDirectory"
   | "agentConfigSync"
   | "campaignLoop"
+  | "aiVoiceCampaignLoop"
   | "agentPauseSync"
   | "agentHeartbeat"
   | "agentControl"
@@ -76,12 +77,13 @@ export class OperationalHealthTracker {
       agentDirectory: 45_000,
       agentConfigSync: 45_000,
       campaignLoop: Math.max(30_000, input.tickMs * 10),
+      aiVoiceCampaignLoop: Math.max(30_000, input.tickMs * 10),
       agentPauseSync: 45_000,
       agentHeartbeat: 120_000,
       agentControl: 60_000,
       healthPublish: 60_000,
     };
-    const critical: OperationalCheckName[] = ["agentDirectory", "agentConfigSync", "campaignLoop"];
+    const critical: OperationalCheckName[] = ["agentDirectory", "agentConfigSync", "campaignLoop", "aiVoiceCampaignLoop"];
     const checkSnapshots = {} as Record<OperationalCheckName, CheckSnapshot>;
 
     for (const name of Object.keys(staleAfter) as OperationalCheckName[]) {

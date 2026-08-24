@@ -4,6 +4,7 @@ import { logger } from "./logger";
 import { connectAmi } from "./ami/client";
 import { registerEventRouter } from "./ami/eventRouter";
 import { runCampaignTick } from "./dialer/campaignLoop";
+import { runAiVoiceCampaignTick } from "./dialer/aiVoiceCampaignLoop";
 import { refreshAgentDirectory, getActiveCredentials } from "./dialer/agentDirectory";
 import { ensureAgentEndpoints, ensureAmdContext } from "./asterisk/configSync";
 import { syncAgentPauseStates } from "./dialer/agentPause";
@@ -23,6 +24,9 @@ async function main() {
   const health = new OperationalHealthTracker();
   if (config.campaignIds.length === 0) {
     logger.warn("DIALER_CAMPAIGN_IDS vacío: el motor no originará llamadas hasta configurarlo.");
+  }
+  if (config.aiVoiceCampaignIds.length > 0 && !config.elevenLabsApiKey) {
+    logger.warn("AI_VOICE_CAMPAIGN_IDS tiene campañas, pero falta ELEVENLABS_API_KEY: no se originarán llamadas IA.");
   }
 
   const ami = connectAmi();
@@ -145,6 +149,24 @@ async function main() {
   };
   scheduleCampaignTick();
 
+  // Ciclo separado para campañas atendidas por IA. No toca Queue, agentes ni
+  // extensiones: Atlas reclama la base y ElevenLabs origina por su troncal SIP.
+  const scheduleAiVoiceCampaignTick = () => {
+    setTimeout(async () => {
+      try {
+        const report = await runAiVoiceCampaignTick();
+        if (report.ok) health.success("aiVoiceCampaignLoop");
+        else health.failure("aiVoiceCampaignLoop", "ai_voice_tick_partial_failure");
+      } catch (err) {
+        health.failure("aiVoiceCampaignLoop", "ai_voice_tick_unhandled_error");
+        logger.error({ err }, "runAiVoiceCampaignTick falló");
+      } finally {
+        scheduleAiVoiceCampaignTick();
+      }
+    }, config.tickMs);
+  };
+  scheduleAiVoiceCampaignTick();
+
   // Health-check HTTP: lo único que expone este servicio por red además de
   // AMI/Supabase. Un ALB/target group de AWS le pega a /health.
   const app = express();
@@ -159,7 +181,7 @@ async function main() {
   const currentHealth = () =>
     health.snapshot({
       amiConnected: ami.isConnected(),
-      campaignCount: config.campaignIds.length,
+      campaignCount: config.campaignIds.length + config.aiVoiceCampaignIds.length,
       recordingEnabled: config.recording.enabled,
       release: config.release,
       tickMs: config.tickMs,

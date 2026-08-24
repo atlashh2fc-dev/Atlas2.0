@@ -29,6 +29,25 @@ export type ClaimedTarget = {
   rut: string | null;
 };
 
+export type AiVoiceCampaignConfig = {
+  campaign_id: string;
+  provider: "elevenlabs";
+  agent_id: string;
+  phone_number_id: string;
+  max_concurrent_calls: number;
+  max_attempts_per_contact: number;
+  is_active: boolean;
+};
+
+export type AiVoiceAttempt = {
+  id: string;
+  campaign_id: string;
+  status: string;
+  provider_conversation_id: string;
+  provider_call_id: string | null;
+  provider_result: Record<string, unknown>;
+};
+
 export async function claimNextDialTargets(campaignId: string, batchSize: number): Promise<ClaimedTarget[]> {
   if (batchSize <= 0) return [];
   const { data, error } = await supabase.rpc("claim_next_dial_targets", {
@@ -37,6 +56,64 @@ export async function claimNextDialTargets(campaignId: string, batchSize: number
   });
   if (error) throw new Error(`claim_next_dial_targets: ${error.message}`);
   return data ?? [];
+}
+
+export async function getActiveAiVoiceCampaignConfigs(
+  campaignIds: string[]
+): Promise<AiVoiceCampaignConfig[]> {
+  if (campaignIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from("ai_voice_campaign_configs")
+    .select("campaign_id,provider,agent_id,phone_number_id,max_concurrent_calls,max_attempts_per_contact,is_active")
+    .in("campaign_id", campaignIds)
+    .eq("is_active", true)
+    .not("phone_number_id", "is", null);
+  if (error) throw new Error(`ai_voice_campaign_configs: ${error.message}`);
+  return (data ?? []) as AiVoiceCampaignConfig[];
+}
+
+export async function claimNextAiVoiceTargets(
+  campaignId: string,
+  batchSize: number
+): Promise<ClaimedTarget[]> {
+  if (batchSize <= 0) return [];
+  const { data, error } = await supabase.rpc("claim_next_ai_voice_targets", {
+    p_campaign_id: campaignId,
+    p_batch_size: batchSize,
+  });
+  if (error) throw new Error(`claim_next_ai_voice_targets: ${error.message}`);
+  return (data ?? []) as ClaimedTarget[];
+}
+
+export async function getActiveAiVoiceAttempts(campaignId: string): Promise<AiVoiceAttempt[]> {
+  const { data, error } = await supabase
+    .from("dial_attempts")
+    .select("id,campaign_id,status,provider_conversation_id,provider_call_id,provider_result")
+    .eq("campaign_id", campaignId)
+    .eq("attempt_kind", "ai_voice")
+    .not("provider_conversation_id", "is", null)
+    .in("status", ["originating", "ringing", "answered", "bridged"]);
+  if (error) throw new Error(`dial_attempts (ai active): ${error.message}`);
+  return (data ?? []) as AiVoiceAttempt[];
+}
+
+export async function registerAiVoiceEvent(params: {
+  dialAttemptId: string;
+  status: string;
+  providerConversationId?: string | null;
+  providerCallId?: string | null;
+  result?: Record<string, unknown>;
+  hangupCause?: string | null;
+}): Promise<void> {
+  const { error } = await supabase.rpc("register_ai_voice_event", {
+    p_dial_attempt_id: params.dialAttemptId,
+    p_status: params.status,
+    p_provider_conversation_id: params.providerConversationId ?? null,
+    p_provider_call_id: params.providerCallId ?? null,
+    p_result: params.result ?? {},
+    p_hangup_cause: params.hangupCause ?? null,
+  });
+  if (error) throw new Error(`register_ai_voice_event: ${error.message}`);
 }
 
 export async function registerDialEvent(params: {
