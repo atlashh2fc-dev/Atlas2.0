@@ -321,3 +321,13 @@ test("canary prueba contrato y persiste snapshot sin proyectar negocio", () => {
   assert.match(route, /record_integration_canary_v2/);
   assert.doesNotMatch(route, /accept_integration_batch_v2/);
 });
+
+test("salud Customer 360 distingue actividad histórica de atraso operativo", () => {
+  const migration = readFileSync(
+    "supabase/migrations/20260825224500_fix_customer360_health_semantics.sql",
+    "utf8",
+  );
+  assert.match(migration, /'observed_last_24h'/);
+  assert.match(migration, /'historical_over_24h'/);
+  assert.doesNotMatch(migration, /'stale_over_24h'/);
+});
