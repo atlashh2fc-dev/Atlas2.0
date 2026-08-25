@@ -1,0 +1,307 @@
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+
+export const INTEGRATION_V2_MAX_BYTES = 1024 * 1024;
+export const INTEGRATION_V2_MAX_ITEMS = 500;
+export const INTEGRATION_V2_OUTBOUND_MAX_ITEMS = 250;
+export const INTEGRATION_V2_SIGNATURE_TOLERANCE_SECONDS = 300;
+
+export type IntegrationV2EventType =
+  | "intelligence.decision.v1"
+  | "engagement.event.v1";
+
+export type IntegrationV2Item = {
+  event_id: string;
+  event_type: IntegrationV2EventType;
+  external_key: string;
+  occurred_at: string;
+  payload: Record<string, unknown>;
+};
+
+export type IntegrationV2Batch = {
+  campaign_id: string | null;
+  campaign_key: string | null;
+  schema_version: string;
+  metadata: Record<string, unknown>;
+  items: IntegrationV2Item[];
+};
+
+function boolish(value: unknown) {
+  return value === true || value === 1 || (typeof value === "string" && ["1", "true", "t", "yes", "y", "si", "s", "x"].includes(value.trim().toLowerCase()));
+}
+
+function firstValue(object: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    if (object[key] !== undefined && object[key] !== null && object[key] !== "") return object[key];
+  }
+  return undefined;
+}
+
+export class IntegrationV2ValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "IntegrationV2ValidationError";
+  }
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function requiredText(value: unknown, field: string, maxLength: number) {
+  if (typeof value !== "string" || !value.trim() || value.length > maxLength) {
+    throw new IntegrationV2ValidationError(`${field} es inválido.`);
+  }
+  return value.trim();
+}
+
+export function parseIntegrationV2Batch(value: unknown): IntegrationV2Batch {
+  if (!isObject(value)) {
+    throw new IntegrationV2ValidationError("El cuerpo debe ser un objeto JSON.");
+  }
+
+  const campaignId = typeof value.campaign_id === "string" && value.campaign_id.trim()
+    ? value.campaign_id.trim()
+    : null;
+  const campaignKeyValue = firstValue(value, ["campaign_key", "external_campaign_key"]);
+  const campaignKey = typeof campaignKeyValue === "string" && campaignKeyValue.trim()
+    ? campaignKeyValue.trim()
+    : null;
+  if (!campaignId && !campaignKey) {
+    throw new IntegrationV2ValidationError("campaign_key es obligatorio (campaign_id solo se admite para canary/admin)." );
+  }
+  if (campaignId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(campaignId)) {
+    throw new IntegrationV2ValidationError("campaign_id debe ser UUID.");
+  }
+  if (campaignKey && campaignKey.length > 300) {
+    throw new IntegrationV2ValidationError("campaign_key es inválido.");
+  }
+  if (!Array.isArray(value.items) || value.items.length < 1 || value.items.length > INTEGRATION_V2_MAX_ITEMS) {
+    throw new IntegrationV2ValidationError("items debe contener entre 1 y 500 eventos.");
+  }
+
+  const seen = new Set<string>();
+  const items = value.items.map((candidate, index): IntegrationV2Item => {
+    if (!isObject(candidate)) {
+      throw new IntegrationV2ValidationError(`items[${index}] debe ser un objeto.`);
+    }
+    const eventId = requiredText(candidate.event_id, `items[${index}].event_id`, 200);
+    if (seen.has(eventId)) {
+      throw new IntegrationV2ValidationError(`event_id duplicado: ${eventId}.`);
+    }
+    seen.add(eventId);
+    const eventType = requiredText(candidate.event_type, `items[${index}].event_type`, 80);
+    if (eventType !== "intelligence.decision.v1" && eventType !== "engagement.event.v1") {
+      throw new IntegrationV2ValidationError(`event_type no soportado: ${eventType}.`);
+    }
+    const occurredAt = requiredText(candidate.occurred_at, `items[${index}].occurred_at`, 40);
+    if (!Number.isFinite(Date.parse(occurredAt))) {
+      throw new IntegrationV2ValidationError(`items[${index}].occurred_at es inválido.`);
+    }
+    if (!isObject(candidate.payload)) {
+      throw new IntegrationV2ValidationError(`items[${index}].payload debe ser un objeto.`);
+    }
+    if (eventType === "intelligence.decision.v1") {
+      const rank = candidate.payload.priority_rank;
+      if (!Number.isInteger(rank) || Number(rank) < 0 || Number(rank) > 999) {
+        throw new IntegrationV2ValidationError(`items[${index}].payload.priority_rank debe estar entre 0 y 999.`);
+      }
+    } else {
+      requiredText(candidate.payload.external_campaign_key, `items[${index}].payload.external_campaign_key`, 300);
+    }
+    return {
+      event_id: eventId,
+      event_type: eventType,
+      external_key: requiredText(candidate.external_key, `items[${index}].external_key`, 500),
+      occurred_at: new Date(occurredAt).toISOString(),
+      payload: candidate.payload,
+    };
+  });
+
+  return {
+    campaign_id: campaignId,
+    campaign_key: campaignKey,
+    schema_version:
+      typeof value.schema_version === "string" && value.schema_version.trim()
+        ? value.schema_version.trim().slice(0, 40)
+        : "1",
+    metadata: isObject(value.metadata) ? value.metadata : {},
+    items,
+  };
+}
+
+/** Converts the current Atlas Lead report envelope/Spanish aliases to the
+ * canonical engagement.event.v1 transport. Canonical v2 envelopes pass through.
+ */
+export function normalizeIntegrationV2Request(
+  value: unknown,
+  sourceCode: string,
+  idempotencyKey: string,
+): unknown {
+  if (sourceCode !== "atlas_lead" || !isObject(value)) return value;
+
+  const externalCampaignKey = firstValue(value, ["external_campaign_key", "campaign_key"]);
+  if (Array.isArray(value.items)) {
+    return {
+      ...value,
+      items: value.items.map((item) =>
+        isObject(item) && item.event_type === "engagement.event.v1" && isObject(item.payload)
+          ? { ...item, payload: { external_campaign_key: externalCampaignKey, ...item.payload } }
+          : item,
+      ),
+    };
+  }
+  if (!Array.isArray(value.rows)) return value;
+
+  const batchOccurredAt = firstValue(value, ["occurred_at", "reported_at"]);
+  const reportDate = typeof value.report_date === "string" ? `${value.report_date}T12:00:00Z` : undefined;
+  return {
+    campaign_id: value.campaign_id,
+    campaign_key: value.campaign_key ?? externalCampaignKey,
+    schema_version: value.schema_version,
+    metadata: isObject(value.metadata) ? value.metadata : {},
+    items: value.rows.map((row, index) => {
+      if (!isObject(row)) return row;
+      const email = firstValue(row, ["email", "mail", "correo"]);
+      const eventId = firstValue(row, ["event_id", "id"]) ?? `${idempotencyKey}:${index + 1}`;
+      return {
+        event_id: eventId,
+        event_type: "engagement.event.v1",
+        external_key: firstValue(row, ["external_key", "lead_id", "contact_id"]) ?? email,
+        occurred_at: firstValue(row, ["occurred_at", "event_at", "timestamp"]) ?? batchOccurredAt ?? reportDate,
+        payload: {
+          external_campaign_key: externalCampaignKey,
+          email,
+          sent: boolish(row.sent) || boolish(row.enviado),
+          delivered: boolish(row.delivered) || boolish(row.entregado),
+          bounced: boolish(row.bounced) || boolish(row.rebote),
+          opened: boolish(row.opened) || boolish(row.abierto) || boolish(row.open),
+          clicked: boolish(row.clicked) || boolish(row.click),
+          complained: boolish(row.complained) || boolish(row.queja),
+          unsubscribed: boolish(row.unsubscribed) || boolish(row.desuscrito),
+        },
+      };
+    }),
+  };
+}
+
+export function integrationV2ContentSha256(rawBody: Buffer) {
+  return createHash("sha256").update(rawBody).digest("hex");
+}
+
+export function integrationV2Signature(secret: string, timestamp: string, rawBody: Buffer) {
+  return createHmac("sha256", secret).update(timestamp).update(".").update(rawBody).digest("hex");
+}
+
+function safeEqualText(expected: string, supplied: string) {
+  const expectedBuffer = Buffer.from(expected);
+  const suppliedBuffer = Buffer.from(supplied);
+  return expectedBuffer.length === suppliedBuffer.length && timingSafeEqual(expectedBuffer, suppliedBuffer);
+}
+
+export function verifyIntegrationV2Signature(args: {
+  secret: string;
+  timestamp: string | null;
+  signature: string | null;
+  rawBody: Buffer;
+  nowSeconds?: number;
+}) {
+  const { secret, timestamp, rawBody } = args;
+  const signature = args.signature?.replace(/^sha256=/i, "").toLowerCase() ?? "";
+  if (!secret || !timestamp || !/^\d{10}$/.test(timestamp) || !/^[0-9a-f]{64}$/.test(signature)) {
+    return false;
+  }
+  const nowSeconds = args.nowSeconds ?? Math.floor(Date.now() / 1000);
+  if (Math.abs(nowSeconds - Number(timestamp)) > INTEGRATION_V2_SIGNATURE_TOLERANCE_SECONDS) {
+    return false;
+  }
+  return safeEqualText(integrationV2Signature(secret, timestamp, rawBody), signature);
+}
+
+export function integrationV2SourceSecret(sourceCode: string, rawSecrets: string | undefined) {
+  if (!rawSecrets) return null;
+  try {
+    const parsed: unknown = JSON.parse(rawSecrets);
+    if (!isObject(parsed)) return null;
+    const secret = parsed[sourceCode.toLowerCase()];
+    return typeof secret === "string" && secret.length >= 32 ? secret : null;
+  } catch {
+    return null;
+  }
+}
+
+export function verifyIntegrationV2Bearer(expected: string | undefined, authorization: string | null) {
+  if (!expected || expected.length < 32 || !authorization?.startsWith("Bearer ")) return false;
+  return safeEqualText(expected, authorization.slice(7));
+}
+
+export function verifyIntegrationV2WorkerAuthorization(
+  authorization: string | null,
+  workerSecret: string | undefined,
+  cronSecret: string | undefined,
+) {
+  const workerMatches = verifyIntegrationV2Bearer(workerSecret, authorization);
+  const cronMatches = verifyIntegrationV2Bearer(cronSecret, authorization);
+  return workerMatches || cronMatches;
+}
+
+export type IntegrationV2Destination = { url: string; secret: string };
+
+export function integrationV2Destinations(raw: string | undefined) {
+  const destinations = new Map<string, IntegrationV2Destination>();
+  if (!raw) return destinations;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!isObject(parsed)) return destinations;
+    for (const [code, candidate] of Object.entries(parsed)) {
+      if (!isObject(candidate) || typeof candidate.url !== "string" || typeof candidate.secret !== "string") continue;
+      const url = new URL(candidate.url);
+      const local = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+      if ((url.protocol !== "https:" && !local) || candidate.secret.length < 32) continue;
+      destinations.set(code.toLowerCase(), { url: url.toString(), secret: candidate.secret });
+    }
+  } catch {
+    return destinations;
+  }
+  return destinations;
+}
+
+export type IntegrationV2OutboundItem = {
+  event_id: string;
+  event_type: string;
+  created_at: string;
+  payload: Record<string, unknown>;
+};
+
+export function integrationV2OutboundBody(items: IntegrationV2OutboundItem[]) {
+  return Buffer.from(JSON.stringify({
+    schema_version: "1",
+    items: items.map((item) => ({
+      event_id: item.event_id,
+      event_type: item.event_type,
+      occurred_at: item.created_at,
+      payload: item.payload,
+    })),
+  }));
+}
+
+export function partitionIntegrationV2Outbound<T extends IntegrationV2OutboundItem>(items: T[]) {
+  const batches: T[][] = [];
+  const oversized: T[] = [];
+  let current: T[] = [];
+  for (const item of items) {
+    const candidate = [...current, item];
+    if (candidate.length <= INTEGRATION_V2_OUTBOUND_MAX_ITEMS && integrationV2OutboundBody(candidate).length <= INTEGRATION_V2_MAX_BYTES) {
+      current = candidate;
+      continue;
+    }
+    if (current.length) batches.push(current);
+    if (integrationV2OutboundBody([item]).length > INTEGRATION_V2_MAX_BYTES) {
+      oversized.push(item);
+      current = [];
+    } else {
+      current = [item];
+    }
+  }
+  if (current.length) batches.push(current);
+  return { batches, oversized };
+}

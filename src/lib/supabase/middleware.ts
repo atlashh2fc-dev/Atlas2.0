@@ -13,6 +13,9 @@ const PUBLIC_PATHS = [
   "/api/status",
   // Vercel Cron no tiene sesión web; la ruta valida CRON_SECRET antes de operar.
   "/api/mail/inbound/sync",
+  // Receiver/worker v2 validan HMAC o Bearer dedicado en cada route handler.
+  // La barra final evita publicar por accidente otros namespaces de integración.
+  "/api/integrations/v2/",
 ];
 
 export async function updateSession(request: NextRequest) {
