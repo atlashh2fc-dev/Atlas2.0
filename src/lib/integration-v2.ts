@@ -7,13 +7,21 @@ export const INTEGRATION_V2_SIGNATURE_TOLERANCE_SECONDS = 300;
 
 export type IntegrationV2EventType =
   | "intelligence.decision.v1"
-  | "engagement.event.v1";
+  | "engagement.event.v1"
+  | "integration.canary.v1";
 
 export type IntegrationV2Item = {
   event_id: string;
   event_type: IntegrationV2EventType;
+  event_source: "urn:geimser:atlas2" | "urn:geimser:atlas-lead" | "urn:geimser:bigdata";
+  subject: string;
   external_key: string;
   occurred_at: string;
+  data_schema: string;
+  tenant_id: string;
+  entity_version: number;
+  correlation_id: string;
+  causation_id: string | null;
   payload: Record<string, unknown>;
 };
 
@@ -54,7 +62,15 @@ function requiredText(value: unknown, field: string, maxLength: number) {
   return value.trim();
 }
 
-export function parseIntegrationV2Batch(value: unknown): IntegrationV2Batch {
+export function integrationV2EventSource(sourceCode: string): IntegrationV2Item["event_source"] {
+  const normalized = sourceCode.trim().toLowerCase().replaceAll("_", "-");
+  if (normalized === "atlas2" || normalized === "atlas-lead" || normalized === "bigdata") {
+    return `urn:geimser:${normalized}`;
+  }
+  throw new IntegrationV2ValidationError("x-atlas-source no tiene un event_source canónico.");
+}
+
+export function parseIntegrationV2Batch(value: unknown, sourceCode = "bigdata"): IntegrationV2Batch {
   if (!isObject(value)) {
     throw new IntegrationV2ValidationError("El cuerpo debe ser un objeto JSON.");
   }
@@ -66,7 +82,9 @@ export function parseIntegrationV2Batch(value: unknown): IntegrationV2Batch {
   const campaignKey = typeof campaignKeyValue === "string" && campaignKeyValue.trim()
     ? campaignKeyValue.trim()
     : null;
-  if (!campaignId && !campaignKey) {
+  const canaryOnly = Array.isArray(value.items) && value.items.length > 0
+    && value.items.every((item) => isObject(item) && item.event_type === "integration.canary.v1");
+  if (!campaignId && !campaignKey && !canaryOnly) {
     throw new IntegrationV2ValidationError("campaign_key es obligatorio (campaign_id solo se admite para canary/admin)." );
   }
   if (campaignId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(campaignId)) {
@@ -79,24 +97,34 @@ export function parseIntegrationV2Batch(value: unknown): IntegrationV2Batch {
     throw new IntegrationV2ValidationError("items debe contener entre 1 y 500 eventos.");
   }
 
+  const schemaVersion = typeof value.schema_version === "string" && value.schema_version.trim()
+    ? value.schema_version.trim()
+    : "1";
+  if (schemaVersion !== "1" && schemaVersion !== "2") {
+    throw new IntegrationV2ValidationError("schema_version debe ser 1 o 2.");
+  }
+  const expectedEventSource = integrationV2EventSource(sourceCode);
+
   const seen = new Set<string>();
   const items = value.items.map((candidate, index): IntegrationV2Item => {
     if (!isObject(candidate)) {
       throw new IntegrationV2ValidationError(`items[${index}] debe ser un objeto.`);
     }
     const eventId = requiredText(candidate.event_id, `items[${index}].event_id`, 200);
-    if (seen.has(eventId)) {
+    const idempotencyIdentity = `${expectedEventSource}\n${eventId}`;
+    if (seen.has(idempotencyIdentity)) {
       throw new IntegrationV2ValidationError(`event_id duplicado: ${eventId}.`);
     }
-    seen.add(eventId);
+    seen.add(idempotencyIdentity);
     const eventType = requiredText(candidate.event_type, `items[${index}].event_type`, 80);
-    if (eventType !== "intelligence.decision.v1" && eventType !== "engagement.event.v1") {
+    if (eventType !== "intelligence.decision.v1" && eventType !== "engagement.event.v1" && eventType !== "integration.canary.v1") {
       throw new IntegrationV2ValidationError(`event_type no soportado: ${eventType}.`);
     }
     const occurredAt = requiredText(candidate.occurred_at, `items[${index}].occurred_at`, 40);
     if (!Number.isFinite(Date.parse(occurredAt))) {
       throw new IntegrationV2ValidationError(`items[${index}].occurred_at es inválido.`);
     }
+    const externalKey = requiredText(candidate.external_key, `items[${index}].external_key`, 500);
     if (!isObject(candidate.payload)) {
       throw new IntegrationV2ValidationError(`items[${index}].payload debe ser un objeto.`);
     }
@@ -105,14 +133,48 @@ export function parseIntegrationV2Batch(value: unknown): IntegrationV2Batch {
       if (!Number.isInteger(rank) || Number(rank) < 0 || Number(rank) > 999) {
         throw new IntegrationV2ValidationError(`items[${index}].payload.priority_rank debe estar entre 0 y 999.`);
       }
-    } else {
+    } else if (eventType === "engagement.event.v1") {
       requiredText(candidate.payload.external_campaign_key, `items[${index}].payload.external_campaign_key`, 300);
     }
+    const suppliedEventSource = candidate.event_source === undefined
+      ? expectedEventSource
+      : requiredText(candidate.event_source, `items[${index}].event_source`, 80);
+    if (suppliedEventSource !== expectedEventSource) {
+      throw new IntegrationV2ValidationError(`items[${index}].event_source no coincide con x-atlas-source.`);
+    }
+    const entityVersion = candidate.entity_version === undefined && schemaVersion === "1"
+      ? Math.max(1, Date.parse(occurredAt))
+      : candidate.entity_version;
+    if (!Number.isSafeInteger(entityVersion) || Number(entityVersion) < 1) {
+      throw new IntegrationV2ValidationError(`items[${index}].entity_version debe ser un entero positivo.`);
+    }
+    const subject = candidate.subject === undefined && schemaVersion === "1"
+      ? `urn:geimser:legacy:${sourceCode.replaceAll("_", "-")}:${externalKey}`
+      : requiredText(candidate.subject, `items[${index}].subject`, 500);
+    const dataSchema = candidate.data_schema === undefined && schemaVersion === "1"
+      ? `urn:geimser:schema:${eventType}`
+      : requiredText(candidate.data_schema, `items[${index}].data_schema`, 500);
+    const tenantId = candidate.tenant_id === undefined && schemaVersion === "1"
+      ? "geimser"
+      : requiredText(candidate.tenant_id, `items[${index}].tenant_id`, 100);
+    const correlationId = candidate.correlation_id === undefined && schemaVersion === "1"
+      ? eventId
+      : requiredText(candidate.correlation_id, `items[${index}].correlation_id`, 200);
+    const causationId = candidate.causation_id === undefined || candidate.causation_id === null
+      ? null
+      : requiredText(candidate.causation_id, `items[${index}].causation_id`, 200);
     return {
       event_id: eventId,
       event_type: eventType,
-      external_key: requiredText(candidate.external_key, `items[${index}].external_key`, 500),
+      event_source: expectedEventSource,
+      subject,
+      external_key: externalKey,
       occurred_at: new Date(occurredAt).toISOString(),
+      data_schema: dataSchema,
+      tenant_id: tenantId,
+      entity_version: Number(entityVersion),
+      correlation_id: correlationId,
+      causation_id: causationId,
       payload: candidate.payload,
     };
   });
@@ -120,10 +182,7 @@ export function parseIntegrationV2Batch(value: unknown): IntegrationV2Batch {
   return {
     campaign_id: campaignId,
     campaign_key: campaignKey,
-    schema_version:
-      typeof value.schema_version === "string" && value.schema_version.trim()
-        ? value.schema_version.trim().slice(0, 40)
-        : "1",
+    schema_version: schemaVersion,
     metadata: isObject(value.metadata) ? value.metadata : {},
     items,
   };
@@ -272,16 +331,84 @@ export type IntegrationV2OutboundItem = {
   payload: Record<string, unknown>;
 };
 
+function optionalPayloadText(payload: Record<string, unknown>, field: string, fallback: string) {
+  const value = payload[field];
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function outboundEntityVersion(item: IntegrationV2OutboundItem) {
+  const supplied = item.payload.entity_version;
+  if (Number.isSafeInteger(supplied) && Number(supplied) >= 1) return Number(supplied);
+  return Math.max(1, Date.parse(item.created_at));
+}
+
 export function integrationV2OutboundBody(items: IntegrationV2OutboundItem[]) {
   return Buffer.from(JSON.stringify({
-    schema_version: "1",
+    schema_version: "2",
     items: items.map((item) => ({
       event_id: item.event_id,
       event_type: item.event_type,
+      event_source: "urn:geimser:atlas2",
+      subject: optionalPayloadText(item.payload, "subject", `urn:geimser:atlas2:${item.event_type}:${item.event_id}`),
       occurred_at: item.created_at,
+      data_schema: optionalPayloadText(item.payload, "data_schema", `urn:geimser:schema:${item.event_type}`),
+      tenant_id: optionalPayloadText(item.payload, "tenant_id", "geimser"),
+      entity_version: outboundEntityVersion(item),
+      correlation_id: optionalPayloadText(item.payload, "correlation_id", item.event_id),
+      causation_id: typeof item.payload.causation_id === "string" && item.payload.causation_id.trim()
+        ? item.payload.causation_id.trim()
+        : null,
+      external_key: optionalPayloadText(item.payload, "external_key", item.event_id),
       payload: item.payload,
     })),
   }));
+}
+
+export function integrationV2RetryDelaySeconds(attempt: number, seed: string) {
+  const exponent = Math.min(Math.max(attempt - 1, 0), 6);
+  const base = Math.min(900, 15 * (2 ** exponent));
+  const jitterUnit = Number.parseInt(createHash("sha256").update(seed).digest("hex").slice(0, 8), 16) / 0xffffffff;
+  return Math.max(5, Math.round(base * (0.8 + jitterUnit * 0.4)));
+}
+
+export function evaluateIntegrationV2Ack(
+  status: number,
+  value: unknown,
+  expectedEventIds: string[],
+) {
+  if (status !== 202 || !isObject(value) || value.acknowledged !== true || !Array.isArray(value.accepted_event_ids)) {
+    return { confirmed: [] as string[], missing: [...expectedEventIds] };
+  }
+  const accepted = new Set(value.accepted_event_ids.filter((candidate): candidate is string => typeof candidate === "string"));
+  return {
+    confirmed: expectedEventIds.filter((eventId) => accepted.has(eventId)),
+    missing: expectedEventIds.filter((eventId) => !accepted.has(eventId)),
+  };
+}
+
+export async function ringIntegrationV2Doorbell(args: {
+  fallbackOrigin: string;
+  path: "/api/integrations/v2/worker" | "/api/integrations/v2/outbox/dispatch";
+  secret: string | undefined;
+  limit: number;
+}) {
+  if (!args.secret || args.secret.length < 32) return false;
+  const vercelHost = process.env.VERCEL_URL?.trim();
+  const origin = vercelHost ? `https://${vercelHost}` : args.fallbackOrigin;
+  const url = new URL(args.path, origin);
+  if (!vercelHost && url.hostname !== "localhost" && url.hostname !== "127.0.0.1") return false;
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { authorization: `Bearer ${args.secret}`, "content-type": "application/json" },
+      body: JSON.stringify({ limit: Math.min(Math.max(args.limit, 1), 250) }),
+      redirect: "manual",
+      signal: AbortSignal.timeout(1_200),
+    });
+    return response.status >= 200 && response.status < 300;
+  } catch {
+    return false;
+  }
 }
 
 export function partitionIntegrationV2Outbound<T extends IntegrationV2OutboundItem>(items: T[]) {

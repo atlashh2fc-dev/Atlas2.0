@@ -16,6 +16,10 @@
     {
       "path": "/api/integrations/v2/outbox/dispatch",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/integrations/v2/canary",
+      "schedule": "17 * * * *"
     }
   ]
 }

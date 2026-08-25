@@ -7,6 +7,9 @@ import {
   IntegrationV2ValidationError,
   integrationV2ContentSha256,
   integrationV2Destinations,
+  evaluateIntegrationV2Ack,
+  integrationV2OutboundBody,
+  integrationV2RetryDelaySeconds,
   integrationV2Signature,
   integrationV2SourceSecret,
   normalizeIntegrationV2Request,
@@ -35,6 +38,77 @@ test("valida el contrato acotado de decisiones", () => {
   assert.equal(parsed.campaign_id, campaignId);
   assert.equal(parsed.items[0].occurred_at, "2026-08-25T19:00:00.000Z");
   assert.equal(parsed.schema_version, "1");
+  assert.equal(parsed.items[0].event_source, "urn:geimser:bigdata");
+  assert.equal(parsed.items[0].tenant_id, "geimser");
+  assert.equal(parsed.items[0].correlation_id, "decision-1");
+  assert.equal(parsed.items[0].entity_version, Date.parse("2026-08-25T19:00:00Z"));
+});
+
+test("schema 2 exige metadata canónica y conserva correlación", () => {
+  const parsed = parseIntegrationV2Batch({
+    campaign_key: "equifax-2026-08",
+    schema_version: "2",
+    items: [{
+      ...decision(),
+      event_source: "urn:geimser:bigdata",
+      subject: "urn:geimser:lead:lead-1",
+      data_schema: "urn:geimser:schema:intelligence.decision.v1",
+      tenant_id: "geimser",
+      entity_version: 7,
+      correlation_id: "journey-1",
+      causation_id: "decision-source-1",
+    }],
+  }, "bigdata");
+  assert.equal(parsed.schema_version, "2");
+  assert.equal(parsed.items[0].subject, "urn:geimser:lead:lead-1");
+  assert.equal(parsed.items[0].entity_version, 7);
+  assert.equal(parsed.items[0].causation_id, "decision-source-1");
+});
+
+test("schema 2 rechaza versión inválida, fuente cruzada y metadata ausente", () => {
+  const canonical = {
+    ...decision(), event_source: "urn:geimser:bigdata", subject: "lead:1",
+    data_schema: "urn:schema:decision", tenant_id: "geimser", entity_version: 1,
+    correlation_id: "correlation-1", causation_id: null,
+  };
+  assert.throws(
+    () => parseIntegrationV2Batch({ campaign_key: "c", schema_version: "2", items: [{ ...canonical, entity_version: "one" }] }, "bigdata"),
+    /entity_version/,
+  );
+  assert.throws(
+    () => parseIntegrationV2Batch({ campaign_key: "c", schema_version: "2", items: [{ ...canonical, event_source: "urn:geimser:atlas-lead" }] }, "bigdata"),
+    /no coincide/,
+  );
+  const { subject: _subject, ...withoutSubject } = canonical;
+  assert.throws(
+    () => parseIntegrationV2Batch({ campaign_key: "c", schema_version: "2", items: [withoutSubject] }, "bigdata"),
+    /subject/,
+  );
+});
+
+test("canary E2E no requiere campaña y no admite mezcla de negocio", () => {
+  const canary = {
+    event_id: "canary-atlas-lead-1",
+    event_type: "integration.canary.v1",
+    event_source: "urn:geimser:atlas-lead",
+    subject: "urn:geimser:canary:atlas-lead",
+    external_key: "canary-atlas-lead",
+    occurred_at: "2026-08-25T20:00:00Z",
+    data_schema: "urn:geimser:schema:integration.canary.v1",
+    tenant_id: "geimser",
+    entity_version: 1,
+    correlation_id: "canary-correlation-1",
+    causation_id: null,
+    payload: { synthetic: true, action: "none" },
+  };
+  const parsed = parseIntegrationV2Batch({ schema_version: "2", items: [canary] }, "atlas_lead");
+  assert.equal(parsed.campaign_id, null);
+  assert.equal(parsed.campaign_key, null);
+  assert.equal(parsed.items[0].event_type, "integration.canary.v1");
+  assert.throws(
+    () => parseIntegrationV2Batch({ schema_version: "2", items: [canary, decision(2)] }, "atlas_lead"),
+    /campaign_key es obligatorio/,
+  );
 });
 
 test("dispatcher parte requests en máximo 250 items y 1 MiB", () => {
@@ -51,6 +125,20 @@ test("dispatcher parte requests en máximo 250 items y 1 MiB", () => {
   const oversized = partitionIntegrationV2Outbound([{ ...items[0], payload: { data: "x".repeat(1024 * 1024) } }]);
   assert.equal(oversized.batches.length, 0);
   assert.equal(oversized.oversized.length, 1);
+});
+
+test("outbox emite schema 2 canónico sin UUID interno", () => {
+  const body = JSON.parse(integrationV2OutboundBody([{
+    event_id: "feedback-1",
+    event_type: "operation.feedback.v1",
+    created_at: "2026-08-25T20:00:00Z",
+    payload: { external_key: "lead-external-1", correlation_id: "call-1" },
+  }]).toString("utf8"));
+  assert.equal(body.schema_version, "2");
+  assert.equal(body.items[0].event_source, "urn:geimser:atlas2");
+  assert.equal(body.items[0].external_key, "lead-external-1");
+  assert.equal(body.items[0].correlation_id, "call-1");
+  assert.equal("campaign_id" in body, false);
 });
 
 test("middleware publica solo el prefijo v2 protegido por HMAC o Bearer", () => {
@@ -72,10 +160,59 @@ test("migración protege replay de engagement y replay cross-batch", () => {
   assert.match(migration, /rut_match_ambiguous/);
 });
 
+test("migración v2 serializa entidad, ACK stale e idempotencia source+event", () => {
+  const migration = readFileSync(
+    "supabase/migrations/20260825215021_integration_v2_contract_ordering_health.sql",
+    "utf8",
+  );
+  assert.match(migration, /unique index if not exists integration_inbox_items_source_event_uidx/);
+  assert.match(migration, /primary key \(tenant_id, subject\)/);
+  assert.match(migration, /stale_entity_version/);
+  assert.match(migration, /set status = 'succeeded'[\s\S]*processed_at = now\(\)/);
+  assert.match(migration, /earlier\.entity_version < i\.entity_version/);
+  assert.match(migration, /public\.integration_entity_versions/);
+  assert.match(migration, /set search_path = ''/);
+  assert.match(migration, /integration\.canary\.v1/);
+  assert.match(migration, /case when v_is_canary then 'succeeded'/);
+  assert.match(migration, /'action', 'none'/);
+});
+
+test("migración no realiza HTTP y deja circuit breaker antes del claim", () => {
+  const migration = readFileSync(
+    "supabase/migrations/20260825215021_integration_v2_contract_ordering_health.sql",
+    "utf8",
+  );
+  assert.doesNotMatch(migration, /net\.http|http_post|pg_net/i);
+  assert.match(migration, /integration_circuit_states/);
+  assert.match(migration, /consecutive_failures \+ 1 >= 5/);
+  assert.match(migration, /circuit\.opened_until is null or circuit\.opened_until <= now\(\)/);
+});
+
 test("dispatcher no sigue redirects y reintenta respuestas 3xx", () => {
   const route = readFileSync("src/app/api/integrations/v2/outbox/dispatch/route.ts", "utf8");
   assert.match(route, /redirect: "manual"/);
   assert.match(route, /response\.status >= 300 && response\.status < 400/);
+});
+
+test("ACK parcial confirma sólo IDs exactos y HTML jamás confirma", () => {
+  assert.deepEqual(
+    evaluateIntegrationV2Ack(202, { acknowledged: true, accepted_event_ids: ["a"] }, ["a", "b"]),
+    { confirmed: ["a"], missing: ["b"] },
+  );
+  assert.deepEqual(
+    evaluateIntegrationV2Ack(200, "<html>ok</html>", ["a"]),
+    { confirmed: [], missing: ["a"] },
+  );
+  assert.deepEqual(
+    evaluateIntegrationV2Ack(302, { acknowledged: true, accepted_event_ids: ["a"] }, ["a"]),
+    { confirmed: [], missing: ["a"] },
+  );
+});
+
+test("backoff con jitter queda acotado durante retry storm", () => {
+  const delays = Array.from({ length: 20 }, (_, index) => integrationV2RetryDelaySeconds(index + 1, `event-${index}`));
+  assert.ok(delays.every((delay) => delay >= 5 && delay <= 1080));
+  assert.ok(delays[10] >= delays[0]);
 });
 
 test("solo habilita destinos outbox HTTPS con secreto fuerte", () => {
@@ -154,7 +291,7 @@ test("normaliza el sobre y aliases reales de Atlas Lead", () => {
     "atlas_lead",
     "report-2026-08-25-am",
   );
-  const parsed = parseIntegrationV2Batch(normalized);
+  const parsed = parseIntegrationV2Batch(normalized, "atlas_lead");
   assert.equal(parsed.items[0].event_id, "report-2026-08-25-am:1");
   assert.equal(parsed.items[0].external_key, "persona@example.com");
   assert.deepEqual(parsed.items[0].payload, {
@@ -168,4 +305,19 @@ test("normaliza el sobre y aliases reales de Atlas Lead", () => {
     complained: false,
     unsubscribed: false,
   });
+  assert.equal(parsed.items[0].event_source, "urn:geimser:atlas-lead");
+});
+
+test("carga canónica queda acotada a 500 eventos", () => {
+  const items = Array.from({ length: 500 }, (_, index) => decision(index + 1));
+  const parsed = parseIntegrationV2Batch({ campaign_key: "bounded-load", items }, "bigdata");
+  assert.equal(parsed.items.length, 500);
+  assert.equal(new Set(parsed.items.map((item) => `${item.event_source}:${item.event_id}`)).size, 500);
+});
+
+test("canary prueba contrato y persiste snapshot sin proyectar negocio", () => {
+  const route = readFileSync("src/app/api/integrations/v2/canary/route.ts", "utf8");
+  assert.match(route, /parseIntegrationV2Batch/);
+  assert.match(route, /record_integration_canary_v2/);
+  assert.doesNotMatch(route, /accept_integration_batch_v2/);
 });

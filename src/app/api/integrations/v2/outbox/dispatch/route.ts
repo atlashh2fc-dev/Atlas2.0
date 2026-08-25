@@ -4,7 +4,9 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   integrationV2ContentSha256,
   integrationV2Destinations,
+  evaluateIntegrationV2Ack,
   integrationV2OutboundBody,
+  integrationV2RetryDelaySeconds,
   integrationV2Signature,
   partitionIntegrationV2Outbound,
   verifyIntegrationV2WorkerAuthorization,
@@ -22,6 +24,7 @@ type OutboxItem = {
   schema_version: string;
   payload: Record<string, unknown>;
   created_at: string;
+  attempts: number;
 };
 
 async function nackOutbox(
@@ -117,15 +120,16 @@ async function handle(request: NextRequest, requestedLimit: number) {
           redirect: "manual",
           signal: AbortSignal.timeout(10_000),
         });
-        if (response.ok) {
+        if (response.status === 202) {
           const responseBody: unknown = await response.json().catch(() => null);
-          const acknowledged = typeof responseBody === "object" && responseBody !== null
-            && "acknowledged" in responseBody && responseBody.acknowledged === true;
-          const accepted = acknowledged && "accepted_event_ids" in responseBody && Array.isArray(responseBody.accepted_event_ids)
-            ? new Set(responseBody.accepted_event_ids.filter((value): value is string => typeof value === "string"))
-            : new Set<string>();
-          const confirmed = items.filter((item) => accepted.has(item.event_id));
-          const missing = items.filter((item) => !accepted.has(item.event_id));
+          const acknowledgment = evaluateIntegrationV2Ack(
+            response.status,
+            responseBody,
+            items.map((item) => item.event_id),
+          );
+          const confirmedIds = new Set(acknowledgment.confirmed);
+          const confirmed = items.filter((item) => confirmedIds.has(item.event_id));
+          const missing = items.filter((item) => !confirmedIds.has(item.event_id));
           if (confirmed.length) {
             const ack = await admin.rpc("ack_integration_outbox_v2", {
               p_worker_id: workerId, p_event_ids: confirmed.map((item) => item.outbox_id),
@@ -137,7 +141,12 @@ async function handle(request: NextRequest, requestedLimit: number) {
           if (missing.length) {
             await nackOutbox(admin, {
               workerId, ids: missing.map((item) => item.outbox_id), code: "incomplete_ack",
-              retryable: true, retryAfter: 60, httpStatus: response.status,
+              retryable: true,
+              retryAfter: integrationV2RetryDelaySeconds(
+                Math.max(...missing.map((item) => item.attempts)),
+                missing.map((item) => item.event_id).join("\n"),
+              ),
+              httpStatus: response.status,
             });
             retried += missing.length;
           }
@@ -146,7 +155,13 @@ async function handle(request: NextRequest, requestedLimit: number) {
             || response.status === 408 || response.status === 429 || response.status >= 500;
           await nackOutbox(admin, {
             workerId, ids, code: "destination_http_error", retryable,
-            retryAfter: retryable ? 60 : 1, httpStatus: response.status,
+            retryAfter: retryable
+              ? integrationV2RetryDelaySeconds(
+                  Math.max(...items.map((item) => item.attempts)),
+                  items.map((item) => item.event_id).join("\n"),
+                )
+              : 1,
+            httpStatus: response.status,
           });
           if (retryable) retried += ids.length;
           else deadLettered += ids.length;
@@ -154,7 +169,11 @@ async function handle(request: NextRequest, requestedLimit: number) {
       } catch (error) {
         await nackOutbox(admin, {
           workerId, ids, code: "destination_unreachable", retryable: true,
-          retryAfter: 60, httpStatus: null, detail: error instanceof Error ? error.message : null,
+          retryAfter: integrationV2RetryDelaySeconds(
+            Math.max(...items.map((item) => item.attempts)),
+            items.map((item) => item.event_id).join("\n"),
+          ),
+          httpStatus: null, detail: error instanceof Error ? error.message : null,
         });
         retried += ids.length;
       }

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 
 import {
   INTEGRATION_V2_MAX_BYTES,
@@ -7,6 +7,7 @@ import {
   integrationV2SourceSecret,
   normalizeIntegrationV2Request,
   parseIntegrationV2Batch,
+  ringIntegrationV2Doorbell,
   verifyIntegrationV2Signature,
 } from "@/lib/integration-v2";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -53,7 +54,10 @@ export async function POST(request: NextRequest) {
 
   try {
     const decoded: unknown = JSON.parse(rawBody.toString("utf8"));
-    const batch = parseIntegrationV2Batch(normalizeIntegrationV2Request(decoded, sourceCode, idempotencyKey));
+    const batch = parseIntegrationV2Batch(
+      normalizeIntegrationV2Request(decoded, sourceCode, idempotencyKey),
+      sourceCode,
+    );
     const admin = createAdminClient();
     const { data, error } = await admin.rpc("accept_integration_batch_v2", {
       p_source_code: sourceCode,
@@ -66,11 +70,25 @@ export async function POST(request: NextRequest) {
       p_metadata: batch.metadata,
     });
     if (error) throw error;
+    const canaryOnly = batch.items.every((item) => item.event_type === "integration.canary.v1");
+    if (!canaryOnly) {
+      const fallbackOrigin = request.nextUrl.origin;
+      after(async () => {
+        const delivered = await ringIntegrationV2Doorbell({
+          fallbackOrigin,
+          path: "/api/integrations/v2/worker",
+          secret: process.env.INTEGRATION_WORKER_SECRET ?? process.env.CRON_SECRET,
+          limit: batch.items.length,
+        });
+        if (!delivered) console.info("integration_v2_doorbell_deferred_to_cron", { sourceCode });
+      });
+    }
     return NextResponse.json(
       {
         ...(typeof data === "object" && data !== null ? data : {}),
         acknowledged: true,
         accepted_event_ids: batch.items.map((item) => item.event_id),
+        processing_doorbell: canaryOnly ? "not_required" : "scheduled",
       },
       { status: 202 },
     );

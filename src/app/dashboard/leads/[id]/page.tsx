@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CalendarClock, PencilLine } from "lucide-react";
+import { ArrowLeft, CalendarClock, PencilLine, RefreshCw } from "lucide-react";
 import { LEAD_STATUSES } from "@/lib/types";
 import { getOpenCall, getRevisableCall } from "@/app/actions/calls";
 import { AgendaCallButton } from "@/components/agenda-call-button";
@@ -63,6 +63,33 @@ type Lead360 = {
   };
   timeline: LeadTimelineItem[];
 };
+
+type ExternalReference = {
+  id: string;
+  external_key: string;
+  first_seen_at: string;
+  last_seen_at: string;
+  integration_sources: { code: string; name: string } | Array<{ code: string; name: string }> | null;
+};
+
+type ExternalEvent = {
+  id: string;
+  event_type: string;
+  occurred_at: string | null;
+  created_at: string;
+  payload: Record<string, unknown> | null;
+  integration_sources: { code: string; name: string } | Array<{ code: string; name: string }> | null;
+};
+
+function relationOne<T>(value: T | T[] | null): T | null {
+  return Array.isArray(value) ? value[0] ?? null : value;
+}
+
+function externalEventTitle(event: ExternalEvent) {
+  if (event.event_type === "engagement.event.v1") return "Señal de correo recibida";
+  if (event.event_type === "intelligence.decision.v1") return "Prioridad externa actualizada";
+  return "Evento externo sincronizado";
+}
 
 /** Los valores técnicos de la etapa del flujo no se muestran crudos. */
 const WORKFLOW_STAGE_LABEL: Record<string, string> = {
@@ -135,6 +162,23 @@ export default async function LeadDetailPage({
     (workflowBranches ?? []) as WorkflowStepBranch[]
   );
 
+  const [{ data: externalRefsData }, { data: externalEventsData }] = await Promise.all([
+    supabase
+      .from("lead_external_refs")
+      .select("id, external_key, first_seen_at, last_seen_at, integration_sources(code, name)")
+      .eq("lead_id", id)
+      .order("last_seen_at", { ascending: false })
+      .limit(8),
+    supabase
+      .from("external_lead_events")
+      .select("id, event_type, occurred_at, created_at, payload, integration_sources(code, name)")
+      .eq("lead_id", id)
+      .order("occurred_at", { ascending: false, nullsFirst: false })
+      .limit(30),
+  ]);
+  const externalRefs = (externalRefsData ?? []) as ExternalReference[];
+  const externalEvents = (externalEventsData ?? []) as ExternalEvent[];
+
   // El render solo consulta una gestión abierta. Crear una llamada aquí provoca
   // duplicados cuando el cierre revalida la página antes de navegar.
   const canManageCall = profile.role === "agente";
@@ -145,7 +189,8 @@ export default async function LeadDetailPage({
       ? await getRevisableCall(id)
       : null;
 
-  const entries: TimelineEntry[] = (record.timeline ?? []).map((item) => ({
+  const entries: TimelineEntry[] = [
+    ...(record.timeline ?? []).map((item): TimelineEntry => ({
     key: `${item.source}-${item.id}`,
     source: item.source,
     date: item.occurred_at,
@@ -153,7 +198,21 @@ export default async function LeadDetailPage({
     notes: item.notes,
     agenda: item.next_action_at,
     agent: item.agent_name,
-  }));
+    })),
+    ...externalEvents.map((event): TimelineEntry => {
+      const source = relationOne(event.integration_sources);
+      const bucket = typeof event.payload?.bucket === "string" ? event.payload.bucket : null;
+      return {
+        key: `integration-${event.id}`,
+        source: "integration",
+        date: event.occurred_at ?? event.created_at,
+        title: externalEventTitle(event),
+        notes: bucket ? `Clasificación: ${bucket}` : null,
+        agenda: null,
+        agent: source?.name ?? source?.code ?? "Integración",
+      };
+    }),
+  ].sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime());
 
   const statusLabel = LEAD_STATUSES.find((status) => status.value === lead.status)?.label ?? lead.status;
   const overdue = lead.next_action_at ? new Date(lead.next_action_at).getTime() <= new Date().getTime() : false;
@@ -344,6 +403,41 @@ export default async function LeadDetailPage({
               <InfoRow label="Última gestión">{formatDateTime(lead.managed_at)}</InfoRow>
               <InfoRow label="Actualizado">{formatDateTime(lead.updated_at)}</InfoRow>
             </dl>
+          </Card>
+
+          <Card>
+            <div className="mb-3 flex items-center gap-2">
+              <RefreshCw size={15} className="text-muted-foreground" aria-hidden="true" />
+              <h2 className="text-sm font-semibold text-foreground">Sincronización 360</h2>
+            </div>
+            {externalRefs.length ? (
+              <div className="space-y-3">
+                {externalRefs.map((reference) => {
+                  const source = relationOne(reference.integration_sources);
+                  return (
+                    <div key={reference.id} className="border-b border-border/70 pb-2 last:border-0 last:pb-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium text-foreground">{source?.name ?? source?.code ?? "Externo"}</span>
+                        <Badge tone="success">Sincronizado</Badge>
+                      </div>
+                      <p className="mt-1 truncate text-xs text-muted-foreground" title={reference.external_key}>
+                        {reference.external_key}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Última señal {formatDateTime(reference.last_seen_at)}
+                      </p>
+                    </div>
+                  );
+                })}
+                {profile.role !== "agente" && (
+                  <Link href="/dashboard/admin/integraciones/historial" className="text-xs font-medium text-primary hover:underline">
+                    Ver historial de integración
+                  </Link>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Sin referencias externas para este registro.</p>
+            )}
           </Card>
 
         </aside>

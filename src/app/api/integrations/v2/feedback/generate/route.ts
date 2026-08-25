@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { verifyIntegrationV2WorkerAuthorization } from "@/lib/integration-v2";
+import { ringIntegrationV2Doorbell, verifyIntegrationV2WorkerAuthorization } from "@/lib/integration-v2";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -19,7 +19,16 @@ async function handle(request: NextRequest, sourceCode: string, requestedLimit: 
     console.error("integration_v2_feedback_generation_failed", { sourceCode, message: error.message });
     return NextResponse.json({ error: "No se pudo generar el feedback." }, { status: 500 });
   }
-  return NextResponse.json(data);
+  const doorbell = await ringIntegrationV2Doorbell({
+    fallbackOrigin: request.nextUrl.origin,
+    path: "/api/integrations/v2/outbox/dispatch",
+    secret: process.env.INTEGRATION_WORKER_SECRET ?? process.env.CRON_SECRET,
+    limit: requestedLimit,
+  });
+  return NextResponse.json({
+    ...(typeof data === "object" && data !== null ? data : {}),
+    dispatch_doorbell: doorbell ? "accepted" : "cron_fallback",
+  });
 }
 
 export async function GET(request: NextRequest) {
