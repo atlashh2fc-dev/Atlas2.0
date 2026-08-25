@@ -253,6 +253,7 @@ export interface AiVoiceCampaignConfig {
   max_concurrent_calls: number;
   max_attempts_per_contact: number;
   is_active: boolean;
+  survey_schema: "prever_v1" | null;
   created_at: string;
   updated_at: string;
 }

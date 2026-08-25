@@ -54,7 +54,7 @@ type RecentRecord = {
   recording_id: string;
   recording_started_at: string;
   campaign_id: string;
-  agent_id: string;
+  agent_id: string | null;
   transcription_status: QualityRecentTranscription["status"];
   language_code: string | null;
   transcript_characters: number | string;
@@ -99,7 +99,7 @@ export async function fetchQualityAnalysis(
     const rawSummary = (summaryResult.data ?? {}) as SummaryRecord;
     const records = (recentResult.data ?? []) as RecentRecord[];
     const campaignIds = [...new Set(records.map((record) => record.campaign_id))];
-    const agentIds = [...new Set(records.map((record) => record.agent_id))];
+    const agentIds = [...new Set(records.map((record) => record.agent_id).filter((id): id is string => Boolean(id)))];
     const [campaignsResult, agentsResult, evaluationsResult] = await Promise.all([
       campaignIds.length
         ? relatedDataClient.from("campaigns").select("id, name").in("id", campaignIds)
@@ -158,7 +158,9 @@ export async function fetchQualityAnalysis(
           recordingId: record.recording_id,
           recordingStartedAt: record.recording_started_at,
           campaignName: campaigns.get(record.campaign_id) ?? "Campaña no disponible",
-          agentName: agents.get(record.agent_id) ?? "Ejecutivo no disponible",
+          agentName: record.agent_id
+            ? agents.get(record.agent_id) ?? "Ejecutivo no disponible"
+            : "Agente ElevenLabs",
           status: record.transcription_status,
           languageCode: record.language_code,
           transcriptCharacters: Number(record.transcript_characters ?? 0),

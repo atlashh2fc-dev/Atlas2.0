@@ -37,6 +37,7 @@ export type AiVoiceCampaignConfig = {
   max_concurrent_calls: number;
   max_attempts_per_contact: number;
   is_active: boolean;
+  survey_schema: string | null;
 };
 
 export type AiVoiceAttempt = {
@@ -82,7 +83,7 @@ export async function getActiveAiVoiceCampaignConfigs(
   if (campaignIds.length === 0) return [];
   const { data, error } = await supabase
     .from("ai_voice_campaign_configs")
-    .select("campaign_id,provider,agent_id,phone_number_id,max_concurrent_calls,max_attempts_per_contact,is_active")
+    .select("campaign_id,provider,agent_id,phone_number_id,max_concurrent_calls,max_attempts_per_contact,is_active,survey_schema")
     .in("campaign_id", campaignIds)
     .eq("is_active", true)
     .not("phone_number_id", "is", null);

@@ -1,5 +1,8 @@
 import { config } from "../config";
 import {
+  persistCompletedElevenLabsArtifacts,
+} from "../elevenlabs/artifacts";
+import {
   getElevenLabsConversation,
   startElevenLabsOutboundCall,
   type ElevenLabsConversation,
@@ -34,8 +37,11 @@ function conversationResult(conversation: ElevenLabsConversation): Record<string
   };
 }
 
-async function reconcileCampaign(campaignId: string, apiKey: string): Promise<void> {
-  const attempts = await getActiveAiVoiceAttempts(campaignId);
+async function reconcileCampaign(
+  aiConfig: Awaited<ReturnType<typeof getActiveAiVoiceCampaignConfigs>>[number],
+  apiKey: string
+): Promise<void> {
+  const attempts = await getActiveAiVoiceAttempts(aiConfig.campaign_id);
   for (const attempt of attempts) {
     try {
       const conversation = await getElevenLabsConversation(apiKey, attempt.provider_conversation_id);
@@ -43,6 +49,14 @@ async function reconcileCampaign(campaignId: string, apiKey: string): Promise<vo
       if (previousProviderStatus === conversation.status && conversation.status !== "done") continue;
 
       const status = mapElevenLabsStatus(conversation.status);
+      if (conversation.status === "done") {
+        await persistCompletedElevenLabsArtifacts({
+          apiKey,
+          dialAttemptId: attempt.id,
+          surveySchema: aiConfig.survey_schema,
+          conversation,
+        });
+      }
       await registerAiVoiceEvent({
         dialAttemptId: attempt.id,
         status,
@@ -55,7 +69,7 @@ async function reconcileCampaign(campaignId: string, apiKey: string): Promise<vo
       });
     } catch (err) {
       logger.error(
-        { err, campaignId, dialAttemptId: attempt.id, conversationId: attempt.provider_conversation_id },
+        { err, campaignId: aiConfig.campaign_id, dialAttemptId: attempt.id, conversationId: attempt.provider_conversation_id },
         "No se pudo reconciliar la conversación de ElevenLabs"
       );
     }
@@ -166,7 +180,7 @@ export async function runAiVoiceCampaignTick(): Promise<{ ok: boolean; configure
 
   for (const aiConfig of configs) {
     try {
-      await reconcileCampaign(aiConfig.campaign_id, config.elevenLabsApiKey);
+      await reconcileCampaign(aiConfig, config.elevenLabsApiKey);
 
       const targets = await claimNextAiVoiceTargets(
         aiConfig.campaign_id,

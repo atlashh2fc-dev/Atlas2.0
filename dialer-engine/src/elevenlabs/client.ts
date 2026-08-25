@@ -15,11 +15,21 @@ export type ElevenLabsConversationStatus =
   | "failed";
 
 export type ElevenLabsConversation = {
+  agent_id?: string;
+  agent_name?: string | null;
   conversation_id: string;
   status: ElevenLabsConversationStatus;
   has_audio?: boolean;
   has_user_audio?: boolean;
+  has_response_audio?: boolean;
+  transcript?: Array<{
+    role?: string;
+    time_in_call_secs?: number;
+    message?: string | null;
+    [key: string]: unknown;
+  }>;
   metadata?: {
+    start_time_unix_secs?: number;
     call_duration_secs?: number;
     termination_reason?: string;
     error?: {
@@ -31,6 +41,13 @@ export type ElevenLabsConversation = {
   analysis?: {
     call_successful?: string;
     transcript_summary?: string;
+    data_collection_results?: Record<string, {
+      data_collection_id?: string;
+      value?: unknown;
+      result?: unknown;
+      rationale?: string;
+      [key: string]: unknown;
+    }>;
   } | null;
 };
 
@@ -62,6 +79,27 @@ async function elevenLabsRequest<T>(
     throw new Error(`ElevenLabs ${response.status}: ${errorDetail(body)}`);
   }
   return body as T;
+}
+
+async function elevenLabsBinaryRequest(
+  apiKey: string,
+  path: string
+): Promise<{ body: Buffer; contentType: string }> {
+  const response = await fetch(`${ELEVENLABS_API_BASE}${path}`, {
+    method: "GET",
+    headers: { "xi-api-key": apiKey },
+    signal: AbortSignal.timeout(30_000),
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(`ElevenLabs ${response.status}: ${errorDetail(body)}`);
+  }
+
+  return {
+    body: Buffer.from(await response.arrayBuffer()),
+    contentType: response.headers.get("content-type")?.split(";")[0]?.trim() || "audio/mpeg",
+  };
 }
 
 export function toChileE164(phone: string): string {
@@ -97,7 +135,6 @@ export function buildElevenLabsOutboundCallPayload(params: ElevenLabsOutboundCal
   if (params.dialAttemptId) dynamicVariables.atlas_dial_attempt_id = params.dialAttemptId;
   if (params.leadId) dynamicVariables.atlas_lead_id = params.leadId;
   if (params.testCallId) dynamicVariables.atlas_test_call_id = params.testCallId;
-
   return {
     agent_id: params.agentId,
     agent_phone_number_id: params.phoneNumberId,
@@ -129,5 +166,15 @@ export async function getElevenLabsConversation(
     apiKey,
     `/conversations/${encodeURIComponent(conversationId)}`,
     { method: "GET" }
+  );
+}
+
+export async function getElevenLabsConversationAudio(
+  apiKey: string,
+  conversationId: string
+): Promise<{ body: Buffer; contentType: string }> {
+  return elevenLabsBinaryRequest(
+    apiKey,
+    `/conversations/${encodeURIComponent(conversationId)}/audio`
   );
 }

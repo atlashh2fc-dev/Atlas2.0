@@ -21,8 +21,8 @@ import {
   Thead,
   Tr,
 } from "@/components/ui";
-
-const TEST_AGENT_ID = "agent_5001m0trhg8cfhs98qhw1bpayagf";
+import { Download } from "lucide-react";
+import Link from "next/link";
 
 const STATUS_LABELS: Record<string, string> = {
   queued: "En cola",
@@ -149,7 +149,12 @@ export default async function AiVoiceCampaignPage({ params }: { params: Promise<
           <input type="hidden" name="campaign_id" value={id} />
 
           <Field label="Agente ElevenLabs">
-            <Input name="agent_id" required defaultValue={config?.agent_id ?? TEST_AGENT_ID} />
+            <Input
+              name="agent_id"
+              required
+              placeholder="agent_..."
+              defaultValue={config?.agent_id ?? ""}
+            />
           </Field>
 
           <Field label="Número / troncal SIP importado">
@@ -204,9 +209,29 @@ export default async function AiVoiceCampaignPage({ params }: { params: Promise<
         </ActionForm>
       </SectionCard>
 
+      {config?.survey_schema === "prever_v1" && (
+        <SectionCard
+          title="Informe contractual PREVER"
+          description="Genera el Excel con la misma estructura, fórmulas y presentación del modelo entregado por el cliente."
+          actions={
+            <Link
+              href={`/api/campanas/${id}/prever-report`}
+              className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-muted"
+            >
+              <Download className="h-4 w-4" />
+              Descargar informe
+            </Link>
+          }
+        >
+          <p className="p-4 text-sm text-muted-foreground">
+            Incluye los 62 registros de la base, estados de llamada, intentos y las diez respuestas extraídas por ElevenLabs.
+          </p>
+        </SectionCard>
+      )}
+
       <SectionCard
         title="Llamada manual de prueba"
-        description="Ingresa un número y Paula llamará apenas el motor tome la solicitud. Esto no enciende la campaña automática ni modifica su base."
+        description="Ingresa un número y el agente configurado llamará apenas el motor tome la solicitud. Esto no enciende la campaña automática ni modifica su base."
         actions={<Badge tone={config?.phone_number_id ? "success" : "danger"}>{config?.phone_number_id ? "Lista para probar" : "Falta troncal"}</Badge>}
       >
         <ActionForm

@@ -35,11 +35,11 @@ export type RecordingFilters = {
 
 export type QualityRecordingRow = {
   id: string;
-  callId: string;
+  callId: string | null;
   leadId: string;
   campaignId: string;
   campaignName: string;
-  agentId: string;
+  agentId: string | null;
   agentName: string;
   typification: string | null;
   callEndedAt: string | null;
@@ -75,10 +75,12 @@ export type QualityRecordingsPage = {
 type RecordingRecord = {
   id: string;
   dial_attempt_id: string;
-  call_id: string;
+  call_id: string | null;
   lead_id: string;
   campaign_id: string;
-  agent_id: string;
+  agent_id: string | null;
+  source: "asterisk" | "elevenlabs";
+  provider_agent_name: string | null;
   started_at: string;
   duration_seconds: number | string | null;
   codec: string | null;
@@ -137,7 +139,7 @@ export async function fetchQualityRecordings(
     let query = supabase
       .from("call_recordings")
       .select(
-        "id, dial_attempt_id, call_id, lead_id, campaign_id, agent_id, started_at, ended_at, duration_seconds, codec, size_bytes, disconnect_party, queue_talk_seconds, status",
+        "id, dial_attempt_id, call_id, lead_id, campaign_id, agent_id, source, provider_agent_name, started_at, ended_at, duration_seconds, codec, size_bytes, disconnect_party, queue_talk_seconds, status",
         { count: "exact" }
       )
       .neq("status", "deleted")
@@ -174,9 +176,9 @@ export async function fetchQualityRecordings(
 
     const recordings = (result.data ?? []) as RecordingRecord[];
     const leadIdSet = [...new Set(recordings.map((recording) => recording.lead_id))];
-    const agentIdSet = [...new Set(recordings.map((recording) => recording.agent_id))];
+    const agentIdSet = [...new Set(recordings.map((recording) => recording.agent_id).filter((id): id is string => Boolean(id)))];
     const campaignIdSet = [...new Set(recordings.map((recording) => recording.campaign_id))];
-    const callIdSet = [...new Set(recordings.map((recording) => recording.call_id))];
+    const callIdSet = [...new Set(recordings.map((recording) => recording.call_id).filter((id): id is string => Boolean(id)))];
     const dialAttemptIdSet = [...new Set(recordings.map((recording) => recording.dial_attempt_id))];
 
     const [
@@ -186,6 +188,7 @@ export async function fetchQualityRecordings(
       callsResult,
       dialAttemptsResult,
       transcriptionsResult,
+      surveyResultsResult,
       evaluationsResult,
     ] = await Promise.all([
       leadIdSet.length
@@ -212,6 +215,12 @@ export async function fetchQualityRecordings(
             .select("recording_id, status")
             .in("recording_id", recordings.map((recording) => recording.id))
         : Promise.resolve({ data: [], error: null }),
+      dialAttemptIdSet.length
+        ? supabase
+            .from("prever_survey_results")
+            .select("dial_attempt_id, call_status")
+            .in("dial_attempt_id", dialAttemptIdSet)
+        : Promise.resolve({ data: [], error: null }),
       recordings.length
         ? supabase
             .from("call_quality_evaluations")
@@ -230,7 +239,8 @@ export async function fetchQualityRecordings(
       dialAttemptsResult.error ??
       transcriptionsResult.error ??
       evaluationsResult.error;
-    if (relatedError) throw new Error(relatedError.message);
+    const finalRelatedError = relatedError ?? surveyResultsResult.error;
+    if (finalRelatedError) throw new Error(finalRelatedError.message);
 
     const leads = new Map(
       (leadsResult.data ?? []).map((lead) => [lead.id as string, lead as { full_name: string; rut: string | null }])
@@ -269,11 +279,17 @@ export async function fetchQualityRecordings(
         },
       ])
     );
+    const surveyResults = new Map(
+      (surveyResultsResult.data ?? []).map((result) => [
+        result.dial_attempt_id as string,
+        result.call_status as string | null,
+      ])
+    );
 
     return {
       rows: recordings.map((recording) => {
         const lead = leads.get(recording.lead_id);
-        const call = calls.get(recording.call_id);
+        const call = recording.call_id ? calls.get(recording.call_id) : undefined;
         const durationSeconds =
           recording.duration_seconds === null ? null : Number(recording.duration_seconds);
         const exactQueueTalkSeconds =
@@ -295,8 +311,10 @@ export async function fetchQualityRecordings(
           campaignId: recording.campaign_id,
           campaignName: campaigns.get(recording.campaign_id) ?? "Campaña no disponible",
           agentId: recording.agent_id,
-          agentName: agents.get(recording.agent_id) ?? "Ejecutivo no disponible",
-          typification: call?.reason ?? null,
+          agentName: recording.agent_id
+            ? agents.get(recording.agent_id) ?? "Ejecutivo no disponible"
+            : recording.provider_agent_name ?? "Agente ElevenLabs",
+          typification: call?.reason ?? surveyResults.get(recording.dial_attempt_id) ?? null,
           callEndedAt: call?.ended_at ?? null,
           callDiscardedReason: call?.discarded_reason ?? null,
           callOutcome: call?.outcome ?? null,
