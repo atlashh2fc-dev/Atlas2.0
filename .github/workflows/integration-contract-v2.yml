@@ -1,0 +1,35 @@
+name: Integration contract v2
+
+on:
+  pull_request:
+    paths:
+      - "contracts/**"
+      - "src/lib/integration-contract-schema.ts"
+      - "src/lib/integration-v2.ts"
+      - "tests/integration-contract-schema.test.ts"
+  push:
+    branches: [main]
+    paths:
+      - "contracts/**"
+      - "src/lib/integration-contract-schema.ts"
+      - "src/lib/integration-v2.ts"
+      - "tests/integration-contract-schema.test.ts"
+  schedule:
+    - cron: "5 9 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node --experimental-strip-types --test tests/integration-contract-schema.test.ts tests/integration-v2.test.ts
