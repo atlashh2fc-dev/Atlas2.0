@@ -16,6 +16,9 @@ const PUBLIC_PATHS = [
   // Receiver/worker v2 validan HMAC o Bearer dedicado en cada route handler.
   // La barra final evita publicar por accidente otros namespaces de integración.
   "/api/integrations/v2/",
+  // Meta no tiene sesión web: GET valida el token de verificación y POST exige
+  // la firma HMAC-SHA256 de la app antes de procesar cualquier evento.
+  "/api/integrations/meta/whatsapp/webhook",
 ];
 
 export async function updateSession(request: NextRequest) {
