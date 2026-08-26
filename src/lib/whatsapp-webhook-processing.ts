@@ -8,6 +8,7 @@ export type WhatsAppWebhookResult = {
   duplicates: number;
   unmapped: number;
   failed: number;
+  aiCandidates: Array<{ conversationId: string; inboundMessageId: string }>;
 };
 
 async function campaignForEvent(
@@ -109,7 +110,13 @@ export async function processWhatsAppEvents(
   provider: "meta" | "ycloud",
 ): Promise<WhatsAppWebhookResult> {
   const admin = createAdminClient();
-  const result: WhatsAppWebhookResult = { processed: 0, duplicates: 0, unmapped: 0, failed: 0 };
+  const result: WhatsAppWebhookResult = {
+    processed: 0,
+    duplicates: 0,
+    unmapped: 0,
+    failed: 0,
+    aiCandidates: [],
+  };
 
   for (const event of events) {
     const { data: storedEvent, error: storeError } = await admin
@@ -177,7 +184,7 @@ export async function processWhatsAppEvents(
         continue;
       }
 
-      const { error: ingestError } = await admin.rpc("ingest_whatsapp_message", {
+      const { data: ingestData, error: ingestError } = await admin.rpc("ingest_whatsapp_message", {
         p_channel_id: channel.id,
         p_campaign_id: campaignId,
         p_provider_message_id: event.providerMessageId,
@@ -194,6 +201,21 @@ export async function processWhatsAppEvents(
         p_payload: event.payload,
       });
       if (ingestError) throw ingestError;
+
+      const ingested = typeof ingestData === "object" && ingestData !== null
+        ? ingestData as Record<string, unknown>
+        : {};
+      if (
+        event.direction === "inbound"
+        && ingested.duplicate !== true
+        && typeof ingested.conversation_id === "string"
+        && typeof ingested.message_id === "string"
+      ) {
+        result.aiCandidates.push({
+          conversationId: ingested.conversation_id,
+          inboundMessageId: ingested.message_id,
+        });
+      }
 
       await admin
         .from("whatsapp_channels")

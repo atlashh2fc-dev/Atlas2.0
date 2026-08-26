@@ -2,23 +2,28 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import {
   ArrowUpRight,
+  Bot,
   CalendarClock,
   CheckCheck,
   Megaphone,
   MessageCircle,
   MessageSquare,
   Phone,
-  Send,
+  PlayCircle,
+  PauseCircle,
   UserRound,
+  XCircle,
 } from "lucide-react";
 
 import {
   assignWhatsAppConversation,
+  closeWhatsAppConversation,
   markWhatsAppConversationRead,
-  sendWhatsAppMessage,
+  setWhatsAppConversationAiState,
   setWhatsAppConversationStatus,
 } from "@/app/actions/whatsapp";
 import { WhatsAppAutoRefresh } from "@/components/whatsapp-auto-refresh";
+import { WhatsAppComposer } from "@/components/whatsapp-composer";
 import {
   ActionForm,
   ActionSubmit,
@@ -36,6 +41,8 @@ import { cn } from "@/lib/utils";
 type Relation<T> = T | T[] | null;
 type ConversationStatus = "open" | "pending" | "closed";
 type CampaignSummary = { id: string; name: string };
+type ClosureReason = { id: string; label: string; requires_note: boolean; is_automatic: boolean };
+type AiConfig = { enabled: boolean; model: string };
 
 type LeadSummary = {
   id: string;
@@ -77,6 +84,12 @@ type Conversation = {
   unread_count: number;
   last_message_at: string;
   referral: Record<string, unknown>;
+  ai_state: "auto" | "paused" | "handoff";
+  ai_last_error: string | null;
+  close_reason_id: string | null;
+  close_note: string | null;
+  closed_at: string | null;
+  whatsapp_closure_reasons: Relation<{ label: string }>;
   campaigns: Relation<CampaignSummary>;
   leads: Relation<LeadSummary>;
   profiles: Relation<{ id: string; full_name: string }>;
@@ -96,6 +109,7 @@ type Message = {
   provider_timestamp: string | null;
   created_at: string;
   error_message: string | null;
+  provider_payload: Record<string, unknown> | null;
   profiles: Relation<{ full_name: string }>;
 };
 
@@ -143,6 +157,13 @@ function fieldLabel(value: string) {
   return value
     .replace(/[_-]+/g, " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function isMercuryMessage(payload: Record<string, unknown> | null) {
+  const ai = payload && typeof payload.ai === "object" && payload.ai !== null
+    ? payload.ai as Record<string, unknown>
+    : null;
+  return ai?.provider === "mercury";
 }
 
 function conversationsHref({
@@ -196,7 +217,7 @@ export default async function ConversationsPage({
   let conversationQuery = supabase
     .from("whatsapp_conversations")
     .select(
-      "id, campaign_id, lead_id, contact_name, contact_phone, assigned_to, status, unread_count, last_message_at, referral, campaigns(id, name), leads(id, full_name, phone, email, rut, status, tipificacion_actual, next_action_at, workflow_status, managed_at, extra), profiles(id, full_name), whatsapp_channels(status, business_name, display_phone_number)",
+      "id, campaign_id, lead_id, contact_name, contact_phone, assigned_to, status, unread_count, last_message_at, referral, ai_state, ai_last_error, close_reason_id, close_note, closed_at, whatsapp_closure_reasons(label), campaigns(id, name), leads(id, full_name, phone, email, rut, status, tipificacion_actual, next_action_at, workflow_status, managed_at, extra), profiles(id, full_name), whatsapp_channels(status, business_name, display_phone_number)",
     )
     .order("last_message_at", { ascending: false })
     .limit(100);
@@ -218,12 +239,14 @@ export default async function ConversationsPage({
   let messages: Message[] = [];
   let memberships: Array<{ profiles: Relation<{ id: string; full_name: string }> }> = [];
   let lead360: Lead360Context | null = null;
+  let closureReasons: ClosureReason[] = [];
+  let aiConfig: AiConfig | null = null;
   if (selected) {
-    const [messageResult, membershipResult, lead360Result] = await Promise.all([
+    const [messageResult, membershipResult, lead360Result, closureReasonResult, aiConfigResult] = await Promise.all([
       supabase
         .from("whatsapp_messages")
         .select(
-          "id, direction, message_type, text_body, status, provider_timestamp, created_at, error_message, profiles(full_name)",
+          "id, direction, message_type, text_body, status, provider_timestamp, created_at, error_message, provider_payload, profiles(full_name)",
         )
         .eq("conversation_id", selected.id)
         .order("provider_timestamp", { ascending: true, nullsFirst: false })
@@ -238,10 +261,24 @@ export default async function ConversationsPage({
             .eq("profiles.active", true)
             .eq("profiles.role", "agente"),
       supabase.rpc("get_lead_360", { p_lead_id: selected.lead_id }),
+      supabase
+        .from("whatsapp_closure_reasons")
+        .select("id, label, requires_note, is_automatic")
+        .eq("campaign_id", selected.campaign_id)
+        .eq("is_active", true)
+        .eq("is_automatic", false)
+        .order("sort_order"),
+      supabase
+        .from("whatsapp_ai_configs")
+        .select("enabled, model")
+        .eq("campaign_id", selected.campaign_id)
+        .maybeSingle(),
     ]);
     messages = (messageResult.data ?? []) as Message[];
     memberships = (membershipResult.data ?? []) as typeof memberships;
     lead360 = lead360Result.data as Lead360Context | null;
+    closureReasons = (closureReasonResult.data ?? []) as ClosureReason[];
+    aiConfig = aiConfigResult.data as AiConfig | null;
   }
 
   const agentOptions = memberships.flatMap((membership) => {
@@ -255,6 +292,7 @@ export default async function ConversationsPage({
   const lead = lead360?.lead ?? (selected ? one(selected.leads) : null);
   const sendReady = channel?.status === "active";
   const referral = selected?.referral ?? {};
+  const closureReason = selected ? one(selected.whatsapp_closure_reasons) : null;
   const referralHeadline = typeof referral.headline === "string" ? referral.headline : null;
   const referralBody = typeof referral.body === "string" ? referral.body : null;
   const dynamicData = Object.entries(lead?.extra ?? {})
@@ -407,7 +445,8 @@ export default async function ConversationsPage({
                           >
                             <p className="whitespace-pre-wrap break-words">{message.text_body || `[${message.message_type}]`}</p>
                             <div className={cn("mt-1 flex items-center justify-end gap-1 text-[10px]", outbound ? "text-primary-foreground/75" : "text-muted-foreground")}>
-                              {outbound && sender?.full_name && <span>{sender.full_name} ·</span>}
+                              {outbound && isMercuryMessage(message.provider_payload) && <span>Mercury IA ·</span>}
+                              {outbound && !isMercuryMessage(message.provider_payload) && sender?.full_name && <span>{sender.full_name} ·</span>}
                               <span>{formatDateTime(message.provider_timestamp ?? message.created_at)}</span>
                               <span>· {messageStatus(message.status)}</span>
                             </div>
@@ -425,21 +464,7 @@ export default async function ConversationsPage({
                       El historial ya queda centralizado; falta terminar la autorización del canal para responder desde Atlas.
                     </p>
                   )}
-                  <ActionForm action={sendWhatsAppMessage} success="Mensaje enviado" className="flex items-end gap-2">
-                    <input type="hidden" name="conversation_id" value={selected.id} />
-                    <textarea
-                      name="body"
-                      rows={2}
-                      maxLength={4096}
-                      required
-                      disabled={!sendReady}
-                      placeholder="Escribe una respuesta…"
-                      className="min-h-16 flex-1 resize-none rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
-                    />
-                    <ActionSubmit disabled={!sendReady} pendingLabel="Enviando…">
-                      <Send size={15} /> Enviar
-                    </ActionSubmit>
-                  </ActionForm>
+                  <WhatsAppComposer conversationId={selected.id} disabled={!sendReady} />
                 </div>
               </>
             )}
@@ -486,15 +511,24 @@ export default async function ConversationsPage({
                     </ActionSubmit>
                   </ActionForm>
                 )}
-                <ActionForm action={setWhatsAppConversationStatus} success="Estado actualizado" className="space-y-2">
-                  <input type="hidden" name="conversation_id" value={selected.id} />
-                  <Select name="status" defaultValue={selected.status} fieldSize="sm" className="w-full">
-                    <option value="open">Abierta</option>
-                    <option value="pending">Pendiente</option>
-                    <option value="closed">Cerrada</option>
-                  </Select>
-                  <ActionSubmit variant="secondary" size="sm" pendingLabel="Guardando…" className="w-full">Guardar estado</ActionSubmit>
-                </ActionForm>
+                {selected.status === "closed" ? (
+                  <ActionForm action={setWhatsAppConversationStatus} success="Atención reabierta">
+                    <input type="hidden" name="conversation_id" value={selected.id} />
+                    <input type="hidden" name="status" value="open" />
+                    <ActionSubmit variant="secondary" size="sm" pendingLabel="Reabriendo…" className="w-full">
+                      Reabrir atención
+                    </ActionSubmit>
+                  </ActionForm>
+                ) : (
+                  <ActionForm action={setWhatsAppConversationStatus} success="Estado actualizado" className="space-y-2">
+                    <input type="hidden" name="conversation_id" value={selected.id} />
+                    <Select name="status" defaultValue={selected.status} fieldSize="sm" className="w-full">
+                      <option value="open">Abierta</option>
+                      <option value="pending">Pendiente</option>
+                    </Select>
+                    <ActionSubmit variant="secondary" size="sm" pendingLabel="Guardando…" className="w-full">Guardar estado</ActionSubmit>
+                  </ActionForm>
+                )}
                 {canManage && (
                   <ActionForm action={assignWhatsAppConversation} success="Responsable actualizado" className="space-y-2">
                     <input type="hidden" name="conversation_id" value={selected.id} />
@@ -506,6 +540,77 @@ export default async function ConversationsPage({
                       <UserRound size={14} /> Asignar responsable
                     </ActionSubmit>
                   </ActionForm>
+                )}
+              </ContextSection>
+
+              <ContextSection title="Asistente IA">
+                <div className="flex items-center justify-between gap-3 rounded-md bg-surface-muted p-2.5">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Bot size={15} className="shrink-0 text-primary" />
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-foreground">Mercury 2</p>
+                      <p className="truncate text-[11px] text-muted-foreground">
+                        {!aiConfig?.enabled
+                          ? "No habilitado en campaña"
+                          : selected.ai_state === "auto"
+                            ? "Respuestas automáticas activas"
+                            : selected.ai_state === "handoff"
+                              ? "Derivado a atención humana"
+                              : "Control humano"}
+                      </p>
+                    </div>
+                  </div>
+                  <Badge tone={aiConfig?.enabled && selected.ai_state === "auto" ? "success" : selected.ai_state === "handoff" ? "warning" : "neutral"}>
+                    {!aiConfig?.enabled ? "Sin configurar" : selected.ai_state === "auto" ? "IA activa" : selected.ai_state === "handoff" ? "Derivada" : "Pausada"}
+                  </Badge>
+                </div>
+                {aiConfig?.enabled && selected.status !== "closed" && (
+                  <ActionForm
+                    action={setWhatsAppConversationAiState}
+                    success={selected.ai_state === "auto" ? "Control humano activado" : "Asistente reactivado"}
+                  >
+                    <input type="hidden" name="conversation_id" value={selected.id} />
+                    <input type="hidden" name="ai_state" value={selected.ai_state === "auto" ? "paused" : "auto"} />
+                    <ActionSubmit variant="secondary" size="sm" pendingLabel="Guardando…" className="w-full">
+                      {selected.ai_state === "auto" ? <><PauseCircle size={14} /> Tomar control</> : <><PlayCircle size={14} /> Reactivar IA</>}
+                    </ActionSubmit>
+                  </ActionForm>
+                )}
+                {selected.ai_last_error && <p className="text-xs text-danger">{selected.ai_last_error}</p>}
+              </ContextSection>
+
+              <ContextSection title="Cierre de atención">
+                {selected.status === "closed" ? (
+                  <div className="rounded-md border border-border bg-surface-muted p-3">
+                    <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground"><CheckCheck size={14} /> Atención cerrada</p>
+                    <p className="mt-1 text-xs text-foreground">{closureReason?.label ?? "Tipificación registrada"}</p>
+                    {selected.close_note && <p className="mt-1 text-xs text-muted-foreground">{selected.close_note}</p>}
+                    <p className="mt-1 text-[11px] text-muted-foreground">{formatDateTime(selected.closed_at)}</p>
+                  </div>
+                ) : closureReasons.length > 0 ? (
+                  <ActionForm action={closeWhatsAppConversation} success="Atención cerrada y tipificada" className="space-y-2">
+                    <input type="hidden" name="conversation_id" value={selected.id} />
+                    <Select name="reason_id" defaultValue="" required fieldSize="sm" className="w-full">
+                      <option value="" disabled>Selecciona tipificación</option>
+                      {closureReasons.map((reason) => (
+                        <option key={reason.id} value={reason.id}>
+                          {reason.label}{reason.requires_note ? " · requiere nota" : ""}
+                        </option>
+                      ))}
+                    </Select>
+                    <textarea
+                      name="note"
+                      rows={3}
+                      maxLength={2000}
+                      placeholder="Resumen u observación de cierre"
+                      className="w-full resize-none rounded-md border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    />
+                    <ActionSubmit variant="secondary" size="sm" pendingLabel="Cerrando…" className="w-full">
+                      <XCircle size={14} /> Cerrar atención
+                    </ActionSubmit>
+                  </ActionForm>
+                ) : (
+                  <p className="text-xs text-warning">La campaña aún no tiene tipificaciones de cierre.</p>
                 )}
               </ContextSection>
 

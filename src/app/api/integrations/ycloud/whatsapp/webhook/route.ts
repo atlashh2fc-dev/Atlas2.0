@@ -1,10 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 
 import { parseYCloudWebhook, verifyYCloudWebhookSignature } from "@/lib/whatsapp";
 import { processWhatsAppEvents } from "@/lib/whatsapp-webhook-processing";
+import { respondToWhatsAppInbound } from "@/lib/mercury-whatsapp";
 
 export const runtime = "nodejs";
-export const maxDuration = 20;
+export const maxDuration = 60;
 
 const MAX_WEBHOOK_BYTES = 1024 * 1024;
 
@@ -34,6 +35,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "JSON inválido." }, { status: 400 });
   }
 
-  const result = await processWhatsAppEvents(parseYCloudWebhook(decoded), "ycloud");
+  const { aiCandidates, ...result } = await processWhatsAppEvents(parseYCloudWebhook(decoded), "ycloud");
+  if (aiCandidates.length > 0) {
+    after(async () => {
+      await Promise.allSettled(aiCandidates.map(respondToWhatsAppInbound));
+    });
+  }
   return NextResponse.json({ acknowledged: true, ...result });
 }

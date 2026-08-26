@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isWhatsAppProviderConfigured, sendWhatsAppText, whatsappProvider } from "@/lib/whatsapp-provider";
 
 const MAX_TEXT_LENGTH = 4096;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function revalidateWhatsApp(conversationId?: string) {
   revalidatePath("/dashboard/conversaciones");
@@ -38,6 +39,20 @@ export async function sendWhatsAppMessage(formData: FormData) {
   }
 
   const admin = createAdminClient();
+
+  // Human intervention owns the thread immediately, including while Mercury
+  // may be generating a response in the background.
+  await admin
+    .from("whatsapp_conversations")
+    .update({ ai_state: "paused" })
+    .eq("id", conversationId);
+  await admin.from("whatsapp_conversation_events").insert({
+    conversation_id: conversationId,
+    event_type: "ai_paused",
+    actor_id: profile.id,
+    note: "El ejecutivo respondió manualmente.",
+  });
+
   const { data: channel, error: channelError } = await admin
     .from("whatsapp_channels")
     .select("phone_number_id, display_phone_number, status")
@@ -123,7 +138,7 @@ export async function setWhatsAppConversationStatus(formData: FormData) {
   await requireProfile();
   const conversationId = String(formData.get("conversation_id") ?? "").trim();
   const status = String(formData.get("status") ?? "");
-  if (!(["open", "pending", "closed"] as const).includes(status as "open" | "pending" | "closed")) {
+  if (!(["open", "pending"] as const).includes(status as "open" | "pending")) {
     throw new Error("Estado de conversación inválido.");
   }
   const supabase = await createClient();
@@ -137,6 +152,85 @@ export async function setWhatsAppConversationStatus(formData: FormData) {
   const admin = createAdminClient();
   const { error } = await admin.from("whatsapp_conversations").update({ status }).eq("id", conversationId);
   if (error) throw new Error(error.message);
+  revalidateWhatsApp(conversationId);
+}
+
+export async function closeWhatsAppConversation(formData: FormData) {
+  const profile = await requireProfile();
+  const conversationId = String(formData.get("conversation_id") ?? "").trim();
+  const reasonId = String(formData.get("reason_id") ?? "").trim();
+  const note = String(formData.get("note") ?? "").trim();
+  if (!UUID.test(conversationId) || !UUID.test(reasonId)) {
+    throw new Error("Selecciona una tipificación de cierre válida.");
+  }
+  if (note.length > 2000) throw new Error("La observación supera los 2.000 caracteres.");
+
+  const supabase = await createClient();
+  const { data: conversation } = await supabase
+    .from("whatsapp_conversations")
+    .select("id")
+    .eq("id", conversationId)
+    .maybeSingle();
+  if (!conversation) throw new Error("No tienes acceso a esta conversación.");
+
+  const admin = createAdminClient();
+  const { error } = await admin.rpc("close_whatsapp_conversation", {
+    p_conversation_id: conversationId,
+    p_reason_id: reasonId,
+    p_note: note || null,
+    p_actor_id: profile.id,
+    p_automatic: false,
+  });
+  if (error) {
+    if (error.message.includes("note_required")) {
+      throw new Error("Esta tipificación requiere una observación de cierre.");
+    }
+    throw new Error(error.message);
+  }
+  revalidateWhatsApp(conversationId);
+}
+
+export async function setWhatsAppConversationAiState(formData: FormData) {
+  const profile = await requireProfile();
+  const conversationId = String(formData.get("conversation_id") ?? "").trim();
+  const state = String(formData.get("ai_state") ?? "").trim();
+  if (!UUID.test(conversationId) || !(state === "auto" || state === "paused")) {
+    throw new Error("Estado de asistente inválido.");
+  }
+
+  const supabase = await createClient();
+  const { data: conversation } = await supabase
+    .from("whatsapp_conversations")
+    .select("id, campaign_id, status")
+    .eq("id", conversationId)
+    .maybeSingle();
+  if (!conversation) throw new Error("No tienes acceso a esta conversación.");
+  if (conversation.status === "closed") throw new Error("Reabre la conversación antes de activar la IA.");
+
+  const admin = createAdminClient();
+  if (state === "auto") {
+    const { data: config } = await admin
+      .from("whatsapp_ai_configs")
+      .select("enabled")
+      .eq("campaign_id", conversation.campaign_id)
+      .maybeSingle();
+    if (!config?.enabled) throw new Error("Mercury no está habilitado para esta campaña.");
+  }
+
+  const aiUpdate = state === "auto"
+    ? { ai_state: state, ai_last_error: null }
+    : { ai_state: state };
+  const { error } = await admin
+    .from("whatsapp_conversations")
+    .update(aiUpdate)
+    .eq("id", conversationId);
+  if (error) throw new Error(error.message);
+  await admin.from("whatsapp_conversation_events").insert({
+    conversation_id: conversationId,
+    event_type: state === "auto" ? "ai_resumed" : "ai_paused",
+    actor_id: profile.id,
+    note: state === "auto" ? "Asistente Mercury reactivado." : "Control humano activado.",
+  });
   revalidateWhatsApp(conversationId);
 }
 

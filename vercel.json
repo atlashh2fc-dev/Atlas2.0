@@ -20,6 +20,10 @@
     {
       "path": "/api/integrations/v2/canary",
       "schedule": "17 * * * *"
+    },
+    {
+      "path": "/api/integrations/meta/whatsapp/timeouts",
+      "schedule": "*/10 * * * *"
     }
   ]
 }
