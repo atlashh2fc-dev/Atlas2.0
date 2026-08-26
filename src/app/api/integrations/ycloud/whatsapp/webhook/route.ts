@@ -3,6 +3,7 @@ import { after, NextRequest, NextResponse } from "next/server";
 import { parseYCloudWebhook, verifyYCloudWebhookSignature } from "@/lib/whatsapp";
 import { processWhatsAppEvents } from "@/lib/whatsapp-webhook-processing";
 import { respondToWhatsAppInbound } from "@/lib/mercury-whatsapp";
+import { captureWhatsAppMessageMedia } from "@/lib/whatsapp-media";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -35,10 +36,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "JSON inválido." }, { status: 400 });
   }
 
-  const { aiCandidates, ...result } = await processWhatsAppEvents(parseYCloudWebhook(decoded), "ycloud");
-  if (aiCandidates.length > 0) {
+  const { aiCandidates, mediaCandidates, ...result } = await processWhatsAppEvents(parseYCloudWebhook(decoded), "ycloud");
+  if (aiCandidates.length > 0 || mediaCandidates.length > 0) {
     after(async () => {
-      await Promise.allSettled(aiCandidates.map(respondToWhatsAppInbound));
+      await Promise.allSettled([
+        ...aiCandidates.map(respondToWhatsAppInbound),
+        ...mediaCandidates.map(({ messageId }) => captureWhatsAppMessageMedia(messageId)),
+      ]);
     });
   }
   return NextResponse.json({ acknowledged: true, ...result });

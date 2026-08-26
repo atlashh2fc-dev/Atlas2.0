@@ -57,6 +57,7 @@ async function completeRun(
 async function askMercury(input: {
   apiKey: string;
   systemPrompt: string;
+  knowledgeBase: string;
   contactName: string | null;
   campaignName: string;
   referral: Record<string, unknown>;
@@ -104,6 +105,14 @@ async function askMercury(input: {
           role: "system",
           content: `Contexto comercial permitido:\n${JSON.stringify(context)}`,
         },
+        ...(input.knowledgeBase.trim() ? [{
+          role: "system" as const,
+          content: [
+            "Información aprobada del producto:",
+            input.knowledgeBase.trim(),
+            "Puedes usar estos hechos para explicar y argumentar el servicio. Si una respuesta no está respaldada explícitamente aquí o en la conversación, no la infieras: informa que la confirmará un especialista humano y devuelve handoff=true.",
+          ].join("\n"),
+        }] : []),
         ...messages,
       ],
     }),
@@ -158,7 +167,7 @@ export async function respondToWhatsAppInbound(input: {
     const [{ data: config }, { data: inbound }] = await Promise.all([
       admin
         .from("whatsapp_ai_configs")
-        .select("enabled, model, system_prompt, max_history_messages")
+        .select("enabled, model, system_prompt, knowledge_base, max_history_messages")
         .eq("campaign_id", conversation.campaign_id)
         .maybeSingle(),
       admin
@@ -205,6 +214,7 @@ export async function respondToWhatsAppInbound(input: {
     const generated = await askMercury({
       apiKey,
       systemPrompt: config.system_prompt,
+      knowledgeBase: config.knowledge_base ?? "",
       contactName: conversation.contact_name,
       campaignName: campaign?.name ?? "WhatsApp",
       referral: record(conversation.referral) ?? {},

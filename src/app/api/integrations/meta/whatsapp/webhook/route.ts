@@ -6,6 +6,7 @@ import {
 } from "@/lib/whatsapp";
 import { processWhatsAppEvents } from "@/lib/whatsapp-webhook-processing";
 import { respondToWhatsAppInbound } from "@/lib/mercury-whatsapp";
+import { captureWhatsAppMessageMedia } from "@/lib/whatsapp-media";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -54,13 +55,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "JSON inválido." }, { status: 400 });
   }
 
-  const { aiCandidates, ...result } = await processWhatsAppEvents(parseWhatsAppWebhook(decoded), "meta");
+  const { aiCandidates, mediaCandidates, ...result } = await processWhatsAppEvents(parseWhatsAppWebhook(decoded), "meta");
 
   // Meta receives its acknowledgement without waiting for model inference.
   // Each inbound message is idempotently claimed by whatsapp_ai_runs.
-  if (aiCandidates.length > 0) {
+  if (aiCandidates.length > 0 || mediaCandidates.length > 0) {
     after(async () => {
-      await Promise.allSettled(aiCandidates.map(respondToWhatsAppInbound));
+      await Promise.allSettled([
+        ...aiCandidates.map(respondToWhatsAppInbound),
+        ...mediaCandidates.map(({ messageId }) => captureWhatsAppMessageMedia(messageId)),
+      ]);
     });
   }
 

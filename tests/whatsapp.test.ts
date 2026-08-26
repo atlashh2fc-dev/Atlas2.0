@@ -214,3 +214,51 @@ test("YCloud no importa historial antiguo ni grupos", () => {
     whatsappInboundMessage: { groupId: "group@g.us" },
   }), []);
 });
+
+test("YCloud conserva imagen y audio para su captura privada posterior", () => {
+  const [imageEvent] = parseYCloudWebhook({
+    type: "whatsapp.inbound_message.received",
+    createTime: "2026-08-26T12:03:00.000Z",
+    whatsappInboundMessage: {
+      id: "ycloud-image-1",
+      wamid: "wamid.ycloud-image-1",
+      wabaId: "1069013248503244",
+      from: "+56911112222",
+      to: "+56974159166",
+      type: "image",
+      image: {
+        link: "https://api.ycloud.com/v2/whatsapp/media/download/media-1",
+        caption: "Comprobante",
+        id: "media-1",
+        mime_type: "image/jpeg",
+      },
+    },
+  });
+  assert.equal(imageEvent.kind, "message");
+  if (imageEvent.kind !== "message") return;
+  assert.equal(imageEvent.messageType, "image");
+  assert.equal(imageEvent.textBody, "Comprobante");
+  assert.equal((imageEvent.payload.image as { link: string }).link.includes("/download/"), true);
+
+  const [audioEvent] = parseYCloudWebhook({
+    type: "whatsapp.inbound_message.received",
+    createTime: "2026-08-26T12:04:00.000Z",
+    whatsappInboundMessage: {
+      id: "ycloud-audio-1",
+      wamid: "wamid.ycloud-audio-1",
+      wabaId: "1069013248503244",
+      from: "+56911112222",
+      to: "+56974159166",
+      type: "audio",
+      audio: {
+        link: "https://api.ycloud.com/v2/whatsapp/media/download/media-2",
+        id: "media-2",
+        mime_type: "audio/ogg",
+      },
+    },
+  });
+  assert.equal(audioEvent.kind, "message");
+  if (audioEvent.kind !== "message") return;
+  assert.equal(audioEvent.messageType, "audio");
+  assert.equal(audioEvent.textBody, "Audio");
+});

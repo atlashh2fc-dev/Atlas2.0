@@ -6,9 +6,19 @@ import { revalidatePath } from "next/cache";
 import { requireProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { isWhatsAppProviderConfigured, sendWhatsAppText, whatsappProvider } from "@/lib/whatsapp-provider";
+import {
+  WHATSAPP_MEDIA_BUCKET,
+  validateWhatsAppMedia,
+} from "@/lib/whatsapp-media";
+import {
+  isWhatsAppProviderConfigured,
+  sendWhatsAppMedia,
+  sendWhatsAppText,
+  whatsappProvider,
+} from "@/lib/whatsapp-provider";
 
 const MAX_TEXT_LENGTH = 4096;
+const MAX_MEDIA_CAPTION_LENGTH = 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function revalidateWhatsApp(conversationId?: string) {
@@ -112,6 +122,196 @@ export async function sendWhatsAppMessage(formData: FormData) {
   }
 
   revalidateWhatsApp(conversationId);
+}
+
+export async function prepareWhatsAppMediaUpload(input: {
+  conversationId: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+}) {
+  const profile = await requireProfile();
+  if (!UUID.test(input.conversationId)) throw new Error("No se identificó la conversación.");
+  const spec = validateWhatsAppMedia({ mimeType: input.mimeType, sizeBytes: input.sizeBytes });
+
+  const supabase = await createClient();
+  const { data: conversation, error: conversationError } = await supabase
+    .from("whatsapp_conversations")
+    .select("id, whatsapp_channels!inner(status)")
+    .eq("id", input.conversationId)
+    .single();
+  if (conversationError || !conversation) throw new Error("No tienes acceso a esta conversación.");
+
+  const uploadId = randomUUID();
+  const clientReference = randomUUID();
+  const storagePath = `outbound/${input.conversationId}/${profile.id}/${uploadId}.${spec.extension}`;
+  const fileName = input.fileName.trim().replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 180) || null;
+  const admin = createAdminClient();
+  const { error: insertError } = await admin.from("whatsapp_media_uploads").insert({
+    id: uploadId,
+    conversation_id: input.conversationId,
+    storage_bucket: WHATSAPP_MEDIA_BUCKET,
+    storage_path: storagePath,
+    message_type: spec.messageType,
+    mime_type: input.mimeType,
+    size_bytes: input.sizeBytes,
+    file_name: fileName,
+    created_by: profile.id,
+    client_reference: clientReference,
+  });
+  if (insertError) throw new Error("No se pudo preparar el adjunto.");
+
+  const { data: signed, error: signedError } = await admin.storage
+    .from(WHATSAPP_MEDIA_BUCKET)
+    .createSignedUploadUrl(storagePath);
+  if (signedError || !signed?.token) {
+    await admin.from("whatsapp_media_uploads").update({
+      status: "failed",
+      error_message: "No se pudo autorizar la carga privada.",
+    }).eq("id", uploadId);
+    throw new Error("No se pudo autorizar la carga del adjunto.");
+  }
+
+  return { uploadId, storagePath, token: signed.token };
+}
+
+export async function sendPreparedWhatsAppMedia(input: {
+  uploadId: string;
+  caption?: string;
+}) {
+  const profile = await requireProfile();
+  if (!UUID.test(input.uploadId)) throw new Error("Adjunto inválido.");
+  const caption = input.caption?.trim() ?? "";
+  if (caption.length > MAX_MEDIA_CAPTION_LENGTH) {
+    throw new Error("El texto de la imagen supera los 1.024 caracteres.");
+  }
+  if (!isWhatsAppProviderConfigured()) {
+    throw new Error("Falta completar el acceso del proveedor de WhatsApp para enviar desde Atlas.");
+  }
+
+  const admin = createAdminClient();
+  const { data: upload, error: uploadError } = await admin
+    .from("whatsapp_media_uploads")
+    .select("id, conversation_id, storage_bucket, storage_path, message_type, mime_type, size_bytes, file_name, created_by, client_reference, status, expires_at")
+    .eq("id", input.uploadId)
+    .single();
+  if (uploadError || !upload || upload.created_by !== profile.id || upload.status !== "prepared") {
+    throw new Error("El adjunto ya no está disponible para enviar.");
+  }
+  if (new Date(upload.expires_at).getTime() <= Date.now()) {
+    await admin.from("whatsapp_media_uploads").update({ status: "expired" }).eq("id", upload.id);
+    throw new Error("La preparación del adjunto venció. Selecciónalo nuevamente.");
+  }
+  const spec = validateWhatsAppMedia({ mimeType: upload.mime_type, sizeBytes: Number(upload.size_bytes) });
+  if (spec.messageType !== upload.message_type) throw new Error("El formato del adjunto no coincide con su tipo.");
+
+  const supabase = await createClient();
+  const { data: conversation, error: conversationError } = await supabase
+    .from("whatsapp_conversations")
+    .select("id, channel_id, contact_phone")
+    .eq("id", upload.conversation_id)
+    .single();
+  if (conversationError || !conversation) throw new Error("No tienes acceso a esta conversación.");
+
+  const pathParts = upload.storage_path.split("/");
+  const objectName = pathParts.pop();
+  const objectFolder = pathParts.join("/");
+  const { data: objects, error: listError } = await admin.storage
+    .from(upload.storage_bucket)
+    .list(objectFolder, { limit: 10, search: objectName });
+  const storedObject = objects?.find((object) => object.name === objectName);
+  if (listError || !storedObject) throw new Error("El archivo no terminó de subir. Intenta nuevamente.");
+  const storedSize = Number(storedObject.metadata?.size ?? upload.size_bytes);
+  validateWhatsAppMedia({ mimeType: upload.mime_type, sizeBytes: storedSize });
+
+  const { data: signed, error: signedError } = await admin.storage
+    .from(upload.storage_bucket)
+    .createSignedUrl(upload.storage_path, 60 * 60);
+  if (signedError || !signed?.signedUrl) throw new Error("No se pudo preparar el archivo para WhatsApp.");
+
+  const { data: channel, error: channelError } = await admin
+    .from("whatsapp_channels")
+    .select("phone_number_id, display_phone_number, status")
+    .eq("id", conversation.channel_id)
+    .single();
+  if (channelError || !channel) throw new Error("El canal de WhatsApp no está configurado.");
+  if (channel.status !== "active") throw new Error("El canal de WhatsApp todavía no está conectado.");
+
+  await admin.from("whatsapp_conversations").update({ ai_state: "paused" }).eq("id", conversation.id);
+  await admin.from("whatsapp_conversation_events").insert({
+    conversation_id: conversation.id,
+    event_type: "ai_paused",
+    actor_id: profile.id,
+    note: "El ejecutivo envió un adjunto manualmente.",
+  });
+
+  const { data: pendingMessage, error: pendingError } = await admin
+    .from("whatsapp_messages")
+    .insert({
+      conversation_id: conversation.id,
+      direction: "outbound",
+      message_type: upload.message_type,
+      text_body: upload.message_type === "image" ? caption || null : null,
+      status: "pending",
+      sent_by: profile.id,
+      media_storage_bucket: upload.storage_bucket,
+      media_storage_path: upload.storage_path,
+      media_mime_type: upload.mime_type,
+      media_size_bytes: storedSize,
+      media_file_name: upload.file_name,
+      media_status: "ready",
+      provider_payload: {
+        provider: whatsappProvider(),
+        client_reference: upload.client_reference,
+        upload_id: upload.id,
+      },
+    })
+    .select("id")
+    .single();
+  if (pendingError || !pendingMessage) throw new Error("No se pudo preparar el mensaje multimedia.");
+
+  await admin.from("whatsapp_media_uploads").update({ message_id: pendingMessage.id }).eq("id", upload.id);
+  try {
+    const sent = await sendWhatsAppMedia({
+      phoneNumberId: channel.phone_number_id,
+      from: channel.display_phone_number,
+      to: conversation.contact_phone,
+      messageType: upload.message_type,
+      mediaUrl: signed.signedUrl,
+      caption: upload.message_type === "image" ? caption : null,
+      clientReference: upload.client_reference,
+    });
+    const now = new Date().toISOString();
+    const { error: updateError } = await admin.from("whatsapp_messages").update({
+      provider_message_id: sent.providerMessageId,
+      status: "accepted",
+      provider_timestamp: now,
+      provider_payload: {
+        provider: sent.provider,
+        client_reference: upload.client_reference,
+        upload_id: upload.id,
+        response: sent.payload,
+      },
+    }).eq("id", pendingMessage.id);
+    if (updateError) throw updateError;
+    await Promise.all([
+      admin.from("whatsapp_media_uploads").update({ status: "sent", error_message: null }).eq("id", upload.id),
+      admin.from("whatsapp_conversations").update({
+        last_message_at: now,
+        last_outbound_at: now,
+        status: "open",
+      }).eq("id", conversation.id),
+    ]);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "El proveedor de WhatsApp no aceptó el adjunto.";
+    await Promise.all([
+      admin.from("whatsapp_messages").update({ status: "failed", error_message: message.slice(0, 800) }).eq("id", pendingMessage.id),
+      admin.from("whatsapp_media_uploads").update({ status: "failed", error_message: message.slice(0, 800) }).eq("id", upload.id),
+    ]);
+    throw new Error(message);
+  }
+
+  revalidateWhatsApp(conversation.id);
 }
 
 export async function markWhatsAppConversationRead(formData: FormData) {

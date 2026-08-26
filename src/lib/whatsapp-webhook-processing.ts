@@ -9,6 +9,7 @@ export type WhatsAppWebhookResult = {
   unmapped: number;
   failed: number;
   aiCandidates: Array<{ conversationId: string; inboundMessageId: string }>;
+  mediaCandidates: Array<{ messageId: string }>;
 };
 
 async function campaignForEvent(
@@ -116,6 +117,7 @@ export async function processWhatsAppEvents(
     unmapped: 0,
     failed: 0,
     aiCandidates: [],
+    mediaCandidates: [],
   };
 
   for (const event of events) {
@@ -198,7 +200,7 @@ export async function processWhatsAppEvents(
         p_sender_wa_id: event.senderWaId,
         p_context_provider_message_id: event.contextProviderMessageId,
         p_referral: event.referral,
-        p_payload: event.payload,
+        p_payload: { ...event.payload, provider },
       });
       if (ingestError) throw ingestError;
 
@@ -206,15 +208,19 @@ export async function processWhatsAppEvents(
         ? ingestData as Record<string, unknown>
         : {};
       if (
-        event.direction === "inbound"
-        && ingested.duplicate !== true
+        ingested.duplicate !== true
         && typeof ingested.conversation_id === "string"
         && typeof ingested.message_id === "string"
       ) {
-        result.aiCandidates.push({
-          conversationId: ingested.conversation_id,
-          inboundMessageId: ingested.message_id,
-        });
+        if (event.direction === "inbound" && event.messageType === "text") {
+          result.aiCandidates.push({
+            conversationId: ingested.conversation_id,
+            inboundMessageId: ingested.message_id,
+          });
+        }
+        if (event.messageType === "image" || event.messageType === "audio") {
+          result.mediaCandidates.push({ messageId: ingested.message_id });
+        }
       }
 
       await admin

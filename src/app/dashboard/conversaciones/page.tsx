@@ -24,6 +24,7 @@ import {
 } from "@/app/actions/whatsapp";
 import { WhatsAppAutoRefresh } from "@/components/whatsapp-auto-refresh";
 import { WhatsAppComposer } from "@/components/whatsapp-composer";
+import { WhatsAppMessageMedia } from "@/components/whatsapp-message-media";
 import {
   ActionForm,
   ActionSubmit,
@@ -112,6 +113,9 @@ type Message = {
   created_at: string;
   error_message: string | null;
   provider_payload: Record<string, unknown> | null;
+  media_mime_type: string | null;
+  media_file_name: string | null;
+  media_status: "pending" | "ready" | "failed" | null;
   profiles: Relation<{ full_name: string }>;
 };
 
@@ -248,7 +252,7 @@ export default async function ConversationsPage({
       supabase
         .from("whatsapp_messages")
         .select(
-          "id, direction, message_type, text_body, status, provider_timestamp, created_at, error_message, provider_payload, profiles(full_name)",
+          "id, direction, message_type, text_body, status, provider_timestamp, created_at, error_message, provider_payload, media_mime_type, media_file_name, media_status, profiles(full_name)",
         )
         .eq("conversation_id", selected.id)
         .order("provider_timestamp", { ascending: true, nullsFirst: false })
@@ -454,7 +458,20 @@ export default async function ConversationsPage({
                               outbound ? "bg-primary text-primary-foreground" : "border border-border bg-surface text-foreground",
                             )}
                           >
-                            <p className="whitespace-pre-wrap break-words">{message.text_body || `[${message.message_type}]`}</p>
+                            {(message.message_type === "image" || message.message_type === "audio") && (
+                              <WhatsAppMessageMedia
+                                messageId={message.id}
+                                messageType={message.message_type}
+                                mimeType={message.media_mime_type}
+                                fileName={message.media_file_name}
+                              />
+                            )}
+                            {message.text_body && message.message_type !== "audio" && (
+                              <p className="whitespace-pre-wrap break-words">{message.text_body}</p>
+                            )}
+                            {!message.text_body && message.message_type !== "image" && message.message_type !== "audio" && (
+                              <p className="whitespace-pre-wrap break-words">[{message.message_type}]</p>
+                            )}
                             <div className={cn("mt-1 flex items-center justify-end gap-1 text-[10px]", outbound ? "text-primary-foreground/75" : "text-muted-foreground")}>
                               {outbound && isMercuryMessage(message.provider_payload) && <span>Mercury IA ·</span>}
                               {outbound && !isMercuryMessage(message.provider_payload) && sender?.full_name && <span>{sender.full_name} ·</span>}
