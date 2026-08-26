@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bot, ChevronRight, Mail, Megaphone, Phone, Users } from "lucide-react";
+import { Bot, ChevronRight, Mail, Megaphone, MessageCircle, Phone, Users } from "lucide-react";
 
 import { requireProfile } from "@/lib/auth";
 import { campaignCapabilityKey } from "@/lib/campaign-capabilities";
@@ -28,12 +28,13 @@ export default async function OperationalCampaignsPage() {
   const campaigns = (scopeRows ?? []) as CampaignRow[];
   const ids = campaigns.map((campaign) => campaign.id);
 
-  const [mailResult, mailboxResult, dialerResult, aiVoiceResult, leadCounts] = ids.length > 0
+  const [mailResult, mailboxResult, dialerResult, aiVoiceResult, queueSourceResult, leadCounts] = ids.length > 0
     ? await Promise.all([
         supabase.from("mail_campaigns").select("campaign_id,umbrella_key").eq("status", "active"),
         supabase.from("inbound_mailboxes").select("campaign_id").in("campaign_id", ids).eq("active", true),
         supabase.from("dialer_campaign_configs").select("campaign_id").in("campaign_id", ids),
         supabase.from("ai_voice_campaign_configs").select("campaign_id,is_active").in("campaign_id", ids),
+        supabase.from("contact_center_queue_sources").select("campaign_id,channel_type").in("campaign_id", ids).eq("is_active", true),
         Promise.all(
           ids.map(async (id) => {
             const { count } = await supabase
@@ -49,6 +50,7 @@ export default async function OperationalCampaignsPage() {
         { data: [] as { campaign_id: string }[] },
         { data: [] as { campaign_id: string }[] },
         { data: [] as { campaign_id: string; is_active: boolean }[] },
+        { data: [] as { campaign_id: string; channel_type: string }[] },
         [] as ReadonlyArray<readonly [string, number]>,
       ];
 
@@ -60,6 +62,11 @@ export default async function OperationalCampaignsPage() {
   const withMailbox = new Set((mailboxResult.data ?? []).map((row) => row.campaign_id));
   const withPhone = new Set((dialerResult.data ?? []).map((row) => row.campaign_id));
   const withAiVoice = new Set((aiVoiceResult.data ?? []).map((row) => row.campaign_id));
+  const withWhatsApp = new Set(
+    (queueSourceResult.data ?? [])
+      .filter((row) => row.channel_type === "whatsapp")
+      .map((row) => row.campaign_id),
+  );
   const countByCampaign = new Map(leadCounts);
 
   return (
@@ -85,6 +92,7 @@ export default async function OperationalCampaignsPage() {
               withPhone.has(campaign.id) ? { label: "Teléfono", icon: Phone } : null,
               withMailSignals.has(campaign.id) ? { label: "Señales de correo", icon: Mail } : null,
               withMailbox.has(campaign.id) ? { label: "Bandeja de entrada", icon: Mail } : null,
+              withWhatsApp.has(campaign.id) ? { label: "WhatsApp Business", icon: MessageCircle } : null,
             ].filter(Boolean) as Array<{ label: string; icon: typeof Phone }>;
 
             return (
