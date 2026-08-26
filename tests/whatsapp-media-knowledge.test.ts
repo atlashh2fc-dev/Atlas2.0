@@ -24,6 +24,7 @@ test("la captura histórica resuelve el proveedor desde el evento original", () 
   assert.match(mediaCapture, /whatsapp_webhook_events/);
   assert.match(mediaCapture, /\.eq\("provider_event_key", `message:\$\{message\.provider_message_id\}`\)/);
   assert.match(mediaCapture, /sourceProvider \?\? whatsappProvider\(\)/);
+  assert.match(mediaCapture, /if \(input\.mediaId\)[\s\S]*?metaMediaUrl\(input\.mediaId\)/);
 });
 
 test("la ficha del producto es explícita y deriva lo que no está confirmado", () => {

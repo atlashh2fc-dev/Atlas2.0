@@ -145,12 +145,14 @@ async function downloadMedia(input: {
     }
   } else {
     const accessToken = process.env.WHATSAPP_ACCESS_TOKEN?.trim();
-    if (url && accessToken) headers.authorization = `Bearer ${accessToken}`;
-    if (!url) {
-      if (!input.mediaId) throw new Error("Meta no informó el identificador del adjunto.");
+    if (input.mediaId) {
       const resolved = await metaMediaUrl(input.mediaId);
       url = resolved.url;
       headers.authorization = `Bearer ${resolved.accessToken}`;
+    } else {
+      if (!url) throw new Error("Meta no informó el identificador ni la URL del adjunto.");
+      if (!accessToken) throw new Error("Falta el acceso de Meta para descargar el adjunto.");
+      headers.authorization = `Bearer ${accessToken}`;
     }
   }
 
