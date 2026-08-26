@@ -18,6 +18,8 @@ export type ParsedWhatsAppMessage = {
   kind: "message";
   eventKey: string;
   phoneNumberId: string;
+  wabaId: string | null;
+  businessPhone: string | null;
   direction: "inbound" | "outbound";
   providerMessageId: string;
   contactWaId: string;
@@ -36,6 +38,9 @@ export type ParsedWhatsAppStatus = {
   kind: "status";
   eventKey: string;
   phoneNumberId: string;
+  wabaId: string | null;
+  businessPhone: string | null;
+  externalId: string | null;
   providerMessageId: string;
   status: "accepted" | "sent" | "delivered" | "read" | "failed" | "deleted";
   timestamp: string;
@@ -66,9 +71,16 @@ function unixTimestamp(value: unknown): string {
     : new Date().toISOString();
 }
 
-function normalizePhone(value: string): string {
+export function normalizeWhatsAppPhone(value: string): string {
   const digits = value.replace(/\D/g, "");
   return digits ? `+${digits}` : value;
+}
+
+function isoTimestamp(value: unknown): string {
+  const date = typeof value === "string" || typeof value === "number"
+    ? new Date(value)
+    : new Date(Number.NaN);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : new Date().toISOString();
 }
 
 function referral(value: unknown): WhatsAppReferral {
@@ -147,6 +159,34 @@ export function verifyMetaWebhookSignature(
   return expected.length === supplied.length && timingSafeEqual(expected, supplied);
 }
 
+export function verifyYCloudWebhookSignature(
+  signingSecret: string,
+  rawBody: Buffer,
+  suppliedHeader: string | null,
+): boolean {
+  if (!signingSecret || !suppliedHeader) return false;
+  const parts = new Map(
+    suppliedHeader.split(",").map((part) => {
+      const separator = part.indexOf("=");
+      return separator > 0
+        ? [part.slice(0, separator).trim(), part.slice(separator + 1).trim()]
+        : [part.trim(), ""];
+    }),
+  );
+  const timestamp = parts.get("t");
+  const suppliedHex = parts.get("s");
+  if (!timestamp || !/^\d+$/.test(timestamp) || !suppliedHex || !/^[a-f0-9]{64}$/i.test(suppliedHex)) {
+    return false;
+  }
+  const expectedHex = createHmac("sha256", signingSecret)
+    .update(`${timestamp}.`)
+    .update(rawBody)
+    .digest("hex");
+  const expected = Buffer.from(expectedHex, "utf8");
+  const supplied = Buffer.from(suppliedHex.toLowerCase(), "utf8");
+  return expected.length === supplied.length && timingSafeEqual(expected, supplied);
+}
+
 /**
  * Flattens Meta's batched WABA envelope into idempotent message/status events.
  * Coexistence echoes from the WhatsApp Business app are treated as outbound so
@@ -159,6 +199,7 @@ export function parseWhatsAppWebhook(value: unknown): ParsedWhatsAppEvent[] {
   const events: ParsedWhatsAppEvent[] = [];
   for (const rawEntry of array(envelope?.entry)) {
     const entry = record(rawEntry);
+    const wabaId = text(entry?.id);
     for (const rawChange of array(entry?.changes)) {
       const change = record(rawChange);
       const field = text(change?.field) ?? "messages";
@@ -167,6 +208,7 @@ export function parseWhatsAppWebhook(value: unknown): ParsedWhatsAppEvent[] {
       const metadata = record(changeValue.metadata);
       const phoneNumberId = text(metadata?.phone_number_id);
       if (!phoneNumberId) continue;
+      const businessPhone = text(metadata?.display_phone_number);
 
       const names = contactNames(changeValue);
       const direction: ParsedWhatsAppMessage["direction"] =
@@ -191,10 +233,12 @@ export function parseWhatsAppWebhook(value: unknown): ParsedWhatsAppEvent[] {
           kind: "message",
           eventKey: `message:${providerMessageId}`,
           phoneNumberId,
+          wabaId,
+          businessPhone: businessPhone ? normalizeWhatsAppPhone(businessPhone) : null,
           direction,
           providerMessageId,
           contactWaId,
-          contactPhone: normalizePhone(contactWaId),
+          contactPhone: normalizeWhatsAppPhone(contactWaId),
           contactName: names.get(contactWaId) ?? null,
           messageType: type,
           textBody: messageBody(message, type),
@@ -218,6 +262,9 @@ export function parseWhatsAppWebhook(value: unknown): ParsedWhatsAppEvent[] {
           kind: "status",
           eventKey: `status:${providerMessageId}:${statusText}:${timestamp}`,
           phoneNumberId,
+          wabaId,
+          businessPhone: businessPhone ? normalizeWhatsAppPhone(businessPhone) : null,
+          externalId: null,
           providerMessageId,
           status: statusText,
           timestamp,
@@ -228,6 +275,123 @@ export function parseWhatsAppWebhook(value: unknown): ParsedWhatsAppEvent[] {
     }
   }
   return events;
+}
+
+/**
+ * Converts YCloud's provider envelope into the same canonical events used by
+ * the native Meta webhook. Historical imports are intentionally ignored: the
+ * CRM starts from new traffic and does not copy old mobile chats.
+ */
+export function parseYCloudWebhook(value: unknown): ParsedWhatsAppEvent[] {
+  const envelope = record(value);
+  if (!envelope) return [];
+  const eventType = text(envelope.type);
+  if (!eventType) return [];
+
+  if (eventType === "whatsapp.inbound_message.received") {
+    const message = record(envelope?.whatsappInboundMessage);
+    if (!message || message.groupId) return [];
+    const wabaId = text(message.wabaId);
+    const businessPhone = text(message.to);
+    const providerMessageId = text(message.wamid) ?? text(message.id);
+    const contactPhoneRaw = text(message.from);
+    const contactPhoneDigits = contactPhoneRaw?.replace(/\D/g, "") ?? "";
+    const contactWaId = contactPhoneDigits
+      || text(message.fromParentUserId)
+      || text(message.fromUserId);
+    if (!wabaId || !businessPhone || !providerMessageId || !contactWaId || !contactPhoneRaw) return [];
+    const type = text(message.type) ?? "unknown";
+    const context = record(message.context);
+    const profile = record(message.customerProfile);
+    return [{
+      kind: "message",
+      eventKey: `message:${providerMessageId}`,
+      phoneNumberId: wabaId,
+      wabaId,
+      businessPhone: normalizeWhatsAppPhone(businessPhone),
+      direction: "inbound",
+      providerMessageId,
+      contactWaId,
+      contactPhone: normalizeWhatsAppPhone(contactPhoneRaw),
+      contactName: text(profile?.name) ?? text(profile?.username),
+      messageType: type,
+      textBody: messageBody(message, type),
+      timestamp: isoTimestamp(message.sendTime ?? envelope.createTime),
+      senderWaId: contactWaId,
+      contextProviderMessageId: text(context?.id) ?? text(context?.message_id),
+      referral: referral(message.referral ?? context?.referral),
+      payload: message,
+    }];
+  }
+
+  if (eventType === "whatsapp.smb.message.echoes") {
+    const message = record(envelope?.whatsappMessage);
+    if (!message) return [];
+    const wabaId = text(message.wabaId);
+    const businessPhone = text(message.from);
+    const providerMessageId = text(message.wamid) ?? text(message.id);
+    const contactPhoneRaw = text(message.to);
+    const contactPhoneDigits = contactPhoneRaw?.replace(/\D/g, "") ?? "";
+    const contactWaId = contactPhoneDigits
+      || text(message.toParentUserId)
+      || text(message.toUserId);
+    if (!wabaId || !businessPhone || !providerMessageId || !contactWaId || !contactPhoneRaw) return [];
+    const type = text(message.type) ?? "unknown";
+    const context = record(message.context);
+    const profile = record(message.customerProfile);
+    return [{
+      kind: "message",
+      eventKey: `message:${providerMessageId}`,
+      phoneNumberId: wabaId,
+      wabaId,
+      businessPhone: normalizeWhatsAppPhone(businessPhone),
+      direction: "outbound",
+      providerMessageId,
+      contactWaId,
+      contactPhone: normalizeWhatsAppPhone(contactPhoneRaw),
+      contactName: text(profile?.name) ?? text(profile?.username),
+      messageType: type,
+      textBody: messageBody(message, type),
+      timestamp: isoTimestamp(message.sendTime ?? message.createTime ?? envelope.createTime),
+      senderWaId: businessPhone.replace(/\D/g, ""),
+      contextProviderMessageId: text(context?.id) ?? text(context?.message_id),
+      referral: referral(message.referral ?? context?.referral),
+      payload: message,
+    }];
+  }
+
+  if (eventType === "whatsapp.message.updated") {
+    const message = record(envelope?.whatsappMessage);
+    if (!message) return [];
+    const wabaId = text(message.wabaId);
+    const businessPhone = text(message.from);
+    const providerMessageId = text(message.wamid) ?? text(message.id);
+    const statusText = text(message.status) as ParsedWhatsAppStatus["status"] | null;
+    if (!wabaId || !providerMessageId || !statusText || !STATUS_VALUES.has(statusText)) return [];
+    const timestamp = isoTimestamp(
+      message.readTime
+        ?? message.deliverTime
+        ?? message.updateTime
+        ?? message.sendTime
+        ?? message.createTime
+        ?? envelope.createTime,
+    );
+    return [{
+      kind: "status",
+      eventKey: `status:${providerMessageId}:${statusText}:${timestamp}`,
+      phoneNumberId: wabaId,
+      wabaId,
+      businessPhone: businessPhone ? normalizeWhatsAppPhone(businessPhone) : null,
+      externalId: text(message.externalId),
+      providerMessageId,
+      status: statusText,
+      timestamp,
+      errorMessage: text(message.errorMessage) ?? text(record(message.error)?.message),
+      payload: message,
+    }];
+  }
+
+  return [];
 }
 
 export function whatsappGraphApiVersion(): string {

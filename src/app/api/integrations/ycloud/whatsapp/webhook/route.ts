@@ -1,31 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import {
-  parseWhatsAppWebhook,
-  verifyMetaWebhookSignature,
-} from "@/lib/whatsapp";
+import { parseYCloudWebhook, verifyYCloudWebhookSignature } from "@/lib/whatsapp";
 import { processWhatsAppEvents } from "@/lib/whatsapp-webhook-processing";
 
 export const runtime = "nodejs";
 export const maxDuration = 20;
 
 const MAX_WEBHOOK_BYTES = 1024 * 1024;
-
-export async function GET(request: NextRequest) {
-  const mode = request.nextUrl.searchParams.get("hub.mode");
-  const suppliedToken = request.nextUrl.searchParams.get("hub.verify_token");
-  const challenge = request.nextUrl.searchParams.get("hub.challenge");
-  const expectedToken = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN;
-
-  if (mode === "subscribe" && expectedToken && suppliedToken === expectedToken && challenge) {
-    return new Response(challenge, {
-      status: 200,
-      headers: { "content-type": "text/plain; charset=utf-8" },
-    });
-  }
-
-  return NextResponse.json({ error: "Verificación rechazada." }, { status: 403 });
-}
 
 export async function POST(request: NextRequest) {
   const declaredLength = Number(request.headers.get("content-length") ?? "0");
@@ -38,11 +19,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Payload inválido." }, { status: rawBody.length ? 413 : 400 });
   }
 
-  const appSecret = process.env.WHATSAPP_META_APP_SECRET;
-  if (!appSecret) {
+  const signingSecret = process.env.WHATSAPP_YCLOUD_WEBHOOK_SECRET?.trim();
+  if (!signingSecret) {
     return NextResponse.json({ error: "Integración no configurada." }, { status: 503 });
   }
-  if (!verifyMetaWebhookSignature(appSecret, rawBody, request.headers.get("x-hub-signature-256"))) {
+  if (!verifyYCloudWebhookSignature(signingSecret, rawBody, request.headers.get("ycloud-signature"))) {
     return NextResponse.json({ error: "Firma no válida." }, { status: 401 });
   }
 
@@ -53,9 +34,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "JSON inválido." }, { status: 400 });
   }
 
-  const result = await processWhatsAppEvents(parseWhatsAppWebhook(decoded), "meta");
-
-  // Meta only needs an acknowledgement. Per-event diagnostics remain private
-  // in whatsapp_webhook_events and never expose customer data in the response.
+  const result = await processWhatsAppEvents(parseYCloudWebhook(decoded), "ycloud");
   return NextResponse.json({ acknowledged: true, ...result });
 }

@@ -322,7 +322,7 @@ export default async function ConversationsPage({
                 <div className="border-t border-border bg-surface p-4">
                   {!sendReady && (
                     <p className="mb-2 text-xs text-warning">
-                      La lectura está disponible; falta terminar la autorización de Meta para responder desde Atlas.
+                      La lectura está disponible; falta terminar la autorización del proveedor para responder desde Atlas.
                     </p>
                   )}
                   <ActionForm action={sendWhatsAppMessage} success="Mensaje enviado" className="flex items-end gap-2">

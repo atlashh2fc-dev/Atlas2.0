@@ -19,6 +19,9 @@ const PUBLIC_PATHS = [
   // Meta no tiene sesión web: GET valida el token de verificación y POST exige
   // la firma HMAC-SHA256 de la app antes de procesar cualquier evento.
   "/api/integrations/meta/whatsapp/webhook",
+  // YCloud usa un secreto independiente y firma el cuerpo crudo con
+  // `YCloud-Signature`; no depende de una sesión de Atlas.
+  "/api/integrations/ycloud/whatsapp/webhook",
 ];
 
 export async function updateSession(request: NextRequest) {

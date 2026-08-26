@@ -3,9 +3,11 @@ import { CheckCircle2, CircleAlert, Copy, Webhook } from "lucide-react";
 import { saveWhatsAppChannelConfig } from "@/app/actions/whatsapp";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { isWhatsAppProviderConfigured, whatsappProvider } from "@/lib/whatsapp-provider";
 import { ActionForm, ActionSubmit, Badge, Card, Field, Input, Select } from "@/components/ui";
 
-const WEBHOOK_URL = "https://atlascrm.geimser.cl/api/integrations/meta/whatsapp/webhook";
+const META_WEBHOOK_URL = "https://atlascrm.geimser.cl/api/integrations/meta/whatsapp/webhook";
+const YCLOUD_WEBHOOK_URL = "https://atlascrm.geimser.cl/api/integrations/ycloud/whatsapp/webhook";
 
 type Channel = {
   id: string;
@@ -44,7 +46,12 @@ export default async function WhatsAppIntegrationPage() {
   const hasAppSecret = Boolean(process.env.WHATSAPP_META_APP_SECRET);
   const hasAccessToken = Boolean(process.env.WHATSAPP_ACCESS_TOKEN);
   const hasVerifyToken = Boolean(process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN);
-  const ready = hasAppSecret && hasAccessToken && hasVerifyToken && channel?.status === "active";
+  const hasYCloudApiKey = Boolean(process.env.WHATSAPP_YCLOUD_API_KEY);
+  const hasYCloudWebhookSecret = Boolean(process.env.WHATSAPP_YCLOUD_WEBHOOK_SECRET);
+  const provider = whatsappProvider();
+  const providerConfigured = isWhatsAppProviderConfigured();
+  const ready = providerConfigured && channel?.status === "active";
+  const webhookUrl = provider === "ycloud" ? YCLOUD_WEBHOOK_URL : META_WEBHOOK_URL;
 
   return (
     <div className="space-y-5">
@@ -63,9 +70,9 @@ export default async function WhatsAppIntegrationPage() {
         />
         <StatusCard
           label="Salida desde el CRM"
-          value={hasAccessToken ? "Habilitada" : "Pendiente"}
-          ok={hasAccessToken}
-          detail={hasAccessToken ? "Token persistente presente" : "Falta autorizar Meta Cloud API"}
+          value={providerConfigured ? "Habilitada" : "Pendiente"}
+          ok={providerConfigured}
+          detail={providerConfigured ? `Proveedor ${provider === "ycloud" ? "YCloud" : "Meta"}` : "Falta completar credenciales"}
         />
       </div>
 
@@ -73,7 +80,7 @@ export default async function WhatsAppIntegrationPage() {
         <div>
           <h2 className="text-sm font-semibold text-foreground">Canal y campaña de destino</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Cada conversación nueva crea o reutiliza un lead en esta campaña. Los secretos de Meta no se guardan en la base.
+            Cada conversación nueva crea o reutiliza un lead en esta campaña. Los secretos del proveedor no se guardan en la base.
           </p>
         </div>
 
@@ -124,23 +131,32 @@ export default async function WhatsAppIntegrationPage() {
         <div className="flex items-start gap-3">
           <Webhook size={18} className="mt-0.5 text-primary" />
           <div>
-            <h2 className="text-sm font-semibold text-foreground">Datos para Meta</h2>
+            <h2 className="text-sm font-semibold text-foreground">Webhook del proveedor</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              La suscripción debe incluir <code>messages</code> y, para coexistencia con el celular, <code>smb_message_echoes</code>.
+              La suscripción debe incluir mensajes entrantes, estados y ecos enviados desde el celular.
             </p>
           </div>
         </div>
         <div className="rounded-lg border border-border bg-background p-3">
           <p className="text-xs font-medium text-muted-foreground">URL de devolución de llamada</p>
           <div className="mt-1 flex items-center gap-2">
-            <code className="min-w-0 flex-1 truncate text-sm text-foreground">{WEBHOOK_URL}</code>
+            <code className="min-w-0 flex-1 truncate text-sm text-foreground">{webhookUrl}</code>
             <Copy size={14} className="text-muted-foreground" aria-hidden />
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Badge tone={hasVerifyToken ? "success" : "warning"}>Token de verificación</Badge>
-          <Badge tone={hasAppSecret ? "success" : "warning"}>Firma de Meta</Badge>
-          <Badge tone={hasAccessToken ? "success" : "warning"}>Acceso Cloud API</Badge>
+          {provider === "ycloud" ? (
+            <>
+              <Badge tone={hasYCloudWebhookSecret ? "success" : "warning"}>Firma de YCloud</Badge>
+              <Badge tone={hasYCloudApiKey ? "success" : "warning"}>API de YCloud</Badge>
+            </>
+          ) : (
+            <>
+              <Badge tone={hasVerifyToken ? "success" : "warning"}>Token de verificación</Badge>
+              <Badge tone={hasAppSecret ? "success" : "warning"}>Firma de Meta</Badge>
+              <Badge tone={hasAccessToken ? "success" : "warning"}>Acceso Cloud API</Badge>
+            </>
+          )}
         </div>
         {channel?.last_error && (
           <p className="rounded-lg border border-danger/30 bg-danger-bg p-3 text-sm text-danger">

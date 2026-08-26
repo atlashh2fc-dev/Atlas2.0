@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { requireProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { whatsappGraphApiVersion } from "@/lib/whatsapp";
+import { isWhatsAppProviderConfigured, sendWhatsAppText, whatsappProvider } from "@/lib/whatsapp-provider";
 
 const MAX_TEXT_LENGTH = 4096;
 
@@ -28,23 +28,25 @@ export async function sendWhatsAppMessage(formData: FormData) {
   const supabase = await createClient();
   const { data: conversation, error: conversationError } = await supabase
     .from("whatsapp_conversations")
-    .select("id, channel_id, contact_wa_id")
+    .select("id, channel_id, contact_wa_id, contact_phone")
     .eq("id", conversationId)
     .single();
   if (conversationError || !conversation) throw new Error("No tienes acceso a esta conversación.");
 
-  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
-  if (!accessToken) throw new Error("Falta completar el acceso de Meta para enviar desde Atlas.");
+  if (!isWhatsAppProviderConfigured()) {
+    throw new Error("Falta completar el acceso del proveedor de WhatsApp para enviar desde Atlas.");
+  }
 
   const admin = createAdminClient();
   const { data: channel, error: channelError } = await admin
     .from("whatsapp_channels")
-    .select("phone_number_id, status")
+    .select("phone_number_id, display_phone_number, status")
     .eq("id", conversation.channel_id)
     .single();
   if (channelError || !channel) throw new Error("El canal de WhatsApp no está configurado.");
   if (channel.status !== "active") throw new Error("El canal de WhatsApp todavía no está conectado.");
 
+  const clientReference = randomUUID();
   const { data: pendingMessage, error: pendingError } = await admin
     .from("whatsapp_messages")
     .insert({
@@ -54,39 +56,20 @@ export async function sendWhatsAppMessage(formData: FormData) {
       text_body: body,
       status: "pending",
       sent_by: profile.id,
-      provider_payload: { client_reference: randomUUID() },
+      provider_payload: { provider: whatsappProvider(), client_reference: clientReference },
     })
     .select("id")
     .single();
   if (pendingError || !pendingMessage) throw new Error("No se pudo preparar el mensaje.");
 
   try {
-    const response = await fetch(
-      `https://graph.facebook.com/${whatsappGraphApiVersion()}/${encodeURIComponent(channel.phone_number_id)}/messages`,
-      {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${accessToken}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          messaging_product: "whatsapp",
-          recipient_type: "individual",
-          to: conversation.contact_wa_id,
-          type: "text",
-          text: { preview_url: false, body },
-        }),
-        signal: AbortSignal.timeout(15_000),
-      },
-    );
-    const payload = (await response.json().catch(() => ({}))) as {
-      messages?: { id?: string }[];
-      error?: { message?: string; code?: number };
-    };
-    const providerMessageId = payload.messages?.[0]?.id;
-    if (!response.ok || !providerMessageId) {
-      throw new Error(payload.error?.message || `Meta rechazó el mensaje (${response.status}).`);
-    }
+    const { provider, providerMessageId, payload } = await sendWhatsAppText({
+      phoneNumberId: channel.phone_number_id,
+      from: channel.display_phone_number,
+      to: conversation.contact_phone,
+      body,
+      clientReference,
+    });
 
     const now = new Date().toISOString();
     const { error: updateError } = await admin
@@ -95,7 +78,7 @@ export async function sendWhatsAppMessage(formData: FormData) {
         provider_message_id: providerMessageId,
         status: "accepted",
         provider_timestamp: now,
-        provider_payload: payload,
+        provider_payload: { provider, client_reference: clientReference, response: payload },
       })
       .eq("id", pendingMessage.id);
     if (updateError) throw updateError;
@@ -105,7 +88,7 @@ export async function sendWhatsAppMessage(formData: FormData) {
       .update({ last_message_at: now, last_outbound_at: now, status: "open" })
       .eq("id", conversationId);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Meta no aceptó el mensaje.";
+    const message = error instanceof Error ? error.message : "El proveedor de WhatsApp no aceptó el mensaje.";
     await admin
       .from("whatsapp_messages")
       .update({ status: "failed", error_message: message.slice(0, 800) })
@@ -228,11 +211,7 @@ export async function saveWhatsAppChannelConfig(formData: FormData) {
     .single();
   if (campaignError || !campaign?.is_active) throw new Error("Selecciona una campaña activa.");
 
-  const status = process.env.WHATSAPP_ACCESS_TOKEN
-    && process.env.WHATSAPP_META_APP_SECRET
-    && process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN
-    ? "active"
-    : "pending";
+  const status = isWhatsAppProviderConfigured() ? "active" : "pending";
   const { data: channel, error: channelError } = await admin
     .from("whatsapp_channels")
     .upsert(
