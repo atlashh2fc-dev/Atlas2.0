@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
-import { mercuryWhatsAppReplySchema, MAX_MERCURY_WHATSAPP_REPLY_LENGTH } from "./mercury-whatsapp-schema.ts";
+import {
+  mercuryWhatsAppReplySchema,
+  MAX_MERCURY_WHATSAPP_REPLY_LENGTH,
+  type MercuryWhatsAppHandoffKind,
+} from "./mercury-whatsapp-schema.ts";
 import { createAdminClient } from "./supabase/admin.ts";
 import { sendWhatsAppText, whatsappProvider } from "./whatsapp-provider.ts";
 
@@ -15,9 +19,13 @@ const replyJsonSchema = {
     properties: {
       reply: { type: "string", minLength: 1, maxLength: MAX_MERCURY_WHATSAPP_REPLY_LENGTH },
       handoff: { type: "boolean" },
+      handoff_kind: {
+        type: "string",
+        enum: ["none", "human_requested", "appointment", "quote", "unknown", "complaint"],
+      },
       handoff_reason: { type: "string", maxLength: 500 },
     },
-    required: ["reply", "handoff", "handoff_reason"],
+    required: ["reply", "handoff", "handoff_kind", "handoff_reason"],
   },
 } as const;
 
@@ -29,6 +37,20 @@ type HistoryMessage = {
   provider_payload: Record<string, unknown> | null;
   created_at: string;
 };
+
+function forcedHandoffKind(history: HistoryMessage[]): MercuryWhatsAppHandoffKind | null {
+  const latestInbound = [...history].reverse().find((message) =>
+    message.direction === "inbound" && message.message_type === "text" && message.text_body?.trim(),
+  );
+  const text = latestInbound?.text_body?.toLocaleLowerCase("es-CL") ?? "";
+  if (!text) return null;
+
+  const humanRequest = /(?:hablar|comunicarme|contactarme|deriv(?:a|ar|en)|pas(?:a|ar|en))[^.!?]{0,50}(?:persona|humano|humana|ejecutiv[oa]|asesor[a]?|especialista)/i;
+  const appointmentRequest = /(?:agend(?:a|ar|amiento|emos|en)|coordin(?:a|ar|emos|en)|reserv(?:a|ar|emos|en)|program(?:a|ar|emos|en))[^.!?]{0,60}(?:hora|reuni[oó]n|llamada|cita|contacto)|(?:reuni[oó]n|cita)[^.!?]{0,45}(?:agend|coordin|reserv|program)/i;
+  if (appointmentRequest.test(text)) return "appointment";
+  if (humanRequest.test(text)) return "human_requested";
+  return null;
+}
 
 function record(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -99,6 +121,7 @@ async function askMercury(input: {
             "No afirmes que realizaste acciones fuera del chat. No solicites contraseñas, claves, datos bancarios ni documentos de identidad.",
             "Usa formato natural de WhatsApp, sin encabezados ni listas largas. Puedes usar como máximo un emoji si aporta calidez.",
             "Devuelve handoff=true cuando corresponda intervención humana. La respuesta de derivación debe informar al contacto sin prometer un tiempo exacto.",
+            "Si pide hablar con una persona usa handoff_kind=human_requested. Si pide agendar, coordinar una reunión, llamada o cita usa handoff_kind=appointment. Usa quote para una cotización formal, complaint para una molestia o reclamo y unknown para información no respaldada. Sin derivación usa handoff_kind=none.",
           ].join("\n"),
         },
         {
@@ -220,6 +243,19 @@ export async function respondToWhatsAppInbound(input: {
       referral: record(conversation.referral) ?? {},
       history,
     });
+    const forcedKind = forcedHandoffKind(history);
+    const handoff = generated.handoff || forcedKind !== null;
+    const handoffKind = forcedKind ?? generated.handoff_kind;
+    const handoffReason = generated.handoff_reason || (
+      forcedKind === "appointment"
+        ? "El contacto solicitó coordinar un agendamiento con una especialista."
+        : forcedKind === "human_requested"
+          ? "El contacto solicitó atención de una persona."
+          : ""
+    );
+    const reply = forcedKind && !generated.handoff
+      ? `${generated.reply.trim()} Te derivaré con nuestra especialista para coordinarlo.`
+      : generated.reply;
 
     const { data: currentConversation } = await admin
       .from("whatsapp_conversations")
@@ -238,6 +274,17 @@ export async function respondToWhatsAppInbound(input: {
       return { status: "skipped" as const };
     }
 
+    if (handoff) {
+      const { error: handoffError } = await admin.rpc("handoff_whatsapp_conversation", {
+        p_conversation_id: input.conversationId,
+        p_reason: handoffReason,
+        p_kind: handoffKind,
+        p_source_message_id: input.inboundMessageId,
+        p_run_id: run.id,
+      });
+      if (handoffError) throw new Error(`No se pudo enrutar la derivación: ${handoffError.message}`);
+    }
+
     const clientReference = randomUUID();
     const { data: pending, error: pendingError } = await admin
       .from("whatsapp_messages")
@@ -245,7 +292,7 @@ export async function respondToWhatsAppInbound(input: {
         conversation_id: input.conversationId,
         direction: "outbound",
         message_type: "text",
-        text_body: generated.reply,
+        text_body: reply,
         status: "pending",
         provider_payload: {
           provider: whatsappProvider(),
@@ -262,7 +309,7 @@ export async function respondToWhatsAppInbound(input: {
         phoneNumberId: channel.phone_number_id,
         from: channel.display_phone_number,
         to: conversation.contact_phone,
-        body: generated.reply,
+        body: reply,
         clientReference,
       });
       const now = new Date().toISOString();
@@ -289,29 +336,21 @@ export async function respondToWhatsAppInbound(input: {
           last_outbound_at: now,
           ai_last_run_at: now,
           ai_last_error: null,
-          ai_state: generated.handoff ? "handoff" : "auto",
+          ai_state: handoff ? "handoff" : "auto",
           status: "open",
         })
         .eq("id", input.conversationId);
 
-      if (generated.handoff) {
-        await admin.from("whatsapp_conversation_events").insert({
-          conversation_id: input.conversationId,
-          event_type: "ai_handoff",
-          note: generated.handoff_reason || null,
-          metadata: { provider: "mercury", run_id: run.id },
-        });
-      }
-
       await completeRun(run.id, {
         status: "completed",
         outbound_message_id: pending.id,
-        handoff: generated.handoff,
-        handoff_reason: generated.handoff_reason || null,
+        handoff,
+        handoff_kind: handoffKind,
+        handoff_reason: handoffReason || null,
         provider_request_id: generated.providerRequestId,
         usage: generated.usage,
       });
-      return { status: "completed" as const, handoff: generated.handoff };
+      return { status: "completed" as const, handoff };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Meta rechazó la respuesta de IA.";
       await admin.from("whatsapp_messages").update({ status: "failed", error_message: message.slice(0, 800) }).eq("id", pending.id);

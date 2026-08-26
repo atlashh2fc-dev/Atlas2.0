@@ -44,6 +44,11 @@ type ConversationStatus = "open" | "pending" | "closed";
 type CampaignSummary = { id: string; name: string };
 type ClosureReason = { id: string; label: string; requires_note: boolean; is_automatic: boolean };
 type AiConfig = { enabled: boolean; model: string };
+type HandoffEvent = {
+  note: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
 
 type LeadSummary = {
   id: string;
@@ -165,6 +170,17 @@ function fieldLabel(value: string) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function handoffKindLabel(value: unknown) {
+  const labels: Record<string, string> = {
+    human_requested: "Solicitó atención humana",
+    appointment: "Solicitó agendamiento",
+    quote: "Solicitó cotización formal",
+    unknown: "Requiere confirmación especializada",
+    complaint: "Molestia o reclamo",
+  };
+  return typeof value === "string" ? labels[value] ?? "Derivación a especialista" : "Derivación a especialista";
+}
+
 function isMercuryMessage(payload: Record<string, unknown> | null) {
   const ai = payload && typeof payload.ai === "object" && payload.ai !== null
     ? payload.ai as Record<string, unknown>
@@ -247,8 +263,9 @@ export default async function ConversationsPage({
   let lead360: Lead360Context | null = null;
   let closureReasons: ClosureReason[] = [];
   let aiConfig: AiConfig | null = null;
+  let handoffEvent: HandoffEvent | null = null;
   if (selected) {
-    const [messageResult, membershipResult, lead360Result, closureReasonResult, aiConfigResult] = await Promise.all([
+    const [messageResult, membershipResult, lead360Result, closureReasonResult, aiConfigResult, handoffEventResult] = await Promise.all([
       supabase
         .from("whatsapp_messages")
         .select(
@@ -287,12 +304,21 @@ export default async function ConversationsPage({
         .select("enabled, model")
         .eq("campaign_id", selected.campaign_id)
         .maybeSingle(),
+      supabase
+        .from("whatsapp_conversation_events")
+        .select("note, metadata, created_at")
+        .eq("conversation_id", selected.id)
+        .eq("event_type", "ai_handoff")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ]);
     messages = (messageResult.data ?? []) as Message[];
     memberships = (membershipResult.data ?? []) as typeof memberships;
     lead360 = lead360Result.data as Lead360Context | null;
     closureReasons = (closureReasonResult.data ?? []) as ClosureReason[];
     aiConfig = aiConfigResult.data as AiConfig | null;
+    handoffEvent = handoffEventResult.data as HandoffEvent | null;
   }
 
   const agentOptions = memberships.flatMap((membership) => {
@@ -593,6 +619,17 @@ export default async function ConversationsPage({
                     {!aiConfig?.enabled ? "Sin configurar" : selected.ai_state === "auto" ? "IA activa" : selected.ai_state === "handoff" ? "Derivada" : "Pausada"}
                   </Badge>
                 </div>
+                {selected.ai_state === "handoff" && handoffEvent && (
+                  <div className="rounded-md border border-warning/35 bg-warning/10 p-3">
+                    <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                      <UserRound size={14} /> {handoffKindLabel(handoffEvent.metadata?.kind)}
+                    </p>
+                    {handoffEvent.note && <p className="mt-1 text-xs text-foreground">{handoffEvent.note}</p>}
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Asignada a {assigned?.full_name ?? "la cola humana"} · {formatDateTime(handoffEvent.created_at)}
+                    </p>
+                  </div>
+                )}
                 {aiConfig?.enabled && selected.status !== "closed" && (
                   <ActionForm
                     action={setWhatsAppConversationAiState}

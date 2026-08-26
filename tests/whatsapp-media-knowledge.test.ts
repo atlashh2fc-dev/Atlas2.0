@@ -16,6 +16,11 @@ const knowledgeMigration = readFileSync(
   "utf8",
 );
 const mercury = readFileSync(new URL("../src/lib/mercury-whatsapp.ts", import.meta.url), "utf8");
+const conversations = readFileSync(new URL("../src/app/dashboard/conversaciones/page.tsx", import.meta.url), "utf8");
+const handoffMigration = readFileSync(
+  new URL("../supabase/migrations/20260826231000_route_whatsapp_handoffs_to_laura.sql", import.meta.url),
+  "utf8",
+);
 const mediaCapture = readFileSync(new URL("../src/lib/whatsapp-media.ts", import.meta.url), "utf8");
 
 test("multimedia de WhatsApp usa bucket privado y no concede acceso directo al navegador", () => {
@@ -48,4 +53,21 @@ test("la ficha del producto es explícita y deriva lo que no está confirmado", 
   assert.match(knowledgeMigration, /devuelve handoff=true/);
   assert.match(mercury, /Información aprobada del producto/);
   assert.match(mercury, /no la infieras:[\s\S]*?handoff=true/);
+});
+
+test("la derivación Mercury asigna conversación y lead a la cola con contexto", () => {
+  assert.match(handoffMigration, /create or replace function public\.handoff_whatsapp_conversation/);
+  assert.match(handoffMigration, /update public\.lead_assignments[\s\S]*?insert into public\.lead_assignments/);
+  assert.match(handoffMigration, /update public\.leads[\s\S]*?assigned_to = v_agent_id/);
+  assert.match(handoffMigration, /update public\.whatsapp_conversations[\s\S]*?ai_state = 'handoff'/);
+  assert.match(handoffMigration, /'lpincheirah\.geimser@gmail\.com'/);
+  assert.match(mercury, /p_kind: handoffKind/);
+  assert.match(conversations, /handoffKindLabel/);
+  assert.match(conversations, /Asignada a \{assigned\?\.full_name/);
+});
+
+test("humano y agendamiento son gatillos explícitos de derivación", () => {
+  assert.match(mercury, /human_requested/);
+  assert.match(mercury, /appointmentRequest/);
+  assert.match(mercury, /pide agendar, coordinar una reunión, llamada o cita/);
 });

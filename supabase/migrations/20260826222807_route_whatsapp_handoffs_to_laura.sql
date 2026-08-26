@@ -1,0 +1,3 @@
+-- History marker created by the managed Supabase migration runner.
+-- The replay-safe implementation runs after the ACD queue schema in
+-- 20260826231000_route_whatsapp_handoffs_to_laura.sql.
