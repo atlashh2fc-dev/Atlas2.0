@@ -70,14 +70,14 @@ export const ROLE_LABEL: Record<AppRole, string> = {
 const ALL_ROLES: AppRole[] = ["agente", "supervisor", "admin"];
 const OPERACION: AppRole[] = ["supervisor", "admin"];
 
-/** Espacio 1 — Consola: lo que se usa a diario. Sin encabezados de grupo. */
+/** Espacio 1 — Consola: lo que se usa a diario, agrupado por intención. */
 const CONSOLE: NavSpace = {
   id: "console",
   label: "Consola",
   roles: ALL_ROLES,
   sections: [
     {
-      id: "console-main",
+      id: "console-home",
       items: [
         {
           id: "inicio",
@@ -87,6 +87,12 @@ const CONSOLE: NavSpace = {
           roles: ALL_ROLES,
           description: "Resumen del día y accesos rápidos",
         },
+      ],
+    },
+    {
+      id: "console-operation",
+      label: "Operación",
+      items: [
         {
           id: "monitor",
           label: "Monitor en vivo",
@@ -105,6 +111,14 @@ const CONSOLE: NavSpace = {
           description: "Carga, agendas y asignación de tus ejecutivos",
         },
         {
+          id: "campanas-operativas",
+          label: "Campañas",
+          href: "/dashboard/campanas",
+          icon: Megaphone,
+          roles: OPERACION,
+          description: "Operación y canales habilitados por campaña",
+        },
+        {
           id: "registros",
           label: { default: "Registros", agente: "Mis registros" },
           href: "/dashboard/leads",
@@ -119,15 +133,7 @@ const CONSOLE: NavSpace = {
           href: "/dashboard/conversaciones",
           icon: MessageCircle,
           roles: ALL_ROLES,
-          description: "Bandeja omnicanal y mensajes de campañas",
-        },
-        {
-          id: "campanas-operativas",
-          label: "Campañas",
-          href: "/dashboard/campanas",
-          icon: Megaphone,
-          roles: OPERACION,
-          description: "Operación y canales habilitados por campaña",
+          description: "Workspace omnicanal vinculado a campañas y registros",
         },
         {
           id: "agenda",
@@ -138,6 +144,12 @@ const CONSOLE: NavSpace = {
           description: "Seguimientos de hoy y vencidos",
           badge: "overdue-agenda",
         },
+      ],
+    },
+    {
+      id: "console-control",
+      label: "Control",
+      items: [
         {
           id: "reportes",
           label: "Reportes",

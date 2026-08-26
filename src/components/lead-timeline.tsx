@@ -1,11 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CalendarClock, MessageSquare, PhoneCall, RefreshCw } from "lucide-react";
+import { CalendarClock, MessageCircle, MessageSquare, PhoneCall, RefreshCw } from "lucide-react";
 
 export type TimelineEntry = {
   key: string;
-  source: "call" | "interaction" | "integration";
+  source: "call" | "interaction" | "integration" | "whatsapp";
   date: string | null;
   title: string;
   notes: string | null;
@@ -17,6 +17,7 @@ const FILTERS = [
   { id: "todo", label: "Todo" },
   { id: "call", label: "Llamadas" },
   { id: "interaction", label: "Gestiones" },
+  { id: "whatsapp", label: "WhatsApp" },
   { id: "integration", label: "Integraciones" },
 ] as const;
 
@@ -28,7 +29,7 @@ function formatDateTime(value: string | null): string {
 }
 
 /**
- * Línea de tiempo unificada del registro: llamadas y gestiones en un solo hilo
+ * Línea de tiempo unificada del registro: llamadas, gestiones y canales en un solo hilo
  * ordenado, con filtro por tipo (docs/auditoria-vistas-workplace.md §4.3).
  */
 export function LeadTimeline({ entries }: { entries: TimelineEntry[] }) {
@@ -39,6 +40,7 @@ export function LeadTimeline({ entries }: { entries: TimelineEntry[] }) {
       todo: entries.length,
       call: entries.filter((entry) => entry.source === "call").length,
       interaction: entries.filter((entry) => entry.source === "interaction").length,
+      whatsapp: entries.filter((entry) => entry.source === "whatsapp").length,
       integration: entries.filter((entry) => entry.source === "integration").length,
     }),
     [entries]
@@ -91,7 +93,9 @@ export function LeadTimeline({ entries }: { entries: TimelineEntry[] }) {
               ? PhoneCall
               : entry.source === "integration"
                 ? RefreshCw
-                : MessageSquare;
+                : entry.source === "whatsapp"
+                  ? MessageCircle
+                  : MessageSquare;
             return (
               <li key={entry.key} className="flex gap-3 px-4 py-3.5">
                 <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-surface-muted text-muted-foreground">

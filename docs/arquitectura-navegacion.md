@@ -69,7 +69,7 @@ el agente.
 ### Principios
 
 1. **Dos espacios**: `Consola` (operar) y `Administración` (configurar).
-2. **Máx. 6 ítems** de primer nivel por rol; **profundidad máx. 2**; el resto son pestañas.
+2. **Máx. 6 ítems por grupo operativo**; **profundidad máx. 2**; el resto son pestañas.
 3. **El menú son sustantivos.** Ningún verbo en el sidebar.
 4. **Una entidad, un nombre**, en menú, `PageHeader`, breadcrumb y búsqueda.
 5. **Nada oculto por defecto.**
@@ -77,47 +77,58 @@ el agente.
 
 ### 4.1 Espacio "Consola"
 
-Una sola sección sin encabezados: ningún rol pasa de 6 ítems, así que los encabezados serían ruido.
+La evolución omnicanal agrega destinos diarios que no deben esconderse bajo una campaña. La
+Consola se agrupa por intención: `Operación` para atender y `Control` para analizar. Campaña,
+registro y conversación son entidades relacionadas, pero cada una conserva un workspace propio.
 
-**AGENTE — 3 ítems**
+**AGENTE — 4 ítems**
 
 ```
 Inicio
 Mis registros
+Conversaciones
 Mi agenda
 ─────────────
 Ayuda · perfil       (footer)
 ```
 
-**SUPERVISOR — 6 ítems**
+**SUPERVISOR**
 
 ```
 Inicio
+OPERACIÓN
 Monitor en vivo      ● badge: ejecutivos conectados
 Mi equipo
+Campañas
 Registros
-Campañas mail
+Conversaciones
+CONTROL
 Reportes             (pestañas: Gestión · Discador)
+Calidad
 ─────────────
 Ayuda · perfil
 ```
 
-**ADMIN — 5 ítems + acceso a Administración**
+**ADMIN + acceso a Administración**
 
 ```
 Inicio
+OPERACIÓN
 Monitor en vivo      ●
+Campañas
 Registros
-Campañas mail
+Conversaciones
+CONTROL
 Reportes             (pestañas: Gestión · Discador)
+Calidad
 ─────────────
 ⚙ Administración     (footer — abre el segundo espacio)
 Ayuda · perfil
 ```
 
-> Nota de diseño: **Campañas pasa a Administración**. Crear/parametrizar una campaña es setup; el
-> seguimiento diario vive en Monitor en vivo y en Reportes. Es exactamente el corte de Genesys
-> (Outbound en Admin, monitoreo en Performance) y de Five9 (Campaigns en VCC Admin).
+> Nota de diseño: **parametrizar campañas sigue en Administración**. `Campañas` en la Consola es
+> la vista operativa de canales, volumen y resultados. `Conversaciones` queda como workspace de
+> atención de primer nivel; dentro de cada hilo muestra campaña, registro y responsable.
 
 ### 4.2 Espacio "Administración"
 

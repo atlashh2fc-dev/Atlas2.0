@@ -27,6 +27,22 @@ async function campaignForEvent(
     if (exactRoute) return exactRoute.campaign_id as string;
   }
 
+  // Only the first message opened from a click-to-WhatsApp ad is guaranteed
+  // to carry referral metadata. Follow-up messages stay in the most recently
+  // active commercial thread for this contact instead of falling back to an
+  // unrelated default campaign.
+  const { data: activeConversation, error: activeConversationError } = await admin
+    .from("whatsapp_conversations")
+    .select("campaign_id")
+    .eq("channel_id", channelId)
+    .eq("contact_wa_id", event.contactWaId)
+    .in("status", ["open", "pending"])
+    .order("last_message_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (activeConversationError) throw activeConversationError;
+  if (activeConversation) return activeConversation.campaign_id as string;
+
   const { data: defaultRoute, error } = await admin
     .from("whatsapp_campaign_routes")
     .select("campaign_id")

@@ -81,6 +81,16 @@ type ExternalEvent = {
   integration_sources: { code: string; name: string } | Array<{ code: string; name: string }> | null;
 };
 
+type WhatsAppTimelineMessage = {
+  id: string;
+  direction: "inbound" | "outbound";
+  text_body: string | null;
+  message_type: string;
+  provider_timestamp: string | null;
+  created_at: string;
+  profiles: { full_name: string } | Array<{ full_name: string }> | null;
+};
+
 function relationOne<T>(value: T | T[] | null): T | null {
   return Array.isArray(value) ? value[0] ?? null : value;
 }
@@ -162,7 +172,7 @@ export default async function LeadDetailPage({
     (workflowBranches ?? []) as WorkflowStepBranch[]
   );
 
-  const [{ data: externalRefsData }, { data: externalEventsData }] = await Promise.all([
+  const [{ data: externalRefsData }, { data: externalEventsData }, { data: whatsAppMessagesData }] = await Promise.all([
     supabase
       .from("lead_external_refs")
       .select("id, external_key, first_seen_at, last_seen_at, integration_sources(code, name)")
@@ -175,9 +185,16 @@ export default async function LeadDetailPage({
       .eq("lead_id", id)
       .order("occurred_at", { ascending: false, nullsFirst: false })
       .limit(30),
+    supabase
+      .from("whatsapp_messages")
+      .select("id, direction, text_body, message_type, provider_timestamp, created_at, profiles(full_name), whatsapp_conversations!inner(lead_id)")
+      .eq("whatsapp_conversations.lead_id", id)
+      .order("provider_timestamp", { ascending: false, nullsFirst: false })
+      .limit(30),
   ]);
   const externalRefs = (externalRefsData ?? []) as ExternalReference[];
   const externalEvents = (externalEventsData ?? []) as ExternalEvent[];
+  const whatsAppMessages = (whatsAppMessagesData ?? []) as WhatsAppTimelineMessage[];
 
   // El render solo consulta una gestión abierta. Crear una llamada aquí provoca
   // duplicados cuando el cierre revalida la página antes de navegar.
@@ -210,6 +227,19 @@ export default async function LeadDetailPage({
         notes: bucket ? `Clasificación: ${bucket}` : null,
         agenda: null,
         agent: source?.name ?? source?.code ?? "Integración",
+      };
+    }),
+    ...whatsAppMessages.map((message): TimelineEntry => {
+      const sender = relationOne(message.profiles);
+      const inbound = message.direction === "inbound";
+      return {
+        key: `whatsapp-${message.id}`,
+        source: "whatsapp",
+        date: message.provider_timestamp ?? message.created_at,
+        title: inbound ? "WhatsApp recibido" : "WhatsApp enviado",
+        notes: message.text_body || `[${message.message_type}]`,
+        agenda: null,
+        agent: inbound ? lead.full_name : sender?.full_name ?? "Equipo Atlas",
       };
     }),
   ].sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime());

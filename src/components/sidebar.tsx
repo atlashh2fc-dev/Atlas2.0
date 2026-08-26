@@ -75,9 +75,9 @@ function initials(fullName: string): string {
   return (parts[0][0] + parts[1][0]).toUpperCase();
 }
 
-/** Un encabezado de sección solo se paga desde 3 ítems (docs/arquitectura-navegacion.md §4.5). */
+/** Dos destinos analíticos ya forman un grupo útil en la consola omnicanal. */
 function showsHeader(section: NavSection): boolean {
-  return Boolean(section.label) && section.items.length >= 3;
+  return Boolean(section.label) && section.items.length >= 2;
 }
 
 function NavLink({

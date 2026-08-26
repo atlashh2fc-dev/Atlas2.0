@@ -1,5 +1,16 @@
 import Link from "next/link";
-import { ArrowUpRight, CheckCheck, MessageCircle, Send, UserRound } from "lucide-react";
+import type { ReactNode } from "react";
+import {
+  ArrowUpRight,
+  CalendarClock,
+  CheckCheck,
+  Megaphone,
+  MessageCircle,
+  MessageSquare,
+  Phone,
+  Send,
+  UserRound,
+} from "lucide-react";
 
 import {
   assignWhatsAppConversation,
@@ -24,6 +35,36 @@ import { cn } from "@/lib/utils";
 
 type Relation<T> = T | T[] | null;
 type ConversationStatus = "open" | "pending" | "closed";
+type CampaignSummary = { id: string; name: string };
+
+type LeadSummary = {
+  id: string;
+  full_name: string;
+  phone: string | null;
+  email: string | null;
+  rut: string | null;
+  status: string;
+  tipificacion_actual: string | null;
+  next_action_at: string | null;
+  workflow_status: string | null;
+  managed_at: string | null;
+  extra: Record<string, unknown> | null;
+};
+
+type LeadTimelineItem = {
+  source: "call" | "interaction";
+  id: string;
+  occurred_at: string | null;
+  title: string | null;
+  notes: string | null;
+  agent_name: string;
+};
+
+type Lead360Context = {
+  lead: LeadSummary;
+  summary: { timeline_count: number; last_activity_at: string | null };
+  timeline: LeadTimelineItem[];
+};
 
 type Conversation = {
   id: string;
@@ -35,13 +76,15 @@ type Conversation = {
   status: ConversationStatus;
   unread_count: number;
   last_message_at: string;
-  last_inbound_at: string | null;
-  last_outbound_at: string | null;
   referral: Record<string, unknown>;
-  campaigns: Relation<{ id: string; name: string }>;
-  leads: Relation<{ id: string; full_name: string; phone: string | null }>;
+  campaigns: Relation<CampaignSummary>;
+  leads: Relation<LeadSummary>;
   profiles: Relation<{ id: string; full_name: string }>;
-  whatsapp_channels: Relation<{ status: string }>;
+  whatsapp_channels: Relation<{
+    status: string;
+    business_name: string | null;
+    display_phone_number: string | null;
+  }>;
 };
 
 type Message = {
@@ -56,12 +99,17 @@ type Message = {
   profiles: Relation<{ full_name: string }>;
 };
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function one<T>(value: Relation<T>): T | null {
   return Array.isArray(value) ? value[0] ?? null : value;
 }
 
-function formatDateTime(value: string) {
-  return new Date(value).toLocaleString("es-CL", {
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString("es-CL", {
     day: "2-digit",
     month: "short",
     hour: "2-digit",
@@ -87,108 +135,196 @@ function conversationLabel(status: ConversationStatus) {
   return status === "open" ? "Abierta" : status === "pending" ? "Pendiente" : "Cerrada";
 }
 
+function sourceLabel(source: LeadTimelineItem["source"]) {
+  return source === "call" ? "Llamada" : "Gestión";
+}
+
+function fieldLabel(value: string) {
+  return value
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function conversationsHref({
+  status,
+  campaign,
+  conversation,
+}: {
+  status: ConversationStatus | "all";
+  campaign?: string | null;
+  conversation?: string | null;
+}) {
+  const params = new URLSearchParams({ status });
+  if (campaign) params.set("campaign", campaign);
+  if (conversation) params.set("conversation", conversation);
+  return `/dashboard/conversaciones?${params.toString()}`;
+}
+
+function ContextSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="border-b border-border p-4 last:border-b-0">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h3>
+      <div className="mt-3 space-y-2.5">{children}</div>
+    </section>
+  );
+}
+
+function ContextRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-3 text-xs">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="min-w-0 text-right font-medium text-foreground">{children || "—"}</span>
+    </div>
+  );
+}
+
 export default async function ConversationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ conversation?: string; status?: string }>;
+  searchParams: Promise<{ conversation?: string; status?: string; campaign?: string }>;
 }) {
   const profile = await requireProfile();
-  const { conversation: requestedConversation, status: statusParam } = await searchParams;
+  const params = await searchParams;
   const status = (["open", "pending", "closed", "all"] as const).includes(
-    statusParam as ConversationStatus | "all",
+    params.status as ConversationStatus | "all",
   )
-    ? (statusParam as ConversationStatus | "all")
+    ? (params.status as ConversationStatus | "all")
     : "open";
+  const campaignFilter = params.campaign && UUID.test(params.campaign) ? params.campaign : null;
   const supabase = await createClient();
 
   let conversationQuery = supabase
     .from("whatsapp_conversations")
     .select(
-      "id, campaign_id, lead_id, contact_name, contact_phone, assigned_to, status, unread_count, last_message_at, last_inbound_at, last_outbound_at, referral, campaigns(id, name), leads(id, full_name, phone), profiles(id, full_name), whatsapp_channels(status)",
+      "id, campaign_id, lead_id, contact_name, contact_phone, assigned_to, status, unread_count, last_message_at, referral, campaigns(id, name), leads(id, full_name, phone, email, rut, status, tipificacion_actual, next_action_at, workflow_status, managed_at, extra), profiles(id, full_name), whatsapp_channels(status, business_name, display_phone_number)",
     )
     .order("last_message_at", { ascending: false })
     .limit(100);
   if (status !== "all") conversationQuery = conversationQuery.eq("status", status);
+  if (campaignFilter) conversationQuery = conversationQuery.eq("campaign_id", campaignFilter);
 
-  const { data: conversationData, error: conversationError } = await conversationQuery;
+  const [{ data: conversationData, error: conversationError }, { data: campaignData }] =
+    await Promise.all([
+      conversationQuery,
+      supabase.from("campaigns").select("id, name").order("name"),
+    ]);
   const conversations = (conversationData ?? []) as Conversation[];
-  const selectedId = conversations.some((item) => item.id === requestedConversation)
-    ? requestedConversation!
+  const campaigns = (campaignData ?? []) as CampaignSummary[];
+  const selectedId = conversations.some((item) => item.id === params.conversation)
+    ? params.conversation!
     : conversations[0]?.id ?? null;
   const selected = conversations.find((item) => item.id === selectedId) ?? null;
 
-  const [{ data: messageData }, { data: membershipData }] = selected
-    ? await Promise.all([
-        supabase
-          .from("whatsapp_messages")
-          .select("id, direction, message_type, text_body, status, provider_timestamp, created_at, error_message, profiles(full_name)")
-          .eq("conversation_id", selected.id)
-          .order("provider_timestamp", { ascending: true, nullsFirst: false })
-          .order("created_at", { ascending: true })
-          .limit(500),
-        profile.role === "agente"
-          ? Promise.resolve({ data: [] })
-          : supabase
-              .from("campaign_agents")
-              .select("profile_id, profiles!inner(id, full_name, active, role)")
-              .eq("campaign_id", selected.campaign_id)
-              .eq("profiles.active", true)
-              .eq("profiles.role", "agente"),
-      ])
-    : [{ data: [] }, { data: [] }];
-  const messages = (messageData ?? []) as Message[];
-  const agentOptions = (membershipData ?? []).flatMap((membership) => {
-    const agent = one((membership as { profiles: Relation<{ id: string; full_name: string }> }).profiles);
+  let messages: Message[] = [];
+  let memberships: Array<{ profiles: Relation<{ id: string; full_name: string }> }> = [];
+  let lead360: Lead360Context | null = null;
+  if (selected) {
+    const [messageResult, membershipResult, lead360Result] = await Promise.all([
+      supabase
+        .from("whatsapp_messages")
+        .select(
+          "id, direction, message_type, text_body, status, provider_timestamp, created_at, error_message, profiles(full_name)",
+        )
+        .eq("conversation_id", selected.id)
+        .order("provider_timestamp", { ascending: true, nullsFirst: false })
+        .order("created_at", { ascending: true })
+        .limit(500),
+      profile.role === "agente"
+        ? Promise.resolve({ data: [] })
+        : supabase
+            .from("campaign_agents")
+            .select("profile_id, profiles!inner(id, full_name, active, role)")
+            .eq("campaign_id", selected.campaign_id)
+            .eq("profiles.active", true)
+            .eq("profiles.role", "agente"),
+      supabase.rpc("get_lead_360", { p_lead_id: selected.lead_id }),
+    ]);
+    messages = (messageResult.data ?? []) as Message[];
+    memberships = (membershipResult.data ?? []) as typeof memberships;
+    lead360 = lead360Result.data as Lead360Context | null;
+  }
+
+  const agentOptions = memberships.flatMap((membership) => {
+    const agent = one(membership.profiles);
     return agent ? [agent] : [];
   });
   const canManage = profile.role === "supervisor" || profile.role === "admin";
+  const campaign = selected ? one(selected.campaigns) : null;
+  const assigned = selected ? one(selected.profiles) : null;
   const channel = selected ? one(selected.whatsapp_channels) : null;
+  const lead = lead360?.lead ?? (selected ? one(selected.leads) : null);
   const sendReady = channel?.status === "active";
   const referral = selected?.referral ?? {};
   const referralHeadline = typeof referral.headline === "string" ? referral.headline : null;
   const referralBody = typeof referral.body === "string" ? referral.body : null;
+  const dynamicData = Object.entries(lead?.extra ?? {})
+    .filter(([, value]) => ["string", "number", "boolean"].includes(typeof value))
+    .slice(0, 10);
 
   return (
     <div className="space-y-5">
       <WhatsAppAutoRefresh conversationId={selectedId} />
       <PageHeader
         title="Conversaciones"
-        description="WhatsApp de campañas: contacto, responsable y gestión en una sola bandeja."
+        description="Workspace omnicanal: cada interacción conserva canal, campaña, registro y responsable."
       />
 
       {conversationError ? (
         <Callout tone="warning">
-          La bandeja está preparada, pero falta aplicar la migración de WhatsApp: {conversationError.message}
+          La bandeja está preparada, pero falta aplicar la migración de mensajería: {conversationError.message}
         </Callout>
       ) : (
-        <div className="grid min-h-[calc(100vh-12rem)] overflow-hidden rounded-lg border border-border bg-surface shadow-sm lg:grid-cols-[22rem_1fr]">
+        <div className="grid min-h-[calc(100vh-12rem)] overflow-hidden rounded-lg border border-border bg-surface shadow-sm lg:grid-cols-[20rem_minmax(0,1fr)] xl:grid-cols-[20rem_minmax(28rem,1fr)_19rem]">
           <aside className="border-b border-border lg:border-b-0 lg:border-r">
             <div className="flex gap-1 border-b border-border p-3">
               {(["open", "pending", "closed", "all"] as const).map((value) => (
                 <Link
                   key={value}
-                  href={`/dashboard/conversaciones?status=${value}`}
+                  href={conversationsHref({ status: value, campaign: campaignFilter })}
                   className={buttonClasses({
                     variant: status === value ? "primary" : "ghost",
                     size: "sm",
-                    className: "flex-1",
+                    className: "flex-1 px-2",
                   })}
                 >
                   {value === "open" ? "Abiertas" : value === "pending" ? "Pendientes" : value === "closed" ? "Cerradas" : "Todas"}
                 </Link>
               ))}
             </div>
-            <div className="max-h-[calc(100vh-16rem)] overflow-y-auto">
+
+            <form className="grid grid-cols-2 gap-2 border-b border-border p-3" action="/dashboard/conversaciones">
+              <input type="hidden" name="status" value={status} />
+              <Select aria-label="Canal" defaultValue="whatsapp" disabled fieldSize="sm">
+                <option value="whatsapp">WhatsApp</option>
+              </Select>
+              <Select name="campaign" aria-label="Campaña" defaultValue={campaignFilter ?? ""} fieldSize="sm">
+                <option value="">Todas las campañas</option>
+                {campaigns.map((item) => (
+                  <option key={item.id} value={item.id}>{item.name}</option>
+                ))}
+              </Select>
+              <button type="submit" className={buttonClasses({ variant: "secondary", size: "sm" })}>
+                Aplicar filtros
+              </button>
+              <Link
+                href={conversationsHref({ status })}
+                className={buttonClasses({ variant: "ghost", size: "sm" })}
+              >
+                Limpiar
+              </Link>
+            </form>
+
+            <div className="max-h-[calc(100vh-22rem)] overflow-y-auto">
               {conversations.length === 0 ? (
                 <div className="p-5 text-center text-sm text-muted-foreground">No hay conversaciones en esta vista.</div>
               ) : (
                 conversations.map((conversation) => {
-                  const campaign = one(conversation.campaigns);
-                  const assigned = one(conversation.profiles);
+                  const itemCampaign = one(conversation.campaigns);
+                  const itemAssigned = one(conversation.profiles);
                   return (
                     <Link
                       key={conversation.id}
-                      href={`/dashboard/conversaciones?status=${status}&conversation=${conversation.id}`}
+                      href={conversationsHref({ status, campaign: campaignFilter, conversation: conversation.id })}
                       className={cn(
                         "block border-b border-border p-4 transition-colors hover:bg-surface-muted",
                         selectedId === conversation.id && "bg-surface-muted",
@@ -199,7 +335,9 @@ export default async function ConversationsPage({
                           <p className="truncate text-sm font-semibold text-foreground">
                             {conversation.contact_name || conversation.contact_phone}
                           </p>
-                          <p className="mt-0.5 truncate text-xs text-muted-foreground">{campaign?.name ?? "Sin campaña"}</p>
+                          <p className="mt-1 flex items-center gap-1.5 truncate text-xs text-muted-foreground">
+                            <MessageCircle size={12} className="text-success" /> WhatsApp
+                          </p>
                         </div>
                         {conversation.unread_count > 0 && (
                           <span className="min-w-5 rounded-full bg-primary px-1.5 py-0.5 text-center text-[11px] font-semibold text-primary-foreground">
@@ -207,8 +345,11 @@ export default async function ConversationsPage({
                           </span>
                         )}
                       </div>
-                      <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                        <span className="truncate">{assigned?.full_name ?? "Sin asignar"}</span>
+                      <p className="mt-2 truncate text-xs font-medium text-foreground">
+                        {itemCampaign?.name ?? "Sin campaña"}
+                      </p>
+                      <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                        <span className="truncate">{itemAssigned?.full_name ?? "Sin asignar"}</span>
                         <span className="whitespace-nowrap">{formatDateTime(conversation.last_message_at)}</span>
                       </div>
                     </Link>
@@ -223,70 +364,31 @@ export default async function ConversationsPage({
               <EmptyState
                 icon={MessageCircle}
                 title="Selecciona una conversación"
-                description="Los mensajes nuevos aparecerán aquí en tiempo real."
+                description="Los mensajes nuevos aparecerán aquí asociados a su campaña y registro."
               />
             ) : (
               <>
                 <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border p-4">
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <h2 className="text-base font-semibold text-foreground">
                         {selected.contact_name || selected.contact_phone}
                       </h2>
+                      <Badge tone="success">WhatsApp</Badge>
+                      <Badge tone="neutral">{campaign?.name ?? "Sin campaña"}</Badge>
                       <Badge tone={selected.status === "closed" ? "neutral" : selected.status === "pending" ? "warning" : "success"}>
                         {conversationLabel(selected.status)}
                       </Badge>
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">{selected.contact_phone}</p>
-                    <Link
-                      href={`/dashboard/leads/${selected.lead_id}`}
-                      className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-                    >
-                      Abrir ficha del lead <ArrowUpRight size={12} />
-                    </Link>
                   </div>
-                  <div className="flex flex-wrap items-end gap-2">
-                    {selected.unread_count > 0 && (
-                      <ActionForm action={markWhatsAppConversationRead} success="Conversación marcada como leída">
-                        <input type="hidden" name="conversation_id" value={selected.id} />
-                        <ActionSubmit variant="secondary" size="sm" pendingLabel="Guardando…">
-                          <CheckCheck size={14} /> Marcar leída
-                        </ActionSubmit>
-                      </ActionForm>
-                    )}
-                    <ActionForm action={setWhatsAppConversationStatus} success="Estado actualizado" className="flex gap-2">
-                      <input type="hidden" name="conversation_id" value={selected.id} />
-                      <Select name="status" defaultValue={selected.status} fieldSize="sm">
-                        <option value="open">Abierta</option>
-                        <option value="pending">Pendiente</option>
-                        <option value="closed">Cerrada</option>
-                      </Select>
-                      <ActionSubmit variant="secondary" size="sm" pendingLabel="Guardando…">Guardar</ActionSubmit>
-                    </ActionForm>
-                    {canManage && (
-                      <ActionForm action={assignWhatsAppConversation} success="Responsable actualizado" className="flex gap-2">
-                        <input type="hidden" name="conversation_id" value={selected.id} />
-                        <Select name="agent_id" defaultValue={selected.assigned_to ?? ""} fieldSize="sm">
-                          <option value="">Sin asignar</option>
-                          {agentOptions.map((agent) => (
-                            <option key={agent.id} value={agent.id}>{agent.full_name}</option>
-                          ))}
-                        </Select>
-                        <ActionSubmit variant="secondary" size="sm" pendingLabel="Asignando…">
-                          <UserRound size={14} /> Asignar
-                        </ActionSubmit>
-                      </ActionForm>
-                    )}
-                  </div>
+                  <Link
+                    href={`/dashboard/leads/${selected.lead_id}`}
+                    className={buttonClasses({ variant: "secondary", size: "sm" })}
+                  >
+                    Ver registro 360 <ArrowUpRight size={13} />
+                  </Link>
                 </div>
-
-                {(referralHeadline || referralBody) && (
-                  <div className="border-b border-border bg-surface-muted px-4 py-3 text-sm">
-                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Origen Meta Ads</p>
-                    {referralHeadline && <p className="mt-1 font-medium text-foreground">{referralHeadline}</p>}
-                    {referralBody && <p className="mt-0.5 text-muted-foreground">{referralBody}</p>}
-                  </div>
-                )}
 
                 <div className="flex-1 space-y-3 overflow-y-auto bg-background p-4">
                   {messages.length === 0 ? (
@@ -303,9 +405,7 @@ export default async function ConversationsPage({
                               outbound ? "bg-primary text-primary-foreground" : "border border-border bg-surface text-foreground",
                             )}
                           >
-                            <p className="whitespace-pre-wrap break-words">
-                              {message.text_body || `[${message.message_type}]`}
-                            </p>
+                            <p className="whitespace-pre-wrap break-words">{message.text_body || `[${message.message_type}]`}</p>
                             <div className={cn("mt-1 flex items-center justify-end gap-1 text-[10px]", outbound ? "text-primary-foreground/75" : "text-muted-foreground")}>
                               {outbound && sender?.full_name && <span>{sender.full_name} ·</span>}
                               <span>{formatDateTime(message.provider_timestamp ?? message.created_at)}</span>
@@ -322,7 +422,7 @@ export default async function ConversationsPage({
                 <div className="border-t border-border bg-surface p-4">
                   {!sendReady && (
                     <p className="mb-2 text-xs text-warning">
-                      La lectura está disponible; falta terminar la autorización del proveedor para responder desde Atlas.
+                      El historial ya queda centralizado; falta terminar la autorización del canal para responder desde Atlas.
                     </p>
                   )}
                   <ActionForm action={sendWhatsAppMessage} success="Mensaje enviado" className="flex items-end gap-2">
@@ -344,6 +444,99 @@ export default async function ConversationsPage({
               </>
             )}
           </section>
+
+          {selected && (
+            <aside className="border-t border-border bg-surface lg:col-span-2 xl:col-span-1 xl:border-l xl:border-t-0">
+              <ContextSection title="Contexto comercial">
+                <ContextRow label="Campaña">{campaign?.name ?? "Sin campaña"}</ContextRow>
+                <ContextRow label="Canal">WhatsApp Business</ContextRow>
+                <ContextRow label="Cuenta">{channel?.business_name ?? "Meta"}</ContextRow>
+                <ContextRow label="Línea">{channel?.display_phone_number ?? "—"}</ContextRow>
+                {canManage && campaign && (
+                  <Link href={`/dashboard/campanas/${campaign.id}`} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+                    Abrir campaña <ArrowUpRight size={12} />
+                  </Link>
+                )}
+                {(referralHeadline || referralBody) && (
+                  <div className="rounded-md border border-border bg-surface-muted p-3">
+                    <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground"><Megaphone size={13} /> Origen Meta Ads</p>
+                    {referralHeadline && <p className="mt-1 text-xs font-medium text-foreground">{referralHeadline}</p>}
+                    {referralBody && <p className="mt-0.5 text-xs text-muted-foreground">{referralBody}</p>}
+                  </div>
+                )}
+              </ContextSection>
+
+              <ContextSection title="Registro 360">
+                <ContextRow label="Contacto">{lead?.full_name ?? selected.contact_name ?? "—"}</ContextRow>
+                <ContextRow label="RUT">{lead?.rut ?? "—"}</ContextRow>
+                <ContextRow label="Teléfono">{lead?.phone ?? selected.contact_phone}</ContextRow>
+                <ContextRow label="Correo">{lead?.email ?? "—"}</ContextRow>
+                <ContextRow label="Estado">{lead?.status ?? "—"}</ContextRow>
+                <ContextRow label="Tipificación">{lead?.tipificacion_actual ?? "Sin tipificar"}</ContextRow>
+                <ContextRow label="Próxima acción">{formatDateTime(lead?.next_action_at)}</ContextRow>
+              </ContextSection>
+
+              <ContextSection title="Gestión">
+                <ContextRow label="Responsable">{assigned?.full_name ?? "Sin asignar"}</ContextRow>
+                {selected.unread_count > 0 && (
+                  <ActionForm action={markWhatsAppConversationRead} success="Conversación marcada como leída">
+                    <input type="hidden" name="conversation_id" value={selected.id} />
+                    <ActionSubmit variant="secondary" size="sm" pendingLabel="Guardando…" className="w-full">
+                      <CheckCheck size={14} /> Marcar leída
+                    </ActionSubmit>
+                  </ActionForm>
+                )}
+                <ActionForm action={setWhatsAppConversationStatus} success="Estado actualizado" className="space-y-2">
+                  <input type="hidden" name="conversation_id" value={selected.id} />
+                  <Select name="status" defaultValue={selected.status} fieldSize="sm" className="w-full">
+                    <option value="open">Abierta</option>
+                    <option value="pending">Pendiente</option>
+                    <option value="closed">Cerrada</option>
+                  </Select>
+                  <ActionSubmit variant="secondary" size="sm" pendingLabel="Guardando…" className="w-full">Guardar estado</ActionSubmit>
+                </ActionForm>
+                {canManage && (
+                  <ActionForm action={assignWhatsAppConversation} success="Responsable actualizado" className="space-y-2">
+                    <input type="hidden" name="conversation_id" value={selected.id} />
+                    <Select name="agent_id" defaultValue={selected.assigned_to ?? ""} fieldSize="sm" className="w-full">
+                      <option value="">Sin asignar</option>
+                      {agentOptions.map((agent) => <option key={agent.id} value={agent.id}>{agent.full_name}</option>)}
+                    </Select>
+                    <ActionSubmit variant="secondary" size="sm" pendingLabel="Asignando…" className="w-full">
+                      <UserRound size={14} /> Asignar responsable
+                    </ActionSubmit>
+                  </ActionForm>
+                )}
+              </ContextSection>
+
+              {dynamicData.length > 0 && (
+                <ContextSection title="Datos de campaña">
+                  {dynamicData.map(([key, value]) => (
+                    <ContextRow key={key} label={fieldLabel(key)}>{String(value)}</ContextRow>
+                  ))}
+                </ContextSection>
+              )}
+
+              <ContextSection title="Actividad omnicanal">
+                {(lead360?.timeline ?? []).slice(0, 4).map((item) => {
+                  const Icon = item.source === "call" ? Phone : MessageSquare;
+                  return (
+                    <div key={`${item.source}-${item.id}`} className="flex gap-2.5 rounded-md bg-surface-muted p-2.5">
+                      <Icon size={14} className="mt-0.5 shrink-0 text-muted-foreground" />
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-medium text-foreground">{item.title || sourceLabel(item.source)}</p>
+                        <p className="mt-0.5 text-[11px] text-muted-foreground">{item.agent_name} · {formatDateTime(item.occurred_at)}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+                {(lead360?.timeline.length ?? 0) === 0 && <p className="text-xs text-muted-foreground">Aún no hay actividad previa.</p>}
+                <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                  <CalendarClock size={12} /> {lead360?.summary.timeline_count ?? 0} gestiones previas · {messages.length} mensajes en este hilo
+                </p>
+              </ContextSection>
+            </aside>
+          )}
         </div>
       )}
     </div>
