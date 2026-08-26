@@ -76,6 +76,7 @@ type Lead360Context = {
 type Conversation = {
   id: string;
   campaign_id: string;
+  queue_id: string | null;
   lead_id: string;
   contact_name: string | null;
   contact_phone: string;
@@ -91,6 +92,7 @@ type Conversation = {
   closed_at: string | null;
   whatsapp_closure_reasons: Relation<{ label: string }>;
   campaigns: Relation<CampaignSummary>;
+  contact_center_queues: Relation<{ id: string; name: string }>;
   leads: Relation<LeadSummary>;
   profiles: Relation<{ id: string; full_name: string }>;
   whatsapp_channels: Relation<{
@@ -217,7 +219,7 @@ export default async function ConversationsPage({
   let conversationQuery = supabase
     .from("whatsapp_conversations")
     .select(
-      "id, campaign_id, lead_id, contact_name, contact_phone, assigned_to, status, unread_count, last_message_at, referral, ai_state, ai_last_error, close_reason_id, close_note, closed_at, whatsapp_closure_reasons(label), campaigns(id, name), leads(id, full_name, phone, email, rut, status, tipificacion_actual, next_action_at, workflow_status, managed_at, extra), profiles:profiles!whatsapp_conversations_assigned_to_fkey(id, full_name), whatsapp_channels(status, business_name, display_phone_number)",
+      "id, campaign_id, queue_id, lead_id, contact_name, contact_phone, assigned_to, status, unread_count, last_message_at, referral, ai_state, ai_last_error, close_reason_id, close_note, closed_at, whatsapp_closure_reasons(label), campaigns(id, name), contact_center_queues(id, name), leads(id, full_name, phone, email, rut, status, tipificacion_actual, next_action_at, workflow_status, managed_at, extra), profiles:profiles!whatsapp_conversations_assigned_to_fkey(id, full_name), whatsapp_channels(status, business_name, display_phone_number)",
     )
     .order("last_message_at", { ascending: false })
     .limit(100);
@@ -254,12 +256,20 @@ export default async function ConversationsPage({
         .limit(500),
       profile.role === "agente"
         ? Promise.resolve({ data: [] })
-        : supabase
-            .from("campaign_agents")
-            .select("profile_id, profiles!inner(id, full_name, active, role)")
-            .eq("campaign_id", selected.campaign_id)
-            .eq("profiles.active", true)
-            .eq("profiles.role", "agente"),
+        : selected.queue_id
+          ? supabase
+              .from("contact_center_queue_members")
+              .select("profile_id, profiles!inner(id, full_name, active, role)")
+              .eq("queue_id", selected.queue_id)
+              .eq("is_active", true)
+              .eq("profiles.active", true)
+              .eq("profiles.role", "agente")
+          : supabase
+              .from("campaign_agents")
+              .select("profile_id, profiles!inner(id, full_name, active, role)")
+              .eq("campaign_id", selected.campaign_id)
+              .eq("profiles.active", true)
+              .eq("profiles.role", "agente"),
       supabase.rpc("get_lead_360", { p_lead_id: selected.lead_id }),
       supabase
         .from("whatsapp_closure_reasons")
@@ -287,6 +297,7 @@ export default async function ConversationsPage({
   });
   const canManage = profile.role === "supervisor" || profile.role === "admin";
   const campaign = selected ? one(selected.campaigns) : null;
+  const queue = selected ? one(selected.contact_center_queues) : null;
   const assigned = selected ? one(selected.profiles) : null;
   const channel = selected ? one(selected.whatsapp_channels) : null;
   const lead = lead360?.lead ?? (selected ? one(selected.leads) : null);
@@ -312,8 +323,8 @@ export default async function ConversationsPage({
           La bandeja está preparada, pero falta aplicar la migración de mensajería: {conversationError.message}
         </Callout>
       ) : (
-        <div className="grid min-h-[calc(100vh-12rem)] overflow-hidden rounded-lg border border-border bg-surface shadow-sm lg:grid-cols-[20rem_minmax(0,1fr)] xl:grid-cols-[20rem_minmax(28rem,1fr)_19rem]">
-          <aside className="border-b border-border lg:border-b-0 lg:border-r">
+        <div className="grid min-h-[32rem] overflow-hidden rounded-lg border border-border bg-surface shadow-sm lg:h-[calc(100dvh-12rem)] lg:min-h-0 lg:grid-cols-[20rem_minmax(0,1fr)] xl:grid-cols-[20rem_minmax(28rem,1fr)_19rem]">
+          <aside className="border-b border-border lg:flex lg:min-h-0 lg:flex-col lg:border-b-0 lg:border-r">
             <div className="flex gap-1 border-b border-border p-3">
               {(["open", "pending", "closed", "all"] as const).map((value) => (
                 <Link
@@ -352,7 +363,7 @@ export default async function ConversationsPage({
               </Link>
             </form>
 
-            <div className="max-h-[calc(100vh-22rem)] overflow-y-auto">
+            <div className="overflow-y-auto lg:min-h-0 lg:flex-1">
               {conversations.length === 0 ? (
                 <div className="p-5 text-center text-sm text-muted-foreground">No hay conversaciones en esta vista.</div>
               ) : (
@@ -397,7 +408,7 @@ export default async function ConversationsPage({
             </div>
           </aside>
 
-          <section className="flex min-h-0 flex-col">
+          <section className="flex min-h-0 flex-col overflow-hidden">
             {!selected ? (
               <EmptyState
                 icon={MessageCircle}
@@ -428,7 +439,7 @@ export default async function ConversationsPage({
                   </Link>
                 </div>
 
-                <div className="flex-1 space-y-3 overflow-y-auto bg-background p-4">
+                <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-background p-4">
                   {messages.length === 0 ? (
                     <p className="py-8 text-center text-sm text-muted-foreground">Aún no hay mensajes guardados.</p>
                   ) : (
@@ -471,15 +482,16 @@ export default async function ConversationsPage({
           </section>
 
           {selected && (
-            <aside className="border-t border-border bg-surface lg:col-span-2 xl:col-span-1 xl:border-l xl:border-t-0">
+            <aside className="border-t border-border bg-surface lg:col-span-2 xl:col-span-1 xl:min-h-0 xl:overflow-y-auto xl:border-l xl:border-t-0">
               <ContextSection title="Contexto comercial">
                 <ContextRow label="Campaña">{campaign?.name ?? "Sin campaña"}</ContextRow>
+                <ContextRow label="Cola">{queue?.name ?? "Sin cola"}</ContextRow>
                 <ContextRow label="Canal">WhatsApp Business</ContextRow>
                 <ContextRow label="Cuenta">{channel?.business_name ?? "Meta"}</ContextRow>
                 <ContextRow label="Línea">{channel?.display_phone_number ?? "—"}</ContextRow>
-                {canManage && campaign && (
-                  <Link href={`/dashboard/campanas/${campaign.id}`} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
-                    Abrir campaña <ArrowUpRight size={12} />
+                {profile.role === "admin" && queue && (
+                  <Link href={`/dashboard/admin/colas/${queue.id}`} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+                    Abrir cola ACD <ArrowUpRight size={12} />
                   </Link>
                 )}
                 {(referralHeadline || referralBody) && (

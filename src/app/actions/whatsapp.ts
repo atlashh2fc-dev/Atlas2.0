@@ -241,21 +241,31 @@ export async function assignWhatsAppConversation(formData: FormData) {
   const supabase = await createClient();
   const { data: conversation, error } = await supabase
     .from("whatsapp_conversations")
-    .select("id, lead_id, campaign_id")
+    .select("id, lead_id, campaign_id, queue_id")
     .eq("id", conversationId)
     .single();
   if (error || !conversation) throw new Error("No tienes acceso a esta conversación.");
 
   if (agentId) {
-    const { data: membership } = await supabase
-      .from("campaign_agents")
-      .select("profile_id, profiles!inner(active, role)")
-      .eq("campaign_id", conversation.campaign_id)
-      .eq("profile_id", agentId)
-      .eq("profiles.active", true)
-      .eq("profiles.role", "agente")
-      .maybeSingle();
-    if (!membership) throw new Error("El ejecutivo no pertenece a esta campaña.");
+    const { data: membership } = conversation.queue_id
+      ? await supabase
+          .from("contact_center_queue_members")
+          .select("profile_id, profiles!inner(active, role)")
+          .eq("queue_id", conversation.queue_id)
+          .eq("profile_id", agentId)
+          .eq("is_active", true)
+          .eq("profiles.active", true)
+          .eq("profiles.role", "agente")
+          .maybeSingle()
+      : await supabase
+          .from("campaign_agents")
+          .select("profile_id, profiles!inner(active, role)")
+          .eq("campaign_id", conversation.campaign_id)
+          .eq("profile_id", agentId)
+          .eq("profiles.active", true)
+          .eq("profiles.role", "agente")
+          .maybeSingle();
+    if (!membership) throw new Error(conversation.queue_id ? "El ejecutivo no pertenece a esta cola." : "El ejecutivo no pertenece a esta campaña.");
   }
 
   const { error: assignmentError } = await supabase.rpc("assign_lead", {
@@ -278,6 +288,7 @@ export async function assignWhatsAppConversation(formData: FormData) {
   revalidateWhatsApp(conversationId);
   revalidatePath(`/dashboard/leads/${conversation.lead_id}`);
   revalidatePath("/dashboard/leads");
+  if (conversation.queue_id) revalidatePath(`/dashboard/admin/colas/${conversation.queue_id}`);
 }
 
 export async function saveWhatsAppChannelConfig(formData: FormData) {

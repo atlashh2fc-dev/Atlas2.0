@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   Megaphone,
   MessageCircle,
+  Network,
   PhoneCall,
   Plug,
   ShieldCheck,
@@ -200,6 +201,14 @@ const ADMIN: NavSpace = {
           icon: Megaphone,
           roles: ["admin"],
           description: "Configuración y estado de cada operación",
+        },
+        {
+          id: "colas",
+          label: "Colas y enrutamiento",
+          href: "/dashboard/admin/colas",
+          icon: Network,
+          roles: ["admin"],
+          description: "Distribución omnicanal, capacidad, SLA y miembros",
         },
         {
           id: "flujos",
