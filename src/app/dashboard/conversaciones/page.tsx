@@ -217,7 +217,7 @@ export default async function ConversationsPage({
   let conversationQuery = supabase
     .from("whatsapp_conversations")
     .select(
-      "id, campaign_id, lead_id, contact_name, contact_phone, assigned_to, status, unread_count, last_message_at, referral, ai_state, ai_last_error, close_reason_id, close_note, closed_at, whatsapp_closure_reasons(label), campaigns(id, name), leads(id, full_name, phone, email, rut, status, tipificacion_actual, next_action_at, workflow_status, managed_at, extra), profiles(id, full_name), whatsapp_channels(status, business_name, display_phone_number)",
+      "id, campaign_id, lead_id, contact_name, contact_phone, assigned_to, status, unread_count, last_message_at, referral, ai_state, ai_last_error, close_reason_id, close_note, closed_at, whatsapp_closure_reasons(label), campaigns(id, name), leads(id, full_name, phone, email, rut, status, tipificacion_actual, next_action_at, workflow_status, managed_at, extra), profiles:profiles!whatsapp_conversations_assigned_to_fkey(id, full_name), whatsapp_channels(status, business_name, display_phone_number)",
     )
     .order("last_message_at", { ascending: false })
     .limit(100);
