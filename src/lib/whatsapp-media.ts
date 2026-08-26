@@ -2,25 +2,22 @@ import { createHash } from "node:crypto";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { whatsappGraphApiVersion } from "@/lib/whatsapp";
+import {
+  validateWhatsAppMedia,
+  whatsappMediaSpec,
+  type WhatsAppMediaMessageType,
+} from "@/lib/whatsapp-media-format";
 import { whatsappProvider, type WhatsAppProvider } from "@/lib/whatsapp-provider";
 
 export const WHATSAPP_MEDIA_BUCKET = "whatsapp-media";
-export const WHATSAPP_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
-export const WHATSAPP_AUDIO_MAX_BYTES = 16 * 1024 * 1024;
-
-const MEDIA_TYPES = {
-  "image/jpeg": { messageType: "image", extension: "jpg", maxBytes: WHATSAPP_IMAGE_MAX_BYTES },
-  "image/png": { messageType: "image", extension: "png", maxBytes: WHATSAPP_IMAGE_MAX_BYTES },
-  "audio/aac": { messageType: "audio", extension: "aac", maxBytes: WHATSAPP_AUDIO_MAX_BYTES },
-  "audio/mp4": { messageType: "audio", extension: "m4a", maxBytes: WHATSAPP_AUDIO_MAX_BYTES },
-  "audio/mpeg": { messageType: "audio", extension: "mp3", maxBytes: WHATSAPP_AUDIO_MAX_BYTES },
-  "audio/amr": { messageType: "audio", extension: "amr", maxBytes: WHATSAPP_AUDIO_MAX_BYTES },
-  "audio/ogg": { messageType: "audio", extension: "ogg", maxBytes: WHATSAPP_AUDIO_MAX_BYTES },
-  "audio/opus": { messageType: "audio", extension: "opus", maxBytes: WHATSAPP_AUDIO_MAX_BYTES },
-} as const;
-
-export type WhatsAppMediaMimeType = keyof typeof MEDIA_TYPES;
-export type WhatsAppMediaMessageType = "image" | "audio";
+export {
+  WHATSAPP_AUDIO_MAX_BYTES,
+  WHATSAPP_IMAGE_MAX_BYTES,
+  normalizeWhatsAppMediaMimeType,
+  validateWhatsAppMedia,
+  whatsappMediaSpec,
+} from "@/lib/whatsapp-media-format";
+export type { WhatsAppMediaMessageType, WhatsAppMediaMimeType } from "@/lib/whatsapp-media-format";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -46,26 +43,6 @@ function assertTrustedMediaUrl(value: string) {
   );
   if (!trusted) throw new Error("El proveedor informó una ubicación multimedia no autorizada.");
   return parsed.toString();
-}
-
-export function whatsappMediaSpec(mimeType: string) {
-  return MEDIA_TYPES[mimeType as WhatsAppMediaMimeType] ?? null;
-}
-
-export function validateWhatsAppMedia(input: {
-  mimeType: string;
-  sizeBytes: number;
-}) {
-  const spec = whatsappMediaSpec(input.mimeType);
-  if (!spec) throw new Error("Formato no compatible. Adjunta una imagen JPG/PNG o un audio AAC, M4A, MP3, AMR, OGG u Opus.");
-  if (!Number.isSafeInteger(input.sizeBytes) || input.sizeBytes < 1) {
-    throw new Error("El archivo está vacío o no se pudo leer.");
-  }
-  if (input.sizeBytes > spec.maxBytes) {
-    const limit = spec.messageType === "image" ? "5 MB" : "16 MB";
-    throw new Error(`El ${spec.messageType === "image" ? "archivo de imagen" : "audio"} supera el máximo de ${limit} de WhatsApp.`);
-  }
-  return spec;
 }
 
 function providerFromPayload(payload: JsonRecord): WhatsAppProvider | null {
@@ -194,8 +171,8 @@ export async function captureWhatsAppMessageMedia(messageId: string) {
 
   const payload = record(message.provider_payload) ?? {};
   const media = descriptor(payload, message.message_type);
-  const mimeType = media.mimeType ?? "";
-  const spec = whatsappMediaSpec(mimeType);
+  const sourceMimeType = media.mimeType ?? "";
+  const spec = whatsappMediaSpec(sourceMimeType);
   if (!spec || spec.messageType !== message.message_type) {
     throw new Error("El formato del adjunto recibido no es compatible.");
   }
@@ -219,8 +196,8 @@ export async function captureWhatsAppMessageMedia(messageId: string) {
       maxBytes: spec.maxBytes,
     });
     const actualMimeType = downloaded.contentType && whatsappMediaSpec(downloaded.contentType)
-      ? downloaded.contentType
-      : mimeType;
+      ? whatsappMediaSpec(downloaded.contentType)!.mimeType
+      : spec.mimeType;
     const actualSpec = validateWhatsAppMedia({ mimeType: actualMimeType, sizeBytes: downloaded.bytes.length });
     if (actualSpec.messageType !== message.message_type) throw new Error("El contenido del adjunto no coincide con su tipo.");
 

@@ -15,7 +15,7 @@ const EMOJIS = [
   "😀", "😊", "😂", "😍", "👍", "👏", "🙏", "✅",
   "👋", "💬", "📞", "📅", "📍", "💡", "🚀", "❤️",
 ];
-const MEDIA_ACCEPT = "image/jpeg,image/png,audio/aac,audio/mp4,audio/mpeg,audio/amr,audio/ogg,audio/opus";
+const MEDIA_ACCEPT = ".jpg,.jpeg,.png,.aac,.m4a,.mp3,.amr,.ogg,.opus,image/jpeg,image/png,audio/aac,audio/mp4,audio/x-m4a,audio/mpeg,audio/amr,audio/ogg,audio/opus";
 const MEDIA_BUCKET = "whatsapp-media";
 
 export function WhatsAppComposer({
@@ -30,10 +30,7 @@ export function WhatsAppComposer({
   const [attachment, setAttachment] = useState<File | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const previewUrl = useMemo(
-    () => attachment?.type.startsWith("image/") ? URL.createObjectURL(attachment) : null,
-    [attachment],
-  );
+  const previewUrl = useMemo(() => attachment ? URL.createObjectURL(attachment) : null, [attachment]);
 
   useEffect(() => {
     return () => {
@@ -69,7 +66,7 @@ export function WhatsAppComposer({
     const { error } = await supabase.storage
       .from(MEDIA_BUCKET)
       .uploadToSignedUrl(prepared.storagePath, prepared.token, attachment, {
-        contentType: attachment.type,
+        contentType: prepared.mimeType,
         upsert: false,
       });
     if (error) throw new Error("No se pudo subir el adjunto. Revisa el formato y vuelve a intentarlo.");
@@ -80,7 +77,7 @@ export function WhatsAppComposer({
   }
 
   function clearComposer() {
-    if (!attachment?.type.startsWith("audio/")) setBody("");
+    setBody("");
     setAttachment(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
@@ -110,13 +107,19 @@ export function WhatsAppComposer({
       <div className="relative min-w-0 flex-1 rounded-md border border-border bg-background focus-within:ring-2 focus-within:ring-ring">
         {attachment && (
           <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-            {previewUrl ? (
+            {previewUrl && attachment.type.startsWith("image/") ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={previewUrl} alt="Vista previa" className="h-12 w-12 rounded object-cover" />
+            ) : previewUrl ? (
+              <audio
+                controls
+                preload="metadata"
+                src={previewUrl}
+                className="h-10 w-52 max-w-[45vw] shrink-0"
+                aria-label="Escuchar audio antes de enviar"
+              />
             ) : (
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded bg-surface-muted text-primary">
-                <FileAudio size={19} aria-hidden />
-              </span>
+              <FileAudio size={19} aria-hidden />
             )}
             <div className="min-w-0 flex-1">
               <p className="truncate text-xs font-medium text-foreground">{attachment.name}</p>

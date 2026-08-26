@@ -153,7 +153,7 @@ export async function prepareWhatsAppMediaUpload(input: {
     storage_bucket: WHATSAPP_MEDIA_BUCKET,
     storage_path: storagePath,
     message_type: spec.messageType,
-    mime_type: input.mimeType,
+    mime_type: spec.mimeType,
     size_bytes: input.sizeBytes,
     file_name: fileName,
     created_by: profile.id,
@@ -172,7 +172,7 @@ export async function prepareWhatsAppMediaUpload(input: {
     throw new Error("No se pudo autorizar la carga del adjunto.");
   }
 
-  return { uploadId, storagePath, token: signed.token };
+  return { uploadId, storagePath, token: signed.token, mimeType: spec.mimeType };
 }
 
 export async function sendPreparedWhatsAppMedia(input: {

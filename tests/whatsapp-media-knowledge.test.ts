@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
+import {
+  normalizeWhatsAppMediaMimeType,
+  validateWhatsAppMedia,
+} from "../src/lib/whatsapp-media-format.ts";
+
 const mediaMigration = readFileSync(
   new URL("../supabase/migrations/20260826224500_whatsapp_message_media.sql", import.meta.url),
   "utf8",
@@ -25,6 +30,16 @@ test("la captura histórica resuelve el proveedor desde el evento original", () 
   assert.match(mediaCapture, /\.eq\("provider_event_key", `message:\$\{message\.provider_message_id\}`\)/);
   assert.match(mediaCapture, /sourceProvider \?\? whatsappProvider\(\)/);
   assert.match(mediaCapture, /if \(input\.mediaId\)[\s\S]*?metaMediaUrl\(input\.mediaId\)/);
+});
+
+test("acepta notas de voz de WhatsApp y audios M4A del iPhone", () => {
+  assert.equal(normalizeWhatsAppMediaMimeType("audio/ogg; codecs=opus"), "audio/ogg");
+  assert.equal(normalizeWhatsAppMediaMimeType("audio/x-m4a"), "audio/mp4");
+  assert.equal(validateWhatsAppMedia({ mimeType: "audio/mp3", sizeBytes: 10_075 }).messageType, "audio");
+  assert.throws(
+    () => validateWhatsAppMedia({ mimeType: "audio/wav", sizeBytes: 10_075 }),
+    /Formato no compatible/,
+  );
 });
 
 test("la ficha del producto es explícita y deriva lo que no está confirmado", () => {
