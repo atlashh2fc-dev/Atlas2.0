@@ -210,9 +210,11 @@ async function ensureAgentTemplates(
 /**
  * Reconcilia el endpoint PJSIP WebRTC de un agente: lo crea si falta y, si ya
  * existe, compara su auth con la credencial vigente de Supabase. Endpoint y
- * AOR comparten la extensión, tal como requiere el registro dinámico de
- * PJSIP; son objetos distintos y heredan templates separados. El auth vive en
- * "<ext>-auth". Así REGISTER y Dial(PJSIP/<ext>) usan el mismo identificador.
+ * El endpoint conserva la extensión y referencia un AOR independiente
+ * "<ext>-aor". Separar ambos nombres evita que UpdateConfig tenga que crear
+ * dos categorías homónimas en un mismo lote, algo que Asterisk rechaza. Los
+ * endpoints históricos cuyo AOR comparte la extensión se mantienen intactos.
+ * El auth vive en "<ext>-auth".
  */
 export async function ensureAgentEndpoints(
   ami: AmiClient,
@@ -236,6 +238,7 @@ export async function ensureAgentEndpoints(
 
   for (const agent of agents) {
     const authCat = `${agent.extension}-auth`;
+    const aorCat = `${agent.extension}-aor`;
 
     if (snapshot.categories.has(agent.extension)) {
       const authVariables = snapshot.variablesByCategory.get(authCat);
@@ -263,12 +266,23 @@ export async function ensureAgentEndpoints(
         });
       }
 
-      if (endpointVariables?.get("aors") !== agent.extension) {
+      const currentAor = endpointVariables?.get("aors");
+      const desiredAor = currentAor === aorCat || snapshot.categories.has(aorCat)
+        ? aorCat
+        : agent.extension;
+      if (currentAor === aorCat && !snapshot.categories.has(aorCat)) {
+        lines.push({
+          action: "NewCat",
+          cat: aorCat,
+          options: `inherit="${AGENT_AOR_TEMPLATE}"`,
+        });
+      }
+      if (currentAor !== desiredAor) {
         lines.push({
           action: endpointVariables?.has("aors") ? "Update" : "Append",
           cat: agent.extension,
           varName: "aors",
-          value: agent.extension,
+          value: desiredAor,
         });
       }
       if (endpointVariables?.get("auth") !== authCat) {
@@ -325,19 +339,22 @@ export async function ensureAgentEndpoints(
         cat: agent.extension,
         options: `inherit="${AGENT_ENDPOINT_TEMPLATE}"`,
       },
-      { action: "Append", cat: agent.extension, varName: "aors", value: agent.extension },
+      { action: "Append", cat: agent.extension, varName: "aors", value: aorCat },
       { action: "Append", cat: agent.extension, varName: "auth", value: authCat },
-      {
-        action: "NewCat",
-        cat: agent.extension,
-        options: `allowdups,inherit="${AGENT_AOR_TEMPLATE}"`,
-      },
     );
+    if (!snapshot.categories.has(aorCat)) {
+      lines.push({
+        action: "NewCat",
+        cat: aorCat,
+        options: `inherit="${AGENT_AOR_TEMPLATE}"`,
+      });
+    }
 
     try {
       await applyAgentPjsipConfig(ami, lines);
       snapshot.categories.add(agent.extension);
       snapshot.categories.add(authCat);
+      snapshot.categories.add(aorCat);
       logger.info({ extension: agent.extension }, "Endpoint PJSIP creado para agente nuevo");
     } catch (err) {
       failed += 1;
