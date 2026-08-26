@@ -298,12 +298,28 @@ export async function ensureAgentEndpoints(
       continue;
     }
 
-    const lines: ConfigLine[] = [
-      { action: "NewCat", cat: authCat },
-      { action: "Append", cat: authCat, varName: "type", value: "auth" },
-      { action: "Append", cat: authCat, varName: "auth_type", value: "userpass" },
-      { action: "Append", cat: authCat, varName: "username", value: agent.extension },
-      { action: "Append", cat: authCat, varName: "password", value: agent.sipPassword },
+    // UpdateConfig can leave an auth category behind when Asterisk rejects a
+    // later action in the same batch. Recover that partial provisioning
+    // instead of retrying NewCat forever against the existing auth category.
+    const authVariables = snapshot.variablesByCategory.get(authCat);
+    const lines: ConfigLine[] = [];
+    if (!snapshot.categories.has(authCat)) {
+      lines.push(
+        { action: "NewCat", cat: authCat },
+        { action: "Append", cat: authCat, varName: "type", value: "auth" },
+        { action: "Append", cat: authCat, varName: "auth_type", value: "userpass" },
+        { action: "Append", cat: authCat, varName: "username", value: agent.extension },
+        { action: "Append", cat: authCat, varName: "password", value: agent.sipPassword },
+      );
+    } else if (authVariables?.get("password") !== agent.sipPassword) {
+      lines.push({
+        action: authVariables?.has("password") ? "Update" : "Append",
+        cat: authCat,
+        varName: "password",
+        value: agent.sipPassword,
+      });
+    }
+    lines.push(
       {
         action: "NewCat",
         cat: agent.extension,
@@ -316,7 +332,7 @@ export async function ensureAgentEndpoints(
         cat: agent.extension,
         options: `allowdups,inherit="${AGENT_AOR_TEMPLATE}"`,
       },
-    ];
+    );
 
     try {
       await applyAgentPjsipConfig(ami, lines);

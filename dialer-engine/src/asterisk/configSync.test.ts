@@ -98,6 +98,27 @@ test("repara la categoría auth faltante de un endpoint existente", async () => 
   assert.equal(update["Value-000004"], "clave-db");
 });
 
+test("recupera un auth parcial cuando el endpoint todavía no existe", async () => {
+  const { ami, actions } = fakeAmi({
+    "Category-000000": "6015-auth",
+    "Line-000000-000000": "type=auth",
+    "Line-000000-000001": "auth_type=userpass",
+    "Line-000000-000002": "username=6015",
+    "Line-000000-000003": "password=clave-anterior",
+    "Category-000001": "atlas-agent-endpoint-template(template)",
+    "Category-000002": "atlas-agent-aor-template(template)",
+  });
+
+  await ensureAgentEndpoints(ami, [{ extension: "6015", sipPassword: "clave-vigente" }]);
+
+  const update = actions[1];
+  assert.equal(update["Action-000000"], "Update");
+  assert.equal(update["Cat-000000"], "6015-auth");
+  assert.equal(update["Var-000000"], "password");
+  assert.equal(update["Action-000001"], "NewCat");
+  assert.equal(update["Cat-000001"], "6015");
+});
+
 test("un error AMI de actualización no propaga la contraseña a los logs", async () => {
   const secret = "secreto-que-no-debe-loggearse";
   const { ami } = fakeAmi({}, new Error(`rechazado action password=${secret}`));
