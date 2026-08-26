@@ -26,6 +26,11 @@ type SendMediaInput = {
   clientReference: string;
 };
 
+type SendTypingIndicatorInput = {
+  phoneNumberId: string;
+  providerMessageId: string;
+};
+
 function record(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -120,6 +125,63 @@ export async function sendWhatsAppText(input: SendTextInput): Promise<SendTextRe
     throw new Error(text(error?.message) ?? `Meta rechazó el mensaje (${response.status}).`);
   }
   return { provider, providerMessageId, payload };
+}
+
+export async function sendWhatsAppTypingIndicator(input: SendTypingIndicatorInput): Promise<void> {
+  const provider = whatsappProvider();
+  if (provider === "ycloud") {
+    const apiKey = process.env.WHATSAPP_YCLOUD_API_KEY?.trim();
+    if (!apiKey) throw new Error("Falta completar la clave API de YCloud.");
+
+    const response = await fetch(
+      `https://api.ycloud.com/v2/whatsapp/inboundMessages/${encodeURIComponent(input.providerMessageId)}/typingIndicator`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": apiKey,
+        },
+        signal: AbortSignal.timeout(8_000),
+      },
+    );
+    if (!response.ok) {
+      const decoded = await response.json().catch(() => ({}));
+      const payload = record(decoded) ?? {};
+      const error = record(payload.error);
+      throw new Error(
+        text(error?.message)
+        ?? text(payload.message)
+        ?? `YCloud rechazó el indicador de escritura (${response.status}).`,
+      );
+    }
+    return;
+  }
+
+  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN?.trim();
+  if (!accessToken) throw new Error("Falta completar el acceso de Meta para mostrar el indicador de escritura.");
+  const response = await fetch(
+    `https://graph.facebook.com/${whatsappGraphApiVersion()}/${encodeURIComponent(input.phoneNumberId)}/messages`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        status: "read",
+        message_id: input.providerMessageId,
+        typing_indicator: { type: "text" },
+      }),
+      signal: AbortSignal.timeout(8_000),
+    },
+  );
+  if (!response.ok) {
+    const decoded = await response.json().catch(() => ({}));
+    const payload = record(decoded) ?? {};
+    const error = record(payload.error);
+    throw new Error(text(error?.message) ?? `Meta rechazó el indicador de escritura (${response.status}).`);
+  }
 }
 
 export async function sendWhatsAppMedia(input: SendMediaInput): Promise<SendTextResult> {

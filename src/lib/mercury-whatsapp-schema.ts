@@ -18,6 +18,7 @@ export const mercuryWhatsAppReplySchema = z.object({
   handoff: z.boolean(),
   handoff_kind: mercuryWhatsAppHandoffKindSchema,
   handoff_reason: z.string().trim().max(500),
+  appointment_at: z.string().datetime({ offset: true }).nullable(),
 }).superRefine((value, context) => {
   if (!value.handoff && value.handoff_kind !== "none") {
     context.addIssue({ code: "custom", path: ["handoff_kind"], message: "handoff_kind debe ser none." });
@@ -27,5 +28,8 @@ export const mercuryWhatsAppReplySchema = z.object({
   }
   if (value.handoff && !value.handoff_reason) {
     context.addIssue({ code: "custom", path: ["handoff_reason"], message: "La derivación requiere un motivo." });
+  }
+  if (value.handoff_kind !== "appointment" && value.appointment_at !== null) {
+    context.addIssue({ code: "custom", path: ["appointment_at"], message: "Solo un agendamiento puede incluir fecha." });
   }
 });

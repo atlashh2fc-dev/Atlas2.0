@@ -9,6 +9,7 @@ test("Mercury WhatsApp accepts a bounded customer reply", () => {
     handoff: false,
     handoff_kind: "none",
     handoff_reason: "",
+    appointment_at: null,
   });
   assert.equal(parsed.handoff, false);
 });
@@ -19,6 +20,7 @@ test("Mercury WhatsApp rejects an empty reply", () => {
     handoff: false,
     handoff_kind: "none",
     handoff_reason: "",
+    appointment_at: null,
   }));
 });
 
@@ -28,6 +30,7 @@ test("Mercury WhatsApp exige tipo y motivo cuando deriva", () => {
     handoff: true,
     handoff_kind: "appointment",
     handoff_reason: "Solicita agendar una reunión.",
+    appointment_at: "2026-08-27T15:00:00-04:00",
   });
   assert.equal(parsed.handoff_kind, "appointment");
 
@@ -36,5 +39,6 @@ test("Mercury WhatsApp exige tipo y motivo cuando deriva", () => {
     handoff: true,
     handoff_kind: "none",
     handoff_reason: "",
+    appointment_at: null,
   }));
 });

@@ -25,6 +25,7 @@ const ABANDONMENT_WINDOW_MINUTES = 15;
 
 type CampaignConfig = {
   campaign_id: string;
+  campaign_type: "outbound" | "inbound" | "blending";
   dial_mode: string;
   max_dial_ratio: number;
   caller_id: string | null;
@@ -202,6 +203,11 @@ export async function runCampaignTick(
           logger.error({ err, campaignId: cfg.campaign_id }, "Fallo el ciclo de compromisos agendados");
         }
       }
+
+      // An inbound digital campaign can schedule telephone callbacks without
+      // becoming an outbound pool. Its explicit commitments are processed
+      // above; ordinary WhatsApp leads must never be auto-dialed here.
+      if (cfg.campaign_type === "inbound") continue;
 
       const capacity = computeDialCapacity({
         availableAgents: available,
