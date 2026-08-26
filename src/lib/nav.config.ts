@@ -7,6 +7,7 @@ import {
   Headphones,
   LayoutDashboard,
   Megaphone,
+  MessageCircle,
   PhoneCall,
   Plug,
   ShieldCheck,
@@ -111,6 +112,14 @@ const CONSOLE: NavSpace = {
           roles: ALL_ROLES,
           description: "Cartera de registros y su gestión",
           match: ["/dashboard/leads", "/dashboard/llamadas"],
+        },
+        {
+          id: "conversaciones",
+          label: "Conversaciones",
+          href: "/dashboard/conversaciones",
+          icon: MessageCircle,
+          roles: ALL_ROLES,
+          description: "Bandeja omnicanal y mensajes de campañas",
         },
         {
           id: "campanas-operativas",
@@ -236,6 +245,7 @@ const ADMIN: NavSpace = {
           tabs: [
             { label: "Importar gestión", href: "/dashboard/admin/integraciones" },
             { label: "Ejecutivos históricos", href: "/dashboard/admin/integraciones/historial" },
+            { label: "WhatsApp", href: "/dashboard/admin/integraciones/whatsapp" },
           ],
         },
       ],

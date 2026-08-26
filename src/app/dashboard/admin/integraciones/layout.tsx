@@ -13,7 +13,7 @@ export default async function IntegracionesLayout({ children }: { children: Reac
     <div className="space-y-5">
       <PageHeader
         title="Integraciones"
-        description="Equifax: importación de gestión desde Vocalcom y ejecutivos heredados."
+        description="Canales externos, datos heredados y conexión de WhatsApp Business."
         className="border-b-0 pb-0"
       />
       <NavTabs tabs={getTabs("integraciones")} />
