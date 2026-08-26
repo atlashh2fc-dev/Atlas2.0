@@ -68,9 +68,9 @@ export function validateWhatsAppMedia(input: {
   return spec;
 }
 
-function providerFromPayload(payload: JsonRecord): WhatsAppProvider {
+function providerFromPayload(payload: JsonRecord): WhatsAppProvider | null {
   const provider = text(payload.provider);
-  return provider === "meta" || provider === "ycloud" ? provider : whatsappProvider();
+  return provider === "meta" || provider === "ycloud" ? provider : null;
 }
 
 function descriptor(payload: JsonRecord, messageType: WhatsAppMediaMessageType) {
@@ -181,7 +181,7 @@ export async function captureWhatsAppMessageMedia(messageId: string) {
   const admin = createAdminClient();
   const { data: message, error } = await admin
     .from("whatsapp_messages")
-    .select("id, conversation_id, message_type, provider_payload, media_status, media_storage_bucket, media_storage_path")
+    .select("id, conversation_id, provider_message_id, message_type, provider_payload, media_status, media_storage_bucket, media_storage_path")
     .eq("id", messageId)
     .single();
   if (error || !message) throw error ?? new Error("Mensaje multimedia no encontrado.");
@@ -200,8 +200,18 @@ export async function captureWhatsAppMessageMedia(messageId: string) {
 
   await admin.from("whatsapp_messages").update({ media_status: "pending", error_message: null }).eq("id", messageId);
   try {
+    let sourceProvider = providerFromPayload(payload);
+    if (!sourceProvider && message.provider_message_id) {
+      const { data: webhookEvent } = await admin
+        .from("whatsapp_webhook_events")
+        .select("payload")
+        .eq("provider_event_key", `message:${message.provider_message_id}`)
+        .maybeSingle();
+      sourceProvider = providerFromPayload(record(webhookEvent?.payload) ?? {});
+    }
+
     const downloaded = await downloadMedia({
-      provider: providerFromPayload(payload),
+      provider: sourceProvider ?? whatsappProvider(),
       url: media.url,
       mediaId: media.id,
       maxBytes: spec.maxBytes,
