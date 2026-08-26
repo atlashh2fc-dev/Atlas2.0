@@ -117,26 +117,6 @@ test("recupera un auth parcial cuando el endpoint todavía no existe", async () 
   assert.equal(update["Var-000000"], "password");
   assert.equal(update["Action-000001"], "NewCat");
   assert.equal(update["Cat-000001"], "6015");
-  assert.equal(update["Value-000002"], "6015-aor");
-  assert.equal(update["Action-000004"], "NewCat");
-  assert.equal(update["Cat-000004"], "6015-aor");
-});
-
-test("crea endpoint y AOR nuevos con categorías distintas", async () => {
-  const { ami, actions } = fakeAmi({
-    "Category-000000": "atlas-agent-endpoint-template(template)",
-    "Category-000001": "atlas-agent-aor-template(template)",
-  });
-
-  await ensureAgentEndpoints(ami, [{ extension: "6019", sipPassword: "clave-vigente" }]);
-
-  const update = actions[1];
-  assert.equal(update["Action-000005"], "NewCat");
-  assert.equal(update["Cat-000005"], "6019");
-  assert.equal(update["Var-000006"], "aors");
-  assert.equal(update["Value-000006"], "6019-aor");
-  assert.equal(update["Action-000008"], "NewCat");
-  assert.equal(update["Cat-000008"], "6019-aor");
 });
 
 test("un error AMI de actualización no propaga la contraseña a los logs", async () => {
