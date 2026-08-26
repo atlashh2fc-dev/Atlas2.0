@@ -58,7 +58,7 @@ export default async function WhatsAppIntegrationPage() {
       <div className="grid gap-4 xl:grid-cols-3">
         <StatusCard
           label="Número corporativo"
-          value={channel?.display_phone_number ?? "+56 9 7415 9166"}
+          value={channel?.display_phone_number ?? "+56 9 7415 8774"}
           ok={Boolean(channel)}
           detail={channel ? `Phone ID ${channel.phone_number_id}` : "Activo identificado en Meta"}
         />
@@ -90,15 +90,15 @@ export default async function WhatsAppIntegrationPage() {
           className="grid gap-4 md:grid-cols-2 xl:grid-cols-3"
         >
           <Field label="Cuenta de WhatsApp (WABA ID)">
-            <Input name="waba_id" defaultValue={channel?.waba_id ?? "1069013248503244"} required />
+            <Input name="waba_id" defaultValue={channel?.waba_id ?? "1111675941525164"} required />
           </Field>
           <Field label="Identificador del número">
-            <Input name="phone_number_id" defaultValue={channel?.phone_number_id ?? "877022598829325"} required />
+            <Input name="phone_number_id" defaultValue={channel?.phone_number_id ?? "1245124622024399"} required />
           </Field>
           <Field label="Número visible">
             <Input
               name="display_phone_number"
-              defaultValue={channel?.display_phone_number ?? "+56 9 7415 9166"}
+              defaultValue={channel?.display_phone_number ?? "+56 9 7415 8774"}
               required
             />
           </Field>
@@ -109,7 +109,7 @@ export default async function WhatsAppIntegrationPage() {
             <Input name="meta_business_id" defaultValue={channel?.meta_business_id ?? "1231030185256498"} />
           </Field>
           <Field label="Cuenta publicitaria">
-            <Input name="meta_ad_account_id" defaultValue={channel?.meta_ad_account_id ?? "1136016895286462"} />
+            <Input name="meta_ad_account_id" defaultValue={channel?.meta_ad_account_id ?? "1479484023229361"} />
           </Field>
           <Field label="Campaña de Atlas" className="md:col-span-2 xl:col-span-3">
             <Select name="campaign_id" defaultValue={route?.campaign_id ?? ""} required>

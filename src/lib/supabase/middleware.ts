@@ -7,6 +7,7 @@ import { NextResponse, type NextRequest } from "next/server";
 // le dice al ejecutivo si el problema es el sistema o su contraseña.
 const PUBLIC_PATHS = [
   "/login",
+  "/privacidad",
   "/auth",
   "/forgot-password",
   "/reset-password",
