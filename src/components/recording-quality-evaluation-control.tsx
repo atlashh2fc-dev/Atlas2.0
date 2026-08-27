@@ -71,6 +71,7 @@ export function RecordingQualityEvaluationControl({
   initialStatus,
   initialScore,
   initialVerdict,
+  compact = false,
 }: {
   recordingId: string;
   campaignName: string;
@@ -80,6 +81,7 @@ export function RecordingQualityEvaluationControl({
   initialStatus: QualityEvaluationStatus | null;
   initialScore: number | null;
   initialVerdict: QualityEvaluationVerdict | null;
+  compact?: boolean;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -99,7 +101,7 @@ export function RecordingQualityEvaluationControl({
   }
   if (transcriptionStatus === "processing" && !transcriptionReady && status !== "completed") {
     return (
-      <Badge tone="info">
+      <Badge tone="info" className={compact ? "w-full justify-center" : undefined}>
         <LoaderCircle size={13} className="animate-spin" />
         Transcribiendo
       </Badge>
@@ -198,12 +200,12 @@ export function RecordingQualityEvaluationControl({
   return (
     <>
       {status === "completed" ? (
-        <Button type="button" variant="secondary" size="sm" onClick={view} disabled={loading}>
+        <Button type="button" variant="secondary" size="sm" onClick={view} disabled={loading} className={compact ? "w-full gap-1 px-2 text-xs leading-tight" : undefined}>
           {loading ? <LoaderCircle size={14} className="animate-spin" /> : <BrainCircuit size={14} />}
           {score === null ? "Ver auditoría" : `${score.toLocaleString("es-CL", { maximumFractionDigits: 1 })}/100`}
         </Button>
       ) : status === "processing" || loading ? (
-        <Badge tone="info">
+        <Badge tone="info" className={compact ? "w-full justify-center" : undefined}>
           <LoaderCircle size={13} className="animate-spin" />
           Auditando
         </Badge>
@@ -213,6 +215,7 @@ export function RecordingQualityEvaluationControl({
           variant="secondary"
           size="sm"
           onClick={evaluate}
+          className={compact ? "w-full gap-1 px-2 text-xs leading-tight" : undefined}
           title={
             transcriptionReady
               ? "Evalúa el apego al guion vigente"

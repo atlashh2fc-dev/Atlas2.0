@@ -36,12 +36,14 @@ export function RecordingTranscriptionControl({
   initialStatus,
   eligible,
   eligibilityLabel,
+  compact = false,
 }: {
   recordingId: string;
   playable: boolean;
   initialStatus: TranscriptionStatus | null;
   eligible: boolean;
   eligibilityLabel: string;
+  compact?: boolean;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -114,12 +116,12 @@ export function RecordingTranscriptionControl({
   return (
     <>
       {status === "completed" ? (
-        <Button type="button" variant="secondary" size="sm" onClick={view} disabled={loading}>
+        <Button type="button" variant="secondary" size="sm" onClick={view} disabled={loading} className={compact ? "w-full gap-1 px-2 text-xs leading-tight" : undefined}>
           {loading ? <LoaderCircle size={14} className="animate-spin" /> : <FileText size={14} />}
           Ver texto
         </Button>
       ) : status === "processing" || loading ? (
-        <Badge tone="info">
+        <Badge tone="info" className={compact ? "w-full justify-center" : undefined}>
           <LoaderCircle size={13} className="animate-spin" />
           Procesando
         </Badge>
@@ -129,6 +131,7 @@ export function RecordingTranscriptionControl({
           variant="secondary"
           size="sm"
           onClick={transcribe}
+          className={compact ? "w-full gap-1 px-2 text-xs leading-tight" : undefined}
           title={!eligible ? `Fuera de la selección automática: ${eligibilityLabel}` : undefined}
         >
           {status === "failed" ? <RotateCcw size={14} /> : <WandSparkles size={14} />}

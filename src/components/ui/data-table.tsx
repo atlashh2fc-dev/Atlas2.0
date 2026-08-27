@@ -27,6 +27,8 @@ export type Column<T> = {
   header: ReactNode;
   /** Valor plano: se usa para ordenar y exportar. */
   value?: (row: T) => CellValue;
+  /** Desglosa una columna visual agrupada sin cambiar el formato del Excel. */
+  exportValues?: (row: T) => Record<string, CellValue>;
   /** Contenido de la celda. Si falta, se muestra `value`. */
   cell?: (row: T) => ReactNode;
   align?: "left" | "right";
@@ -46,6 +48,19 @@ export type BulkAction<T> = {
 };
 
 type SortState = { id: string; dir: "asc" | "desc" } | null;
+
+export function tableExportRecord<T>(row: T, columns: Column<T>[]): Record<string, CellValue> {
+  const record: Record<string, CellValue> = {};
+  for (const column of columns) {
+    if (column.exportValues) {
+      Object.assign(record, column.exportValues(row));
+    } else if (column.value) {
+      const header = typeof column.header === "string" ? column.header : column.metric ? metricDefinition(column.metric).label : column.id;
+      record[header] = column.value(row);
+    }
+  }
+  return record;
+}
 
 const PAGE_SIZES = [25, 50, 100, 250];
 const NO_HIDDEN: string[] = [];
@@ -91,6 +106,7 @@ export function DataTable<T>({
   total: serverTotal,
   serverPageSize,
   onPageChange,
+  fitToWidth = false,
   className,
 }: {
   rows: T[];
@@ -116,6 +132,8 @@ export function DataTable<T>({
   /** Tamaño de página real cuando la paginación la resuelve el servidor. */
   serverPageSize?: number;
   onPageChange?: (page: number) => void;
+  /** Distribuye todas las columnas dentro del ancho disponible, sin scroll horizontal. */
+  fitToWidth?: boolean;
   className?: string;
 }) {
   const router = useRouter();
@@ -191,15 +209,7 @@ export function DataTable<T>({
 
   const exportRows = async () => {
     const source = selectedRows.length > 0 ? selectedRows : sortedRows;
-    const data = source.map((row) => {
-      const record: Record<string, CellValue> = {};
-      for (const column of visibleColumns) {
-        if (!column.value) continue;
-        const header = typeof column.header === "string" ? column.header : column.metric ? metricDefinition(column.metric).label : column.id;
-        record[header] = column.value(row);
-      }
-      return record;
-    });
+    const data = source.map((row) => tableExportRecord(row, visibleColumns));
     const XLSX = await import("xlsx");
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(data.length > 0 ? data : [{}]), "Datos");
@@ -312,7 +322,12 @@ export function DataTable<T>({
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+      <div
+        className={cn(
+          "rounded-xl border border-border bg-surface",
+          fitToWidth ? "overflow-x-clip overflow-y-visible" : "overflow-x-auto"
+        )}
+      >
         {loading && (
           <div className="border-b border-border bg-surface-muted/40 px-4 py-2.5">
             <LoadingState label={loadingLabel} compact />
@@ -321,11 +336,17 @@ export function DataTable<T>({
         <table
           className={cn(
             "w-full border-collapse text-sm tabular-nums",
+            fitToWidth && "table-fixed text-[13px] leading-snug",
             compact && "text-xs [&_td]:py-1 [&_th]:py-1.5"
           )}
         >
           <thead className="sticky top-0 z-10">
-            <tr className="border-b border-border bg-surface-muted text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+            <tr
+              className={cn(
+                "border-b border-border bg-surface-muted text-left uppercase tracking-wide text-muted-foreground",
+                fitToWidth ? "text-xs" : "text-[11px]"
+              )}
+            >
               {selectable && (
                 <th className="w-9 px-4 py-2.5">
                   <input
@@ -356,7 +377,7 @@ export function DataTable<T>({
                     key={column.id}
                     aria-sort={active ? (sort!.dir === "asc" ? "ascending" : "descending") : undefined}
                     className={cn(
-                      "px-4 py-2.5 font-semibold",
+                      fitToWidth ? "min-w-0 break-words px-2 py-2 font-semibold" : "px-4 py-2.5 font-semibold",
                       column.align === "right" && "text-right",
                       column.className
                     )}
@@ -364,6 +385,7 @@ export function DataTable<T>({
                     <span
                       className={cn(
                         "inline-flex items-center gap-1",
+                        fitToWidth && "w-full min-w-0 flex-wrap gap-0.5",
                         column.align === "right" && "flex-row-reverse"
                       )}
                     >
@@ -465,7 +487,7 @@ export function DataTable<T>({
                         <td
                           key={column.id}
                           className={cn(
-                            "px-4 py-2.5",
+                            fitToWidth ? "min-w-0 break-words px-2 py-2 align-middle" : "px-4 py-2.5",
                             column.align === "right" && "text-right",
                             column.className
                           )}

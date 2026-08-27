@@ -4,7 +4,15 @@ import { useEffect, useRef, useState } from "react";
 import { CircleAlert, LoaderCircle, Play } from "lucide-react";
 import { buttonClasses } from "@/components/ui";
 
-export function RecordingAudioPlayer({ recordingId, playable }: { recordingId: string; playable: boolean }) {
+export function RecordingAudioPlayer({
+  recordingId,
+  playable,
+  compact = false,
+}: {
+  recordingId: string;
+  playable: boolean;
+  compact?: boolean;
+}) {
   const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,7 +54,7 @@ export function RecordingAudioPlayer({ recordingId, playable }: { recordingId: s
         controls
         preload="metadata"
         src={url}
-        className="h-8 w-64 max-w-full"
+        className={compact ? "h-8 w-full min-w-0" : "h-8 w-64 max-w-full"}
         aria-label="Reproducir grabación de llamada"
         onError={() => {
           setUrl(null);
@@ -57,12 +65,19 @@ export function RecordingAudioPlayer({ recordingId, playable }: { recordingId: s
   }
 
   return (
-    <div className="flex min-w-44 items-center gap-2" onClick={(event) => event.stopPropagation()}>
+    <div
+      className={compact ? "flex min-w-0 items-center" : "flex min-w-44 items-center gap-2"}
+      onClick={(event) => event.stopPropagation()}
+    >
       <button
         type="button"
         onClick={load}
         disabled={loading}
-        className={buttonClasses({ variant: "secondary", size: "sm" })}
+        className={buttonClasses({
+          variant: "secondary",
+          size: "sm",
+          className: compact ? "w-full gap-1 px-2 text-xs leading-tight" : undefined,
+        })}
       >
         {loading ? <LoaderCircle size={14} className="animate-spin" /> : <Play size={14} />}
         {loading ? "Preparando" : "Escuchar"}
@@ -70,7 +85,7 @@ export function RecordingAudioPlayer({ recordingId, playable }: { recordingId: s
       {error && (
         <span title={error} className="inline-flex items-center gap-1 text-xs text-danger">
           <CircleAlert size={14} />
-          Reintentar
+          {!compact && "Reintentar"}
         </span>
       )}
     </div>

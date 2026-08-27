@@ -14,9 +14,13 @@ import {
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("es-CL", {
     timeZone: "America/Santiago",
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(new Date(value));
+    year: "2-digit",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(value)).replace(",", "");
 }
 
 function formatDuration(seconds: number | null) {
@@ -60,23 +64,26 @@ const columns: Column<QualityRecordingRow>[] = [
   {
     id: "startedAt",
     header: "Fecha y hora",
+    className: "w-[11%]",
     value: (row) => row.startedAt,
-    cell: (row) => <span className="whitespace-nowrap text-foreground">{formatDateTime(row.startedAt)}</span>,
+    cell: (row) => <span className="text-foreground">{formatDateTime(row.startedAt)}</span>,
   },
   {
     id: "campaign",
     header: "Campaña",
+    className: "w-[8%]",
     value: (row) => row.campaignName,
     cell: (row) => <span className="font-medium text-foreground">{row.campaignName}</span>,
   },
-  { id: "agent", header: "Ejecutivo", value: (row) => row.agentName },
+  { id: "agent", header: "Ejecutivo", value: (row) => row.agentName, className: "w-[8%]" },
   {
     id: "typification",
     header: "Tipificación",
+    className: "w-[12%]",
     value: qualityTypificationLabel,
     cell: (row) =>
       row.typification ? (
-        <span className="block min-w-36 max-w-56 whitespace-normal font-medium text-foreground">
+        <span className="block min-w-0 whitespace-normal font-medium text-foreground">
           {qualityTypificationLabel(row)}
         </span>
       ) : (
@@ -86,6 +93,7 @@ const columns: Column<QualityRecordingRow>[] = [
   {
     id: "client",
     header: "Cliente / RUT",
+    className: "w-[16%]",
     value: (row) => `${row.leadName} ${row.rut}`,
     cell: (row) => (
       <span>
@@ -97,11 +105,12 @@ const columns: Column<QualityRecordingRow>[] = [
   {
     id: "disconnectParty",
     header: "Lado que finalizó",
+    className: "w-[9%]",
     tooltip: "Lado técnico informado por AgentComplete. El motor también correlaciona por extensión cuando Asterisk omite los IDs; no prueba intención humana.",
     value: disconnectPartyLabel,
     cell: (row) => {
       if (!row.disconnectParty) {
-        return <span className="whitespace-nowrap text-muted-foreground">{disconnectPartyLabel(row)}</span>;
+        return <span className="text-muted-foreground">{disconnectPartyLabel(row)}</span>;
       }
       const party = DISCONNECT_PARTY[row.disconnectParty] ?? {
         label: "No determinado",
@@ -113,6 +122,7 @@ const columns: Column<QualityRecordingRow>[] = [
   {
     id: "integrity",
     header: "Integridad",
+    className: "w-[8%]",
     tooltip: "Compara la duración del archivo con TalkTime de Asterisk; si falta, usa el tramo bridgeado durable. Tolerancia: 2 segundos.",
     value: (row) => {
       const integrity = classifyRecordingIntegrity(row);
@@ -138,81 +148,74 @@ const columns: Column<QualityRecordingRow>[] = [
       }
       if (integrity === "incomplete") return <Badge tone="danger">Incompleta</Badge>;
       return (
-        <span className="whitespace-nowrap text-muted-foreground">
+        <span className="text-muted-foreground">
           {integrity === "recording" ? "En curso" : "No verificable"}
         </span>
       );
     },
   },
   {
-    id: "duration",
-    header: "Duración",
-    value: (row) => row.durationSeconds,
-    cell: (row) => formatDuration(row.durationSeconds),
-    align: "right",
-  },
-  {
-    id: "format",
-    header: "Archivo",
-    value: (row) => row.sizeBytes,
-    cell: (row) => (
-      <span className="whitespace-nowrap text-xs text-muted-foreground">
-        {(row.codec ?? "audio").toUpperCase()} · {formatSize(row.sizeBytes)}
-      </span>
-    ),
-  },
-  {
-    id: "status",
-    header: "Estado",
-    value: (row) => STATUS[row.status]?.label ?? row.status,
+    id: "recording",
+    header: "Grabación",
+    className: "w-[12%]",
+    value: (row) => `${formatDuration(row.durationSeconds)} · ${(row.codec ?? "audio").toUpperCase()} · ${formatSize(row.sizeBytes)} · ${STATUS[row.status]?.label ?? row.status}`,
+    exportValues: (row) => ({
+      "Duración": row.durationSeconds,
+      Archivo: row.sizeBytes,
+      Estado: STATUS[row.status]?.label ?? row.status,
+    }),
+    sortable: false,
     cell: (row) => {
       const status = STATUS[row.status] ?? { label: row.status, tone: "neutral" as const };
-      return <Badge tone={status.tone}>{status.label}</Badge>;
+      return (
+        <div className="space-y-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="font-medium text-foreground">{formatDuration(row.durationSeconds)}</span>
+            <span className="text-[11px] text-muted-foreground">
+              {(row.codec ?? "audio").toUpperCase()} · {formatSize(row.sizeBytes)}
+            </span>
+            <Badge tone={status.tone}>{status.label}</Badge>
+          </div>
+          <RecordingAudioPlayer recordingId={row.id} playable={row.status === "ready"} compact />
+        </div>
+      );
     },
   },
   {
-    id: "audio",
-    header: "Grabación",
-    sortable: false,
-    cell: (row) => <RecordingAudioPlayer recordingId={row.id} playable={row.status === "ready"} />,
-  },
-  {
-    id: "evaluation",
-    header: "Apego al script",
+    id: "qualityActions",
+    header: "Calidad y texto",
+    className: "w-[16%]",
     tooltip: "Transcribe si hace falta y puntúa el apego al guion vigente con Mercury 2; requiere revisión humana.",
-    value: (row) => row.evaluationScore,
+    value: (row) => `${row.evaluationScore ?? "Pendiente"} · ${row.transcriptionStatus ?? "Pendiente"}`,
+    exportValues: (row) => ({
+      "Apego al script": row.evaluationScore,
+      "Transcripción": row.transcriptionStatus === "completed" ? "Completada"
+        : row.transcriptionStatus === "processing" ? "Procesando"
+          : row.transcriptionStatus === "failed" ? "Con error" : "Pendiente",
+    }),
     sortable: false,
     cell: (row) => (
-      <RecordingQualityEvaluationControl
-        recordingId={row.id}
-        campaignName={row.campaignName}
-        playable={row.status === "ready"}
-        transcriptionStatus={row.transcriptionStatus}
-        eligible={row.transcriptionEligibility.eligible}
-        initialStatus={row.evaluationStatus}
-        initialScore={row.evaluationScore}
-        initialVerdict={row.evaluationVerdict}
-      />
-    ),
-  },
-  {
-    id: "transcription",
-    header: "Transcripción",
-    value: (row) => {
-      if (row.transcriptionStatus === "completed") return "Completada";
-      if (row.transcriptionStatus === "processing") return "Procesando";
-      if (row.transcriptionStatus === "failed") return "Con error";
-      return "Pendiente";
-    },
-    sortable: false,
-    cell: (row) => (
-      <RecordingTranscriptionControl
-        recordingId={row.id}
-        playable={row.status === "ready"}
-        initialStatus={row.transcriptionStatus}
-        eligible={row.transcriptionEligibility.eligible}
-        eligibilityLabel={row.transcriptionEligibility.label}
-      />
+      <div className="grid gap-1.5">
+        <RecordingQualityEvaluationControl
+          recordingId={row.id}
+          campaignName={row.campaignName}
+          playable={row.status === "ready"}
+          transcriptionStatus={row.transcriptionStatus}
+          eligible={row.transcriptionEligibility.eligible}
+          initialStatus={row.evaluationStatus}
+          initialScore={row.evaluationScore}
+          initialVerdict={row.evaluationVerdict}
+          compact
+        />
+        <RecordingTranscriptionControl
+          recordingId={row.id}
+          playable={row.status === "ready"}
+          initialStatus={row.transcriptionStatus}
+          eligible={row.transcriptionEligibility.eligible}
+          eligibilityLabel={row.transcriptionEligibility.label}
+          compact
+        />
+      </div>
     ),
   },
 ];
@@ -257,6 +260,7 @@ export function QualityRecordingsTable({
       total={total}
       serverPageSize={pageSize}
       onPageChange={goToPage}
+      fitToWidth
     />
   );
 }
