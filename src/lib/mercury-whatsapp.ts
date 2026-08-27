@@ -370,20 +370,37 @@ export async function respondToWhatsAppInbound(input: {
             ? `${generated.reply.trim()} Te derivaré con nuestra especialista para coordinarlo.`
             : generated.reply;
 
-    const { data: currentConversation } = await admin
-      .from("whatsapp_conversations")
-      .select("ai_state, status")
-      .eq("id", input.conversationId)
-      .single();
-    const { data: latest } = await admin
-      .from("whatsapp_messages")
-      .select("id")
-      .eq("conversation_id", input.conversationId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (currentConversation?.ai_state !== "auto" || currentConversation.status === "closed" || latest?.id !== input.inboundMessageId) {
-      await completeRun(run.id, { status: "skipped", error_message: "Un operador tomó el hilo antes del envío." });
+    // Generation can take seconds. Re-read the general switch as well as
+    // ownership so a supervisor pause or a human handoff cancels this reply.
+    const replyCampaignId = conversation.campaign_id;
+    async function stillOwnsReply(expectedMessageId: string, expectedAiState: "auto" | "handoff", excludeMessageId?: string) {
+      let latestQuery = admin.from("whatsapp_messages")
+        .select("id")
+        .eq("conversation_id", input.conversationId);
+      // Our pending INSERT must not hide an intervening inbound/human reply.
+      if (excludeMessageId) latestQuery = latestQuery.neq("id", excludeMessageId);
+      const [currentResult, latestResult, controlResult] = await Promise.all([
+        admin.from("whatsapp_conversations")
+          .select("ai_state, status")
+          .eq("id", input.conversationId)
+          .single(),
+        latestQuery.order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        admin.from("whatsapp_ai_configs")
+          .select("enabled")
+          .eq("campaign_id", replyCampaignId)
+          .maybeSingle(),
+      ]);
+      return !currentResult.error && !latestResult.error && !controlResult.error
+        && controlResult.data?.enabled === true
+        && currentResult.data?.ai_state === expectedAiState
+        && currentResult.data?.status !== "closed"
+        && latestResult.data?.id === expectedMessageId;
+    }
+
+    if (!await stillOwnsReply(input.inboundMessageId, "auto")) {
+      await completeRun(run.id, { status: "skipped", error_message: "El control general, la propiedad o el mensaje vigente cambiaron antes del envío." });
       return { status: "skipped" as const };
     }
 
@@ -430,6 +447,16 @@ export async function respondToWhatsAppInbound(input: {
     if (pendingError || !pending) throw pendingError ?? new Error("No se pudo preparar la respuesta de IA.");
 
     try {
+      // Routing and preparing the message also await the database. Check again
+      // immediately before dispatch; a pause/human reply in that interval wins.
+      // A provider request already dispatched cannot be recalled by the switch.
+      if (!await stillOwnsReply(input.inboundMessageId, handoff ? "handoff" : "auto", pending.id)) {
+        const cancelled = "Respuesta cancelada por cambio de control o una intervención posterior.";
+        await admin.from("whatsapp_messages")
+          .update({ status: "failed", error_message: cancelled }).eq("id", pending.id);
+        await completeRun(run.id, { status: "skipped", outbound_message_id: pending.id, error_message: cancelled });
+        return { status: "skipped" as const };
+      }
       const sent = await sendWhatsAppText({
         phoneNumberId: channel.phone_number_id,
         from: channel.display_phone_number,
@@ -461,11 +488,12 @@ export async function respondToWhatsAppInbound(input: {
           last_outbound_at: now,
           ai_last_run_at: now,
           ai_last_error: null,
-          ai_state: handoff ? "handoff" : "auto",
-          status: "open",
+          // Ownership belongs to the handoff RPC, never to message delivery.
+          // Do not reopen or reclaim a thread changed while the provider sent.
         })
         .eq("id", input.conversationId);
 
+      let closedActually = false;
       if (finishedByCustomer) {
         const { data: closureReason, error: closureReasonError } = await admin
           .from("whatsapp_closure_reasons")
@@ -478,14 +506,19 @@ export async function respondToWhatsAppInbound(input: {
         if (closureReasonError || !closureReason) {
           throw closureReasonError ?? new Error("No existe una tipificación automática para despedir la conversación.");
         }
-        const { error: closeError } = await admin.rpc("close_whatsapp_conversation", {
-          p_conversation_id: input.conversationId,
-          p_reason_id: closureReason.id,
-          p_note: "El contacto indicó que no necesitaba más ayuda.",
-          p_actor_id: null,
-          p_automatic: true,
-        });
-        if (closeError) throw new Error(`No se pudo cerrar la conversación finalizada: ${closeError.message}`);
+        // Delivery may have overlapped a new inbound or a handoff. Do not
+        // automatically close work that no longer belongs to this reply.
+        if (await stillOwnsReply(pending.id, "auto")) {
+          const { error: closeError } = await admin.rpc("close_whatsapp_conversation", {
+            p_conversation_id: input.conversationId,
+            p_reason_id: closureReason.id,
+            p_note: "El contacto indicó que no necesitaba más ayuda.",
+            p_actor_id: null,
+            p_automatic: true,
+          });
+          if (closeError) throw new Error(`No se pudo cerrar la conversación finalizada: ${closeError.message}`);
+          closedActually = true;
+        }
       }
 
       await completeRun(run.id, {
@@ -497,7 +530,7 @@ export async function respondToWhatsAppInbound(input: {
         provider_request_id: generated.providerRequestId,
         usage: generated.usage,
       });
-      return { status: "completed" as const, handoff, closed: finishedByCustomer, appointmentAt };
+      return { status: "completed" as const, handoff, closed: closedActually, appointmentAt };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Meta rechazó la respuesta de IA.";
       await admin.from("whatsapp_messages").update({ status: "failed", error_message: message.slice(0, 800) }).eq("id", pending.id);

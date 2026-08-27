@@ -1,5 +1,5 @@
 import type { Profile } from "@/lib/types";
-import { MobileNav } from "@/components/mobile-nav";
+import { MobileNav, WorkspaceContext } from "@/components/mobile-nav";
 import type { NavBadgeCounts } from "@/components/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { QuickSearch } from "@/components/quick-search";
@@ -21,12 +21,14 @@ export function Header({
 }) {
   return (
     <header className="flex h-16 flex-shrink-0 items-center justify-between border-b border-border bg-surface px-6">
-      {/* La identidad del usuario vive en el pie del sidebar; aquí solo el menú móvil. */}
-      <MobileNav profile={profile} badges={badges} />
+      <div className="flex min-w-0 items-center gap-3">
+        <MobileNav profile={profile} badges={badges} />
+        <WorkspaceContext role={profile.role} />
+      </div>
 
       <div className="flex items-center gap-3">
         <CampaignScopeSwitcher campaigns={campaigns} selectedCampaignId={selectedCampaignId} role={profile.role} />
-        <QuickSearch role={profile.role} />
+        <QuickSearch role={profile.role} userId={profile.id} />
         {profile.role === "agente" && <AgendaBell />}
         <ThemeToggle />
         <form action={signOut}>

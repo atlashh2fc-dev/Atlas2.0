@@ -135,6 +135,7 @@ export async function bulkRescheduleLeads(leadIds: string[], nextActionAt: strin
 }
 
 export async function registerInteraction(formData: FormData) {
+  const profile = await requireProfile(["agente"]);
   const leadId = formData.get("lead_id") as string;
   const resultValues = formData.getAll("result").map(String).filter(Boolean);
   const result = resultValues.join(", ");
@@ -142,8 +143,15 @@ export async function registerInteraction(formData: FormData) {
   const newStatus = formData.get("new_status") as string | null;
   const workflowStepId = (formData.get("workflow_step_id") as string) || null;
 
-  const profile = await requireProfile();
   const supabase = await createClient();
+  const { data: lead, error: leadError } = await supabase
+    .from("leads")
+    .select("id, assigned_to, managed_by")
+    .eq("id", leadId)
+    .maybeSingle();
+  if (leadError || !lead || (lead.assigned_to !== profile.id && lead.managed_by !== profile.id)) {
+    throw new Error("Solo el ejecutivo responsable puede registrar una gestión.");
+  }
 
   const { error: insertError } = await supabase.from("interactions").insert({
     lead_id: leadId,

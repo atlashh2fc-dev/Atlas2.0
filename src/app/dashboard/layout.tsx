@@ -8,6 +8,7 @@ import { ToastProvider } from "@/components/ui";
 import { createClient } from "@/lib/supabase/server";
 import { resolveCampaignScope } from "@/lib/campaign-scope";
 import { ForceLogoutGuard } from "@/components/force-logout-guard";
+import { getWorkspacePermissions } from "@/lib/workspace-permissions";
 
 export default async function DashboardLayout({
   children,
@@ -15,7 +16,8 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const profile = await requireProfile();
-  const showAgendaReminder = profile.role === "agente";
+  const { canAttendCustomers } = getWorkspacePermissions(profile.role);
+  const showAgendaReminder = canAttendCustomers;
   const supabase = await createClient();
   const [{ data: rawCampaignRows }, { data: memberships }] = await Promise.all([
     profile.role === "agente"
@@ -51,7 +53,7 @@ export default async function DashboardLayout({
     <ToastProvider>
       <div className="flex h-screen w-full overflow-hidden bg-background">
         {profile.role === "agente" && <ForceLogoutGuard userId={profile.id} />}
-        <DialerListener userId={profile.id} />
+        {canAttendCustomers && <DialerListener userId={profile.id} />}
         <Sidebar profile={profile} badges={badges} />
         <div className="flex flex-1 flex-col overflow-hidden">
           {showAgendaReminder ? (
@@ -69,7 +71,7 @@ export default async function DashboardLayout({
           )}
           <main className="flex-1 overflow-y-auto p-5">{children}</main>
         </div>
-        <CtiBar profile={profile} />
+        {canAttendCustomers && <CtiBar profile={profile} />}
       </div>
     </ToastProvider>
   );

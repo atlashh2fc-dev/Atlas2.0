@@ -12,6 +12,7 @@ import {
   navLabel,
   spaceForPath,
   visibleSections,
+  workspaceLabel,
   type NavBadge,
   type NavItem,
   type NavSection,
@@ -35,13 +36,17 @@ export type NavBadgeCounts = Partial<Record<NavBadge, number>>;
  */
 const NONE: string[] = [];
 const listeners = new Set<() => void>();
-let cache: { raw: string | null; value: string[] } = { raw: null, value: NONE };
+const cache = new Map<string, { raw: string | null; value: string[] }>();
 
-function readCollapsed(): string[] {
+function readCollapsed(storageKey: string): string[] {
   try {
-    const raw = window.localStorage.getItem(COLLAPSED_KEY);
-    if (raw !== cache.raw) cache = { raw, value: raw ? (JSON.parse(raw) as string[]) : NONE };
-    return cache.value;
+    const raw = window.localStorage.getItem(storageKey);
+    const previous = cache.get(storageKey);
+    if (previous?.raw === raw) return previous.value;
+    const parsed: unknown = raw ? JSON.parse(raw) : NONE;
+    const value = Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : NONE;
+    cache.set(storageKey, { raw, value });
+    return value;
   } catch {
     return NONE;
   }
@@ -52,19 +57,20 @@ function subscribeCollapsed(onChange: () => void) {
   return () => listeners.delete(onChange);
 }
 
-function writeCollapsed(next: string[]) {
+function writeCollapsed(storageKey: string, next: string[]) {
   try {
-    window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify(next));
+    window.localStorage.setItem(storageKey, JSON.stringify(next));
   } catch {
     /* la preferencia es opcional: no bloquear la navegación si el storage falla */
   }
   listeners.forEach((listener) => listener());
 }
 
-function useCollapsedSections(): [string[], (id: string) => void] {
-  const collapsed = useSyncExternalStore(subscribeCollapsed, readCollapsed, () => NONE);
+function useCollapsedSections(userId: string, role: AppRole): [string[], (id: string) => void] {
+  const storageKey = `${COLLAPSED_KEY}:${userId}:${role}`;
+  const collapsed = useSyncExternalStore(subscribeCollapsed, () => readCollapsed(storageKey), () => NONE);
   const toggle = (id: string) =>
-    writeCollapsed(collapsed.includes(id) ? collapsed.filter((value) => value !== id) : [...collapsed, id]);
+    writeCollapsed(storageKey, collapsed.includes(id) ? collapsed.filter((value) => value !== id) : [...collapsed, id]);
   return [collapsed, toggle];
 }
 
@@ -102,6 +108,7 @@ function NavLink({
     <Link
       href={item.href}
       onClick={onNavigate}
+      aria-label={rail ? label : undefined}
       aria-current={active ? "page" : undefined}
       className={`group relative flex items-center gap-3 rounded-lg text-sm font-medium transition-colors duration-150 ${
         rail ? "justify-center px-2 py-2" : "px-3 py-2"
@@ -134,7 +141,7 @@ function NavLink({
           )}
           <span
             role="tooltip"
-            className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-surface px-2 py-1 text-xs font-medium text-foreground opacity-0 shadow-md transition-opacity group-hover:opacity-100"
+            className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-surface px-2 py-1 text-xs font-medium text-foreground opacity-0 shadow-md transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
           >
             {label}
           </span>
@@ -161,7 +168,7 @@ export function NavTree({
   const space = spaceForPath(pathname);
   const sections = visibleSections(space, profile.role);
 
-  const [collapsed, toggleSection] = useCollapsedSections();
+  const [collapsed, toggleSection] = useCollapsedSections(profile.id, profile.role);
 
   return (
     <>
@@ -267,7 +274,6 @@ export function NavFooter({
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
             {initials(profile.full_name)}
           </div>
-          <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-success ring-2 ring-surface" />
         </div>
         {!rail && (
           <div className="min-w-0">
@@ -306,7 +312,7 @@ export function Sidebar({ profile, badges }: { profile: Profile; badges?: NavBad
             <div className="leading-none">
               <span className="text-sm font-semibold text-foreground">Atlas</span>
               <p className="mt-0.5 text-[10px] text-muted-foreground">
-                {inAdmin ? "Administración" : `Consola · ${ROLE_LABEL[profile.role]}`}
+                {workspaceLabel(profile.role, pathname)} · {ROLE_LABEL[profile.role]}
               </p>
             </div>
             <button
@@ -335,13 +341,13 @@ export function Sidebar({ profile, badges }: { profile: Profile; badges?: NavBad
       {inAdmin && (
         <Link
           href="/dashboard"
-          title={rail ? "Volver a la Consola" : undefined}
+          title={rail ? "Volver a Control" : undefined}
           className={`group mx-2 mt-2 flex items-center gap-2 rounded-lg py-2 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.045] hover:text-foreground ${
             rail ? "justify-center px-2" : "px-3"
           }`}
         >
           <ArrowLeft size={16} className="flex-shrink-0" />
-          {!rail && "Volver a la Consola"}
+          {!rail && "Volver a Control"}
         </Link>
       )}
 

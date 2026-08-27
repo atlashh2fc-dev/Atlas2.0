@@ -33,7 +33,7 @@ export default async function ContactCenterQueueLayout({ children, params }: { c
         actions={<div className="flex flex-wrap gap-2"><Badge tone={queue.is_active ? "success" : "danger"}>{queue.is_active ? "Cola activa" : "Cola inactiva"}</Badge>{(sources ?? []).map((source, index) => { const campaign = one(source.campaigns as Relation<{ name: string }>); return <Badge key={`${source.channel_type}-${index}`} tone="info">{source.channel_type === "whatsapp" ? "WhatsApp" : source.channel_type} · {campaign?.name ?? "Sin campaña"}</Badge>; })}</div>}
       />
       <NavTabs tabs={[
-        { label: "Performance", href: base },
+        { label: "Resumen de configuración", href: base },
         { label: "Enrutamiento", href: `${base}/enrutamiento` },
         { label: "Miembros", href: `${base}/miembros` },
         { label: "Fuentes", href: `${base}/fuentes` },

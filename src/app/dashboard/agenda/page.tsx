@@ -9,7 +9,7 @@ export default async function MyAgendaPage({
 }: {
   searchParams: Promise<{ campaign?: string }>;
 }) {
-  const profile = await requireProfile(["agente", "admin"]);
+  const profile = await requireProfile(["agente"]);
   const { campaign } = await searchParams;
   const campaignScope = await resolveCampaignScope(campaign);
   const supabase = await createClient();

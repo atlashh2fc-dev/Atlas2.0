@@ -39,7 +39,7 @@ export async function markAgentLoggedOut(): Promise<void> {
   // debe quedar envuelto en un try/catch genérico). getCurrentProfile() no
   // tiene ese efecto secundario.
   const profile = await getCurrentProfile();
-  if (!profile) return;
+  if (!profile || profile.role !== "agente") return;
   const supabase = await createClient();
   const { error } = await supabase.rpc("mark_my_agent_logged_out");
   if (error) throw new Error(error.message);
@@ -63,7 +63,7 @@ export async function markAgentUnavailable(): Promise<void> {
  * caiga sin pasar por el botón "Cerrar sesión".
  */
 export async function heartbeat(): Promise<void> {
-  const profile = await requireProfile();
+  const profile = await requireProfile(["agente"]);
   const supabase = await createClient();
   const { error } = await supabase
     .from("agent_current_status")
@@ -77,7 +77,7 @@ export async function heartbeat(): Promise<void> {
  * profile_id = auth.uid()).
  */
 export async function getMyCurrentStatus(): Promise<{ reason: AgentStatusReason } | null> {
-  const profile = await requireProfile();
+  const profile = await requireProfile(["agente"]);
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("agent_current_status")
@@ -98,7 +98,7 @@ export async function getMyCurrentStatus(): Promise<{ reason: AgentStatusReason 
  * las que el agente sea miembro — no hace falta tocar el servidor a mano.
  */
 export async function setMyCurrentStatus(reasonId: string): Promise<void> {
-  await requireProfile();
+  await requireProfile(["agente"]);
   const supabase = await createClient();
   const { error } = await supabase.rpc("set_my_agent_current_status", {
     p_reason_id: reasonId,

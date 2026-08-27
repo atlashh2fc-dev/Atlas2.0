@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { captureWhatsAppMessageMedia } from "@/lib/whatsapp-media";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentProfile } from "@/lib/auth";
+import { getWorkspacePermissions } from "@/lib/workspace-permissions";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -20,6 +22,12 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const profile = await getCurrentProfile();
+  if (!profile?.active) return error("Sesión no disponible.", 401);
+  if (!getWorkspacePermissions(profile.role).canReadConversationContent) {
+    return error("Tu perfil no permite consultar el contenido de conversaciones.", 403);
+  }
+
   const { id } = await params;
   if (!UUID.test(id)) return error("Adjunto inválido.", 400);
 
@@ -28,11 +36,20 @@ export async function GET(
   const supabase = await createClient();
   const { data: accessible } = await supabase
     .from("whatsapp_messages")
-    .select("id, message_type")
+    .select("id, message_type, conversation_id")
     .eq("id", id)
     .in("message_type", ["image", "audio"])
     .maybeSingle();
   if (!accessible) return error("Adjunto no encontrado.", 404);
+  if (profile.role === "agente") {
+    const { data: assignedConversation } = await supabase
+      .from("whatsapp_conversations")
+      .select("id")
+      .eq("id", accessible.conversation_id)
+      .eq("assigned_to", profile.id)
+      .maybeSingle();
+    if (!assignedConversation) return error("Adjunto no encontrado.", 404);
+  }
 
   const admin = createAdminClient();
   let { data: message, error: messageError } = await admin

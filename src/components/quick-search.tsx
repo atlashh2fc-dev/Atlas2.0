@@ -20,12 +20,14 @@ type RecentLead = Omit<QuickResult, "match_type">;
 
 const RECENT_LEADS_KEY = "atlas:quick-search:recent-leads";
 
-function readRecentLeads(): RecentLead[] {
+function readRecentLeads(storageKey: string): RecentLead[] {
   try {
-    const stored = window.localStorage.getItem(RECENT_LEADS_KEY);
-    return stored ? (JSON.parse(stored) as RecentLead[]) : [];
+    const stored = window.localStorage.getItem(storageKey);
+    const parsed: unknown = stored ? JSON.parse(stored) : [];
+    return Array.isArray(parsed) ? parsed.filter((item): item is RecentLead =>
+      Boolean(item && typeof item.id === "string" && typeof item.full_name === "string")
+    ).slice(0, 5) : [];
   } catch {
-    window.localStorage.removeItem(RECENT_LEADS_KEY);
     return [];
   }
 }
@@ -41,7 +43,7 @@ const MATCH_LABEL: Record<QuickResult["match_type"], string> = {
  * políticas de visibilidad de la RPC; los destinos se derivan de
  * `nav.config.ts`, así el menú y la paleta nunca divergen.
  */
-export function QuickSearch({ role }: { role: AppRole }) {
+export function QuickSearch({ role, userId }: { role: AppRole; userId: string }) {
   const [open, setOpen] = useState(false);
   const [term, setTerm] = useState("");
   const [results, setResults] = useState<QuickResult[]>([]);
@@ -49,31 +51,42 @@ export function QuickSearch({ role }: { role: AppRole }) {
   const [loading, setLoading] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [notFound, setNotFound] = useState(false);
+  const [searchError, setSearchError] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const router = useRouter();
   const destinations = useMemo(() => allItemsForRole(role), [role]);
+  const storageKey = `${RECENT_LEADS_KEY}:${userId}:${role}`;
+  const visibleDestinations = destinations.filter((item) =>
+    `${navLabel(item, role)} ${item.description}`.toLocaleLowerCase("es").includes(term.trim().toLocaleLowerCase("es"))
+  );
 
   const openPalette = useCallback(() => {
-    setRecentLeads(readRecentLeads());
+    setRecentLeads(readRecentLeads(storageKey));
     setOpen(true);
-  }, []);
+  }, [storageKey]);
 
   const close = useCallback(() => {
     setOpen(false);
     setTerm("");
     setResults([]);
     setNotFound(false);
+    setSearchError(false);
     setActiveIndex(0);
   }, []);
 
   const saveRecentLead = useCallback((lead: RecentLead) => {
     setRecentLeads((current) => {
       const next = [lead, ...current.filter((item) => item.id !== lead.id)].slice(0, 5);
-      window.localStorage.setItem(RECENT_LEADS_KEY, JSON.stringify(next));
+      try {
+        window.localStorage.setItem(storageKey, JSON.stringify(next));
+      } catch {
+        // La búsqueda sigue funcionando si el almacenamiento local está bloqueado.
+      }
       return next;
     });
-  }, []);
+  }, [storageKey]);
 
   const goToLead = useCallback(
     (lead: QuickResult | RecentLead) => {
@@ -112,11 +125,34 @@ export function QuickSearch({ role }: { role: AppRole }) {
 
   useEffect(() => {
     if (!open) return;
-    requestAnimationFrame(() => inputRef.current?.focus());
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const focusFrame = requestAnimationFrame(() => inputRef.current?.focus());
+    function containFocus(event: KeyboardEvent) {
+      if (event.key !== "Tab") return;
+      const focusable = dialogRef.current?.querySelectorAll<HTMLElement>('input, button:not([disabled])');
+      if (!focusable?.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+    document.addEventListener("keydown", containFocus);
+    return () => {
+      cancelAnimationFrame(focusFrame);
+      document.removeEventListener("keydown", containFocus);
+      previousFocus?.focus();
+    };
   }, [open]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!open) return;
+    let cancelled = false;
 
     debounceRef.current = setTimeout(async () => {
       const trimmed = term.trim();
@@ -124,17 +160,21 @@ export function QuickSearch({ role }: { role: AppRole }) {
         setResults([]);
         setNotFound(false);
         setLoading(false);
+        setSearchError(false);
         return;
       }
 
       setLoading(true);
+      setSearchError(false);
       const supabase = createClient();
       const { data, error } = await supabase.rpc("search_leads_quick", { p_term: trimmed });
+      if (cancelled) return;
       setLoading(false);
 
       if (error || !data) {
         setResults([]);
-        setNotFound(true);
+        setSearchError(true);
+        setNotFound(false);
         return;
       }
 
@@ -143,13 +183,15 @@ export function QuickSearch({ role }: { role: AppRole }) {
       setActiveIndex(0);
       setNotFound(rows.length === 0);
 
-      if (rows.length === 1 && rows[0].match_type !== "name") goToLead(rows[0]);
+      // Abrir un registro siempre requiere elegirlo: encontrar una coincidencia
+      // no debe sacar al administrador de su espacio de control automáticamente.
     }, 200);
 
     return () => {
+      cancelled = true;
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [term, goToLead]);
+  }, [term, open]);
 
   if (!open) {
     return (
@@ -158,8 +200,9 @@ export function QuickSearch({ role }: { role: AppRole }) {
         className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground"
       >
         <Search size={15} />
-        <span>Buscar o ir a...</span>
-        <kbd className="ml-2 rounded border border-border bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">⌘K</kbd>
+        <span className="hidden sm:inline">Buscar o ir a...</span>
+        <span className="sr-only sm:hidden">Buscar o ir a una sección</span>
+        <kbd className="ml-2 hidden rounded border border-border bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline">⌘K</kbd>
       </button>
     );
   }
@@ -167,18 +210,24 @@ export function QuickSearch({ role }: { role: AppRole }) {
   const isEmpty = !term.trim() && !loading;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-24" onClick={close}>
-      <div className="w-full max-w-lg overflow-hidden rounded-xl border border-border bg-surface shadow-xl" onClick={(event) => event.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 px-3 pt-16 sm:pt-24" onClick={close}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Buscar registros y secciones" className="max-h-[calc(100dvh-8rem)] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-surface shadow-xl" onClick={(event) => event.stopPropagation()}>
         <div className="flex items-center gap-2 border-b border-border px-4 py-3">
           {loading ? <Loader2 size={16} className="animate-spin text-muted-foreground" /> : <Search size={16} className="text-muted-foreground" />}
           <input
             ref={inputRef}
             value={term}
-            onChange={(event) => setTerm(event.target.value)}
+            onChange={(event) => {
+              setTerm(event.target.value);
+              setResults([]);
+              setActiveIndex(0);
+              setNotFound(false);
+              setSearchError(false);
+            }}
             onKeyDown={(event) => {
               if (event.key === "ArrowDown") {
                 event.preventDefault();
-                setActiveIndex((index) => Math.min(index + 1, results.length - 1));
+                setActiveIndex((index) => Math.min(index + 1, Math.max(0, results.length - 1)));
               } else if (event.key === "ArrowUp") {
                 event.preventDefault();
                 setActiveIndex((index) => Math.max(index - 1, 0));
@@ -186,17 +235,18 @@ export function QuickSearch({ role }: { role: AppRole }) {
                 goToLead(results[activeIndex]);
               }
             }}
-            placeholder="Buscar por RUT, teléfono o nombre…"
+            placeholder="Buscar una sección, RUT, teléfono o nombre…"
+            aria-label="Buscar una sección o un registro"
             className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
           />
           <kbd className="rounded border border-border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">Esc</kbd>
         </div>
 
-        {isEmpty && (
+        {visibleDestinations.length > 0 && (
           <div className="max-h-[26rem] overflow-y-auto p-3">
             <p className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Ir a</p>
             <div className="space-y-1">
-              {destinations.map((item) => {
+              {visibleDestinations.map((item) => {
                 const Icon = item.icon;
                 return (
                   <button key={item.id} onClick={() => goToAction(item.href)} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-surface-muted">
@@ -211,7 +261,7 @@ export function QuickSearch({ role }: { role: AppRole }) {
               })}
             </div>
 
-            {recentLeads.length > 0 && (
+            {isEmpty && recentLeads.length > 0 && (
               <>
                 <p className="mt-5 px-2 pb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Últimos registros abiertos</p>
                 <div className="space-y-1">
@@ -251,6 +301,7 @@ export function QuickSearch({ role }: { role: AppRole }) {
         )}
 
         {notFound && term.trim() && !loading && <p className="px-4 py-6 text-center text-sm text-muted-foreground">No se encontró ningún registro para &ldquo;{term.trim()}&rdquo;.</p>}
+        {searchError && !loading && <p role="status" className="px-4 py-4 text-sm text-danger">No fue posible consultar registros. Los accesos a secciones siguen disponibles; intenta buscar nuevamente.</p>}
       </div>
     </div>
   );

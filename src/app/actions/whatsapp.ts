@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { requireProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { assertCanOperateAssignedConversation } from "@/lib/workspace-permissions";
 import {
   WHATSAPP_MEDIA_BUCKET,
   validateWhatsAppMedia,
@@ -26,23 +27,64 @@ function revalidateWhatsApp(conversationId?: string) {
   if (conversationId) revalidatePath(`/dashboard/conversaciones?conversation=${conversationId}`);
 }
 
+async function assertHumanAttentionAllowed(conversation: { campaign_id: string; ai_state: string }) {
+  const admin = createAdminClient();
+  const { data: config, error } = await admin.from("whatsapp_ai_configs")
+    .select("enabled").eq("campaign_id", conversation.campaign_id).maybeSingle();
+  if (error) throw new Error("No se pudo comprobar el modo de atención de WhatsApp.");
+  const isHumanHandoff = conversation.ai_state === "handoff" || conversation.ai_state === "paused";
+  if (!isHumanHandoff && !config) {
+    throw new Error("No hay una configuración de IA válida. Solicita a Administración revisar la campaña antes de atender.");
+  }
+  if (!isHumanHandoff && config?.enabled !== false) {
+    throw new Error("La IA está atendiendo esta conversación. Espera la derivación a atención humana.");
+  }
+}
+
+async function claimHumanAttention(conversation: { id: string; ai_state: string }, actorId: string, note: string) {
+  const admin = createAdminClient();
+  const { data: claimed, error } = await admin.from("whatsapp_conversations")
+    .update({ ai_state: "handoff" })
+    .eq("id", conversation.id)
+    .eq("assigned_to", actorId)
+    .eq("ai_state", conversation.ai_state)
+    .select("id")
+    .maybeSingle();
+  if (error || !claimed) {
+    throw new Error("La conversación cambió de responsable o no se pudo confirmar la atención humana. Actualiza antes de enviar.");
+  }
+  // Preserve the original handoff reason; each human reply is not a new handoff.
+  if (conversation.ai_state !== "handoff") {
+    const { error: eventError } = await admin.from("whatsapp_conversation_events").insert({
+      conversation_id: conversation.id,
+      event_type: "ai_handoff",
+      actor_id: actorId,
+      note,
+      metadata: { source: "human_attention", previous_ai_state: conversation.ai_state },
+    });
+    if (eventError) throw new Error("No se pudo registrar el inicio de la atención humana. El mensaje no fue enviado.");
+  }
+}
+
 export async function sendWhatsAppMessage(formData: FormData) {
-  const profile = await requireProfile();
+  const profile = await requireProfile(["agente"]);
   const conversationId = String(formData.get("conversation_id") ?? "").trim();
   const body = String(formData.get("body") ?? "").trim();
   if (!conversationId) throw new Error("No se identificó la conversación.");
   if (!body) throw new Error("Escribe un mensaje.");
   if (body.length > MAX_TEXT_LENGTH) throw new Error("El mensaje supera los 4.096 caracteres.");
 
-  // RLS proves that the current operator may see and therefore act on the
-  // conversation. Provider writes are then performed with the server client.
+  // RLS proves visibility only. Customer-facing actions additionally require
+  // the agent role and current assignment before any privileged/provider write.
   const supabase = await createClient();
   const { data: conversation, error: conversationError } = await supabase
     .from("whatsapp_conversations")
-    .select("id, channel_id, contact_wa_id, contact_phone")
+    .select("id, channel_id, contact_wa_id, contact_phone, assigned_to, campaign_id, ai_state")
     .eq("id", conversationId)
     .single();
   if (conversationError || !conversation) throw new Error("No tienes acceso a esta conversación.");
+  assertCanOperateAssignedConversation(profile, conversation.assigned_to);
+  await assertHumanAttentionAllowed(conversation);
 
   if (!isWhatsAppProviderConfigured()) {
     throw new Error("Falta completar el acceso del proveedor de WhatsApp para enviar desde Atlas.");
@@ -52,16 +94,7 @@ export async function sendWhatsAppMessage(formData: FormData) {
 
   // Human intervention owns the thread immediately, including while Mercury
   // may be generating a response in the background.
-  await admin
-    .from("whatsapp_conversations")
-    .update({ ai_state: "paused" })
-    .eq("id", conversationId);
-  await admin.from("whatsapp_conversation_events").insert({
-    conversation_id: conversationId,
-    event_type: "ai_paused",
-    actor_id: profile.id,
-    note: "El ejecutivo respondió manualmente.",
-  });
+  await claimHumanAttention(conversation, profile.id, "El ejecutivo respondió manualmente.");
 
   const { data: channel, error: channelError } = await admin
     .from("whatsapp_channels")
@@ -130,17 +163,19 @@ export async function prepareWhatsAppMediaUpload(input: {
   mimeType: string;
   sizeBytes: number;
 }) {
-  const profile = await requireProfile();
+  const profile = await requireProfile(["agente"]);
   if (!UUID.test(input.conversationId)) throw new Error("No se identificó la conversación.");
   const spec = validateWhatsAppMedia({ mimeType: input.mimeType, sizeBytes: input.sizeBytes });
 
   const supabase = await createClient();
   const { data: conversation, error: conversationError } = await supabase
     .from("whatsapp_conversations")
-    .select("id, whatsapp_channels!inner(status)")
+    .select("id, assigned_to, campaign_id, ai_state, whatsapp_channels!inner(status)")
     .eq("id", input.conversationId)
     .single();
   if (conversationError || !conversation) throw new Error("No tienes acceso a esta conversación.");
+  assertCanOperateAssignedConversation(profile, conversation.assigned_to);
+  await assertHumanAttentionAllowed(conversation);
 
   const uploadId = randomUUID();
   const clientReference = randomUUID();
@@ -179,7 +214,7 @@ export async function sendPreparedWhatsAppMedia(input: {
   uploadId: string;
   caption?: string;
 }) {
-  const profile = await requireProfile();
+  const profile = await requireProfile(["agente"]);
   if (!UUID.test(input.uploadId)) throw new Error("Adjunto inválido.");
   const caption = input.caption?.trim() ?? "";
   if (caption.length > MAX_MEDIA_CAPTION_LENGTH) {
@@ -198,20 +233,22 @@ export async function sendPreparedWhatsAppMedia(input: {
   if (uploadError || !upload || upload.created_by !== profile.id || upload.status !== "prepared") {
     throw new Error("El adjunto ya no está disponible para enviar.");
   }
-  if (new Date(upload.expires_at).getTime() <= Date.now()) {
-    await admin.from("whatsapp_media_uploads").update({ status: "expired" }).eq("id", upload.id);
-    throw new Error("La preparación del adjunto venció. Selecciónalo nuevamente.");
-  }
   const spec = validateWhatsAppMedia({ mimeType: upload.mime_type, sizeBytes: Number(upload.size_bytes) });
   if (spec.messageType !== upload.message_type) throw new Error("El formato del adjunto no coincide con su tipo.");
 
   const supabase = await createClient();
   const { data: conversation, error: conversationError } = await supabase
     .from("whatsapp_conversations")
-    .select("id, channel_id, contact_phone")
+    .select("id, channel_id, contact_phone, assigned_to, campaign_id, ai_state")
     .eq("id", upload.conversation_id)
     .single();
   if (conversationError || !conversation) throw new Error("No tienes acceso a esta conversación.");
+  assertCanOperateAssignedConversation(profile, conversation.assigned_to);
+  await assertHumanAttentionAllowed(conversation);
+  if (new Date(upload.expires_at).getTime() <= Date.now()) {
+    await admin.from("whatsapp_media_uploads").update({ status: "expired" }).eq("id", upload.id);
+    throw new Error("La preparación del adjunto venció. Selecciónalo nuevamente.");
+  }
 
   const pathParts = upload.storage_path.split("/");
   const objectName = pathParts.pop();
@@ -237,13 +274,7 @@ export async function sendPreparedWhatsAppMedia(input: {
   if (channelError || !channel) throw new Error("El canal de WhatsApp no está configurado.");
   if (channel.status !== "active") throw new Error("El canal de WhatsApp todavía no está conectado.");
 
-  await admin.from("whatsapp_conversations").update({ ai_state: "paused" }).eq("id", conversation.id);
-  await admin.from("whatsapp_conversation_events").insert({
-    conversation_id: conversation.id,
-    event_type: "ai_paused",
-    actor_id: profile.id,
-    note: "El ejecutivo envió un adjunto manualmente.",
-  });
+  await claimHumanAttention(conversation, profile.id, "El ejecutivo envió un adjunto manualmente.");
 
   const { data: pendingMessage, error: pendingError } = await admin
     .from("whatsapp_messages")
@@ -315,15 +346,17 @@ export async function sendPreparedWhatsAppMedia(input: {
 }
 
 export async function markWhatsAppConversationRead(formData: FormData) {
-  await requireProfile();
+  const profile = await requireProfile(["agente"]);
   const conversationId = String(formData.get("conversation_id") ?? "").trim();
   const supabase = await createClient();
   const { data } = await supabase
     .from("whatsapp_conversations")
-    .select("id")
+    .select("id, assigned_to, campaign_id, ai_state")
     .eq("id", conversationId)
     .maybeSingle();
   if (!data) throw new Error("No tienes acceso a esta conversación.");
+  assertCanOperateAssignedConversation(profile, data.assigned_to);
+  await assertHumanAttentionAllowed(data);
 
   const admin = createAdminClient();
   const { error } = await admin
@@ -335,7 +368,7 @@ export async function markWhatsAppConversationRead(formData: FormData) {
 }
 
 export async function setWhatsAppConversationStatus(formData: FormData) {
-  await requireProfile();
+  const profile = await requireProfile(["agente"]);
   const conversationId = String(formData.get("conversation_id") ?? "").trim();
   const status = String(formData.get("status") ?? "");
   if (!(["open", "pending"] as const).includes(status as "open" | "pending")) {
@@ -344,10 +377,12 @@ export async function setWhatsAppConversationStatus(formData: FormData) {
   const supabase = await createClient();
   const { data } = await supabase
     .from("whatsapp_conversations")
-    .select("id")
+    .select("id, assigned_to, campaign_id, ai_state")
     .eq("id", conversationId)
     .maybeSingle();
   if (!data) throw new Error("No tienes acceso a esta conversación.");
+  assertCanOperateAssignedConversation(profile, data.assigned_to);
+  await assertHumanAttentionAllowed(data);
 
   const admin = createAdminClient();
   const { error } = await admin.from("whatsapp_conversations").update({ status }).eq("id", conversationId);
@@ -356,7 +391,7 @@ export async function setWhatsAppConversationStatus(formData: FormData) {
 }
 
 export async function closeWhatsAppConversation(formData: FormData) {
-  const profile = await requireProfile();
+  const profile = await requireProfile(["agente"]);
   const conversationId = String(formData.get("conversation_id") ?? "").trim();
   const reasonId = String(formData.get("reason_id") ?? "").trim();
   const note = String(formData.get("note") ?? "").trim();
@@ -368,10 +403,12 @@ export async function closeWhatsAppConversation(formData: FormData) {
   const supabase = await createClient();
   const { data: conversation } = await supabase
     .from("whatsapp_conversations")
-    .select("id")
+    .select("id, assigned_to, campaign_id, ai_state")
     .eq("id", conversationId)
     .maybeSingle();
   if (!conversation) throw new Error("No tienes acceso a esta conversación.");
+  assertCanOperateAssignedConversation(profile, conversation.assigned_to);
+  await assertHumanAttentionAllowed(conversation);
 
   const admin = createAdminClient();
   const { error } = await admin.rpc("close_whatsapp_conversation", {
@@ -390,48 +427,24 @@ export async function closeWhatsAppConversation(formData: FormData) {
   revalidateWhatsApp(conversationId);
 }
 
-export async function setWhatsAppConversationAiState(formData: FormData) {
-  const profile = await requireProfile();
-  const conversationId = String(formData.get("conversation_id") ?? "").trim();
-  const state = String(formData.get("ai_state") ?? "").trim();
-  if (!UUID.test(conversationId) || !(state === "auto" || state === "paused")) {
-    throw new Error("Estado de asistente inválido.");
-  }
+export async function setWhatsAppConversationAiState(_formData: FormData) {
+  void _formData;
+  await requireProfile();
+  throw new Error("El modo de IA se controla desde Operación, no desde una conversación.");
+}
 
+export async function setWhatsAppAutomationEnabled(formData: FormData) {
+  await requireProfile(["admin", "supervisor"]);
+  const enabled = String(formData.get("enabled") ?? "");
+  if (enabled !== "true" && enabled !== "false") throw new Error("Selecciona un modo de automatización válido.");
   const supabase = await createClient();
-  const { data: conversation } = await supabase
-    .from("whatsapp_conversations")
-    .select("id, campaign_id, status")
-    .eq("id", conversationId)
-    .maybeSingle();
-  if (!conversation) throw new Error("No tienes acceso a esta conversación.");
-  if (conversation.status === "closed") throw new Error("Reabre la conversación antes de activar la IA.");
-
-  const admin = createAdminClient();
-  if (state === "auto") {
-    const { data: config } = await admin
-      .from("whatsapp_ai_configs")
-      .select("enabled")
-      .eq("campaign_id", conversation.campaign_id)
-      .maybeSingle();
-    if (!config?.enabled) throw new Error("Mercury no está habilitado para esta campaña.");
-  }
-
-  const aiUpdate = state === "auto"
-    ? { ai_state: state, ai_last_error: null }
-    : { ai_state: state };
-  const { error } = await admin
-    .from("whatsapp_conversations")
-    .update(aiUpdate)
-    .eq("id", conversationId);
+  // The transaction derives scope from the session; the client cannot submit
+  // campaign IDs, actors, conversation state, or owners to widen its authority.
+  const { error } = await supabase.rpc("set_whatsapp_automation_enabled", { p_enabled: enabled === "true" });
   if (error) throw new Error(error.message);
-  await admin.from("whatsapp_conversation_events").insert({
-    conversation_id: conversationId,
-    event_type: state === "auto" ? "ai_resumed" : "ai_paused",
-    actor_id: profile.id,
-    note: state === "auto" ? "Asistente Mercury reactivado." : "Control humano activado.",
-  });
-  revalidateWhatsApp(conversationId);
+  revalidatePath("/dashboard/operacion");
+  revalidatePath("/dashboard/operacion/colas");
+  revalidateWhatsApp();
 }
 
 export async function assignWhatsAppConversation(formData: FormData) {

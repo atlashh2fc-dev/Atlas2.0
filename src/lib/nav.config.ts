@@ -19,16 +19,17 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { AppRole } from "./types";
+import { getWorkspacePermissions } from "./workspace-permissions";
 
 /**
  * Fuente única de la arquitectura de navegación (ver docs/arquitectura-navegacion.md).
  *
  * Reglas que este archivo hace cumplir:
- *  1. Dos espacios: `console` (operar) y `admin` (configurar). El espacio se deduce
- *     del pathname: todo lo que empieza con /dashboard/admin es el espacio admin.
+ *  1. Tres experiencias diarias: Control, Supervisión y Atención. Administración
+ *     es un espacio de configuración separado; no concede funciones de agente.
  *  2. Profundidad máxima 2: sección → ítem. El tercer nivel son `tabs` de página.
  *  3. El menú son sustantivos. Las acciones (crear, importar) son botones en la página.
- *  4. Un concepto, un nombre: el `label` de aquí es el mismo del PageHeader del destino.
+ *  4. La tarea y el alcance determinan el nombre; no se simula un cambio de rol.
  *  5. Sin jerga de proveedor en el menú (Vocalcom, SIP, Equifax viven dentro de la página).
  */
 
@@ -71,7 +72,7 @@ export const ROLE_LABEL: Record<AppRole, string> = {
 const ALL_ROLES: AppRole[] = ["agente", "supervisor", "admin"];
 const OPERACION: AppRole[] = ["supervisor", "admin"];
 
-/** Espacio 1 — Consola: lo que se usa a diario, agrupado por intención. */
+/** Inventario compartido. WORKSPACE_SECTIONS define la arquitectura de cada rol. */
 const CONSOLE: NavSpace = {
   id: "console",
   label: "Consola",
@@ -82,11 +83,11 @@ const CONSOLE: NavSpace = {
       items: [
         {
           id: "inicio",
-          label: "Inicio",
+          label: { default: "Resumen", agente: "Mi jornada" },
           href: "/dashboard",
           icon: LayoutDashboard,
           roles: ALL_ROLES,
-          description: "Resumen del día y accesos rápidos",
+          description: "Prioridades e indicadores de tu espacio de trabajo",
         },
       ],
     },
@@ -95,13 +96,14 @@ const CONSOLE: NavSpace = {
       label: "Operación",
       items: [
         {
-          id: "monitor",
-          label: "Monitor en vivo",
-          href: "/dashboard/supervision/monitor",
+          id: "operacion",
+          label: "Operación",
+          href: "/dashboard/operacion",
           icon: Activity,
           roles: OPERACION,
-          description: "Estado de ejecutivos y llamadas en curso",
+          description: "Colas de Voice y WhatsApp, capacidad y excepciones; sin atender clientes",
           badge: "live-agents",
+          match: ["/dashboard/operacion", "/dashboard/supervision/monitor"],
         },
         {
           id: "equipo",
@@ -125,16 +127,16 @@ const CONSOLE: NavSpace = {
           href: "/dashboard/leads",
           icon: Users,
           roles: ALL_ROLES,
-          description: "Cartera de registros y su gestión",
+          description: "Registros dentro de tu alcance; gestión solo para ejecutivos",
           match: ["/dashboard/leads", "/dashboard/llamadas"],
         },
         {
           id: "conversaciones",
-          label: "Conversaciones",
+          label: { default: "Historial", agente: "Mi atención" },
           href: "/dashboard/conversaciones",
           icon: MessageCircle,
-          roles: ALL_ROLES,
-          description: "Workspace omnicanal vinculado a campañas y registros",
+          roles: ["agente", "supervisor"],
+          description: "Atención asignada para ejecutivos; consulta de historial para supervisión",
         },
         {
           id: "agenda",
@@ -171,7 +173,7 @@ const CONSOLE: NavSpace = {
           label: "Calidad",
           href: "/dashboard/calidad/grabaciones",
           icon: Headphones,
-          roles: OPERACION,
+          roles: ["supervisor"],
           description: "Grabaciones, transcripciones y análisis de calidad",
           match: ["/dashboard/calidad"],
           tabs: [
@@ -181,6 +183,27 @@ const CONSOLE: NavSpace = {
         },
       ],
     },
+  ],
+};
+
+/**
+ * Estructura explícita por responsabilidad: no es el mismo árbol con botones
+ * ocultos. Los ítems comparten definición para que móvil, búsqueda y sidebar
+ * mantengan las mismas rutas, etiquetas y permisos.
+ */
+const WORKSPACE_SECTIONS: Record<AppRole, { id: string; label?: string; itemIds: string[] }[]> = {
+  admin: [
+    { id: "control-home", itemIds: ["inicio"] },
+    { id: "control-operation", label: "Control operativo", itemIds: ["operacion", "campanas-operativas", "registros"] },
+    { id: "control-results", itemIds: ["reportes"] },
+  ],
+  supervisor: [
+    { id: "supervision-home", itemIds: ["inicio"] },
+    { id: "supervision-operation", label: "Supervisión", itemIds: ["operacion", "equipo", "campanas-operativas", "registros"] },
+    { id: "supervision-review", label: "Revisión y resultados", itemIds: ["conversaciones", "calidad", "reportes"] },
+  ],
+  agente: [
+    { id: "attention-workspace", itemIds: ["inicio", "conversaciones", "registros", "agenda"] },
   ],
 };
 
@@ -302,9 +325,29 @@ export function getSpace(id: NavSpaceId): NavSpace {
   return NAV_SPACES.find((space) => space.id === id) ?? CONSOLE;
 }
 
+/** Etiqueta del espacio real, no un selector que permita asumir otro rol. */
+export function workspaceLabel(role: AppRole, pathname = "/dashboard"): string {
+  return spaceForPath(pathname) === "admin" && role === "admin"
+    ? "Administración"
+    : getWorkspacePermissions(role).workspaceLabel;
+}
+
 /** Secciones visibles de un espacio para un rol, ya filtradas y sin secciones vacías. */
 export function visibleSections(spaceId: NavSpaceId, role: AppRole): NavSection[] {
-  return getSpace(spaceId)
+  const space = getSpace(spaceId);
+  if (!space.roles.includes(role)) return [];
+  if (spaceId === "console") {
+    const inventory = new Map(space.sections.flatMap((section) => section.items).map((item) => [item.id, item]));
+    return WORKSPACE_SECTIONS[role].map(({ id, label, itemIds }) => ({
+      id,
+      label,
+      items: itemIds.flatMap((itemId) => {
+        const item = inventory.get(itemId);
+        return item?.roles.includes(role) ? [item] : [];
+      }),
+    })).filter((section) => section.items.length > 0);
+  }
+  return space
     .sections.map((section) => ({ ...section, items: section.items.filter((item) => item.roles.includes(role)) }))
     .filter((section) => section.items.length > 0);
 }
@@ -312,7 +355,7 @@ export function visibleSections(spaceId: NavSpaceId, role: AppRole): NavSection[
 /** Todos los ítems accesibles por un rol, en orden de menú (usado por la búsqueda global). */
 export function allItemsForRole(role: AppRole): NavItem[] {
   const items = NAV_SPACES.filter((space) => space.roles.includes(role)).flatMap((space) =>
-    space.sections.flatMap((section) => section.items.filter((item) => item.roles.includes(role)))
+    visibleSections(space.id, role).flatMap((section) => section.items)
   );
   return [...items, HELP_ITEM];
 }

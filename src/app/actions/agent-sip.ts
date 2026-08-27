@@ -344,7 +344,7 @@ export async function setAgentExtensionActive(formData: FormData) {
  * línea compartida.
  */
 export async function getMySipCredentials(): Promise<{ extension: string; sip_password: string } | null> {
-  const profile = await requireProfile();
+  const profile = await requireProfile(["agente"]);
   const supabase = await createClient();
 
   const { data, error } = await supabase
@@ -359,23 +359,19 @@ export async function getMySipCredentials(): Promise<{ extension: string; sip_pa
 }
 
 /**
- * Agenda liviana del teléfono Atlas. Para agentes se acota explícitamente a
- * sus leads; supervisores/admin conservan el alcance que ya les entrega RLS.
+ * Agenda liviana del puesto de atención, exclusivamente del ejecutivo.
  */
 export async function listMyDialerContacts(): Promise<DialerContact[]> {
-  const profile = await requireProfile();
+  const profile = await requireProfile(["agente"]);
   const supabase = await createClient();
 
-  let query = supabase
+  const query = supabase
     .from("leads")
     .select("id, full_name, phone, rut")
     .not("phone", "is", null)
     .order("updated_at", { ascending: false })
-    .limit(80);
-
-  if (profile.role === "agente") {
-    query = query.eq("assigned_to", profile.id);
-  }
+    .limit(80)
+    .eq("assigned_to", profile.id);
 
   const { data, error } = await query;
   if (error) throw new Error(error.message);

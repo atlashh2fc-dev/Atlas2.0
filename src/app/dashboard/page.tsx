@@ -4,17 +4,21 @@ import { LiveDashboard } from "@/components/live-dashboard";
 import { MetricCard, PageHeader, SectionCard, buttonClasses } from "@/components/ui";
 import Link from "next/link";
 import type { AgentPerformance, HomeDashboardSummary, Profile } from "@/lib/types";
+import { endOfDay, REPORT_TIME_ZONE, startOfDay } from "@/lib/report-range";
+import { Activity, ArrowUpRight, BarChart3, Settings2 } from "lucide-react";
 
-function startOfDay(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
+function countValue(result: { count: number | null; error?: unknown }): string {
+  return result.error || result.count === null ? "Sin datos" : result.count.toLocaleString("es-CL");
 }
 
-function endOfDay(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(23, 59, 59, 999);
-  return d;
+function SnapshotContext({ scope, at }: { scope: string; at: Date }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+      <span>{scope}</span>
+      <span>Consulta al {at.toLocaleString("es-CL", { timeZone: REPORT_TIME_ZONE })} · Chile</span>
+      <span>Estado al cargar · Operación contiene el monitoreo</span>
+    </div>
+  );
 }
 
 function firstName(profile: Profile): string {
@@ -24,12 +28,13 @@ function firstName(profile: Profile): string {
 export default async function DashboardPage() {
   const profile = await requireProfile();
   const supabase = await createClient();
+  const loadedAt = new Date();
 
   if (profile.role === "supervisor") {
     // El vínculo de un supervisor con sus equipos vive en teams.supervisor_id.
     // profiles.team_id pertenece al ejecutivo y puede ser null cuando el
     // supervisor administra uno o más equipos.
-    const { data: supervisedTeams } = await supabase
+    const { data: supervisedTeams, error: teamsError } = await supabase
       .from("teams")
       .select("id")
       .eq("supervisor_id", profile.id);
@@ -82,34 +87,43 @@ export default async function DashboardPage() {
             .limit(5),
         ])
       : [
-          { count: 0 },
-          { count: 0 },
-          { count: 0 },
-          { count: 0 },
-          { count: 0 },
-          { data: [] },
+          { count: teamsError ? null : 0, error: teamsError },
+          { count: teamsError ? null : 0, error: teamsError },
+          { count: teamsError ? null : 0, error: teamsError },
+          { count: teamsError ? null : 0, error: teamsError },
+          { count: teamsError ? null : 0, error: teamsError },
+          { data: [], error: teamsError },
         ];
 
     const topAgents = (performanceResult.data ?? []) as AgentPerformance[];
+    const hasDataError = Boolean(teamsError || agentsResult.error || totalLeadsResult.error || unassignedResult.error || overdueResult.error || todayResult.error || performanceResult.error);
 
     return (
       <div className="space-y-5">
         <PageHeader
-          title={`Hola, ${firstName(profile)}`}
-          description="Tu foco de hoy: agendas vencidas, trabajo sin asignar y rendimiento del equipo."
+          title="Resumen"
+          description={`${firstName(profile)}, supervisa la carga y los compromisos de tus equipos. La atención al cliente corresponde a los ejecutivos.`}
           actions={
             <div className="flex flex-wrap gap-2">
-              <Link href="/dashboard/team" className={buttonClasses()}>
-                Repartir trabajo
+              <Link href="/dashboard/operacion" className={buttonClasses()}>
+                Ver operación
               </Link>
-              <Link href="/dashboard/reportes" className={buttonClasses({ variant: "secondary" })}>
-                Ver reportes
+              <Link href="/dashboard/team" className={buttonClasses({ variant: "secondary" })}>
+                Mi equipo
               </Link>
             </div>
           }
         />
 
-        {teamIds.length === 0 && (
+        <SnapshotContext scope="Alcance: tus equipos supervisados · Agendas de hoy y vencidas" at={loadedAt} />
+
+        {hasDataError && (
+          <div role="status" className="rounded-lg border border-warning/30 bg-warning-bg px-4 py-3 text-sm text-warning">
+            No se pudieron consultar todos los indicadores. Los datos no disponibles no representan cero; vuelve a cargar para reintentar.
+          </div>
+        )}
+
+        {!teamsError && teamIds.length === 0 && (
           <div className="rounded-lg border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger">
             Tu usuario supervisor no tiene equipos asignados. Un administrador debe asociarte al menos uno.
           </div>
@@ -119,35 +133,36 @@ export default async function DashboardPage() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <MetricCard
             label="Agendas vencidas"
-            value={(overdueResult.count ?? 0).toLocaleString("es-CL")}
-            hint="Compromisos a recuperar"
+            value={countValue(overdueResult)}
+            hint="Compromisos vencidos a esta hora"
             href="/dashboard/leads?view=vencidas"
-            hrefLabel="Recuperar"
-            tone={(overdueResult.count ?? 0) > 0 ? "danger" : "good"}
+            hrefLabel="Revisar"
+            tone={overdueResult.error ? "default" : (overdueResult.count ?? 0) > 0 ? "danger" : "good"}
           />
           <MetricCard
             label="Agendas de hoy"
-            value={(todayResult.count ?? 0).toLocaleString("es-CL")}
+            value={countValue(todayResult)}
+            hint="Día calendario en Chile; puede incluir vencidas"
             href="/dashboard/leads?view=hoy"
             hrefLabel="Ver agenda"
           />
           <MetricCard
             label="Sin asignar"
-            value={(unassignedResult.count ?? 0).toLocaleString("es-CL")}
+            value={countValue(unassignedResult)}
             hint="Listo para repartir"
             href="/dashboard/team"
             hrefLabel="Repartir"
-            tone={(unassignedResult.count ?? 0) > 0 ? "warn" : "good"}
+            tone={unassignedResult.error ? "default" : (unassignedResult.count ?? 0) > 0 ? "warn" : "good"}
           />
           <MetricCard
             label="Base del equipo"
-            value={(totalLeadsResult.count ?? 0).toLocaleString("es-CL")}
+            value={countValue(totalLeadsResult)}
             href="/dashboard/leads"
             hrefLabel="Ver registros"
           />
           <MetricCard
             label="Ejecutivos"
-            value={(agentsResult.count ?? 0).toLocaleString("es-CL")}
+            value={countValue(agentsResult)}
             href="/dashboard/team"
             hrefLabel="Ver carga"
           />
@@ -155,11 +170,11 @@ export default async function DashboardPage() {
 
         <SectionCard
           title="Rendimiento del equipo"
-          description="Los cinco con más gestiones registradas. Abre la cartera de cada uno para revisar su trabajo."
+          description="Acumulado de gestiones disponible, no solo de hoy. Los cinco con más gestiones; abre su cartera para revisar."
         >
           <ul className="divide-y divide-border">
             {topAgents.length === 0 && (
-              <li className="px-5 py-4 text-sm text-muted-foreground">Sin gestiones registradas.</li>
+              <li className="px-5 py-4 text-sm text-muted-foreground">{performanceResult.error ? "Rendimiento no disponible en esta consulta." : "Sin gestiones registradas."}</li>
             )}
             {topAgents.map((agent) => (
               <li key={agent.agent_id} className="flex items-center justify-between gap-3 px-5 py-3">
@@ -214,6 +229,8 @@ export default async function DashboardPage() {
     ]);
 
     const campaigns = campaignsResult.data ?? [];
+    const configurationAvailable = !campaignsResult.error && !campaignAgentsResult.error;
+    const hasDataError = Boolean(activeUsersResult.error || activeCampaignsResult.error || unassignedLeadsResult.error || !configurationAvailable);
     const assignedCampaignIds = new Set((campaignAgentsResult.data ?? []).map((row) => row.campaign_id));
     const campaignsWithoutWorkflow = campaigns.filter((campaign) => campaign.is_active && !campaign.workflow_id);
     const campaignsWithoutAgents = campaigns.filter(
@@ -223,73 +240,98 @@ export default async function DashboardPage() {
     return (
       <div className="space-y-5">
         <PageHeader
-          title="Salud de la plataforma"
-          description="Qué está sin configurar y qué puede frenar la operación hoy."
+          title="Resumen"
+          description="Control global de la operación y la configuración. Este espacio no recibe interacciones ni permite responder clientes."
           actions={
             <div className="flex flex-wrap gap-2">
-              <Link href="/dashboard/admin/campanas" className={buttonClasses()}>
-                Campañas
+              <Link href="/dashboard/operacion" className={buttonClasses()}>
+                Ver operación
               </Link>
-              <Link href="/dashboard/admin/cargas" className={buttonClasses({ variant: "secondary" })}>
-                Cargar base
+              <Link href="/dashboard/admin/campanas" className={buttonClasses({ variant: "secondary" })}>
+                Administración
               </Link>
             </div>
           }
         />
 
+        <SnapshotContext scope="Alcance global · Todas las campañas y usuarios autorizados" at={loadedAt} />
+
+        <div className="grid gap-3 lg:grid-cols-3">
+          {[
+            { href: "/dashboard/operacion", title: "Operación", description: "Colas de Voice y WhatsApp, carga de ejecutivos y excepciones. Sin abrir conversaciones.", icon: Activity },
+            { href: "/dashboard/admin/colas", title: "Configuración", description: "Enrutamiento, capacidad y miembros. Revisa las reglas que organizan la atención.", icon: Settings2 },
+            { href: "/dashboard/reportes", title: "Resultados", description: "Indicadores de gestión y discador, con período y filtros explícitos.", icon: BarChart3 },
+          ].map(({ href, title, description, icon: Icon }) => (
+            <Link key={href} href={href} className="group rounded-xl border border-border bg-surface p-5 transition-colors hover:bg-surface-muted/50">
+              <div className="flex items-center justify-between text-primary"><Icon size={20} aria-hidden="true" /><ArrowUpRight size={16} aria-hidden="true" /></div>
+              <h2 className="mt-3 text-sm font-semibold text-foreground">{title}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+            </Link>
+          ))}
+        </div>
+
+        {hasDataError && (
+          <div role="status" className="rounded-lg border border-warning/30 bg-warning-bg px-4 py-3 text-sm text-warning">
+            Hay indicadores no disponibles. No equivalen a cero ni confirman una configuración correcta; vuelve a cargar para reintentar.
+          </div>
+        )}
+
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <MetricCard
             label="Campañas sin flujo"
-            value={campaignsWithoutWorkflow.length}
-            hint="No tienen guion de gestión"
+            value={campaignsResult.error ? "Sin datos" : campaignsWithoutWorkflow.length}
+            hint="Activas sin guion; revisar según su canal"
             href="/dashboard/admin/campanas"
             hrefLabel="Revisar"
-            tone={campaignsWithoutWorkflow.length > 0 ? "danger" : "good"}
+            tone={campaignsResult.error ? "default" : campaignsWithoutWorkflow.length > 0 ? "warn" : "good"}
           />
           <MetricCard
             label="Campañas sin ejecutivos"
-            value={campaignsWithoutAgents.length}
-            hint="No pueden operar"
+            value={configurationAvailable ? campaignsWithoutAgents.length : "Sin datos"}
+            hint="Sin ejecutivos de campaña; revisar miembros ACD"
             href="/dashboard/admin/campanas"
             hrefLabel="Revisar"
-            tone={campaignsWithoutAgents.length > 0 ? "danger" : "good"}
+            tone={!configurationAvailable ? "default" : campaignsWithoutAgents.length > 0 ? "warn" : "good"}
           />
           <MetricCard
             label="Registros sin asignar"
-            value={(unassignedLeadsResult.count ?? 0).toLocaleString("es-CL")}
+            value={countValue(unassignedLeadsResult)}
             href="/dashboard/leads?view=disponibles"
-            hrefLabel="Ver disponibles"
-            tone={(unassignedLeadsResult.count ?? 0) > 0 ? "warn" : "good"}
+            hrefLabel="Consultar registros"
+            tone={unassignedLeadsResult.error ? "default" : (unassignedLeadsResult.count ?? 0) > 0 ? "warn" : "good"}
           />
           <MetricCard
             label="Campañas activas"
-            value={activeCampaignsResult.count ?? 0}
+            value={countValue(activeCampaignsResult)}
             href="/dashboard/admin/campanas"
             hrefLabel="Administrar"
           />
           <MetricCard
             label="Usuarios activos"
-            value={activeUsersResult.count ?? 0}
+            value={countValue(activeUsersResult)}
             href="/dashboard/admin/usuarios?active=si"
             hrefLabel="Ver usuarios"
           />
         </div>
 
         <SectionCard
-          title="Requiere configuración"
-          description="Cada fila lleva directo al lugar donde se arregla."
+          title="Revisión de configuración"
+          description="Señales de campañas activas. No sustituyen la salud de canales ni la configuración de miembros de cada cola ACD."
         >
           <ul className="divide-y divide-border">
-            {campaignsWithoutWorkflow.length === 0 && campaignsWithoutAgents.length === 0 && (
+            {!configurationAvailable && (
+              <li className="px-5 py-4 text-sm text-muted-foreground">No fue posible completar la revisión de configuración.</li>
+            )}
+            {configurationAvailable && campaignsWithoutWorkflow.length === 0 && campaignsWithoutAgents.length === 0 && (
               <li className="px-5 py-4 text-sm text-muted-foreground">
                 Todas las campañas activas tienen flujo y ejecutivos asignados.
               </li>
             )}
-            {campaignsWithoutWorkflow.map((campaign) => (
+            {!campaignsResult.error && campaignsWithoutWorkflow.map((campaign) => (
               <li key={`wf-${campaign.id}`} className="flex items-center justify-between gap-3 px-5 py-3">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-foreground">{campaign.name}</p>
-                  <p className="text-xs text-danger">Sin flujo de gestión: los ejecutivos no tendrán guion.</p>
+                  <p className="text-xs text-warning">Sin flujo de gestión: revisa si este canal requiere un guion.</p>
                 </div>
                 <Link
                   href={`/dashboard/admin/campanas/${campaign.id}#flujo`}
@@ -299,11 +341,11 @@ export default async function DashboardPage() {
                 </Link>
               </li>
             ))}
-            {campaignsWithoutAgents.map((campaign) => (
+            {configurationAvailable && campaignsWithoutAgents.map((campaign) => (
               <li key={`ag-${campaign.id}`} className="flex items-center justify-between gap-3 px-5 py-3">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-foreground">{campaign.name}</p>
-                  <p className="text-xs text-danger">Sin ejecutivos asignados: la campaña no puede operar.</p>
+                  <p className="text-xs text-warning">Sin ejecutivos de campaña: revisa su asignación y los miembros de la cola ACD.</p>
                 </div>
                 <Link
                   href={`/dashboard/admin/campanas/${campaign.id}/ejecutivos`}
@@ -319,7 +361,7 @@ export default async function DashboardPage() {
         <SectionCard title="Campañas recientes" description="Las ocho últimas creadas.">
           <ul className="divide-y divide-border">
             {campaigns.length === 0 && (
-              <li className="px-5 py-4 text-sm text-muted-foreground">No hay campañas configuradas.</li>
+              <li className="px-5 py-4 text-sm text-muted-foreground">{campaignsResult.error ? "Campañas no disponibles en esta consulta." : "No hay campañas configuradas."}</li>
             )}
             {campaigns.slice(0, 8).map((campaign) => (
               <li key={campaign.id} className="flex items-center justify-between gap-3 px-5 py-3">
@@ -351,15 +393,18 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-5">
       <PageHeader
-        title={`Hola, ${firstName(profile)}`}
-        description="Tu mesa de trabajo: la siguiente llamada, tus agendas y las gestiones del día."
+        title="Mi jornada"
+        description={`${firstName(profile)}, este es tu puesto de atención: conversaciones asignadas, llamadas, seguimientos y gestiones del día.`}
         actions={
+          <div className="flex flex-wrap gap-2">
+          <Link href="/dashboard/conversaciones" className={buttonClasses()}>Mi atención</Link>
           <Link
             href={summary.agenda[0] ? `/dashboard/leads/${summary.agenda[0].id}` : "/dashboard/leads"}
-            className={buttonClasses()}
+            className={buttonClasses({ variant: "secondary" })}
           >
-            {summary.agenda[0] ? "Llamar al siguiente" : "Ver mis registros"}
+            {summary.agenda[0] ? "Próximo seguimiento" : "Mis registros"}
           </Link>
+          </div>
         }
       />
 

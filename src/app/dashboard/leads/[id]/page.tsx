@@ -16,6 +16,7 @@ import type { Campaign, Lead, Profile, Team, Workflow, WorkflowStep, WorkflowSte
 import { ActionForm, ActionSubmit, Badge, Callout, Card, InfoTooltip, PageHeader, buttonClasses } from "@/components/ui";
 import type { ReactNode } from "react";
 import { getCampaignAppointmentScheduleUrl } from "@/lib/campaign-appointment-schedules";
+import { getWorkspacePermissions } from "@/lib/workspace-permissions";
 
 /** Fila etiqueta/valor de la columna de identidad. */
 function InfoRow({ label, children }: { label: ReactNode; children: ReactNode }) {
@@ -125,6 +126,7 @@ export default async function LeadDetailPage({
   searchParams: Promise<{ tipificar?: string | string[]; corregir?: string | string[]; orquestado?: string | string[] }>;
 }) {
   const profile = await requireProfile();
+  const permissions = getWorkspacePermissions(profile.role);
   const { id } = await params;
   const { corregir, orquestado } = await searchParams;
   const correctionRequested = corregir === "1";
@@ -185,12 +187,12 @@ export default async function LeadDetailPage({
       .eq("lead_id", id)
       .order("occurred_at", { ascending: false, nullsFirst: false })
       .limit(30),
-    supabase
+    permissions.canReadConversationContent ? supabase
       .from("whatsapp_messages")
       .select("id, direction, text_body, message_type, provider_timestamp, created_at, profiles(full_name), whatsapp_conversations!inner(lead_id)")
       .eq("whatsapp_conversations.lead_id", id)
       .order("provider_timestamp", { ascending: false, nullsFirst: false })
-      .limit(30),
+      .limit(30) : Promise.resolve({ data: [] }),
   ]);
   const externalRefs = (externalRefsData ?? []) as ExternalReference[];
   const externalEvents = (externalEventsData ?? []) as ExternalEvent[];
@@ -198,8 +200,8 @@ export default async function LeadDetailPage({
 
   // El render solo consulta una gestión abierta. Crear una llamada aquí provoca
   // duplicados cuando el cierre revalida la página antes de navegar.
-  const canManageCall = profile.role === "agente";
-  const canReassign = profile.role === "supervisor" || profile.role === "admin";
+  const canManageCall = permissions.canAttendCustomers;
+  const canReassign = permissions.canManageAssignments;
   const call = canManageCall ? await getOpenCall(id) : null;
   const revisableCall =
     canManageCall && !call && lead.managed_by === profile.id
@@ -293,7 +295,7 @@ export default async function LeadDetailPage({
               </Link>
             )}
             {canReassign && (
-              <Link href="/dashboard/team" className={buttonClasses({ variant: "secondary" })}>
+              <Link href={profile.role === "admin" ? `/dashboard/leads?q=${encodeURIComponent(lead.rut ?? lead.phone ?? lead.full_name)}` : "/dashboard/team"} className={buttonClasses({ variant: "secondary" })}>
                 Reasignar
               </Link>
             )}
@@ -308,6 +310,13 @@ export default async function LeadDetailPage({
           </div>
         }
       />
+
+      {!permissions.canAttendCustomers && (
+        <Callout tone="info">
+          Vista de consulta y control. La atención y la tipificación pertenecen al ejecutivo responsable.
+          {!permissions.canReadConversationContent && " El contenido de las conversaciones WhatsApp no se consulta desde Administración."}
+        </Callout>
+      )}
 
       {orchestratorAssignment && (
         <Callout tone="info">

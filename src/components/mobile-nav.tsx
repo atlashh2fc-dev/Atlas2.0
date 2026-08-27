@@ -1,13 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ArrowLeft, Menu, X } from "lucide-react";
 import type { Profile } from "@/lib/types";
-import { ROLE_LABEL, spaceForPath } from "@/lib/nav.config";
+import { ROLE_LABEL, spaceForPath, workspaceLabel } from "@/lib/nav.config";
 import { NavFooter, NavTree, type NavBadgeCounts } from "@/components/sidebar";
+
+export function WorkspaceContext({ role }: { role: Profile["role"] }) {
+  const pathname = usePathname();
+  return <span className="hidden text-sm font-medium text-foreground md:block">{workspaceLabel(role, pathname)}</span>;
+}
 
 /**
  * Menú móvil: mismo modelo de datos que el sidebar (nav.config.ts), presentado
@@ -17,14 +22,33 @@ export function MobileNav({ profile, badges }: { profile: Profile; badges?: NavB
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const inAdmin = spaceForPath(pathname) === "admin";
+  const drawerRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (!open) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    drawerRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
+      if (event.key === "Tab") {
+        const focusable = drawerRef.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled])');
+        if (!focusable?.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      previousFocus?.focus();
+    };
   }, [open]);
 
   return (
@@ -47,6 +71,9 @@ export function MobileNav({ profile, badges }: { profile: Profile; badges?: NavB
             aria-hidden="true"
           />
           <aside
+            ref={drawerRef}
+            role="dialog"
+            aria-modal="true"
             aria-label="Navegación principal"
             className="relative flex h-full w-72 max-w-[85vw] flex-col border-r border-border bg-surface"
           >
@@ -61,7 +88,7 @@ export function MobileNav({ profile, badges }: { profile: Profile; badges?: NavB
               <div className="leading-none">
                 <span className="text-sm font-semibold text-foreground">Atlas</span>
                 <p className="mt-0.5 text-[10px] text-muted-foreground">
-                  {inAdmin ? "Administración" : `Consola · ${ROLE_LABEL[profile.role]}`}
+                  {workspaceLabel(profile.role, pathname)} · {ROLE_LABEL[profile.role]}
                 </p>
               </div>
               <button
@@ -81,7 +108,7 @@ export function MobileNav({ profile, badges }: { profile: Profile; badges?: NavB
                 className="mx-2 mt-2 flex items-center gap-2 rounded-lg px-3 py-2 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.045] hover:text-foreground"
               >
                 <ArrowLeft size={16} />
-                Volver a la Consola
+                Volver a Control
               </Link>
             )}
 
