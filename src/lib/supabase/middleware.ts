@@ -26,6 +26,11 @@ const PUBLIC_PATHS = [
 ];
 
 export async function updateSession(request: NextRequest) {
+  // Machine-only endpoint: the handler checks a dedicated Bearer/cron secret.
+  // Match exactly; other AI routes must keep the normal session requirement.
+  if (request.nextUrl.pathname === "/api/ai/learning-loop/worker") {
+    return NextResponse.next({ request });
+  }
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(

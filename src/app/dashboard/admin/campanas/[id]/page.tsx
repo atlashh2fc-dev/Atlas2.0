@@ -123,6 +123,9 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
 
   return (
     <div className="space-y-5">
+      <Link className="inline-flex text-sm text-primary underline" href={`/dashboard/calidad/loop?campaign=${id}`}>
+        Loop IA · revisar y configurar observación
+      </Link>
       <SectionCard
         title="Preparación de la campaña"
         description="Estos cuatro puntos definen si la campaña puede operar."

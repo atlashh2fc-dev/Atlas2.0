@@ -17,6 +17,7 @@ import { ActionForm, ActionSubmit, Badge, Callout, Card, InfoTooltip, PageHeader
 import type { ReactNode } from "react";
 import { getCampaignAppointmentScheduleUrl } from "@/lib/campaign-appointment-schedules";
 import { getWorkspacePermissions } from "@/lib/workspace-permissions";
+import { LearningMemoryPanel } from "@/components/learning-memory-panel";
 
 /** Fila etiqueta/valor de la columna de identidad. */
 function InfoRow({ label, children }: { label: ReactNode; children: ReactNode }) {
@@ -317,6 +318,8 @@ export default async function LeadDetailPage({
           {!permissions.canReadConversationContent && " El contenido de las conversaciones WhatsApp no se consulta desde Administración."}
         </Callout>
       )}
+
+      {profile.role !== "agente" && <LearningMemoryPanel leadId={lead.id} />}
 
       {orchestratorAssignment && (
         <Callout tone="info">

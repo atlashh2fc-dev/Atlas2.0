@@ -179,6 +179,7 @@ const CONSOLE: NavSpace = {
           tabs: [
             { label: "Grabaciones", href: "/dashboard/calidad/grabaciones" },
             { label: "Reportes y análisis", href: "/dashboard/calidad/analisis" },
+            { label: "Loop IA", href: "/dashboard/calidad/loop" },
           ],
         },
       ],

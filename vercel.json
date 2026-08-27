@@ -2,6 +2,10 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
     {
+      "path": "/api/ai/learning-loop/worker",
+      "schedule": "*/2 * * * *"
+    },
+    {
       "path": "/api/mail/inbound/sync",
       "schedule": "*/10 * * * *"
     },
