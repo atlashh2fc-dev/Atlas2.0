@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { AlertCircle, CalendarClock, CheckCircle2, Clock3, MessageSquare } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { notifyAgentManagementClosed } from "@/lib/agent-control";
@@ -66,6 +66,7 @@ export function CallTypificationForm({
   revision?: boolean;
 }) {
   const router = useRouter();
+  const fieldId = useId();
   // `undefined` significa que el lead no tiene workflow y usa el catálogo
   // histórico. Un arreglo vacío es un workflow inválido y nunca debe caer a
   // Equifax, porque ofrecería tipificaciones que la base luego rechazará.
@@ -181,10 +182,14 @@ export function CallTypificationForm({
   );
 
   function handleReasonSelect(option: CallReasonConfig) {
+    if (closeInFlightRef.current || pending !== null) return;
     setReason(option.value);
     setStatus(option.status);
     setOutcome(option.outcome);
-    if (option.agenda === "none") setNextActionAt("");
+    if (option.agenda === "none") {
+      setNextActionAt("");
+      setAppointmentScheduleOpen(false);
+    }
     if (appointmentScheduleUrl && option.agenda !== "none") {
       // El calendario debe aparecer al tipificar agenda, mientras el agente
       // todavía puede completar la gestión, y nunca como efecto del corte.
@@ -200,10 +205,26 @@ export function CallTypificationForm({
     setEquifaxProducts((prev) => (prev.includes(product) ? prev.filter((p) => p !== product) : [...prev, product]));
   }
 
-  async function handleClose() {
-    if (closeInFlightRef.current) return;
+  async function handleClose(selectedReason?: CallReasonConfig) {
+    if (closeInFlightRef.current || pending !== null || legalBreakActive || catalog.length === 0) return;
+    // El cierre directo usa la opción pulsada, no el estado del render anterior.
+    // Las mismas validaciones y la misma acción del servidor protegen ambos caminos.
+    const payload = {
+      callId: call.id,
+      leadId: lead.id,
+      status: selectedReason?.status ?? status,
+      outcome: selectedReason?.outcome ?? outcome,
+      reason: selectedReason?.value ?? (reason || null),
+      notes: notes || null,
+      next_action_at: selectedReason?.agenda === "none" ? null : closureNextActionAt,
+      equifax_products: equifaxProducts,
+      equifax_uf_amount: equifaxUf ? Number(equifaxUf) : null,
+      equifax_recipient_email: equifaxEmail || null,
+    };
+    if (selectedReason) handleReasonSelect(selectedReason);
     setAttemptedClose(true);
-    if (pendingIssues.length > 0) {
+    const issues = validateCallClosure({ ...payload, lead_email: lead.email, contact_email: lead.email }, catalog);
+    if (issues.length > 0) {
       setMessage({ type: "error", text: "Completa los campos marcados antes de cerrar." });
       return;
     }
@@ -213,18 +234,6 @@ export function CallTypificationForm({
     setMessage(null);
     let completed = false;
     try {
-      const payload = {
-        callId: call.id,
-        leadId: lead.id,
-        status,
-        outcome,
-        reason: reason || null,
-        notes: notes || null,
-        next_action_at: closureNextActionAt,
-        equifax_products: equifaxProducts,
-        equifax_uf_amount: equifaxUf ? Number(equifaxUf) : null,
-        equifax_recipient_email: equifaxEmail || null,
-      };
       const result = revision
         ? await reviseCallManagement(payload)
         : await closeCall(payload);
@@ -257,26 +266,43 @@ export function CallTypificationForm({
   }
 
   async function handleDiscard() {
+    if (closeInFlightRef.current || pending !== null || legalBreakActive) return;
     if (!discardReason.trim()) {
       setMessage({ type: "error", text: "Indica el motivo del error tecnico para descartar." });
       return;
     }
+    closeInFlightRef.current = true;
     setPending("discard");
     setMessage(null);
+    let completed = false;
     try {
       await discardCallTechnicalError({ callId: call.id, leadId: lead.id, reason: discardReason.trim() });
+      completed = true;
       notifyAgentManagementClosed();
       router.push("/dashboard/leads");
       router.refresh();
     } catch (e) {
       setMessage({ type: "error", text: e instanceof Error ? e.message : "Error al descartar la llamada." });
     } finally {
-      setPending(null);
+      if (!completed) {
+        closeInFlightRef.current = false;
+        setPending(null);
+      }
     }
   }
 
   return (
-    <div className="space-y-4" aria-label={revision ? "Corrección de tipificación" : "Tipificación de llamada"}>
+    <div
+      className="space-y-4"
+      aria-label={revision ? "Corrección de tipificación" : "Tipificación de llamada"}
+      aria-busy={pending !== null}
+      onKeyDown={(event) => {
+        if ((event.ctrlKey || event.metaKey) && event.key === "Enter" && !event.repeat && !appointmentScheduleOpen) {
+          event.preventDefault();
+          void handleClose();
+        }
+      }}
+    >
       {revision && (
         <div className="flex items-start gap-3 rounded-2xl border border-warning/30 bg-warning-bg px-4 py-3 text-foreground">
           <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-warning text-white">
@@ -323,31 +349,109 @@ export function CallTypificationForm({
       )}
 
       <fieldset
-        disabled={legalBreakActive || catalog.length === 0}
-        className="space-y-4 border-0 p-0 disabled:cursor-not-allowed disabled:opacity-60"
+        disabled={pending !== null || legalBreakActive || catalog.length === 0}
+        className="flex flex-col gap-4 border-0 p-0 disabled:cursor-not-allowed disabled:opacity-60"
       >
+        <div className="sticky top-2 z-10 rounded-2xl border border-border bg-surface p-3 shadow-lg">
+        {attemptedClose && pendingIssues.length > 0 && (
+          <ul className="mb-3 space-y-1 rounded-lg bg-warning-bg p-3 text-xs text-warning">
+            {pendingIssues.map((issue) => (
+              <li key={issue}>- {issue}</li>
+            ))}
+          </ul>
+        )}
+
+        {message && (
+          <div
+            role={message.type === "error" ? "alert" : "status"}
+            className={`mb-3 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium ${
+              message.type === "error" ? "bg-danger-bg text-danger" : "bg-success-bg text-success"
+            }`}
+          >
+            {message.type === "error" ? <AlertCircle size={16} /> : <CheckCircle2 size={16} />}
+            {message.text}
+          </div>
+        )}
+
+        {/* pr-16: el teléfono flotante vive en esta misma esquina; incluso
+            minimizado a burbuja hay que dejarle su hueco para no tapar las
+            acciones de la derecha. */}
+        <div className="flex flex-wrap items-center gap-2 pr-16">
+          <button
+            type="button"
+            onClick={() => void handleClose()}
+            disabled={pending !== null}
+            title="Ctrl + Enter / ⌘ + Enter"
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary-hover disabled:opacity-50"
+          >
+            {pending === "close"
+              ? revision
+                ? "Guardando corrección..."
+                : "Cerrando..."
+              : revision
+                ? "Guardar corrección"
+                : "Guardar y cerrar"}
+          </button>
+          {reasonConfig && <span className="text-xs font-medium text-muted-foreground">{reasonConfig.label}</span>}
+
+          {!revision && (
+            <button
+              type="button"
+              onClick={() => setDiscardOpen((v) => !v)}
+              className="ml-auto rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground hover:text-danger"
+            >
+              Descartar por error tecnico
+            </button>
+          )}
+        </div>
+
+        {!revision && discardOpen && (
+          <div className="mt-3 rounded-lg border border-border bg-background p-3">
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+              Motivo del error tecnico
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={discardReason}
+                onChange={(e) => setDiscardReason(e.target.value)}
+                placeholder="Ej: se corto la llamada por falla de telefonia"
+                className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+              <button
+                type="button"
+                onClick={handleDiscard}
+                disabled={pending !== null}
+                className="rounded-lg bg-danger px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+              >
+                {pending === "discard" ? "Descartando..." : "Confirmar"}
+              </button>
+            </div>
+          </div>
+        )}
+        </div>
         <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
         <h2 className="mb-4 text-sm font-semibold text-foreground">
           {revision ? "Corregir tipificación" : "Tipificar"}
         </h2>
 
         <div className="space-y-5">
-          {reasonGroups.map((state) => (
-            <section key={state.label} aria-labelledby={`tipificacion-${state.label}`}>
+          {reasonGroups.map((state, index) => (
+            <section key={state.label} aria-labelledby={`${fieldId}-state-${index}`}>
               <h3
-                id={`tipificacion-${state.label}`}
+                id={`${fieldId}-state-${index}`}
                 className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground"
               >
                 {state.label}
               </h3>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
                 {state.reasons.map((option) => (
+                  <div key={`${option.stateLabel}-${option.resultLabel}-${option.value}`} className="flex min-w-0 gap-1">
                   <button
-                    key={`${option.stateLabel}-${option.resultLabel}-${option.value}`}
                     type="button"
                     onClick={() => handleReasonSelect(option)}
                     aria-pressed={reason === option.value}
-                    className={`min-h-11 rounded-lg border px-3 py-2 text-left text-xs font-semibold uppercase transition-colors ${
+                    className={`min-h-11 min-w-0 flex-1 rounded-lg border px-3 py-2 text-left text-xs font-semibold uppercase transition-colors ${
                       reason === option.value
                         ? "border-primary bg-primary text-primary-foreground shadow-sm"
                         : "border-border bg-background text-foreground hover:border-primary/50 hover:bg-surface-muted"
@@ -355,6 +459,18 @@ export function CallTypificationForm({
                   >
                     {option.label}
                   </button>
+                  {appointmentScheduleUrl && !revision && option.agenda === "none" && option.outcome !== "sale" && option.value !== "COTIZACION ENVIADA" && (
+                    <button
+                      type="button"
+                      aria-label={`Cerrar: ${option.label}`}
+                      title={`Guardar y cerrar: ${option.label}`}
+                      onClick={() => void handleClose(option)}
+                      className="rounded-lg border border-border px-2 text-xs font-semibold text-primary hover:border-primary hover:bg-primary/10"
+                    >
+                      Cerrar
+                    </button>
+                  )}
+                  </div>
                 ))}
               </div>
             </section>
@@ -378,8 +494,9 @@ export function CallTypificationForm({
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Fecha y hora</label>
+                  <label htmlFor={`${fieldId}-schedule`} className="mb-1.5 block text-xs font-medium text-muted-foreground">Fecha y hora</label>
                   <input
+                    id={`${fieldId}-schedule`}
                     type="datetime-local"
                     value={nextActionAt}
                     onChange={(e) => setNextActionAt(e.target.value)}
@@ -443,8 +560,9 @@ export function CallTypificationForm({
           )}
 
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Nota</label>
+            <label htmlFor={`${fieldId}-notes`} className="mb-1.5 block text-xs font-medium text-muted-foreground">Nota</label>
             <textarea
+              id={`${fieldId}-notes`}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
@@ -454,82 +572,6 @@ export function CallTypificationForm({
           </div>
         </div>
       </div>
-
-        <div className="sticky bottom-3 z-10 rounded-2xl border border-border bg-surface p-5 shadow-lg">
-        {attemptedClose && pendingIssues.length > 0 && (
-          <ul className="mb-3 space-y-1 rounded-lg bg-warning-bg p-3 text-xs text-warning">
-            {pendingIssues.map((issue) => (
-              <li key={issue}>- {issue}</li>
-            ))}
-          </ul>
-        )}
-
-        {message && (
-          <div
-            className={`mb-3 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium ${
-              message.type === "error" ? "bg-danger-bg text-danger" : "bg-success-bg text-success"
-            }`}
-          >
-            {message.type === "error" ? <AlertCircle size={16} /> : <CheckCircle2 size={16} />}
-            {message.text}
-          </div>
-        )}
-
-        {/* pr-16: el teléfono flotante vive en esta misma esquina; incluso
-            minimizado a burbuja hay que dejarle su hueco para no tapar las
-            acciones de la derecha. */}
-        <div className="flex flex-wrap items-center gap-2 pr-16">
-          <button
-            type="button"
-            onClick={handleClose}
-            disabled={pending !== null}
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary-hover disabled:opacity-50"
-          >
-            {pending === "close"
-              ? revision
-                ? "Guardando corrección..."
-                : "Cerrando..."
-              : revision
-                ? "Confirmar"
-                : "Confirmar"}
-          </button>
-
-          {!revision && (
-            <button
-              type="button"
-              onClick={() => setDiscardOpen((v) => !v)}
-              className="ml-auto rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground hover:text-danger"
-            >
-              Descartar por error tecnico
-            </button>
-          )}
-        </div>
-
-        {!revision && discardOpen && (
-          <div className="mt-3 rounded-lg border border-border bg-background p-3">
-            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-              Motivo del error tecnico
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={discardReason}
-                onChange={(e) => setDiscardReason(e.target.value)}
-                placeholder="Ej: se corto la llamada por falla de telefonia"
-                className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              />
-              <button
-                type="button"
-                onClick={handleDiscard}
-                disabled={pending !== null}
-                className="rounded-lg bg-danger px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
-              >
-                {pending === "discard" ? "Descartando..." : "Confirmar"}
-              </button>
-            </div>
-          </div>
-        )}
-        </div>
       </fieldset>
     </div>
   );

@@ -344,6 +344,31 @@ export default async function LeadDetailPage({
         <Callout tone="warning">Esta entrega demo ya fue cerrada o liberada. Espera la siguiente asignación del motor.</Callout>
       )}
 
+      {call && (
+        <section className="rounded-2xl border-2 border-primary/20 bg-primary/[0.025] p-3 sm:p-5">
+          <CallTypificationForm
+            key={call.id}
+            lead={lead}
+            call={call}
+            reasonCatalog={reasonCatalog}
+            appointmentScheduleUrl={appointmentScheduleUrl}
+          />
+        </section>
+      )}
+
+      {!call && revisableCall && correctionRequested && (
+        <section className="rounded-2xl border-2 border-warning/20 bg-warning/[0.025] p-3 sm:p-5">
+          <CallTypificationForm
+            key={revisableCall.id}
+            lead={lead}
+            call={revisableCall}
+            reasonCatalog={reasonCatalog}
+            appointmentScheduleUrl={appointmentScheduleUrl}
+            revision
+          />
+        </section>
+      )}
+
       {campaignData.length > 0 && (
         <section className="rounded-2xl border border-border bg-surface p-5">
           <div className="mb-4 flex items-center justify-between gap-3">
@@ -365,29 +390,6 @@ export default async function LeadDetailPage({
               </div>
             ))}
           </dl>
-        </section>
-      )}
-
-      {call && (
-        <section className="rounded-2xl border-2 border-primary/20 bg-primary/[0.025] p-3 sm:p-5">
-          <CallTypificationForm
-            lead={lead}
-            call={call}
-            reasonCatalog={reasonCatalog}
-            appointmentScheduleUrl={appointmentScheduleUrl}
-          />
-        </section>
-      )}
-
-      {!call && revisableCall && correctionRequested && (
-        <section className="rounded-2xl border-2 border-warning/20 bg-warning/[0.025] p-3 sm:p-5">
-          <CallTypificationForm
-            lead={lead}
-            call={revisableCall}
-            reasonCatalog={reasonCatalog}
-            appointmentScheduleUrl={appointmentScheduleUrl}
-            revision
-          />
         </section>
       )}
 
