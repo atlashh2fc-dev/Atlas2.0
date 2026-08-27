@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { decideNextAction, loopReviewSchema, validateConversationFacts, type LoopSource } from "../src/lib/ai-learning-loop.ts";
-import { processLearningLoop } from "../src/lib/ai-learning-loop-worker.ts";
+import { conversationEvidence, decideNextAction, loopReviewSchema, validateConversationFacts, type LoopSource } from "../src/lib/ai-learning-loop.ts";
+import { extractConversationFacts, processLearningLoop } from "../src/lib/ai-learning-loop-worker.ts";
 
 const now = new Date("2026-08-27T18:00:00Z");
 function source(): LoopSource {
@@ -13,6 +13,42 @@ function source(): LoopSource {
   };
 }
 const analysis = { uncertain: false, facts: [{ kind: "callback_request" as const, quote: "Por favor llámeme el viernes.", speaker: "customer" as const, requested_time_text: "el viernes" }] };
+
+test("loop extraction: indexed fragments preserve literal punctuation, accents and long source text", () => {
+  const transcript = "  Sí, llámeme el viernes.\nNo cambie mí puntuación! " + "texto largo ".repeat(100);
+  const evidence = conversationEvidence(transcript);
+  assert.ok(evidence.length > 3);
+  for (const [index, fragment] of evidence.entries()) {
+    assert.equal(fragment.id, index);
+    assert.ok(fragment.text.length <= 500);
+    assert.ok(transcript.includes(fragment.text));
+  }
+});
+
+test("loop extraction: provider selects IDs; Atlas retrieves the original quote", async (t) => {
+  t.mock.method(globalThis, "fetch", async (_url: unknown, init: RequestInit) => {
+    const body = JSON.parse(String(init.body));
+    const evidence = JSON.parse(body.messages[1].content).evidence;
+    assert.equal(evidence[0].text, analysis.facts[0].quote);
+    assert.equal(body.response_format.json_schema.schema.properties.facts.items.properties.quote, undefined);
+    return Response.json({ id: "fixture", choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ uncertain: false, facts: [
+      { kind: "callback_request", speaker: "customer", evidence_id: 0, requested_time_text: "el viernes" },
+    ] }) } }] });
+  });
+  const result = await extractConversationFacts(source(), "fixture-key");
+  assert.deepEqual(result.analysis, analysis);
+});
+
+test("loop extraction: invalid IDs, truncated JSON and invalid schema fail with safe diagnostics", async (t) => {
+  let content = JSON.stringify({ uncertain: false, facts: [{ kind: "callback_request", speaker: "customer", evidence_id: 999, requested_time_text: null }] });
+  let finish = "stop";
+  t.mock.method(globalThis, "fetch", async () => Response.json({ choices: [{ finish_reason: finish, message: { content } }] }));
+  await assert.rejects(extractConversationFacts(source(), "fixture"), /provider_invalid_schema/);
+  finish = "length";
+  await assert.rejects(extractConversationFacts(source(), "fixture"), /provider_output_incomplete/);
+  finish = "stop"; content = "not JSON";
+  await assert.rejects(extractConversationFacts(source(), "fixture"), /provider_invalid_json/);
+});
 
 test("loop: requires literal evidence and time; never manufactures dates", () => {
   assert.deepEqual(validateConversationFacts(analysis, source().transcript_text), analysis);

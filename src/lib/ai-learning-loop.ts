@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const AI_LOOP_POLICY_VERSION = "callback-v1";
-export const AI_LOOP_EXTRACTOR_VERSION = "conversation-facts-v1";
+export const AI_LOOP_EXTRACTOR_VERSION = "conversation-facts-v2";
 export const AI_LOOP_MODEL = "mercury-2";
 export const AI_LOOP_MAX_TRANSCRIPT_CHARS = 60_000;
 
@@ -18,6 +18,23 @@ export const conversationFactsSchema = z.object({
 }).strict();
 export type ConversationFacts = z.infer<typeof conversationFactsSchema>;
 export type ConversationFact = ConversationFacts["facts"][number];
+
+/** The provider selects source fragments by ID instead of retyping quotes.
+ * Every fragment remains an exact substring, including spelling/punctuation. */
+export function conversationEvidence(transcript: string) {
+  const fragments: Array<{ id: number; text: string }> = [];
+  for (const sentence of transcript.split(/(?<=[.!?])\s+|\n+/u)) {
+    let rest = sentence.trim();
+    while (rest.length > 500) {
+      const space = rest.lastIndexOf(" ", 500);
+      const end = space >= 250 ? space : 500;
+      fragments.push({ id: fragments.length, text: rest.slice(0, end).trim() });
+      rest = rest.slice(end).trim();
+    }
+    if (rest.length >= 3) fragments.push({ id: fragments.length, text: rest });
+  }
+  return fragments;
+}
 
 export type LoopSource = {
   recording_id: string;
