@@ -31,7 +31,9 @@ export function conversationEvidence(transcript: string) {
       fragments.push({ id: fragments.length, text: rest.slice(0, end).trim() });
       rest = rest.slice(end).trim();
     }
-    if (rest.length >= 3) fragments.push({ id: fragments.length, text: rest });
+    // Short turns such as "No"/"Sí" must remain in the model's context.
+    // Literal-fact validation still prevents using an isolated <3-char quote.
+    if (rest.length) fragments.push({ id: fragments.length, text: rest });
   }
   return fragments;
 }

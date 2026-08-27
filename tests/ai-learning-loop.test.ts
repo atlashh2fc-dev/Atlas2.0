@@ -25,6 +25,11 @@ test("loop extraction: indexed fragments preserve literal punctuation, accents a
   }
 });
 
+test("loop extraction: short customer replies remain in context", () => {
+  const evidence = conversationEvidence("¿Quiere retomar?\nNo\n¿Necesita otra cosa?\nSí");
+  assert.deepEqual(evidence.map((item) => item.text), ["¿Quiere retomar?", "No", "¿Necesita otra cosa?", "Sí"]);
+});
+
 test("loop extraction: provider selects IDs; Atlas retrieves the original quote", async (t) => {
   t.mock.method(globalThis, "fetch", async (_url: unknown, init: RequestInit) => {
     const body = JSON.parse(String(init.body));
