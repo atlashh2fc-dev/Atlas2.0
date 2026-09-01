@@ -304,8 +304,74 @@ test("normaliza el sobre y aliases reales de Atlas Lead", () => {
     clicked: true,
     complained: false,
     unsubscribed: false,
+    event_semantics: "cumulative_snapshot",
   });
   assert.equal(parsed.items[0].event_source, "urn:geimser:atlas-lead");
+});
+
+test("engagement atómico conserva identidad de entrega, enlace y roster", () => {
+  const parsed = parseIntegrationV2Batch({
+    campaign_key: "mail-eq-2026",
+    items: [{
+      event_id: "open-1",
+      event_type: "engagement.event.v1",
+      external_key: "atlas-lead-contact-1",
+      occurred_at: "2026-09-01T12:00:00Z",
+      payload: {
+        external_campaign_key: "mail-eq-2026",
+        event_kind: "clicked",
+        event_semantics: "atomic_event",
+        delivery_id: "delivery-1",
+        message_id: "message-1",
+        message_subject: "Propuesta Atlas",
+        provider_event_id: "provider-event-1",
+        link_url: "https://example.com/demo",
+        email: "persona@example.com",
+        company_name: "Empresa Uno",
+        contact_name: "Persona Uno",
+        phone: "+56911111111",
+        country: "CL",
+        source_lead_id: "atlas-lead-contact-1",
+      },
+    }],
+  }, "atlas_lead");
+
+  assert.deepEqual(parsed.items[0].payload, {
+    external_campaign_key: "mail-eq-2026",
+    event_kind: "clicked",
+    event_semantics: "atomic_event",
+    delivery_id: "delivery-1",
+    message_id: "message-1",
+    message_subject: "Propuesta Atlas",
+    provider_event_id: "provider-event-1",
+    link_url: "https://example.com/demo",
+    email: "persona@example.com",
+    company_name: "Empresa Uno",
+    contact_name: "Persona Uno",
+    phone: "+56911111111",
+    country: "CL",
+    source_lead_id: "atlas-lead-contact-1",
+  });
+});
+
+test("engagement rechaza semántica, tipo y enlace inválidos", () => {
+  const base = {
+    ...decision(),
+    event_type: "engagement.event.v1",
+    payload: { external_campaign_key: "mail-eq-2026" },
+  };
+  assert.throws(
+    () => parseIntegrationV2Batch({ campaign_key: "mail-eq-2026", items: [{ ...base, payload: { ...base.payload, event_semantics: "delta" } }] }, "atlas_lead"),
+    /event_semantics/,
+  );
+  assert.throws(
+    () => parseIntegrationV2Batch({ campaign_key: "mail-eq-2026", items: [{ ...base, payload: { ...base.payload, event_kind: "visited" } }] }, "atlas_lead"),
+    /event_kind/,
+  );
+  assert.throws(
+    () => parseIntegrationV2Batch({ campaign_key: "mail-eq-2026", items: [{ ...base, payload: { ...base.payload, link_url: "ftp://example.com/file" } }] }, "atlas_lead"),
+    /HTTP o HTTPS/,
+  );
 });
 
 test("carga canónica queda acotada a 500 eventos", () => {

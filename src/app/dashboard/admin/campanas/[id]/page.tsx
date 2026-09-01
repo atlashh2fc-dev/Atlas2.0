@@ -2,14 +2,14 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { setCampaignWorkflow } from "@/app/actions/campaigns";
+import { mapAtlasLeadMailCampaign, setCampaignWorkflow } from "@/app/actions/campaigns";
 import { CampaignDashboardSummary, type ContactabilityHour } from "@/components/campaign-dashboard-summary";
 import type {
   CampaignDashboardSummary as CampaignDashboardSummaryData,
   AiVoiceCampaignConfig,
   DialerCampaignConfig,
 } from "@/lib/types";
-import { ActionForm, ActionSubmit, Card, Field, SectionCard, Select } from "@/components/ui";
+import { ActionForm, ActionSubmit, Badge, Card, Field, Input, SectionCard, Select } from "@/components/ui";
 
 const DASHBOARD_WINDOW_DAYS = 30;
 
@@ -57,6 +57,8 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
     { data: dialerConfig },
     { data: aiVoiceConfig },
     { data: workflows },
+    { data: mailCampaigns },
+    { data: campaignMemberships },
   ] = await Promise.all([
     supabase.rpc("get_campaign_dashboard_summary", {
       p_campaign_id: id,
@@ -71,7 +73,31 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
     supabase.from("ai_voice_campaign_configs").select("*").eq("campaign_id", id).maybeSingle(),
     // Solo flujos publicados: un borrador no debería quedar operando una campaña.
     supabase.from("workflows").select("id, name").eq("status", "published").order("name"),
+    supabase
+      .from("mail_campaigns")
+      .select("id,name,external_campaign_key,status,metadata,updated_at")
+      .eq("campaign_id", id)
+      .order("updated_at", { ascending: false }),
+    supabase.from("campaign_agents").select("profile_id").eq("campaign_id", id),
   ]);
+
+  const memberProfileIds = [...new Set((campaignMemberships ?? []).map((row) => row.profile_id))];
+  const { data: memberProfiles } = memberProfileIds.length > 0
+    ? await supabase
+      .from("profiles")
+      .select("team_id,teams(id,name)")
+      .in("id", memberProfileIds)
+      .eq("active", true)
+      .eq("role", "agente")
+    : { data: [] };
+  const routingTeamsById = new Map<string, { id: string; name: string }>();
+  for (const member of memberProfiles ?? []) {
+    const team = Array.isArray(member.teams) ? member.teams[0] : member.teams;
+    if (member.team_id && team?.id) routingTeamsById.set(team.id, team);
+  }
+  const routingTeams = [...routingTeamsById.values()].sort((left, right) =>
+    left.name.localeCompare(right.name, "es")
+  );
 
   const dialer = dialerConfig as DialerCampaignConfig | null;
   const aiVoice = aiVoiceConfig as AiVoiceCampaignConfig | null;
@@ -157,6 +183,60 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
               <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.detail}</p>
             </Link>
           ))}
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Atlas Lead"
+        description="Conecta campañas de correo existentes con esta campaña CRM mediante su clave estable. Atlas Lead conserva el envío y tracking; Atlas CRM conserva la asignación y gestión."
+        actions={
+          (mailCampaigns ?? []).length > 0 ? (
+            <Link href={`/dashboard/mail?campaign=${id}`} className="text-xs font-medium text-primary hover:underline">
+              Abrir señales de correo
+            </Link>
+          ) : undefined
+        }
+      >
+        <div className="space-y-4 p-4">
+          {(mailCampaigns ?? []).length > 0 && (
+            <ul className="divide-y divide-border rounded-lg border border-border bg-background">
+              {(mailCampaigns ?? []).map((mailCampaign) => (
+                <li key={mailCampaign.id} className="flex flex-wrap items-center justify-between gap-3 px-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-foreground">{mailCampaign.name}</p>
+                    <p className="mt-0.5 break-all text-xs text-muted-foreground">{mailCampaign.external_campaign_key}</p>
+                  </div>
+                  <Badge tone={mailCampaign.metadata?.readiness === "ready" ? "success" : "warning"}>
+                    {mailCampaign.metadata?.readiness === "ready" ? "Lista para recibir" : "Habilitación pendiente"}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <ActionForm
+            action={mapAtlasLeadMailCampaign}
+            success="Vínculo Atlas Lead registrado"
+            className="grid gap-3 rounded-lg border border-border bg-background p-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.8fr)_auto] xl:items-end"
+          >
+            <input type="hidden" name="campaign_id" value={id} />
+            <Field label="Clave externa de Atlas Lead">
+              <Input name="external_campaign_key" required maxLength={36} placeholder="UUID de la campaña Atlas Lead" />
+            </Field>
+            <Field label="Nombre visible del envío">
+              <Input name="mail_campaign_name" required maxLength={200} placeholder="Campaña · Envío 1" />
+            </Field>
+            <Field label="Equipo de recepción">
+              <Select name="routing_team_id" required defaultValue={routingTeams[0]?.id ?? ""}>
+                {routingTeams.length === 0 && <option value="">Asigna primero un ejecutivo</option>}
+                {routingTeams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
+              </Select>
+            </Field>
+            <ActionSubmit disabled={routingTeams.length === 0} pendingLabel="Conectando…">Registrar y habilitar</ActionSubmit>
+          </ActionForm>
+          <p className="text-xs text-muted-foreground">
+            Esta acción no crea una campaña CRM nueva ni envía correos. El equipo seleccionado recibe los contactos nuevos y la exportación sólo queda lista después de la confirmación segura de Atlas Lead.
+          </p>
         </div>
       </SectionCard>
 

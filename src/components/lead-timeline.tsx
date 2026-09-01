@@ -1,11 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CalendarClock, MessageCircle, MessageSquare, PhoneCall, RefreshCw } from "lucide-react";
+import { CalendarClock, Mail, MessageCircle, MessageSquare, PhoneCall, RefreshCw } from "lucide-react";
 
 export type TimelineEntry = {
   key: string;
-  source: "call" | "interaction" | "integration" | "whatsapp";
+  source: "call" | "email" | "interaction" | "integration" | "whatsapp";
   date: string | null;
   title: string;
   notes: string | null;
@@ -17,6 +17,7 @@ const FILTERS = [
   { id: "todo", label: "Todo" },
   { id: "call", label: "Llamadas" },
   { id: "interaction", label: "Gestiones" },
+  { id: "email", label: "Correo" },
   { id: "whatsapp", label: "WhatsApp" },
   { id: "integration", label: "Integraciones" },
 ] as const;
@@ -40,6 +41,7 @@ export function LeadTimeline({ entries }: { entries: TimelineEntry[] }) {
       todo: entries.length,
       call: entries.filter((entry) => entry.source === "call").length,
       interaction: entries.filter((entry) => entry.source === "interaction").length,
+      email: entries.filter((entry) => entry.source === "email").length,
       whatsapp: entries.filter((entry) => entry.source === "whatsapp").length,
       integration: entries.filter((entry) => entry.source === "integration").length,
     }),
@@ -91,6 +93,8 @@ export function LeadTimeline({ entries }: { entries: TimelineEntry[] }) {
           {visible.map((entry) => {
             const Icon = entry.source === "call"
               ? PhoneCall
+              : entry.source === "email"
+                ? Mail
               : entry.source === "integration"
                 ? RefreshCw
                 : entry.source === "whatsapp"

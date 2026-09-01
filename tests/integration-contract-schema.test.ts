@@ -29,3 +29,18 @@ test("el contrato exige identidad, orden e idempotencia v2", () => {
   assert.equal(schema.properties.schema_version.const, "2");
   assert.equal(schema.properties.items.maxItems, 500);
 });
+
+test("engagement 2.1 mantiene v1 y declara detalle opcional de delivery/roster", () => {
+  const schema = canonicalIntegrationContract();
+  assert.equal(INTEGRATION_CONTRACT_VERSION, "2.1.0");
+  const engagement = schema.$defs.engagementPayload;
+  assert.ok(schema.$defs.event.properties.event_type.enum.includes("operation.feedback.v1"));
+  assert.deepEqual(engagement.required, ["external_campaign_key"]);
+  for (const field of [
+    "event_kind", "event_semantics", "delivery_id", "message_id",
+    "message_subject", "link_url", "provider_event_id", "company_name",
+    "contact_name", "phone", "country", "source_lead_id",
+  ]) {
+    assert.ok(field in engagement.properties, `${field} debe estar en engagementPayload`);
+  }
+});

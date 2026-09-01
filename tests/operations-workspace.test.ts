@@ -192,4 +192,6 @@ test("listado de configuración conserva semántica del stock y errores explíci
   assert.match(listing, /WhatsApp sin cerrar/);
   assert.match(listing, /stockUnavailable\s+\? "No disponible"/);
   assert.match(listing, /loadOperationalConversations/);
+  assert.match(listing, /no es el catálogo completo de campañas/);
+  assert.match(listing, /Una cola puede estar todavía sin fuentes/);
 });

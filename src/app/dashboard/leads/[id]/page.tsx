@@ -98,9 +98,27 @@ function relationOne<T>(value: T | T[] | null): T | null {
 }
 
 function externalEventTitle(event: ExternalEvent) {
-  if (event.event_type === "engagement.event.v1") return "Señal de correo recibida";
+  if (event.event_type === "engagement.event.v1") {
+    const kind = typeof event.payload?.event_kind === "string" ? event.payload.event_kind : null;
+    const clicked = event.payload?.clicked === true || kind === "clicked" || kind === "click";
+    const opened = event.payload?.opened === true || kind === "opened" || kind === "open";
+    if (clicked) return "Click en correo";
+    if (opened) return "Apertura de correo";
+    return "Señal de correo recibida";
+  }
   if (event.event_type === "intelligence.decision.v1") return "Prioridad externa actualizada";
   return "Evento externo sincronizado";
+}
+
+function formatTrackedLink(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  try {
+    const url = new URL(value);
+    if (!(url.protocol === "https:" || url.protocol === "http:")) return null;
+    return `${url.hostname}${url.pathname === "/" ? "" : url.pathname}`;
+  } catch {
+    return null;
+  }
 }
 
 /** Los valores técnicos de la etapa del flujo no se muestran crudos. */
@@ -222,12 +240,23 @@ export default async function LeadDetailPage({
     ...externalEvents.map((event): TimelineEntry => {
       const source = relationOne(event.integration_sources);
       const bucket = typeof event.payload?.bucket === "string" ? event.payload.bucket : null;
+      const message = typeof event.payload?.message_subject === "string"
+        ? event.payload.message_subject
+        : typeof event.payload?.message_id === "string"
+          ? `Mensaje ${event.payload.message_id}`
+          : null;
+      const link = formatTrackedLink(event.payload?.link_url);
+      const notes = [
+        message,
+        link ? `Enlace: ${link}` : null,
+        bucket ? `Clasificación: ${bucket}` : null,
+      ].filter(Boolean).join(" · ");
       return {
         key: `integration-${event.id}`,
-        source: "integration",
+        source: event.event_type === "engagement.event.v1" ? "email" : "integration",
         date: event.occurred_at ?? event.created_at,
         title: externalEventTitle(event),
-        notes: bucket ? `Clasificación: ${bucket}` : null,
+        notes: notes || null,
         agenda: null,
         agent: source?.name ?? source?.code ?? "Integración",
       };

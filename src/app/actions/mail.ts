@@ -72,13 +72,11 @@ export async function assignMailEngagementLead(formData: FormData) {
   if (!agentId) throw new Error("Selecciona un ejecutivo.");
 
   const supabase = await createClient();
-  const { error } = await supabase.rpc("assign_lead", {
-    p_lead_id: leadId,
+  const { error } = await supabase.rpc("assign_mail_engagement_opportunities", {
+    p_lead_ids: [leadId],
     p_agent_id: agentId,
-    p_reason: "Lead priorizado por apertura/click de mailing",
-    p_source: "mail_engagement",
-    p_set_managed_by: false,
-    p_next_action_at: null,
+    p_mail_campaign_id: mailCampaignId || null,
+    p_campaign_id: null,
   });
 
   if (error) throw new Error(error.message);
@@ -98,31 +96,32 @@ export async function bulkAssignMailEngagementLeads(
 ): Promise<MailBulkAssignmentResult> {
   await requireProfile(["supervisor", "admin"]);
 
-  const ids = [...new Set(leadIds.filter(Boolean))].slice(0, MAIL_BULK_ASSIGNMENT_MAX);
+  const ids = [...new Set(leadIds.filter(Boolean))];
   if (ids.length === 0) return { ok: 0, skipped: 0, error: "Selecciona al menos un lead." };
+  if (ids.length > MAIL_BULK_ASSIGNMENT_MAX) {
+    return {
+      ok: 0,
+      skipped: ids.length,
+      error: `Puedes asignar hasta ${MAIL_BULK_ASSIGNMENT_MAX} oportunidades por operación.`,
+    };
+  }
   if (!agentId) return { ok: 0, skipped: ids.length, error: "Selecciona un ejecutivo." };
 
   const supabase = await createClient();
-  let ok = 0;
-
-  for (const leadId of ids) {
-    const { error } = await supabase.rpc("assign_lead", {
-      p_lead_id: leadId,
-      p_agent_id: agentId,
-      p_reason: "Asignación masiva desde Bandeja mail",
-      p_source: "mail_engagement.bulk_assign",
-      p_set_managed_by: false,
-      p_next_action_at: null,
-    });
-
-    if (error) return { ok, skipped: ids.length - ok, error: error.message };
-    ok += 1;
-  }
+  const { data, error } = await supabase.rpc("assign_mail_engagement_opportunities", {
+    p_lead_ids: ids,
+    p_agent_id: agentId,
+    p_mail_campaign_id: null,
+    p_campaign_id: null,
+  });
+  if (error) return { ok: 0, skipped: ids.length, error: error.message };
+  const payload = data as { assigned?: number } | null;
+  const ok = Number(payload?.assigned ?? 0);
 
   // La consola, la ficha y la cola general leen el mismo responsable actual.
   revalidatePath("/dashboard/mail");
   revalidatePath("/dashboard/leads");
   revalidatePath("/dashboard/team");
 
-  return { ok, skipped: leadIds.length - ok, error: null };
+  return { ok, skipped: 0, error: null };
 }

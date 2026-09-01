@@ -9,6 +9,11 @@ export const maxDuration = 60;
 
 type ClaimedItem = { item_id: string; event_type: string };
 type ProcessResult = { item_id: string; success: boolean; error_code: string | null };
+const NON_RETRYABLE_PROJECTION_ERRORS = new Set([
+  "invalid_priority_rank",
+  "invalid_engagement_semantics",
+  "invalid_event_kind",
+]);
 
 async function nack(
   admin: ReturnType<typeof createAdminClient>,
@@ -46,10 +51,12 @@ async function processGroup(
   const results = (data ?? []) as ProcessResult[];
   const succeeded = results.filter((result) => result.success).map((result) => result.item_id);
   const invalid = results
-    .filter((result) => !result.success && result.error_code === "invalid_priority_rank")
+    .filter((result) => !result.success && result.error_code !== null
+      && NON_RETRYABLE_PROJECTION_ERRORS.has(result.error_code))
     .map((result) => result.item_id);
   const retryable = results
-    .filter((result) => !result.success && result.error_code !== "invalid_priority_rank")
+    .filter((result) => !result.success
+      && (result.error_code === null || !NON_RETRYABLE_PROJECTION_ERRORS.has(result.error_code)))
     .map((result) => result.item_id);
   const returned = new Set(results.map((result) => result.item_id));
   const missing = ids.filter((id) => !returned.has(id));

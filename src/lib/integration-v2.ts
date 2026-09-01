@@ -10,6 +10,17 @@ export type IntegrationV2EventType =
   | "engagement.event.v1"
   | "integration.canary.v1";
 
+export type IntegrationEngagementEventKind =
+  | "sent"
+  | "delivered"
+  | "opened"
+  | "clicked"
+  | "bounced"
+  | "complained"
+  | "unsubscribed";
+
+export type IntegrationEngagementSemantics = "atomic_event" | "cumulative_snapshot";
+
 export type IntegrationV2Item = {
   event_id: string;
   event_type: IntegrationV2EventType;
@@ -60,6 +71,68 @@ function requiredText(value: unknown, field: string, maxLength: number) {
     throw new IntegrationV2ValidationError(`${field} es inválido.`);
   }
   return value.trim();
+}
+
+function optionalText(value: unknown, field: string, maxLength: number) {
+  if (value === undefined || value === null || value === "") return undefined;
+  return requiredText(value, field, maxLength);
+}
+
+const ENGAGEMENT_EVENT_KINDS = new Set<IntegrationEngagementEventKind>([
+  "sent", "delivered", "opened", "clicked", "bounced", "complained", "unsubscribed",
+]);
+
+function parseEngagementPayload(payload: Record<string, unknown>, index: number) {
+  const externalCampaignKey = requiredText(
+    payload.external_campaign_key,
+    `items[${index}].payload.external_campaign_key`,
+    300,
+  );
+  const eventKind = optionalText(payload.event_kind, `items[${index}].payload.event_kind`, 40);
+  if (eventKind && !ENGAGEMENT_EVENT_KINDS.has(eventKind as IntegrationEngagementEventKind)) {
+    throw new IntegrationV2ValidationError(`items[${index}].payload.event_kind no es soportado.`);
+  }
+  const eventSemantics = optionalText(
+    payload.event_semantics,
+    `items[${index}].payload.event_semantics`,
+    40,
+  );
+  if (eventSemantics && eventSemantics !== "atomic_event" && eventSemantics !== "cumulative_snapshot") {
+    throw new IntegrationV2ValidationError(`items[${index}].payload.event_semantics no es soportado.`);
+  }
+  const linkUrl = optionalText(payload.link_url, `items[${index}].payload.link_url`, 2048);
+  if (linkUrl) {
+    let parsed: URL;
+    try {
+      parsed = new URL(linkUrl);
+    } catch {
+      throw new IntegrationV2ValidationError(`items[${index}].payload.link_url debe ser una URL absoluta.`);
+    }
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      throw new IntegrationV2ValidationError(`items[${index}].payload.link_url debe usar HTTP o HTTPS.`);
+    }
+  }
+
+  const optionalFields = {
+    delivery_id: optionalText(payload.delivery_id, `items[${index}].payload.delivery_id`, 500),
+    message_id: optionalText(payload.message_id, `items[${index}].payload.message_id`, 500),
+    message_subject: optionalText(payload.message_subject, `items[${index}].payload.message_subject`, 1000),
+    provider_event_id: optionalText(payload.provider_event_id, `items[${index}].payload.provider_event_id`, 500),
+    company_name: optionalText(payload.company_name, `items[${index}].payload.company_name`, 500),
+    contact_name: optionalText(payload.contact_name, `items[${index}].payload.contact_name`, 500),
+    phone: optionalText(payload.phone, `items[${index}].payload.phone`, 100),
+    country: optionalText(payload.country, `items[${index}].payload.country`, 100),
+    source_lead_id: optionalText(payload.source_lead_id, `items[${index}].payload.source_lead_id`, 500),
+  };
+
+  return {
+    ...payload,
+    external_campaign_key: externalCampaignKey,
+    ...(eventKind ? { event_kind: eventKind } : {}),
+    ...(eventSemantics ? { event_semantics: eventSemantics } : {}),
+    ...(linkUrl ? { link_url: linkUrl } : {}),
+    ...Object.fromEntries(Object.entries(optionalFields).filter(([, fieldValue]) => fieldValue !== undefined)),
+  };
 }
 
 export function integrationV2EventSource(sourceCode: string): IntegrationV2Item["event_source"] {
@@ -128,13 +201,14 @@ export function parseIntegrationV2Batch(value: unknown, sourceCode = "bigdata"):
     if (!isObject(candidate.payload)) {
       throw new IntegrationV2ValidationError(`items[${index}].payload debe ser un objeto.`);
     }
+    let payload = candidate.payload;
     if (eventType === "intelligence.decision.v1") {
       const rank = candidate.payload.priority_rank;
       if (!Number.isInteger(rank) || Number(rank) < 0 || Number(rank) > 999) {
         throw new IntegrationV2ValidationError(`items[${index}].payload.priority_rank debe estar entre 0 y 999.`);
       }
     } else if (eventType === "engagement.event.v1") {
-      requiredText(candidate.payload.external_campaign_key, `items[${index}].payload.external_campaign_key`, 300);
+      payload = parseEngagementPayload(candidate.payload, index);
     }
     const suppliedEventSource = candidate.event_source === undefined
       ? expectedEventSource
@@ -175,7 +249,7 @@ export function parseIntegrationV2Batch(value: unknown, sourceCode = "bigdata"):
       entity_version: Number(entityVersion),
       correlation_id: correlationId,
       causation_id: causationId,
-      payload: candidate.payload,
+      payload,
     };
   });
 
@@ -222,6 +296,17 @@ export function normalizeIntegrationV2Request(
       if (!isObject(row)) return row;
       const email = firstValue(row, ["email", "mail", "correo"]);
       const eventId = firstValue(row, ["event_id", "id"]) ?? `${idempotencyKey}:${index + 1}`;
+      const deliveryId = firstValue(row, ["delivery_id", "deliveryId"]);
+      const messageId = firstValue(row, ["message_id", "messageId"]);
+      const messageSubject = firstValue(row, ["message_subject", "messageSubject", "subject"]);
+      const eventKind = firstValue(row, ["event_kind", "eventKind"]);
+      const linkUrl = firstValue(row, ["link_url", "linkUrl", "clicked_url"]);
+      const providerEventId = firstValue(row, ["provider_event_id", "providerEventId"]);
+      const companyName = firstValue(row, ["company_name", "companyName"]);
+      const contactName = firstValue(row, ["contact_name", "contactName", "full_name"]);
+      const phone = firstValue(row, ["phone", "telefono", "mobile"]);
+      const country = firstValue(row, ["country", "pais"]);
+      const sourceLeadId = firstValue(row, ["source_lead_id", "sourceLeadId", "lead_id"]);
       return {
         event_id: eventId,
         event_type: "engagement.event.v1",
@@ -237,6 +322,18 @@ export function normalizeIntegrationV2Request(
           clicked: boolish(row.clicked) || boolish(row.click),
           complained: boolish(row.complained) || boolish(row.queja),
           unsubscribed: boolish(row.unsubscribed) || boolish(row.desuscrito),
+          event_semantics: "cumulative_snapshot",
+          ...(deliveryId ? { delivery_id: deliveryId } : {}),
+          ...(messageId ? { message_id: messageId } : {}),
+          ...(messageSubject ? { message_subject: messageSubject } : {}),
+          ...(eventKind ? { event_kind: eventKind } : {}),
+          ...(linkUrl ? { link_url: linkUrl } : {}),
+          ...(providerEventId ? { provider_event_id: providerEventId } : {}),
+          ...(companyName ? { company_name: companyName } : {}),
+          ...(contactName ? { contact_name: contactName } : {}),
+          ...(phone ? { phone } : {}),
+          ...(country ? { country } : {}),
+          ...(sourceLeadId ? { source_lead_id: sourceLeadId } : {}),
         },
       };
     }),

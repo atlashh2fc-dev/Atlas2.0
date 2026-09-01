@@ -20,6 +20,7 @@ export type MailQueueRow = {
   email: string | null;
   assigned_to: string | null;
   assigned_to_name: string | null;
+  team_id?: string | null;
   opened: boolean;
   clicked: boolean;
   last_event_at: string;
@@ -33,7 +34,13 @@ export type MailQueueRow = {
   next_action_at?: string | null;
 };
 
-export type MailControlAgent = { id: string; full_name: string; email: string };
+export type MailControlAgent = {
+  id: string;
+  full_name: string;
+  email: string;
+  team_id: string | null;
+  campaign_ids: string[];
+};
 
 /**
  * Los conteos vienen del mismo read model que alimenta la reportería: no se
@@ -107,6 +114,21 @@ export function MailControlCenter({
 
   const visibleIds = rows.map((row) => row.lead_id);
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
+  const assignmentCampaignIds = [...new Set(
+    rows
+      .filter((row) => (assigningIds ?? []).includes(row.lead_id))
+      .map((row) => row.campaign_id)
+  )];
+  const assignmentTeamIds = [...new Set(
+    rows
+      .filter((row) => (assigningIds ?? []).includes(row.lead_id))
+      .map((row) => row.team_id)
+      .filter((teamId): teamId is string => Boolean(teamId))
+  )];
+  const assignmentAgents = agents.filter((agent) =>
+    assignmentCampaignIds.every((campaignId) => agent.campaign_ids.includes(campaignId))
+    && assignmentTeamIds.every((teamId) => agent.team_id === teamId)
+  );
 
   function toggleLead(leadId: string) {
     setSelectedIds((current) => (current.includes(leadId) ? current.filter((id) => id !== leadId) : [...current, leadId]));
@@ -137,7 +159,7 @@ export function MailControlCenter({
       }
       toast({
         tone: "success",
-        message: result.skipped > 0 ? `${result.ok} leads asignados; ${result.skipped} omitidos.` : `${result.ok} leads asignados correctamente.`,
+        message: `${result.ok} leads asignados correctamente.`,
       });
       setAssigningIds(null);
       setSelectedIds([]);
@@ -319,11 +341,16 @@ export function MailControlCenter({
           Ejecutivo responsable
           <Select value={agentId} onChange={(event) => setAgentId(event.target.value)} data-autofocus className="mt-1.5 w-full">
             <option value="">Selecciona un ejecutivo</option>
-            {agents.map((agent) => (
+            {assignmentAgents.map((agent) => (
               <option key={agent.id} value={agent.id}>{agent.full_name || agent.email}</option>
             ))}
           </Select>
         </label>
+        {assignmentCampaignIds.length > 0 && assignmentAgents.length === 0 && (
+          <p className="mt-3 rounded-md border border-warning/35 bg-warning-bg px-3 py-2 text-xs text-warning">
+            No hay un ejecutivo del mismo equipo habilitado en todas las campañas de la selección. Ajusta el bloque o la membresía de campaña.
+          </p>
+        )}
         <p className="mt-4 text-xs text-muted-foreground">La asignación conserva el historial operativo y actualiza la cola, los registros y el control de equipo.</p>
       </SlideOver>
     </section>

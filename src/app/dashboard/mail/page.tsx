@@ -47,6 +47,8 @@ type AgentOption = {
   id: string;
   full_name: string;
   email: string;
+  team_id: string | null;
+  campaign_ids: string[];
 };
 
 type MailAgentSummary = {
@@ -268,7 +270,7 @@ export default async function MailDashboardPage({
 
   const agentsQuery = supabase
     .from("profiles")
-    .select("id, full_name, email")
+    .select("id, full_name, email, team_id")
     .eq("role", "agente")
     .eq("active", true)
     .order("full_name");
@@ -293,7 +295,8 @@ export default async function MailDashboardPage({
     { data: agentSummaryData, error: agentSummaryError },
     { data: bucketData, error: bucketError },
     queueData,
-    { data: agents },
+    { data: agents, error: agentsError },
+    { data: campaignMemberships, error: campaignMembershipsError },
   ] =
     await Promise.all([
       mailCampaignsQuery,
@@ -314,15 +317,27 @@ export default async function MailDashboardPage({
       }),
       fetchMailOperationalPage(supabase, selectedMailCampaignId, selectedCampaignId, activeBucket, cursor),
       agentsQuery,
+      supabase.from("campaign_agents").select("campaign_id, profile_id"),
     ]);
 
   if (reportError) throw new Error(reportError.message);
   if (agentSummaryError) throw new Error(agentSummaryError.message);
   if (bucketError) throw new Error(bucketError.message);
+  if (agentsError) throw new Error(agentsError.message);
+  if (campaignMembershipsError) throw new Error(campaignMembershipsError.message);
 
   const campaigns = (mailCampaigns ?? []) as MailCampaign[];
   const reports = (reportData ?? []) as MailReportRow[];
-  const queue = queueData.slice(0, MAIL_PAGE_SIZE);
+  const queueLeadIds = [...new Set(queueData.slice(0, MAIL_PAGE_SIZE).map((row) => row.lead_id))];
+  const { data: queueLeadTeams, error: queueLeadTeamsError } = queueLeadIds.length > 0
+    ? await supabase.from("leads").select("id,team_id").in("id", queueLeadIds)
+    : { data: [] as Array<{ id: string; team_id: string | null }>, error: null };
+  if (queueLeadTeamsError) throw new Error(queueLeadTeamsError.message);
+  const teamIdByLead = new Map((queueLeadTeams ?? []).map((lead) => [lead.id, lead.team_id]));
+  const queue = queueData.slice(0, MAIL_PAGE_SIZE).map((row) => ({
+    ...row,
+    team_id: teamIdByLead.get(row.lead_id) ?? null,
+  }));
   const hasMoreQueue = queueData.length > MAIL_PAGE_SIZE;
   const agentSummary = (agentSummaryData ?? []) as MailAgentSummary[];
   const bucketSummary = (bucketData ?? []) as Array<{
@@ -333,7 +348,17 @@ export default async function MailDashboardPage({
     oldest_event_at: string | null;
     nearest_action_at: string | null;
   }>;
-  const agentOptions = (agents ?? []) as AgentOption[];
+  const campaignIdsByAgent = new Map<string, string[]>();
+  for (const membership of campaignMemberships ?? []) {
+    campaignIdsByAgent.set(membership.profile_id, [
+      ...(campaignIdsByAgent.get(membership.profile_id) ?? []),
+      membership.campaign_id,
+    ]);
+  }
+  const agentOptions = (agents ?? []).map((agent) => ({
+    ...agent,
+    campaign_ids: campaignIdsByAgent.get(agent.id) ?? [],
+  })) as AgentOption[];
   const agentSummaryById = new Map(agentSummary.map((row) => [row.agent_id, row]));
   const activeAgentIds = new Set(agentOptions.map((agent) => agent.id));
   const historicalAgentRows = agentSummary.filter((row) => !activeAgentIds.has(row.agent_id));

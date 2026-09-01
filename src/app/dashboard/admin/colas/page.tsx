@@ -116,6 +116,13 @@ export default async function ContactCenterQueuesPage() {
           </Link>
         }
       />
+      <Callout tone="info">
+        Esta vista muestra los recursos ACD configurados; no es el catálogo completo de campañas. Una cola puede estar todavía sin fuentes, y una campaña sólo aparece aquí cuando se conecta explícitamente a una cola. Las campañas se administran desde{" "}
+        <Link href="/dashboard/admin/campanas" className="font-medium text-primary hover:underline">
+          Campañas
+        </Link>
+        .
+      </Callout>
       {(queuesUnavailable || sourcesUnavailable || membersUnavailable) && (
         <Callout tone="warning">
           No fue posible consultar completa la configuración. Los valores no

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import schema from "../../contracts/integration-event-v2.schema.json" with { type: "json" };
 
-export const INTEGRATION_CONTRACT_VERSION = "2.0.0";
+export const INTEGRATION_CONTRACT_VERSION = "2.1.0";
 
 export function canonicalIntegrationContract() {
   return schema;
