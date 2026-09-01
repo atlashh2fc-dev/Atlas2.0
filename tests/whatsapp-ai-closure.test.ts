@@ -14,6 +14,10 @@ const completionMigration = readFileSync(
   new URL("../supabase/migrations/20260826234500_whatsapp_callback_and_customer_goodbye.sql", import.meta.url),
   "utf8",
 );
+const appointmentMigration = readFileSync(
+  new URL("../supabase/migrations/20260901232500_whatsapp_real_appointments_and_agent_takeover.sql", import.meta.url),
+  "utf8",
+);
 const mercury = readFileSync(new URL("../src/lib/mercury-whatsapp.ts", import.meta.url), "utf8");
 const provider = readFileSync(new URL("../src/lib/whatsapp-provider.ts", import.meta.url), "utf8");
 const campaignLoop = readFileSync(new URL("../dialer-engine/src/dialer/campaignLoop.ts", import.meta.url), "utf8");
@@ -48,22 +52,31 @@ test("WhatsApp muestra el indicador nativo de escritura antes de responder", () 
   assert.ok(mercury.indexOf("sendWhatsAppTypingIndicator") < mercury.indexOf("askMercury({"));
 });
 
-test("un agendamiento crea un callback personal real con trazabilidad", () => {
-  assert.match(completionMigration, /create or replace function public\.schedule_whatsapp_callback/);
-  assert.match(completionMigration, /next_action_at = p_scheduled_at/);
-  assert.match(completionMigration, /callback_mode = 'personal'/);
-  assert.match(completionMigration, /workflow_status = 'callback'/);
-  assert.match(completionMigration, /'lead\.callback_scheduled'/);
+test("un agendamiento crea un compromiso omnicanal real con trazabilidad", () => {
+  assert.match(appointmentMigration, /create or replace function public\.schedule_whatsapp_appointment/);
+  assert.match(appointmentMigration, /next_action_at = p_scheduled_at/);
+  assert.match(appointmentMigration, /next_action_channel = p_channel/);
+  assert.match(appointmentMigration, /when p_channel = 'phone' then 'callback' else 'scheduled'/);
+  assert.match(appointmentMigration, /'lead\.appointment_scheduled'/);
+  assert.match(mercury, /schedule_whatsapp_appointment/);
   assert.match(mercury, /admin\.rpc\(rpcName, rpcArgs\)/);
 });
 
 test("la agenda queda visible para el agente responsable y para supervisión", () => {
-  assert.match(completionMigration, /assigned_to = v_agent_id,/);
-  assert.match(completionMigration, /managed_by = v_agent_id,/);
-  assert.match(completionMigration, /next_action_at = p_scheduled_at/);
+  assert.match(appointmentMigration, /assigned_to = v_agent_id,/);
+  assert.match(appointmentMigration, /managed_by = v_agent_id,/);
+  assert.match(appointmentMigration, /next_action_at = p_scheduled_at/);
   assert.match(agentAgenda, /\.eq\("managed_by", profile\.id\)/);
+  assert.match(agentAgenda, /next_action_channel/);
   assert.match(supervisorTeam, /title="Próximas agendas"/);
-  assert.match(supervisorTeam, /<CallbacksPanel/);
+  assert.match(supervisorTeam, /agendaChannelLabel/);
+});
+
+test("el agente asignado puede tomar la atención sin habilitar un control global", () => {
+  assert.match(appointmentMigration, /create or replace function public\.take_over_whatsapp_conversation/);
+  assert.match(appointmentMigration, /v_conversation\.assigned_to is distinct from v_actor_id/);
+  assert.match(appointmentMigration, /profile\.role = 'agente'/);
+  assert.match(appointmentMigration, /'kind', 'agent_takeover'/);
 });
 
 test("la campaña inbound procesa callbacks pero nunca entra al pool masivo", () => {

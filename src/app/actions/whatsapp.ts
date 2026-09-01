@@ -433,6 +433,27 @@ export async function setWhatsAppConversationAiState(_formData: FormData) {
   throw new Error("El modo de IA se controla desde Operación, no desde una conversación.");
 }
 
+export async function takeOverWhatsAppConversation(formData: FormData) {
+  await requireProfile(["agente"]);
+  const conversationId = String(formData.get("conversation_id") ?? "").trim();
+  if (!UUID.test(conversationId)) throw new Error("No se identificó la conversación.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("take_over_whatsapp_conversation", {
+    p_conversation_id: conversationId,
+  });
+  if (error) {
+    if (error.message.includes("assignment_required")) {
+      throw new Error("Solo el ejecutivo asignado puede tomar esta conversación.");
+    }
+    if (error.message.includes("closed")) {
+      throw new Error("La conversación ya está cerrada.");
+    }
+    throw new Error("No se pudo detener la IA y habilitar la atención. Actualiza e intenta nuevamente.");
+  }
+  revalidateWhatsApp(conversationId);
+}
+
 export async function setWhatsAppAutomationEnabled(formData: FormData) {
   await requireProfile(["admin", "supervisor"]);
   const enabled = String(formData.get("enabled") ?? "");

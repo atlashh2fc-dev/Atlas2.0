@@ -6,6 +6,7 @@ import vm from "node:vm";
 import ts from "typescript";
 import * as replySchema from "../src/lib/mercury-whatsapp-schema.ts";
 import * as conversationMemory from "../src/lib/whatsapp-conversation-memory.ts";
+import * as reportRange from "../src/lib/report-range.ts";
 
 const nodeRequire = createRequire(import.meta.url);
 
@@ -15,9 +16,10 @@ async function runAutomation(options: {
   dispatchState?: string; handoff?: boolean; newerMessageAtDispatch?: boolean;
   newerMessageBeforePrepared?: boolean; finished?: boolean; newerMessageAfterSend?: boolean;
   inboundText?: string; automaticAppointmentBooking?: boolean;
-  previousOutboundText?: string;
+  previousOutboundText?: string; previousInboundText?: string;
   generatedHandoffKind?: "none" | "human_requested" | "appointment" | "quote" | "unknown" | "complaint";
   generatedAppointmentAt?: string | null;
+  generatedAppointmentChannel?: "none" | "phone" | "whatsapp" | "video_meeting" | "in_person";
   modelFailure?: boolean;
   memorySummary?: string;
   resumeExpiredHandoff?: boolean;
@@ -33,14 +35,16 @@ async function runAutomation(options: {
   let handoffCompleted = false;
   let closeCalls = 0;
   const rpcCalls: string[] = [];
+  const rpcInputs: Array<{ name: string; args: Record<string, unknown> | undefined }> = [];
   const updates: Array<{ table: string; value: Record<string, unknown> }> = [];
   const client = {
-    async rpc(name: string) {
+    async rpc(name: string, args?: Record<string, unknown>) {
       rpcCalls.push(name);
+      rpcInputs.push({ name, args });
       if (name === "resume_expired_whatsapp_ai_handoff") {
         return { data: options.resumeExpiredHandoff ?? false, error: null };
       }
-      if (name === "handoff_whatsapp_conversation") handoffCompleted = true;
+      if (name === "handoff_whatsapp_conversation" || name === "schedule_whatsapp_appointment") handoffCompleted = true;
       if (name === "close_whatsapp_conversation") closeCalls++;
       return { data: null, error: null };
     },
@@ -89,6 +93,7 @@ async function runAutomation(options: {
         if (table === "whatsapp_messages") {
           const message = { id: "inbound", direction: "inbound", message_type: "text", text_body: options.finished ? "no gracias" : options.inboundText ?? "¿Qué servicios ofrecen?", sent_by: null, created_at: "2026-08-27T15:00:00Z" };
           const previousOutbound = { id: "outbound-before", direction: "outbound", message_type: "text", text_body: options.previousOutboundText, sent_by: null, created_at: "2026-08-27T14:59:00Z" };
+          const previousInbound = { id: "inbound-before", direction: "inbound", message_type: "text", text_body: options.previousInboundText, sent_by: null, created_at: "2026-08-27T14:58:30Z" };
           const resumedGreeting = { id: "resumed-greeting", direction: "outbound", message_type: "text", text_body: "¡Hola! Qué gusto leerte nuevamente. ¿En qué puedo ayudarte hoy?", sent_by: null, created_at: "2026-08-27T14:58:00Z" };
           const greetingInbound = { id: "greeting-inbound", direction: "inbound", message_type: "text", text_body: "Hola", sent_by: null, created_at: "2026-08-27T14:57:00Z" };
           const oldAppointment = { id: "old-appointment", direction: "outbound", message_type: "text", text_body: "Agendaremos la llamada antigua para mañana a las 12:00.", sent_by: null, created_at: "2026-08-20T14:00:00Z" };
@@ -99,7 +104,9 @@ async function runAutomation(options: {
           return { data: columns.includes("created_at")
             ? options.oldAppointmentContext
               ? [message, resumedGreeting, greetingInbound, oldAppointment]
-              : options.previousOutboundText ? [message, previousOutbound] : [message]
+              : options.previousOutboundText || options.previousInboundText
+                ? [message, ...(options.previousOutboundText ? [previousOutbound] : []), ...(options.previousInboundText ? [previousInbound] : [])]
+                : [message]
             : columns === "id" ? { id: latestId }
               : message, error: null };
         }
@@ -111,6 +118,7 @@ async function runAutomation(options: {
   };
   const dependencies: Record<string, unknown> = {
     "./mercury-whatsapp-schema.ts": replySchema,
+    "./report-range.ts": reportRange,
     "./whatsapp-conversation-memory.ts": {
       ...conversationMemory,
       loadWhatsAppConversationMemory: async () => ({
@@ -143,11 +151,11 @@ async function runAutomation(options: {
         return { ok: false, status: 503, json: async () => ({ error: { message: "unavailable" } }) };
       }
       const generatedHandoffKind = options.generatedHandoffKind ?? (options.handoff ? "human_requested" : "none");
-      return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ reply: "Ofrecemos atención comercial.", handoff: options.handoff ?? false, handoff_kind: generatedHandoffKind, handoff_reason: options.handoff ? "Solicita atención humana" : "", appointment_at: options.generatedAppointmentAt ?? null, scope: generatedHandoffKind === "unknown" ? "uncertain" : "in_scope", memory: conversationMemory.EMPTY_WHATSAPP_CONVERSATION_MEMORY }) } }] }) };
+      return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ reply: "Ofrecemos atención comercial.", handoff: options.handoff ?? false, handoff_kind: generatedHandoffKind, handoff_reason: options.handoff ? "Solicita atención humana" : "", appointment_at: options.generatedAppointmentAt ?? null, appointment_channel: options.generatedAppointmentChannel ?? "none", scope: generatedHandoffKind === "unknown" ? "uncertain" : "in_scope", memory: conversationMemory.EMPTY_WHATSAPP_CONVERSATION_MEMORY }) } }] }) };
     },
   });
   const result = await testModule.exports.respondToWhatsAppInbound({ conversationId: "conversation", inboundMessageId: "inbound" });
-  return { result, providerCalls, generatedCalls, configReads, updates, closeCalls, rpcCalls, sentBodies, completionBodies };
+  return { result, providerCalls, generatedCalls, configReads, updates, closeCalls, rpcCalls, rpcInputs, sentBodies, completionBodies };
 }
 
 for (const state of ["handoff", "paused"]) {
@@ -309,7 +317,7 @@ test("Secretaría Virtual deriva una solicitud de agendamiento sin confirmarla a
   assert.equal(run.result.status, "completed");
   assert.equal(run.result.appointmentAt, null);
   assert.ok(run.rpcCalls.includes("handoff_whatsapp_conversation"));
-  assert.ok(!run.rpcCalls.includes("schedule_whatsapp_callback"));
+  assert.ok(!run.rpcCalls.includes("schedule_whatsapp_appointment"));
 });
 
 test("una solicitud natural de llamada también deriva sin prometer que quedó agendada", async () => {
@@ -319,7 +327,7 @@ test("una solicitud natural de llamada también deriva sin prometer que quedó a
   });
   assert.equal(run.result.status, "completed");
   assert.ok(run.rpcCalls.includes("handoff_whatsapp_conversation"));
-  assert.ok(!run.rpcCalls.includes("schedule_whatsapp_callback"));
+  assert.ok(!run.rpcCalls.includes("schedule_whatsapp_appointment"));
   assert.doesNotMatch(run.sentBodies[0], /qued[oó]\s+agend|confirmad[ao]|disponibilidad\s+confirmada/i);
 });
 
@@ -331,6 +339,44 @@ test("un dato de fecha u hora continúa una coordinación y deriva en vez de con
   });
   assert.ok(run.rpcCalls.includes("handoff_whatsapp_conversation"));
   assert.match(run.sentBodies[0], /persona de nuestro equipo.*confirme/i);
+});
+
+test("que me contacte mañana a las 10 crea una agenda WhatsApp real antes de confirmarla", async () => {
+  const run = await runAutomation({
+    inboundText: "Que me contacte mañana a las 10 am",
+    previousInboundText: "Por WhatsApp",
+    automaticAppointmentBooking: true,
+  });
+  assert.equal(run.result.status, "completed");
+  assert.ok(run.result.appointmentAt);
+  assert.ok(run.rpcCalls.includes("schedule_whatsapp_appointment"));
+  const scheduled = run.rpcInputs.find((call) => call.name === "schedule_whatsapp_appointment");
+  assert.equal(scheduled?.args?.p_channel, "whatsapp");
+  assert.equal(scheduled?.args?.p_scheduled_at, run.result.appointmentAt);
+  assert.match(run.sentBodies[0], /qued[oó] asignado en su agenda/i);
+});
+
+test("el bot reúne día y hora en turnos separados antes de crear la agenda", async () => {
+  const run = await runAutomation({
+    previousInboundText: "Necesito que me contacten mañana",
+    previousOutboundText: "¿A qué hora prefieres que te contactemos?",
+    inboundText: "A las 10 am",
+    automaticAppointmentBooking: true,
+  });
+  assert.ok(run.rpcCalls.includes("schedule_whatsapp_appointment"));
+  assert.ok(run.result.appointmentAt);
+});
+
+test("si falta la hora el bot pregunta y no deriva ni promete una cita", async () => {
+  const run = await runAutomation({
+    inboundText: "Que me contacten mañana",
+    automaticAppointmentBooking: true,
+  });
+  assert.equal(run.result.appointmentAt, null);
+  assert.ok(!run.rpcCalls.includes("schedule_whatsapp_appointment"));
+  assert.ok(!run.rpcCalls.includes("handoff_whatsapp_conversation"));
+  assert.match(run.sentBodies[0], /a qu[eé] hora/i);
+  assert.doesNotMatch(run.sentBodies[0], /qued[oó] agend/i);
 });
 
 test("preguntar por la capacidad de coordinar agendas no agenda al propio contacto", async () => {

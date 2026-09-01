@@ -9,6 +9,15 @@ interface AgendaItem {
   id: string;
   full_name: string;
   next_action_at: string;
+  next_action_channel: "phone" | "whatsapp" | "video_meeting" | "in_person" | null;
+  extra: Record<string, unknown> | null;
+}
+
+function agendaChannelLabel(channel: AgendaItem["next_action_channel"]): string {
+  if (channel === "whatsapp") return "WhatsApp";
+  if (channel === "video_meeting") return "Videollamada";
+  if (channel === "in_person") return "Presencial";
+  return "Llamada";
 }
 
 interface AgendaContextValue {
@@ -32,7 +41,7 @@ function useAgendaSubscription(userId: string): AgendaContextValue {
     const supabase = createClient();
     const { data } = await supabase
       .from("leads")
-      .select("id, full_name, next_action_at")
+      .select("id, full_name, next_action_at, next_action_channel, extra")
       .eq("managed_by", userId)
       .not("next_action_at", "is", null)
       .order("next_action_at", { ascending: true })
@@ -128,17 +137,22 @@ export function AgendaBell() {
               )}
               {items.map((i) => {
                 const isOverdue = new Date(i.next_action_at).getTime() <= nowTick;
+                const conversationId = typeof i.extra?.agenda_conversation_id === "string"
+                  ? i.extra.agenda_conversation_id
+                  : null;
                 return (
                   <li key={i.id}>
                     <Link
-                      href={`/dashboard/leads/${i.id}`}
+                      href={i.next_action_channel === "whatsapp" && conversationId
+                        ? `/dashboard/conversaciones?status=all&conversation=${conversationId}`
+                        : `/dashboard/leads/${i.id}`}
                       onClick={() => setOpen(false)}
                       className="block px-4 py-3 hover:bg-surface-muted"
                     >
                       <p className="text-sm font-medium text-foreground">{i.full_name}</p>
                       <p className={`text-xs ${isOverdue ? "font-medium text-danger" : "text-muted-foreground"}`}>
                         {isOverdue ? "Vencida: " : ""}
-                        {new Date(i.next_action_at).toLocaleString("es-CL")}
+                        {agendaChannelLabel(i.next_action_channel)} · {new Date(i.next_action_at).toLocaleString("es-CL")}
                       </p>
                     </Link>
                   </li>

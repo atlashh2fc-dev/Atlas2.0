@@ -7,6 +7,10 @@ const migration = readFileSync(
   "utf8",
 );
 const mercury = readFileSync(new URL("../src/lib/mercury-whatsapp.ts", import.meta.url), "utf8");
+const appointmentMigration = readFileSync(
+  new URL("../supabase/migrations/20260901232500_whatsapp_real_appointments_and_agent_takeover.sql", import.meta.url),
+  "utf8",
+);
 
 test("la nueva guía reemplaza el foco exclusivo en condominios por público general", () => {
   assert.match(migration, /independientes, profesionales, emprendedores, PyMEs, empresas y administradores de condominios/);
@@ -30,9 +34,10 @@ test("el entrenamiento exige respuestas breves, trato adaptado y una sola pregun
   assert.match(migration, /como máximo un emoji ocasional/);
 });
 
-test("agendamientos y cotizaciones quedan protegidos por derivación determinista", () => {
-  assert.match(migration, /automatic_appointment_booking[\s\S]*?false/);
-  assert.match(migration, /appointment_at=null/);
+test("agendamientos crean agenda real y las cotizaciones conservan derivación determinista", () => {
+  assert.match(appointmentMigration, /automatic_appointment_booking = true/);
+  assert.match(appointmentMigration, /Nunca confirmes antes de que Atlas cree la agenda/);
+  assert.match(appointmentMigration, /schedule_whatsapp_appointment/);
   assert.match(mercury, /const quoteRequest/);
   assert.match(mercury, /forcedKind === "quote"/);
   assert.match(mercury, /handoffKind === "appointment" && !automaticAppointmentBooking/);

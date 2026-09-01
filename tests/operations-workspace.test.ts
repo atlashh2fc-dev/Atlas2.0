@@ -157,11 +157,13 @@ test("monitor no consulta ni muta contenido; errores y truncamiento no son cero"
   assert.match(monitor, /Espera ACD en vivo/);
 });
 
-test("IA no es control por conversación: solo control general con alcance y confirmación", () => {
+test("el modo general sigue centralizado y el agente tiene una toma de atención explícita", () => {
   assert.doesNotMatch(
     inbox,
     /setWhatsAppConversationAiState|Tomar control|Reactivar IA/,
   );
+  assert.match(inbox, /takeOverWhatsAppConversation/);
+  assert.match(inbox, /Tomar atención/);
   assert.match(monitor, /action=\{setWhatsAppAutomationEnabled\}/);
   assert.match(monitor, /name="enabled"/);
   assert.match(monitor, /Confirmo el cambio/);

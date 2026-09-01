@@ -234,3 +234,17 @@ test("global automation is denied for agents and invalid input; admin/supervisor
     assert.deepEqual(h.writes, ["rpc:set_whatsapp_automation_enabled"]);
   }
 });
+
+test("solo el agente puede solicitar la toma auditable de su conversación", async () => {
+  const form = new FormData();
+  form.set("conversation_id", conversationId);
+  const agent = harness("agente", agentId, "auto", true);
+  await agent.actions.takeOverWhatsAppConversation(form as never);
+  assert.deepEqual(agent.writes, ["rpc:take_over_whatsapp_conversation"]);
+
+  for (const role of ["admin", "supervisor"] as const) {
+    const h = harness(role, agentId, "auto", true);
+    await assert.rejects(h.actions.takeOverWhatsAppConversation(form as never), /role_denied/);
+    assert.deepEqual(h.writes, []);
+  }
+});

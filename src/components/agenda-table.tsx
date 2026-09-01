@@ -1,7 +1,10 @@
 "use client";
 
-import { Badge, DataTable, type Column } from "@/components/ui";
+import Link from "next/link";
+import { MessageCircle, Video } from "lucide-react";
+import { Badge, DataTable, buttonClasses, type Column } from "@/components/ui";
 import { AgendaCallButton } from "@/components/agenda-call-button";
+import { cn } from "@/lib/utils";
 
 export type AgendaRow = {
   id: string;
@@ -14,6 +17,8 @@ export type AgendaRow = {
   /** El sistema marcará al cliente a la hora acordada y te pasará la llamada. */
   auto: boolean;
   attempts: number;
+  channel: "phone" | "whatsapp" | "video_meeting" | "in_person";
+  conversationId: string | null;
 };
 
 function formatDateTime(iso: string): string {
@@ -24,6 +29,13 @@ function formatDateTime(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function channelLabel(channel: AgendaRow["channel"]): string {
+  if (channel === "whatsapp") return "WhatsApp";
+  if (channel === "video_meeting") return "Videollamada";
+  if (channel === "in_person") return "Presencial";
+  return "Llamada";
 }
 
 const COLUMNS: Column<AgendaRow>[] = [
@@ -48,6 +60,12 @@ const COLUMNS: Column<AgendaRow>[] = [
     ),
   },
   {
+    id: "canal",
+    header: "Canal",
+    value: (row) => channelLabel(row.channel),
+    cell: (row) => <Badge tone={row.channel === "whatsapp" ? "success" : "neutral"}>{channelLabel(row.channel)}</Badge>,
+  },
+  {
     id: "entrega",
     header: "Entrega",
     value: (row) => (row.auto ? "Automática" : "Manual"),
@@ -61,16 +79,32 @@ const COLUMNS: Column<AgendaRow>[] = [
             </span>
           )}
         </span>
-      ) : (
-        <Badge tone="neutral">La llamas tú</Badge>
-      ),
+      ) : <span className="text-xs text-muted-foreground">Lo gestionas tú</span>,
   },
   {
     id: "accion",
     header: "",
     align: "right",
     sortable: false,
-    cell: (row) => <AgendaCallButton leadId={row.id} fullName={row.full_name} />,
+    cell: (row) => row.channel === "phone"
+      ? <AgendaCallButton leadId={row.id} fullName={row.full_name} />
+      : row.channel === "whatsapp" && row.conversationId
+        ? (
+            <Link
+              href={`/dashboard/conversaciones?status=all&conversation=${row.conversationId}`}
+              className={cn(buttonClasses({ variant: "secondary", size: "sm" }), "gap-1.5")}
+            >
+              <MessageCircle size={14} aria-hidden="true" /> Abrir chat
+            </Link>
+          )
+        : (
+            <Link
+              href={`/dashboard/leads/${row.id}`}
+              className={cn(buttonClasses({ variant: "secondary", size: "sm" }), "gap-1.5")}
+            >
+              <Video size={14} aria-hidden="true" /> Ver detalle
+            </Link>
+          ),
   },
 ];
 

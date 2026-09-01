@@ -20,7 +20,7 @@ export default async function MyAgendaPage({
   const leadsQuery = supabase
     .from("leads")
     .select(
-      "id, full_name, rut, phone, next_action_at, tipificacion_actual, callback_mode, callback_attempts, workflow_status, campaigns!leads_campaign_id_fkey(name)"
+      "id, full_name, rut, phone, next_action_at, next_action_channel, extra, tipificacion_actual, callback_mode, callback_attempts, workflow_status, campaigns!leads_campaign_id_fkey(name)",
     )
     .eq("managed_by", profile.id)
     .not("next_action_at", "is", null)
@@ -43,10 +43,17 @@ export default async function MyAgendaPage({
       tipificacion: lead.tipificacion_actual ?? "—",
       next_action_at: lead.next_action_at!,
       overdue: new Date(lead.next_action_at!).getTime() <= now,
-      // Un compromiso personal te llega solo: el discador marca al cliente a la
-      // hora acordada y la llamada te entra a ti.
-      auto: lead.workflow_status === "callback" && (lead.callback_mode ?? "personal") === "personal",
+      // Solo las llamadas telefónicas entran al discador. WhatsApp y reuniones
+      // quedan visibles como compromisos manuales del responsable.
+      auto: (lead.next_action_channel ?? "phone") === "phone"
+        && lead.workflow_status === "callback"
+        && (lead.callback_mode ?? "personal") === "personal",
       attempts: lead.callback_attempts ?? 0,
+      channel: (lead.next_action_channel ?? "phone") as AgendaRow["channel"],
+      conversationId: typeof lead.extra === "object" && lead.extra !== null
+        && typeof (lead.extra as Record<string, unknown>).agenda_conversation_id === "string"
+        ? String((lead.extra as Record<string, unknown>).agenda_conversation_id)
+        : null,
     };
   });
 
@@ -66,9 +73,8 @@ export default async function MyAgendaPage({
       />
 
       <Callout tone="info">
-        A la hora que agendaste, el sistema llama al cliente y la llamada te entra a ti. Para que ocurra tienes que
-        estar conectado y en Disponible; si estás en llamada o en pausa, se reintenta durante los minutos siguientes.
-        También puedes llamar antes con el botón de cada fila.
+        Cada compromiso indica su canal y responsable. Las llamadas telefónicas pueden entrar automáticamente si
+        tienes una extensión y estás Disponible; los seguimientos por WhatsApp abren el chat para que los gestiones tú.
       </Callout>
       {error ? (
         <p className="rounded-lg border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger">

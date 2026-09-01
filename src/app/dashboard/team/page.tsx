@@ -37,6 +37,7 @@ type AgendaLead = {
   id: string;
   full_name: string;
   next_action_at: string | null;
+  next_action_channel: "phone" | "whatsapp" | "video_meeting" | "in_person" | null;
   managed_by: string | null;
   profiles: ProfileEmbed;
 };
@@ -68,6 +69,13 @@ function formatAgendaDateTime(iso: string): string {
     timeStyle: "short",
     timeZone: REPORT_TIME_ZONE,
   });
+}
+
+function agendaChannelLabel(channel: AgendaLead["next_action_channel"]): string {
+  if (channel === "whatsapp") return "WhatsApp";
+  if (channel === "video_meeting") return "Videollamada";
+  if (channel === "in_person") return "Presencial";
+  return "Llamada";
 }
 
 const TEAM_REPORT_WINDOW_DAYS = 180;
@@ -142,11 +150,12 @@ function AgendaTable({
         <Thead>
           <Th>Registro</Th>
           <Th>Ejecutivo</Th>
+          <Th>Canal</Th>
           <Th>Agenda</Th>
           <Th>Reagendar</Th>
         </Thead>
         <Tbody>
-          {rows.length === 0 && <TableEmpty colSpan={4}>{emptyText}</TableEmpty>}
+          {rows.length === 0 && <TableEmpty colSpan={5}>{emptyText}</TableEmpty>}
           {rows.map((lead) => {
             const managerName = one(lead.profiles)?.full_name ?? "—";
             return (
@@ -157,6 +166,7 @@ function AgendaTable({
                   </Link>
                 </Td>
                 <Td muted>{managerName}</Td>
+                <Td muted>{agendaChannelLabel(lead.next_action_channel)}</Td>
                 <Td className={overdue ? "font-medium text-danger" : "text-foreground"}>
                   {overdue ? "Vencida: " : ""}
                   {formatAgendaDateTime(lead.next_action_at!)}
@@ -218,7 +228,7 @@ export default async function TeamPage({
 
   const agendaQuery = supabase
     .from("leads")
-    .select("id, full_name, rut, phone, status, campaign_id, next_action_at, managed_by, profiles!leads_managed_by_fkey(full_name)")
+    .select("id, full_name, rut, phone, status, campaign_id, next_action_at, next_action_channel, managed_by, profiles!leads_managed_by_fkey(full_name)")
     .not("next_action_at", "is", null)
     .order("next_action_at", { ascending: true })
     .limit(100);

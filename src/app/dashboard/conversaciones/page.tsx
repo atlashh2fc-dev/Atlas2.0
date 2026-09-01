@@ -19,6 +19,7 @@ import {
   closeWhatsAppConversation,
   markWhatsAppConversationRead,
   setWhatsAppConversationStatus,
+  takeOverWhatsAppConversation,
 } from "@/app/actions/whatsapp";
 import { WhatsAppAutoRefresh } from "@/components/whatsapp-auto-refresh";
 import { WhatsAppComposer } from "@/components/whatsapp-composer";
@@ -182,6 +183,7 @@ function fieldLabel(value: string) {
 function handoffKindLabel(value: unknown) {
   const labels: Record<string, string> = {
     human_requested: "Solicitó atención humana",
+    agent_takeover: "Atención tomada por el ejecutivo",
     appointment: "Solicitó agendamiento",
     quote: "Solicitó cotización formal",
     unknown: "Requiere confirmación especializada",
@@ -720,11 +722,25 @@ export default async function ConversationsPage({
                 {permissions.canAttendCustomers ? (
                   <div className="border-t border-border bg-surface p-4">
                     {!humanAttentionReady ? (
-                      <p className="mb-2 text-xs text-muted-foreground">
-                        {automationError
-                          ? "No fue posible verificar el modo de atención. Actualiza antes de responder."
-                          : "La IA está atendiendo. La respuesta del ejecutivo se habilita cuando la conversación es derivada a atención humana."}
-                      </p>
+                      <div className="mb-3 flex flex-col gap-3 rounded-lg border border-border bg-surface-muted p-3 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-xs text-muted-foreground">
+                          {automationError
+                            ? "No fue posible verificar el modo de atención. Actualiza antes de responder."
+                            : "La IA está atendiendo este hilo. Puedes tomar la atención ahora; la IA dejará de responder y se habilitará el editor."}
+                        </p>
+                        {!automationError && selected.ai_state === "auto" && (
+                          <ActionForm
+                            action={takeOverWhatsAppConversation}
+                            success="Atención tomada"
+                            className="shrink-0"
+                          >
+                            <input type="hidden" name="conversation_id" value={selected.id} />
+                            <ActionSubmit pendingLabel="Tomando atención…" className="min-h-11 w-full sm:w-auto">
+                              <UserRound size={15} aria-hidden="true" /> Tomar atención
+                            </ActionSubmit>
+                          </ActionForm>
+                        )}
+                      </div>
                     ) : (
                       channel?.status !== "active" && (
                         <p className="mb-2 text-xs text-warning">

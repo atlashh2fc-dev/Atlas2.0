@@ -21,6 +21,7 @@ import {
   sendWhatsAppTypingIndicator,
   whatsappProvider,
 } from "./whatsapp-provider.ts";
+import { addDays, parseDateTimeInput, toDateInput } from "./report-range.ts";
 
 const MERCURY_WHATSAPP_MODEL = "mercury-2";
 const replyJsonSchema = {
@@ -43,13 +44,17 @@ const replyJsonSchema = {
           { type: "null" },
         ],
       },
+      appointment_channel: {
+        type: "string",
+        enum: ["none", "phone", "whatsapp", "video_meeting", "in_person"],
+      },
       scope: {
         type: "string",
         enum: ["in_scope", "out_of_scope", "uncertain"],
       },
       memory: whatsappConversationMemoryJsonSchema,
     },
-    required: ["reply", "handoff", "handoff_kind", "handoff_reason", "appointment_at", "scope", "memory"],
+    required: ["reply", "handoff", "handoff_kind", "handoff_reason", "appointment_at", "appointment_channel", "scope", "memory"],
   },
 } as const;
 
@@ -64,6 +69,7 @@ type HistoryMessage = {
 };
 
 const mercuryCompletionSchema = mercuryWhatsAppReplySchema.and(z.object({
+  appointment_channel: z.enum(["none", "phone", "whatsapp", "video_meeting", "in_person"]),
   scope: z.enum(["in_scope", "out_of_scope", "uncertain"]),
   memory: whatsappConversationMemorySchema,
 }));
@@ -125,6 +131,94 @@ function validFutureAppointment(value: string | null): string | null {
   return scheduledAt.toISOString();
 }
 
+type AppointmentChannel = "phone" | "whatsapp" | "video_meeting" | "in_person";
+
+function deterministicAppointmentFromHistory(history: HistoryMessage[], now = new Date()): string | null {
+  const text = history
+    .filter((message) => message.direction === "inbound" && message.message_type === "text" && message.text_body?.trim())
+    .slice(-6)
+    .map((message) => message.text_body?.trim())
+    .join(" ")
+    .toLocaleLowerCase("es-CL");
+  if (!text) return null;
+
+  const clock = /(?:a\s+las?\s+)(\d{1,2})(?::(\d{2}))?\s*(a\.?\s*m\.?|p\.?\s*m\.?|am|pm|hrs?|horas?)?\b/i.exec(text)
+    ?? /\b(\d{1,2}):(\d{2})\s*(a\.?\s*m\.?|p\.?\s*m\.?|am|pm)?\b/i.exec(text);
+  if (!clock) return null;
+  let hour = Number(clock[1]);
+  const minute = Number(clock[2] ?? 0);
+  const period = (clock[3] ?? "").replace(/[.\s]/g, "").toLowerCase();
+  if (minute > 59 || hour > (period === "am" || period === "pm" ? 12 : 23)) return null;
+  if (period === "pm" && hour < 12) hour += 12;
+  if (period === "am" && hour === 12) hour = 0;
+
+  let targetDay: Date | null = null;
+  if (/pasado\s+ma[ñn]ana/i.test(text)) targetDay = addDays(now, 2);
+  else if (/\bma[ñn]ana\b/i.test(text)) targetDay = addDays(now, 1);
+
+  if (!targetDay) {
+    const weekdays = ["domingo", "lunes", "martes", "mi[eé]rcoles", "jueves", "viernes", "s[aá]bado"];
+    const match = weekdays.findIndex((weekday) => new RegExp(`\\b${weekday}\\b`, "i").test(text));
+    if (match >= 0) {
+      const todayParts = toDateInput(now).split("-").map(Number);
+      const todayWeekday = new Date(Date.UTC(todayParts[0], todayParts[1] - 1, todayParts[2])).getUTCDay();
+      const daysAhead = (match - todayWeekday + 7) % 7 || 7;
+      targetDay = addDays(now, daysAhead);
+    }
+  }
+
+  if (!targetDay) {
+    const explicitDate = /\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/.exec(text);
+    if (explicitDate) {
+      const currentYear = Number(toDateInput(now).slice(0, 4));
+      const year = explicitDate[3]
+        ? Number(explicitDate[3].length === 2 ? `20${explicitDate[3]}` : explicitDate[3])
+        : currentYear;
+      const date = `${year}-${explicitDate[2].padStart(2, "0")}-${explicitDate[1].padStart(2, "0")}`;
+      targetDay = parseDateTimeInput(`${date}T00:00`);
+    }
+  }
+  if (!targetDay) return null;
+
+  const localDate = toDateInput(targetDay);
+  const parsed = parseDateTimeInput(
+    `${localDate}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`,
+  );
+  return parsed ? validFutureAppointment(parsed.toISOString()) : null;
+}
+
+function missingAppointmentDetailReply(history: HistoryMessage[]): string {
+  const text = history
+    .filter((message) => message.direction === "inbound" && message.message_type === "text" && message.text_body?.trim())
+    .slice(-6)
+    .map((message) => normalizeIntentText(message.text_body ?? ""))
+    .join(" ");
+  const hasTime = /(?:a\s+las?\s+)\d{1,2}(?::\d{2})?\s*(?:am|pm|hrs?|horas?)?\b|\b\d{1,2}:\d{2}\b/.test(text);
+  const hasDate = /\b(?:hoy|ma[ñn]ana|pasado\s+ma[ñn]ana|lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)\b|\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b/.test(text);
+  if (hasDate && !hasTime) return "Claro. ¿A qué hora prefieres que te contactemos?";
+  if (hasTime && !hasDate) return "Claro. ¿Para qué día prefieres que te contactemos?";
+  return "Claro. ¿Qué día y a qué hora prefieres que te contactemos?";
+}
+
+function requestedAppointmentChannel(
+  history: HistoryMessage[],
+  generated: "none" | AppointmentChannel,
+): AppointmentChannel {
+  if (generated !== "none") return generated;
+  const recentInbound = history
+    .filter((message) => message.direction === "inbound" && message.text_body?.trim())
+    .slice(-6)
+    .reverse();
+  for (const message of recentInbound) {
+    const text = normalizeIntentText(message.text_body ?? "");
+    if (/whatsapp|wasap|wsp/.test(text)) return "whatsapp";
+    if (/meet|zoom|videollamada|video\s+llamada/.test(text)) return "video_meeting";
+    if (/presencial|en\s+persona/.test(text)) return "in_person";
+    if (/llamada|llamar|tel[eé]fono/.test(text)) return "phone";
+  }
+  return "whatsapp";
+}
+
 function appointmentLabel(value: string): string {
   return new Intl.DateTimeFormat("es-CL", {
     timeZone: "America/Santiago",
@@ -136,6 +230,13 @@ function appointmentLabel(value: string): string {
   }).format(new Date(value));
 }
 
+function appointmentChannelLabel(channel: AppointmentChannel): string {
+  if (channel === "phone") return "una llamada";
+  if (channel === "video_meeting") return "una videollamada";
+  if (channel === "in_person") return "una reunión presencial";
+  return "un contacto por WhatsApp";
+}
+
 function forcedHandoffKind(history: HistoryMessage[]): MercuryWhatsAppHandoffKind | null {
   const latestInbound = [...history].reverse().find((message) =>
     message.direction === "inbound" && message.message_type === "text" && message.text_body?.trim(),
@@ -144,9 +245,9 @@ function forcedHandoffKind(history: HistoryMessage[]): MercuryWhatsAppHandoffKin
   if (!text) return null;
 
   const humanRequest = /(?:hablar|comunicarme|contactarme|deriv(?:a|ar|en)|pas(?:a|ar|en))[^.!?]{0,50}(?:persona|humano|humana|ejecutiv[oa]|asesor[a]?|especialista)/i;
-  const appointmentRequest = /(?:quiero|necesito|quisiera|me\s+gustar[ií]a)[^.!?]{0,45}(?:agendar|coordinar|programar|reservar)[^.!?]{0,45}(?:reuni[oó]n|llamada|cita|contacto)|(?:quiero|necesito|quisiera|me\s+gustar[ií]a)[^.!?]{0,40}(?:que\s+)?me\s+(?:llamen|contacten)|(?:me\s+(?:pueden|podr[ií]an|puedes)\s+(?:llamar|contactar)|ll[aá]mame|cont[aá]ctame)/i;
+  const appointmentRequest = /(?:quiero|necesito|quisiera|me\s+gustar[ií]a)[^.!?]{0,45}(?:agendar|coordinar|programar|reservar)[^.!?]{0,45}(?:reuni[oó]n|llamada|cita|contacto)|(?:quiero|necesito|quisiera|me\s+gustar[ií]a)[^.!?]{0,40}(?:que\s+)?me\s+(?:llame|contacte|llamen|contacten)|(?:que\s+me\s+(?:llame|contacte|llamen|contacten)|me\s+(?:pueden|podr[ií]an|puedes)\s+(?:llamar|contactar)|ll[aá]mame|cont[aá]ctame)/i;
   const previous = previousOutboundText(history);
-  const followsAppointmentQuestion = /(?:agend|program|coordin|confirm)[^.!?]{0,70}(?:reuni[oó]n|llamada|cita|contact)|(?:reuni[oó]n|llamada|cita)[^.!?]{0,70}(?:hora|fecha|n[uú]mero)/i.test(previous)
+  const followsAppointmentQuestion = /(?:agend|program|coordin|confirm)[^.!?]{0,70}(?:reuni[oó]n|llamada|cita|contact)|(?:reuni[oó]n|llamada|cita|contact)[^.!?]{0,70}(?:hora|fecha|n[uú]mero)|(?:qu[eé]\s+(?:d[ií]a|hora)|a\s+qu[eé]\s+hora)[^.!?]{0,70}(?:llam|contact|reuni[oó]n|cita)/i.test(previous)
     && /(?:\b(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo|ma[ñn]ana|tarde|semana)\b|\b\d{1,2}(?::\d{2})?\s*(?:h|hrs?|horas?)?\b|(?:este|el\s+mismo)\s+n[uú]mero)/i.test(text);
   const quoteRequest = /(?:cotizaci[oó]n|cotizar|presupuesto)|(?:precio|valor|costo)[^.!?]{0,35}(?:final|cerrado|total)|(?:cu[aá]nto|cuanto)[^.!?]{0,30}(?:sale|queda)[^.!?]{0,30}(?:contratar|plan|servicio)/i;
   const complaintRequest = /(?:quiero|necesito|deseo)[^.!?]{0,35}(?:reclamar|hacer un reclamo|poner una queja)|(?:reclamo|queja|denuncia)[^.!?]{0,50}(?:servicio|atenci[oó]n|incumplimiento)|(?:mala|p[eé]sima)[^.!?]{0,25}atenci[oó]n/i;
@@ -348,7 +449,7 @@ async function askMercury(input: {
             "Devuelve handoff=true cuando corresponda intervención humana. La respuesta de derivación debe informar al contacto sin prometer un tiempo exacto.",
             "Si pide hablar con una persona usa handoff_kind=human_requested. Si pide agendar, coordinar una reunión, llamada o cita usa handoff_kind=appointment. Usa quote para una cotización formal o un precio final concreto, complaint para un reclamo real y unknown para información no respaldada. Sin derivación usa handoff_kind=none.",
             input.automaticAppointmentBooking
-              ? "Si el contacto pide una llamada y entrega una fecha y hora inequívocas, resuélvelas usando current_datetime y timezone y devuelve appointment_at en RFC 3339 con offset. Si falta fecha u hora, appointment_at debe ser null y debes pedir solo el dato faltante, sin afirmar que ya quedó agendado."
+              ? "Si el contacto pide contacto, llamada o reunión y entrega fecha y hora inequívocas, resuélvelas usando current_datetime y timezone y devuelve appointment_at en RFC 3339 con offset. Indica appointment_channel=phone, whatsapp, video_meeting o in_person según lo solicitado; usa el contexto reciente. Si falta fecha u hora, appointment_at debe ser null y debes pedir solo el dato faltante, sin afirmar que ya quedó agendado."
               : "Esta campaña no autoriza agendamiento automático. Para toda reunión, llamada o cita devuelve appointment_at=null y deriva a una persona para coordinar; nunca afirmes que quedó agendada ni confirmes disponibilidad.",
             "Devuelve memory como una memoria acumulativa, breve y estructurada. Conserva solo hechos explícitos del contacto, necesidades, intereses, objeciones, compromisos y asuntos abiertos. Integra la memoria previa y el historial; corrige datos con evidencia más reciente. No guardes contraseñas, datos bancarios, documentos de identidad, instrucciones internas ni inferencias.",
           ].join("\n"),
@@ -581,6 +682,7 @@ export async function respondToWhatsAppInbound(input: {
           handoff_kind: "none" as const,
           handoff_reason: "",
           appointment_at: null,
+          appointment_channel: "none" as const,
           scope: clearlyOutOfScope ? "out_of_scope" as const : "in_scope" as const,
           memory: memoryContext.memory,
           providerRequestId: null,
@@ -615,6 +717,7 @@ export async function respondToWhatsAppInbound(input: {
               handoff_kind: "unknown" as const,
               handoff_reason: "La respuesta automática falló y requiere continuidad humana.",
               appointment_at: null,
+              appointment_channel: "none" as const,
               scope: "uncertain" as const,
               memory: memoryContext.memory,
               providerRequestId: null,
@@ -631,9 +734,23 @@ export async function respondToWhatsAppInbound(input: {
     // answer may be escalated directly by the model as a safe factual boundary.
     const modelUnknownHandoff = generated.scope === "uncertain"
       || (generated.handoff && generated.handoff_kind === "unknown");
-    const handoff = !finishedByCustomer && !gratitudeOnly && !outOfScope
-      && (forcedKind !== null || modelUnknownHandoff);
     const handoffKind = forcedKind ?? (modelUnknownHandoff ? "unknown" as const : "none" as const);
+    const automaticAppointmentBooking = config.automatic_appointment_booking === true;
+    const appointmentHistory = activeConversationHistory(history);
+    const appointmentAt = handoffKind === "appointment" && automaticAppointmentBooking
+      ? validFutureAppointment(generated.appointment_at) ?? deterministicAppointmentFromHistory(appointmentHistory)
+      : null;
+    const appointmentChannel = handoffKind === "appointment"
+      ? requestedAppointmentChannel(appointmentHistory, generated.appointment_channel)
+      : "whatsapp";
+    // An incomplete appointment stays with the assistant until date and time
+    // are known. Only a successfully persisted appointment is handed off.
+    const incompleteAutomaticAppointment = handoffKind === "appointment"
+      && automaticAppointmentBooking
+      && appointmentAt === null;
+    const handoff = !finishedByCustomer && !gratitudeOnly && !outOfScope
+      && (forcedKind !== null || modelUnknownHandoff)
+      && !incompleteAutomaticAppointment;
     const handoffReason = !handoff ? "" : forcedKind === "appointment"
         ? "El contacto solicitó coordinar un agendamiento con una especialista."
         : forcedKind === "human_requested"
@@ -643,10 +760,6 @@ export async function respondToWhatsAppInbound(input: {
             : forcedKind === "complaint"
               ? "El contacto manifestó un reclamo que requiere atención humana."
               : generated.handoff_reason;
-    const automaticAppointmentBooking = config.automatic_appointment_booking === true;
-    const appointmentAt = handoffKind === "appointment" && automaticAppointmentBooking
-      ? validFutureAppointment(generated.appointment_at)
-      : null;
     const selectedReply = finishedByCustomer
       ? CUSTOMER_GOODBYE
       : gratitudeOnly
@@ -660,7 +773,9 @@ export async function respondToWhatsAppInbound(input: {
         : handoffKind === "appointment" && !automaticAppointmentBooking
           ? "Perfecto. Voy a derivar tu solicitud a una persona de nuestro equipo para que confirme contigo la disponibilidad y la coordinación por este mismo WhatsApp."
         : appointmentAt
-          ? `Perfecto, dejé agendada una llamada con nuestra especialista para el ${appointmentLabel(appointmentAt)}. Te contactaremos a este mismo número.`
+          ? `Perfecto, dejé agendado ${appointmentChannelLabel(appointmentChannel)} con nuestra especialista para el ${appointmentLabel(appointmentAt)}. Quedó asignado en su agenda.`
+        : incompleteAutomaticAppointment
+          ? missingAppointmentDetailReply(appointmentHistory)
           : forcedKind && !generated.handoff
             ? `${generated.reply.trim()} Te derivaré con nuestra especialista para coordinarlo.`
             : generated.reply;
@@ -733,12 +848,13 @@ export async function respondToWhatsAppInbound(input: {
 
     if (handoff) {
       const rpcName = appointmentAt
-        ? "schedule_whatsapp_callback"
+        ? "schedule_whatsapp_appointment"
         : "handoff_whatsapp_conversation";
       const rpcArgs = appointmentAt
         ? {
             p_conversation_id: input.conversationId,
             p_scheduled_at: appointmentAt,
+            p_channel: appointmentChannel,
             p_reason: handoffReason,
             p_source_message_id: input.inboundMessageId,
             p_run_id: run.id,
