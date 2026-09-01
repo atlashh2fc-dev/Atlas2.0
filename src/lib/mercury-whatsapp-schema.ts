@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-export const MAX_MERCURY_WHATSAPP_REPLY_LENGTH = 2000;
+// A WhatsApp answer must feel like a turn in a conversation, not a brochure.
+export const MAX_MERCURY_WHATSAPP_REPLY_LENGTH = 420;
 
 export const mercuryWhatsAppHandoffKindSchema = z.enum([
   "none",

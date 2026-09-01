@@ -5,6 +5,7 @@ import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
 import * as replySchema from "../src/lib/mercury-whatsapp-schema.ts";
+import * as conversationMemory from "../src/lib/whatsapp-conversation-memory.ts";
 
 const nodeRequire = createRequire(import.meta.url);
 
@@ -16,8 +17,12 @@ async function runAutomation(options: {
   inboundText?: string; automaticAppointmentBooking?: boolean;
   generatedHandoffKind?: "none" | "human_requested" | "appointment" | "quote" | "unknown" | "complaint";
   generatedAppointmentAt?: string | null;
+  modelFailure?: boolean;
+  memorySummary?: string;
 } = {}) {
   let providerCalls = 0;
+  const sentBodies: string[] = [];
+  const completionBodies: string[] = [];
   let generatedCalls = 0;
   let configReads = 0;
   let conversationReads = 0;
@@ -93,11 +98,22 @@ async function runAutomation(options: {
   };
   const dependencies: Record<string, unknown> = {
     "./mercury-whatsapp-schema.ts": replySchema,
+    "./whatsapp-conversation-memory.ts": {
+      ...conversationMemory,
+      loadWhatsAppConversationMemory: async () => ({
+        memory: {
+          ...conversationMemory.EMPTY_WHATSAPP_CONVERSATION_MEMORY,
+          summary: options.memorySummary ?? "",
+        },
+        messages: [],
+      }),
+      saveWhatsAppConversationMemory: async () => {},
+    },
     "./supabase/admin.ts": { createAdminClient: () => client },
     "./whatsapp-provider.ts": {
       whatsappProvider: () => "test",
       sendWhatsAppTypingIndicator: async () => {},
-      sendWhatsAppText: async () => { providerCalls++; return { provider: "test", providerMessageId: "fake", payload: {} }; },
+      sendWhatsAppText: async (input: { body: string }) => { providerCalls++; sentBodies.push(input.body); return { provider: "test", providerMessageId: "fake", payload: {} }; },
     },
   };
   const source = readFileSync(new URL("../src/lib/mercury-whatsapp.ts", import.meta.url), "utf8");
@@ -107,14 +123,18 @@ async function runAutomation(options: {
     module: testModule, exports: testModule.exports, console, Date, Intl, AbortSignal,
     process: { env: { INCEPTION_API_KEY: "local-test-only" } },
     require: (name: string) => name in dependencies ? dependencies[name] : nodeRequire(name),
-    fetch: async () => {
+    fetch: async (_url: string, init?: { body?: string }) => {
       generatedCalls++;
+      if (init?.body) completionBodies.push(init.body);
+      if (options.modelFailure) {
+        return { ok: false, status: 503, json: async () => ({ error: { message: "unavailable" } }) };
+      }
       const generatedHandoffKind = options.generatedHandoffKind ?? (options.handoff ? "human_requested" : "none");
-      return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ reply: "Ofrecemos atención comercial.", handoff: options.handoff ?? false, handoff_kind: generatedHandoffKind, handoff_reason: options.handoff ? "Solicita atención humana" : "", appointment_at: options.generatedAppointmentAt ?? null }) } }] }) };
+      return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ reply: "Ofrecemos atención comercial.", handoff: options.handoff ?? false, handoff_kind: generatedHandoffKind, handoff_reason: options.handoff ? "Solicita atención humana" : "", appointment_at: options.generatedAppointmentAt ?? null, memory: conversationMemory.EMPTY_WHATSAPP_CONVERSATION_MEMORY }) } }] }) };
     },
   });
   const result = await testModule.exports.respondToWhatsAppInbound({ conversationId: "conversation", inboundMessageId: "inbound" });
-  return { result, providerCalls, generatedCalls, configReads, updates, closeCalls, rpcCalls };
+  return { result, providerCalls, generatedCalls, configReads, updates, closeCalls, rpcCalls, sentBodies, completionBodies };
 }
 
 for (const state of ["handoff", "paused"]) {
@@ -165,10 +185,61 @@ for (const options of [{ dispatchEnabled: false }, { dispatchState: "handoff" },
 }
 
 test("AI may deliver the handoff confirmation after its own routing, without reclaiming ownership", async () => {
-  const run = await runAutomation({ handoff: true });
+  const run = await runAutomation({ handoff: true, inboundText: "Quiero hablar con una persona" });
   assert.equal(run.result.status, "completed");
   assert.equal(run.providerCalls, 1);
   assert.ok(run.updates.filter((item) => item.table === "whatsapp_conversations").every((item) => !("ai_state" in item.value)));
+});
+
+test("ofrecer ayuda humana no deriva si el contacto no la pidió", async () => {
+  const run = await runAutomation({
+    handoff: true,
+    generatedHandoffKind: "human_requested",
+    inboundText: "Me interesa entender mejor el servicio",
+  });
+  assert.equal(run.result.status, "completed");
+  assert.ok(!run.rpcCalls.includes("handoff_whatsapp_conversation"));
+  assert.equal(run.providerCalls, 1);
+});
+
+test("una consulta amplia recibe divulgación progresiva y no un folleto", async () => {
+  const run = await runAutomation({
+    inboundText: "Vi una publicación de una secretaria virtual y quiero información",
+  });
+  assert.equal(run.result.status, "completed");
+  assert.equal(run.generatedCalls, 0);
+  assert.equal(run.sentBodies.length, 1);
+  assert.ok(run.sentBodies[0].length <= 420);
+  assert.match(run.sentBodies[0], /ejecutiva real atiende tus llamadas o WhatsApp/i);
+  assert.doesNotMatch(run.sentBodies[0], /1 UF|módulos|PyMEs|CRM/);
+  assert.ok(!run.rpcCalls.includes("handoff_whatsapp_conversation"));
+});
+
+test("la pregunta concreta sobre qué hace responde solo funciones", async () => {
+  const run = await runAutomation({ inboundText: "Pero que hace la secretaria ?" });
+  assert.equal(run.result.status, "completed");
+  assert.equal(run.generatedCalls, 0);
+  assert.match(run.sentBodies[0], /toma los datos y el motivo/i);
+  assert.doesNotMatch(run.sentBodies[0], /1 UF|módulos|PyMEs|CRM/);
+});
+
+test("Mercury recibe la memoria acumulada para continuar sin volver a preguntar", async () => {
+  const run = await runAutomation({
+    inboundText: "¿Y WhatsApp?",
+    memorySummary: "La persona administra una consulta dental y necesita cubrir 20 contactos diarios.",
+  });
+  assert.equal(run.result.status, "completed");
+  assert.equal(run.generatedCalls, 1);
+  assert.match(run.completionBodies[0], /consulta dental/);
+  assert.match(run.completionBodies[0], /20 contactos diarios/);
+});
+
+test("un fallo del modelo deriva con una confirmación y no deja al contacto en silencio", async () => {
+  const run = await runAutomation({ modelFailure: true });
+  assert.equal(run.result.status, "completed");
+  assert.equal(run.providerCalls, 1);
+  assert.ok(run.rpcCalls.includes("handoff_whatsapp_conversation"));
+  assert.match(run.sentBodies[0], /no pude procesarlo correctamente/i);
 });
 
 test("Secretaría Virtual deriva una solicitud de agendamiento sin confirmarla automáticamente", async () => {
