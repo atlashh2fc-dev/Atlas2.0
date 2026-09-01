@@ -13,6 +13,9 @@ async function runAutomation(options: {
   currentState?: string; controlError?: boolean; dispatchEnabled?: boolean;
   dispatchState?: string; handoff?: boolean; newerMessageAtDispatch?: boolean;
   newerMessageBeforePrepared?: boolean; finished?: boolean; newerMessageAfterSend?: boolean;
+  inboundText?: string; automaticAppointmentBooking?: boolean;
+  generatedHandoffKind?: "none" | "human_requested" | "appointment" | "quote" | "unknown" | "complaint";
+  generatedAppointmentAt?: string | null;
 } = {}) {
   let providerCalls = 0;
   let generatedCalls = 0;
@@ -21,9 +24,11 @@ async function runAutomation(options: {
   let latestMessageId = "inbound";
   let handoffCompleted = false;
   let closeCalls = 0;
+  const rpcCalls: string[] = [];
   const updates: Array<{ table: string; value: Record<string, unknown> }> = [];
   const client = {
     async rpc(name: string) {
+      rpcCalls.push(name);
       if (name === "handoff_whatsapp_conversation") handoffCompleted = true;
       if (name === "close_whatsapp_conversation") closeCalls++;
       return { data: null, error: null };
@@ -67,10 +72,11 @@ async function runAutomation(options: {
             enabled: configReads === 1 ? options.initialEnabled ?? true
               : configReads >= 3 ? options.dispatchEnabled ?? true : options.currentEnabled ?? true,
             system_prompt: "Prueba", max_history_messages: 24,
+            automatic_appointment_booking: options.automaticAppointmentBooking ?? true,
           }, error: configReads > 1 && options.controlError ? { message: "unavailable" } : null };
         }
         if (table === "whatsapp_messages") {
-          const message = { id: "inbound", direction: "inbound", message_type: "text", text_body: options.finished ? "no gracias" : "¿Qué servicios ofrecen?", created_at: "2026-08-27T15:00:00Z" };
+          const message = { id: "inbound", direction: "inbound", message_type: "text", text_body: options.finished ? "no gracias" : options.inboundText ?? "¿Qué servicios ofrecen?", created_at: "2026-08-27T15:00:00Z" };
           const latestId = (conversationReads >= 3 && (options.newerMessageAtDispatch
             || (options.newerMessageBeforePrepared && excludedId === latestMessageId)))
             || (providerCalls > 0 && options.newerMessageAfterSend) ? "new-inbound"
@@ -96,18 +102,19 @@ async function runAutomation(options: {
   };
   const source = readFileSync(new URL("../src/lib/mercury-whatsapp.ts", import.meta.url), "utf8");
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } });
-  const testModule = { exports: {} as { respondToWhatsAppInbound: (input: { conversationId: string; inboundMessageId: string }) => Promise<{ status: string; closed?: boolean }> } };
+  const testModule = { exports: {} as { respondToWhatsAppInbound: (input: { conversationId: string; inboundMessageId: string }) => Promise<{ status: string; closed?: boolean; appointmentAt?: string | null }> } };
   vm.runInNewContext(compiled.outputText, {
     module: testModule, exports: testModule.exports, console, Date, Intl, AbortSignal,
     process: { env: { INCEPTION_API_KEY: "local-test-only" } },
     require: (name: string) => name in dependencies ? dependencies[name] : nodeRequire(name),
     fetch: async () => {
       generatedCalls++;
-      return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ reply: "Ofrecemos atención comercial.", handoff: options.handoff ?? false, handoff_kind: options.handoff ? "human_requested" : "none", handoff_reason: options.handoff ? "Solicita atención humana" : "", appointment_at: null }) } }] }) };
+      const generatedHandoffKind = options.generatedHandoffKind ?? (options.handoff ? "human_requested" : "none");
+      return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ reply: "Ofrecemos atención comercial.", handoff: options.handoff ?? false, handoff_kind: generatedHandoffKind, handoff_reason: options.handoff ? "Solicita atención humana" : "", appointment_at: options.generatedAppointmentAt ?? null }) } }] }) };
     },
   });
   const result = await testModule.exports.respondToWhatsAppInbound({ conversationId: "conversation", inboundMessageId: "inbound" });
-  return { result, providerCalls, generatedCalls, configReads, updates, closeCalls };
+  return { result, providerCalls, generatedCalls, configReads, updates, closeCalls, rpcCalls };
 }
 
 for (const state of ["handoff", "paused"]) {
@@ -162,6 +169,26 @@ test("AI may deliver the handoff confirmation after its own routing, without rec
   assert.equal(run.result.status, "completed");
   assert.equal(run.providerCalls, 1);
   assert.ok(run.updates.filter((item) => item.table === "whatsapp_conversations").every((item) => !("ai_state" in item.value)));
+});
+
+test("Secretaría Virtual deriva una solicitud de agendamiento sin confirmarla automáticamente", async () => {
+  const run = await runAutomation({
+    inboundText: "Quiero agendar una llamada mañana a las 15:00",
+    automaticAppointmentBooking: false,
+    handoff: true,
+    generatedHandoffKind: "appointment",
+    generatedAppointmentAt: "2026-09-03T15:00:00-04:00",
+  });
+  assert.equal(run.result.status, "completed");
+  assert.equal(run.result.appointmentAt, null);
+  assert.ok(run.rpcCalls.includes("handoff_whatsapp_conversation"));
+  assert.ok(!run.rpcCalls.includes("schedule_whatsapp_callback"));
+});
+
+test("una cotización formal se deriva aunque el proveedor no active el handoff", async () => {
+  const run = await runAutomation({ inboundText: "Quiero una cotización formal para contratar" });
+  assert.equal(run.result.status, "completed");
+  assert.ok(run.rpcCalls.includes("handoff_whatsapp_conversation"));
 });
 
 test("a new inbound after delivery prevents an automatic close and is reported as not closed", async () => {
