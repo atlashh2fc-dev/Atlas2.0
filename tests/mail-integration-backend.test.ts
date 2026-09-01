@@ -6,6 +6,10 @@ const migration = readFileSync(
   "supabase/migrations/20260901161832_native_atlas_lead_mail_operations.sql",
   "utf8",
 );
+const serviceRoleMigration = readFileSync(
+  "supabase/migrations/20260901230000_support_service_role_jwt_claims.sql",
+  "utf8",
+);
 
 function functionBody(name: string, nextMarker: string) {
   const start = migration.indexOf(`create or replace function public.${name}`);
@@ -83,8 +87,24 @@ test("roster firmado sólo materializa tras mapping Atlas Lead explícito", () =
   assert.match(roster, /pg_advisory_xact_lock/);
   assert.match(roster, /on conflict \(source_id, campaign_id, external_key\)/);
   assert.match(roster, /v_routing_team_id/);
+  assert.match(roster, /leads_dedup_phone_idx/);
+  assert.match(roster, /v_matched_by := 'unique_phone_roster'/);
+  assert.match(roster, /regexp_replace\(lead\.phone, '\[\^0-9\]', '', 'g'\)/);
+  assert.match(roster, /other\.id <> v_lead_id/);
   assert.match(migration, /item\.payload->>'event_kind'\), ''\) = 'sent'/);
   assert.match(migration, /join public\.integration_sources source[\s\S]*source\.code = 'atlas_lead'/);
+});
+
+test("migración correctiva conserva la misma materialización nativa por teléfono", () => {
+  const correction = readFileSync(
+    "supabase/migrations/20260901231500_reuse_existing_mail_roster_phone_identity.sql",
+    "utf8",
+  );
+  assert.match(correction, /^begin;/m);
+  assert.match(correction, /create or replace function public\.materialize_atlas_lead_mail_roster_item/);
+  assert.match(correction, /v_matched_by := 'unique_phone_roster'/);
+  assert.match(correction, /'matched_by', v_matched_by/);
+  assert.match(correction, /commit;\s*$/);
 });
 
 test("proyección distingue evento atómico de snapshot y conserva timeline", () => {
@@ -127,6 +147,15 @@ test("funciones SECURITY DEFINER sensibles tienen search_path y grants mínimos"
 test("migración es atómica y termina en commit", () => {
   assert.match(migration, /^begin;/m);
   assert.match(migration, /commit;\s*$/);
+});
+
+test("service role usa el claim JWT actual sin ampliar permisos", () => {
+  assert.match(serviceRoleMigration, /^begin;/m);
+  assert.match(serviceRoleMigration, /coalesce\(auth\.jwt\(\) ->> 'role', ''\) = 'service_role'/);
+  assert.match(serviceRoleMigration, /set search_path = ''/);
+  assert.match(serviceRoleMigration, /revoke all on function public\.request_is_service_role\(\) from public, anon/);
+  assert.match(serviceRoleMigration, /grant execute on function public\.request_is_service_role\(\) to authenticated, service_role/);
+  assert.match(serviceRoleMigration, /commit;\s*$/);
 });
 
 test("feedback Atlas Lead sale sólo tras tipificación completa y es idempotente", () => {

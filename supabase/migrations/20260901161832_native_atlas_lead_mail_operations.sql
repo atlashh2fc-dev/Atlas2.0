@@ -532,8 +532,18 @@ begin
     'public.get_mail_operational_queue_page(uuid,uuid,text,integer,integer,integer,timestamptz,uuid)'
   ] loop
     select pg_get_functiondef(v_signature::regprocedure) into v_definition;
+    -- Most read models already have a business predicate before the former
+    -- role filter, but the aggregate report starts its WHERE clause with that
+    -- filter. Rewrite both shapes explicitly so production formatting drift
+    -- cannot leave the legacy Equifax-only supervisor shortcut behind.
     v_rewritten := regexp_replace(
       v_definition,
+      '[[:space:]]+where \(ac\.is_service or ac\.actor_role in \(''admin'', ''supervisor''\)\)[[:space:]]+and \(ac\.is_service or ac\.actor_role <> ''supervisor'' or mc\.umbrella_key = ''equifax''\)',
+      E'\n  where public.can_supervise_mail_lead(s.campaign_id, l.team_id)',
+      'g'
+    );
+    v_rewritten := regexp_replace(
+      v_rewritten,
       '[[:space:]]+and \(ac\.is_service or ac\.actor_role in \(''admin'', ''supervisor''\)\)[[:space:]]+and \(ac\.is_service or ac\.actor_role <> ''supervisor'' or mc\.umbrella_key = ''equifax''\)',
       E'\n    and public.can_supervise_mail_lead(s.campaign_id, l.team_id)',
       'g'
@@ -832,6 +842,8 @@ declare
   v_lead_id uuid;
   v_workflow_id uuid;
   v_email_matches integer := 0;
+  v_phone_matches integer := 0;
+  v_matched_by text := 'atlas_lead_roster';
   v_routing_team_id uuid;
 begin
   if not public.request_is_service_role() then
@@ -861,8 +873,9 @@ begin
     0
   ));
 
-  select reference.lead_id
-  into v_lead_id
+  select reference.lead_id,
+    coalesce(nullif(reference.source_payload->>'matched_by', ''), 'existing_external_ref')
+  into v_lead_id, v_matched_by
   from public.lead_external_refs reference
   where reference.source_id = p_source_id
     and reference.campaign_id = p_campaign_id
@@ -878,7 +891,49 @@ begin
 
     -- An ambiguous email is not a safe identity match. The stable external key
     -- gets its own CRM lead instead of being attached to the wrong person.
-    if v_email_matches > 1 then v_lead_id := null; end if;
+    if v_email_matches = 1 then
+      v_matched_by := 'unique_email_roster';
+    elsif v_email_matches > 1 then
+      v_lead_id := null;
+    end if;
+  end if;
+
+  -- Respect the CRM campaign-level phone identity already enforced by
+  -- leads_dedup_phone_idx. A single phone match is the same native lead, not a
+  -- second contact created only because Atlas Lead supplied another email.
+  if v_lead_id is null and v_phone is not null then
+    select count(*), (array_agg(lead.id order by lead.id))[1]
+    into v_phone_matches, v_lead_id
+    from public.leads lead
+    where lead.campaign_id = p_campaign_id
+      and lead.rut is null
+      and lead.phone is not null
+      and btrim(lead.phone) <> ''
+      and regexp_replace(lead.phone, '[^0-9]', '', 'g')
+        = regexp_replace(v_phone, '[^0-9]', '', 'g');
+
+    if v_phone_matches = 1 then
+      v_matched_by := 'unique_phone_roster';
+    elsif v_phone_matches > 1 then
+      v_lead_id := null;
+    end if;
+  end if;
+
+  -- Email remains the stronger match. If its lead has no phone but the
+  -- incoming phone belongs to another deduplicated lead, preserve both
+  -- identities and keep the incoming phone only in the immutable event.
+  if v_lead_id is not null and v_phone is not null and exists (
+    select 1
+    from public.leads other
+    where other.campaign_id = p_campaign_id
+      and other.id <> v_lead_id
+      and other.rut is null
+      and other.phone is not null
+      and btrim(other.phone) <> ''
+      and regexp_replace(other.phone, '[^0-9]', '', 'g')
+        = regexp_replace(v_phone, '[^0-9]', '', 'g')
+  ) then
+    v_phone := null;
   end if;
 
   if v_lead_id is null then
@@ -943,7 +998,7 @@ begin
   ) values (
     p_source_id, p_campaign_id, v_lead_id, v_external_key,
     jsonb_strip_nulls(jsonb_build_object(
-      'matched_by', case when v_email_matches = 1 then 'unique_email_roster' else 'atlas_lead_roster' end,
+      'matched_by', v_matched_by,
       'external_campaign_key', v_external_campaign_key,
       'source_lead_id', nullif(btrim(coalesce(p_payload->>'source_lead_id', '')), '')
     )),
