@@ -155,7 +155,7 @@ test("worker HTTP: no session required, but missing/wrong Bearer cannot reach th
   assert.equal(connects, 1);
 });
 
-test("middleware exempts exactly the machine endpoint, never adjacent AI routes", async () => {
+test("middleware exempts exactly the machine endpoints, never adjacent routes", async () => {
   let authCalls = 0;
   const dependencies = {
     "@supabase/ssr": { createServerClient: () => ({ auth: { getUser: async () => { authCalls++; return { data: { user: null } }; } } }) },
@@ -164,8 +164,11 @@ test("middleware exempts exactly the machine endpoint, never adjacent AI routes"
   const update = load("../src/lib/supabase/middleware.ts", dependencies).updateSession as (request: unknown) => Promise<{ kind: string }>;
   const request = (pathname: string) => ({ nextUrl: { pathname, clone: () => new URL(`http://localhost${pathname}`) } });
   assert.equal((await update(request("/api/ai/learning-loop/worker"))).kind, "next");
+  assert.equal((await update(request("/api/integrations/meta/whatsapp/ai-worker"))).kind, "next");
+  assert.equal((await update(request("/api/integrations/meta/whatsapp/timeouts"))).kind, "next");
   assert.equal(authCalls, 0);
   assert.equal((await update(request("/api/ai/learning-loop/worker-extra"))).kind, "redirect");
+  assert.equal((await update(request("/api/integrations/meta/whatsapp/ai-worker-extra"))).kind, "redirect");
   assert.equal((await update(request("/dashboard/calidad/loop"))).kind, "redirect");
-  assert.equal(authCalls, 2);
+  assert.equal(authCalls, 3);
 });

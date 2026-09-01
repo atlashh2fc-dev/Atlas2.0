@@ -25,10 +25,16 @@ const PUBLIC_PATHS = [
   "/api/integrations/ycloud/whatsapp/webhook",
 ];
 
+const MACHINE_ONLY_PATHS = new Set([
+  "/api/ai/learning-loop/worker",
+  "/api/integrations/meta/whatsapp/ai-worker",
+  "/api/integrations/meta/whatsapp/timeouts",
+]);
+
 export async function updateSession(request: NextRequest) {
   // Machine-only endpoint: the handler checks a dedicated Bearer/cron secret.
-  // Match exactly; other AI routes must keep the normal session requirement.
-  if (request.nextUrl.pathname === "/api/ai/learning-loop/worker") {
+  // Match exactly; adjacent routes must keep the normal session requirement.
+  if (MACHINE_ONLY_PATHS.has(request.nextUrl.pathname)) {
     return NextResponse.next({ request });
   }
   let supabaseResponse = NextResponse.next({ request });

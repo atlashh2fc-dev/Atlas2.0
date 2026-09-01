@@ -17,6 +17,7 @@ const worker = readFileSync(
   new URL("../src/app/api/integrations/meta/whatsapp/ai-worker/route.ts", import.meta.url),
   "utf8",
 );
+const middleware = readFileSync(new URL("../src/lib/supabase/middleware.ts", import.meta.url), "utf8");
 
 test("la memoria estructurada es acotada y no acepta contenido ilimitado", () => {
   assert.deepEqual(whatsappConversationMemorySchema.parse(EMPTY_WHATSAPP_CONVERSATION_MEMORY), EMPTY_WHATSAPP_CONVERSATION_MEMORY);
@@ -54,4 +55,5 @@ test("un trabajo durable recupera mensajes sin ejecución y fallos reintentables
   assert.match(migration, /run\.status = 'failed'/);
   assert.match(worker, /respondToWhatsAppInbound/);
   assert.match(worker, /CRON_SECRET/);
+  assert.match(middleware, /\/api\/integrations\/meta\/whatsapp\/ai-worker/);
 });
