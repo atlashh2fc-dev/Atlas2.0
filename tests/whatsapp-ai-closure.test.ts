@@ -17,6 +17,8 @@ const completionMigration = readFileSync(
 const mercury = readFileSync(new URL("../src/lib/mercury-whatsapp.ts", import.meta.url), "utf8");
 const provider = readFileSync(new URL("../src/lib/whatsapp-provider.ts", import.meta.url), "utf8");
 const campaignLoop = readFileSync(new URL("../dialer-engine/src/dialer/campaignLoop.ts", import.meta.url), "utf8");
+const agentAgenda = readFileSync(new URL("../src/app/dashboard/agenda/page.tsx", import.meta.url), "utf8");
+const supervisorTeam = readFileSync(new URL("../src/app/dashboard/team/page.tsx", import.meta.url), "utf8");
 
 test("Enter envía y Shift+Enter conserva el salto de línea", () => {
   assert.match(composer, /event\.key === "Enter" && !event\.shiftKey/);
@@ -53,6 +55,15 @@ test("un agendamiento crea un callback personal real con trazabilidad", () => {
   assert.match(completionMigration, /workflow_status = 'callback'/);
   assert.match(completionMigration, /'lead\.callback_scheduled'/);
   assert.match(mercury, /admin\.rpc\(rpcName, rpcArgs\)/);
+});
+
+test("la agenda queda visible para el agente responsable y para supervisión", () => {
+  assert.match(completionMigration, /assigned_to = v_agent_id,/);
+  assert.match(completionMigration, /managed_by = v_agent_id,/);
+  assert.match(completionMigration, /next_action_at = p_scheduled_at/);
+  assert.match(agentAgenda, /\.eq\("managed_by", profile\.id\)/);
+  assert.match(supervisorTeam, /title="Próximas agendas"/);
+  assert.match(supervisorTeam, /<CallbacksPanel/);
 });
 
 test("la campaña inbound procesa callbacks pero nunca entra al pool masivo", () => {

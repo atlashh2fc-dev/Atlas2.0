@@ -15,11 +15,13 @@ async function runAutomation(options: {
   dispatchState?: string; handoff?: boolean; newerMessageAtDispatch?: boolean;
   newerMessageBeforePrepared?: boolean; finished?: boolean; newerMessageAfterSend?: boolean;
   inboundText?: string; automaticAppointmentBooking?: boolean;
+  previousOutboundText?: string;
   generatedHandoffKind?: "none" | "human_requested" | "appointment" | "quote" | "unknown" | "complaint";
   generatedAppointmentAt?: string | null;
   modelFailure?: boolean;
   memorySummary?: string;
   resumeExpiredHandoff?: boolean;
+  oldAppointmentContext?: boolean;
 } = {}) {
   let providerCalls = 0;
   const sentBodies: string[] = [];
@@ -85,12 +87,19 @@ async function runAutomation(options: {
           }, error: configReads > 1 && options.controlError ? { message: "unavailable" } : null };
         }
         if (table === "whatsapp_messages") {
-          const message = { id: "inbound", direction: "inbound", message_type: "text", text_body: options.finished ? "no gracias" : options.inboundText ?? "¿Qué servicios ofrecen?", created_at: "2026-08-27T15:00:00Z" };
+          const message = { id: "inbound", direction: "inbound", message_type: "text", text_body: options.finished ? "no gracias" : options.inboundText ?? "¿Qué servicios ofrecen?", sent_by: null, created_at: "2026-08-27T15:00:00Z" };
+          const previousOutbound = { id: "outbound-before", direction: "outbound", message_type: "text", text_body: options.previousOutboundText, sent_by: null, created_at: "2026-08-27T14:59:00Z" };
+          const resumedGreeting = { id: "resumed-greeting", direction: "outbound", message_type: "text", text_body: "¡Hola! Qué gusto leerte nuevamente. ¿En qué puedo ayudarte hoy?", sent_by: null, created_at: "2026-08-27T14:58:00Z" };
+          const greetingInbound = { id: "greeting-inbound", direction: "inbound", message_type: "text", text_body: "Hola", sent_by: null, created_at: "2026-08-27T14:57:00Z" };
+          const oldAppointment = { id: "old-appointment", direction: "outbound", message_type: "text", text_body: "Agendaremos la llamada antigua para mañana a las 12:00.", sent_by: null, created_at: "2026-08-20T14:00:00Z" };
           const latestId = (conversationReads >= 3 && (options.newerMessageAtDispatch
             || (options.newerMessageBeforePrepared && excludedId === latestMessageId)))
             || (providerCalls > 0 && options.newerMessageAfterSend) ? "new-inbound"
               : excludedId === latestMessageId ? "inbound" : latestMessageId;
-          return { data: columns.includes("created_at") ? [message]
+          return { data: columns.includes("created_at")
+            ? options.oldAppointmentContext
+              ? [message, resumedGreeting, greetingInbound, oldAppointment]
+              : options.previousOutboundText ? [message, previousOutbound] : [message]
             : columns === "id" ? { id: latestId }
               : message, error: null };
         }
@@ -134,7 +143,7 @@ async function runAutomation(options: {
         return { ok: false, status: 503, json: async () => ({ error: { message: "unavailable" } }) };
       }
       const generatedHandoffKind = options.generatedHandoffKind ?? (options.handoff ? "human_requested" : "none");
-      return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ reply: "Ofrecemos atención comercial.", handoff: options.handoff ?? false, handoff_kind: generatedHandoffKind, handoff_reason: options.handoff ? "Solicita atención humana" : "", appointment_at: options.generatedAppointmentAt ?? null, memory: conversationMemory.EMPTY_WHATSAPP_CONVERSATION_MEMORY }) } }] }) };
+      return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ reply: "Ofrecemos atención comercial.", handoff: options.handoff ?? false, handoff_kind: generatedHandoffKind, handoff_reason: options.handoff ? "Solicita atención humana" : "", appointment_at: options.generatedAppointmentAt ?? null, scope: generatedHandoffKind === "unknown" ? "uncertain" : "in_scope", memory: conversationMemory.EMPTY_WHATSAPP_CONVERSATION_MEMORY }) } }] }) };
     },
   });
   const result = await testModule.exports.respondToWhatsAppInbound({ conversationId: "conversation", inboundMessageId: "inbound" });
@@ -219,12 +228,35 @@ test("una consulta amplia recibe divulgación progresiva y no un folleto", async
   assert.ok(!run.rpcCalls.includes("handoff_whatsapp_conversation"));
 });
 
+test("una respuesta determinista repetida pide precisión en vez de copiar el mismo texto", async () => {
+  const repeated = "Claro. Una ejecutiva real atiende tus llamadas o WhatsApp cuando tú no puedes, registra el motivo y te avisa para que decidas cómo seguir. ¿Necesitas cubrir llamadas, WhatsApp o ambos?";
+  const run = await runAutomation({
+    inboundText: "Vi una publicación de una secretaria virtual y quiero información",
+    previousOutboundText: repeated,
+  });
+  assert.equal(run.generatedCalls, 0);
+  assert.equal(run.sentBodies.length, 1);
+  assert.notEqual(run.sentBodies[0], repeated);
+  assert.match(run.sentBodies[0], /sin repetirme/i);
+});
+
 test("un saludo nunca reactiva una coordinación histórica", async () => {
   const run = await runAutomation({ inboundText: "Hola" });
   assert.equal(run.result.status, "completed");
   assert.equal(run.generatedCalls, 0);
   assert.match(run.sentBodies[0], /¿En qué puedo ayudarte hoy\?/);
   assert.doesNotMatch(run.sentBodies[0], /agend|llamada|mañana|12:00/i);
+});
+
+test("una sesión retomada conserva contexto útil sin reenviar la coordinación antigua al modelo", async () => {
+  const run = await runAutomation({
+    inboundText: "¿Cómo funciona para una consulta dental?",
+    oldAppointmentContext: true,
+    memorySummary: "La persona administra una consulta dental.",
+  });
+  assert.equal(run.generatedCalls, 1);
+  assert.match(run.completionBodies[0], /consulta dental/i);
+  assert.doesNotMatch(run.completionBodies[0], /llamada antigua|mañana a las 12:00/i);
 });
 
 test("un handoff Mercury vencido sin respuesta humana vuelve a IA solo en ese hilo", async () => {
@@ -278,6 +310,82 @@ test("Secretaría Virtual deriva una solicitud de agendamiento sin confirmarla a
   assert.equal(run.result.appointmentAt, null);
   assert.ok(run.rpcCalls.includes("handoff_whatsapp_conversation"));
   assert.ok(!run.rpcCalls.includes("schedule_whatsapp_callback"));
+});
+
+test("una solicitud natural de llamada también deriva sin prometer que quedó agendada", async () => {
+  const run = await runAutomation({
+    inboundText: "¿Me pueden llamar mañana?",
+    automaticAppointmentBooking: false,
+  });
+  assert.equal(run.result.status, "completed");
+  assert.ok(run.rpcCalls.includes("handoff_whatsapp_conversation"));
+  assert.ok(!run.rpcCalls.includes("schedule_whatsapp_callback"));
+  assert.doesNotMatch(run.sentBodies[0], /qued[oó]\s+agend|confirmad[ao]|disponibilidad\s+confirmada/i);
+});
+
+test("un dato de fecha u hora continúa una coordinación y deriva en vez de confirmarla", async () => {
+  const run = await runAutomation({
+    inboundText: "la próxima semana el lunes",
+    previousOutboundText: "¿A qué hora quieres que programemos la llamada?",
+    automaticAppointmentBooking: false,
+  });
+  assert.ok(run.rpcCalls.includes("handoff_whatsapp_conversation"));
+  assert.match(run.sentBodies[0], /persona de nuestro equipo.*confirme/i);
+});
+
+test("preguntar por la capacidad de coordinar agendas no agenda al propio contacto", async () => {
+  const run = await runAutomation({
+    inboundText: "¿La secretaria puede coordinar reuniones de mi empresa?",
+    automaticAppointmentBooking: false,
+  });
+  assert.equal(run.generatedCalls, 1);
+  assert.ok(!run.rpcCalls.includes("handoff_whatsapp_conversation"));
+});
+
+test("una pregunta de cultura general se limita al dominio y no deriva", async () => {
+  const run = await runAutomation({
+    inboundText: "¿Me puedes resumir en 10 líneas la historia de Chile?",
+  });
+  assert.equal(run.generatedCalls, 0);
+  assert.ok(!run.rpcCalls.includes("handoff_whatsapp_conversation"));
+  assert.match(run.sentBodies[0], /Solo puedo ayudarte con los servicios/i);
+  assert.doesNotMatch(run.sentBodies[0], /1541|independencia|Valdivia/i);
+});
+
+test("nada todo ok se interpreta como cierre y no como una nueva oportunidad de venta", async () => {
+  const run = await runAutomation({ inboundText: "nada todo ok" });
+  assert.equal(run.generatedCalls, 0);
+  assert.equal(run.closeCalls, 1);
+  assert.equal(run.sentBodies.length, 1);
+  assert.match(run.sentBodies[0], /gracias por contactarnos/i);
+});
+
+test("gracias con coma cierra si la respuesta anterior ya presentó el cierre", async () => {
+  const run = await runAutomation({
+    inboundText: "gracias,",
+    previousOutboundText: "Listo, te contactaremos el lunes. Si surge alguna duda antes, avísanos.",
+  });
+  assert.equal(run.closeCalls, 1);
+  assert.match(run.sentBodies[0], /excelente día/i);
+});
+
+test("un acuse posterior a la despedida vuelve a cerrar sin repetir otro mensaje", async () => {
+  const run = await runAutomation({
+    inboundText: "bueno",
+    previousOutboundText: "Perfecto, gracias por contactarnos. Que tengas un excelente día.",
+  });
+  assert.equal(run.closeCalls, 1);
+  assert.equal(run.providerCalls, 0);
+  assert.equal(run.result.closed, true);
+});
+
+test("gracias pero una pregunta nueva no se interpreta como despedida", async () => {
+  const run = await runAutomation({
+    inboundText: "gracias, pero quiero saber el precio",
+    previousOutboundText: "¿Tienes alguna otra duda o consulta?",
+  });
+  assert.equal(run.generatedCalls, 1);
+  assert.equal(run.closeCalls, 0);
 });
 
 test("una cotización formal se deriva aunque el proveedor no active el handoff", async () => {

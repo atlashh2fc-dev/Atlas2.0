@@ -43,9 +43,13 @@ const replyJsonSchema = {
           { type: "null" },
         ],
       },
+      scope: {
+        type: "string",
+        enum: ["in_scope", "out_of_scope", "uncertain"],
+      },
       memory: whatsappConversationMemoryJsonSchema,
     },
-    required: ["reply", "handoff", "handoff_kind", "handoff_reason", "appointment_at", "memory"],
+    required: ["reply", "handoff", "handoff_kind", "handoff_reason", "appointment_at", "scope", "memory"],
   },
 } as const;
 
@@ -60,11 +64,21 @@ type HistoryMessage = {
 };
 
 const mercuryCompletionSchema = mercuryWhatsAppReplySchema.and(z.object({
+  scope: z.enum(["in_scope", "out_of_scope", "uncertain"]),
   memory: whatsappConversationMemorySchema,
 }));
 
 const FINAL_HELP_QUESTION = "De nada. ¿Tienes alguna otra duda o consulta en que pueda ayudarte?";
 const CUSTOMER_GOODBYE = "Perfecto, gracias por contactarnos. Que tengas un excelente día.";
+const OUT_OF_SCOPE_REPLY = "Solo puedo ayudarte con los servicios de Secretaría Virtual de GEIMSER. Si quieres, cuéntame qué necesitas resolver con tus llamadas o WhatsApp.";
+
+function normalizeIntentText(value: string): string {
+  return value
+    .toLocaleLowerCase("es-CL")
+    .replace(/[\p{P}\p{S}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 function normalizedInboundText(history: HistoryMessage[]): string {
   return [...history].reverse().find((message) =>
@@ -81,24 +95,24 @@ function previousOutboundText(history: HistoryMessage[]): string {
 }
 
 function isGratitudeOnly(history: HistoryMessage[]): boolean {
-  const text = normalizedInboundText(history)
-    .replace(/[.!¡¿?]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  const text = normalizeIntentText(normalizedInboundText(history));
   return /^(?:(?:ok|okay|oki|ya|vale|perfecto|listo|bueno)\s+)?(?:muchas\s+)?gracias(?:\s+(?:muy\s+)?amable)?$/.test(text);
 }
 
 function customerFinishedConversation(history: HistoryMessage[]): boolean {
-  const text = normalizedInboundText(history)
-    .replace(/[.!¡¿?]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (/^(?:no\s+gracias|nada\s+m[aá]s|ninguna|eso\s+es\s+todo|ser[ií]a\s+todo|estamos|chao|chau|adi[oó]s)(?:\s+gracias)?$/.test(text)) {
+  const text = normalizeIntentText(normalizedInboundText(history));
+  if (/^(?:no\s+gracias|nada\s+(?:m[aá]s|todo\s+(?:ok|bien))|todo\s+(?:ok|bien)|ninguna|eso\s+es\s+todo|ser[ií]a\s+todo|estamos|chao|chau|adi[oó]s|hasta\s+luego)(?:\s+gracias)?$/.test(text)) {
     return true;
   }
-  const previous = previousOutboundText(history);
-  const botAskedIfAnythingElse = /(?:otra\s+(?:duda|consulta)|algo\s+m[aá]s|puedo\s+ayudarte)/.test(previous);
-  return botAskedIfAnythingElse && /^(?:no|nop|ninguna|nada)$/.test(text);
+  const previous = normalizeIntentText(previousOutboundText(history));
+  const botPresentedClosure = /(?:otra\s+(?:duda|consulta)|otro\s+detalle|algo\s+m[aá]s|puedo\s+ayudarte|si\s+surge|av[ií]sanos|te\s+(?:llamaremos|contactaremos)|gracias\s+por\s+contactarnos|excelente\s+d[ií]a)/.test(previous);
+  return botPresentedClosure
+    && /^(?:no|nop|ninguna|nada|gracias|muchas\s+gracias|bueno|listo|perfecto|ok|okay|todo\s+(?:ok|bien))$/.test(text);
+}
+
+function alreadySaidGoodbye(history: HistoryMessage[]): boolean {
+  const previous = normalizeIntentText(previousOutboundText(history));
+  return /gracias\s+por\s+contactarnos/.test(previous) && /excelente\s+d[ií]a/.test(previous);
 }
 
 function validFutureAppointment(value: string | null): string | null {
@@ -130,14 +144,25 @@ function forcedHandoffKind(history: HistoryMessage[]): MercuryWhatsAppHandoffKin
   if (!text) return null;
 
   const humanRequest = /(?:hablar|comunicarme|contactarme|deriv(?:a|ar|en)|pas(?:a|ar|en))[^.!?]{0,50}(?:persona|humano|humana|ejecutiv[oa]|asesor[a]?|especialista)/i;
-  const appointmentRequest = /(?:agend(?:a|ar|amiento|emos|en)|coordin(?:a|ar|emos|en)|reserv(?:a|ar|emos|en)|program(?:a|ar|emos|en))[^.!?]{0,60}(?:hora|reuni[oó]n|llamada|cita|contacto)|(?:reuni[oó]n|cita)[^.!?]{0,45}(?:agend|coordin|reserv|program)/i;
+  const appointmentRequest = /(?:quiero|necesito|quisiera|me\s+gustar[ií]a)[^.!?]{0,45}(?:agendar|coordinar|programar|reservar)[^.!?]{0,45}(?:reuni[oó]n|llamada|cita|contacto)|(?:quiero|necesito|quisiera|me\s+gustar[ií]a)[^.!?]{0,40}(?:que\s+)?me\s+(?:llamen|contacten)|(?:me\s+(?:pueden|podr[ií]an|puedes)\s+(?:llamar|contactar)|ll[aá]mame|cont[aá]ctame)/i;
+  const previous = previousOutboundText(history);
+  const followsAppointmentQuestion = /(?:agend|program|coordin|confirm)[^.!?]{0,70}(?:reuni[oó]n|llamada|cita|contact)|(?:reuni[oó]n|llamada|cita)[^.!?]{0,70}(?:hora|fecha|n[uú]mero)/i.test(previous)
+    && /(?:\b(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo|ma[ñn]ana|tarde|semana)\b|\b\d{1,2}(?::\d{2})?\s*(?:h|hrs?|horas?)?\b|(?:este|el\s+mismo)\s+n[uú]mero)/i.test(text);
   const quoteRequest = /(?:cotizaci[oó]n|cotizar|presupuesto)|(?:precio|valor|costo)[^.!?]{0,35}(?:final|cerrado|total)|(?:cu[aá]nto|cuanto)[^.!?]{0,30}(?:sale|queda)[^.!?]{0,30}(?:contratar|plan|servicio)/i;
   const complaintRequest = /(?:quiero|necesito|deseo)[^.!?]{0,35}(?:reclamar|hacer un reclamo|poner una queja)|(?:reclamo|queja|denuncia)[^.!?]{0,50}(?:servicio|atenci[oó]n|incumplimiento)|(?:mala|p[eé]sima)[^.!?]{0,25}atenci[oó]n/i;
-  if (appointmentRequest.test(text)) return "appointment";
+  if (appointmentRequest.test(text) || followsAppointmentQuestion) return "appointment";
   if (humanRequest.test(text)) return "human_requested";
   if (quoteRequest.test(text)) return "quote";
   if (complaintRequest.test(text)) return "complaint";
   return null;
+}
+
+function isClearlyOutOfScope(history: HistoryMessage[]): boolean {
+  const text = normalizeIntentText(normalizedInboundText(history));
+  if (!text) return false;
+  const serviceTerms = /(?:geimser|secretar|recepci[oó]n|asistente|servicio|negocio|empresa|cliente|llamada|tel[eé]fono|whatsapp|mensaje|atenci[oó]n|contacto|agenda|reuni[oó]n|cita|plan|precio|valor|costo|cotiz|horario|crm|m[oó]dulo|correo|mailing|cobranza)/;
+  if (serviceTerms.test(text)) return false;
+  return /(?:historia|capital|presidente|clima|receta|f[uú]tbol|partido|chiste|poema|traduc|matem[aá]tica|ecuaci[oó]n|programa(?:r|ci[oó]n)|c[oó]digo|noticia|pol[ií]tica|elecci[oó]n|diagn[oó]stico|pel[ií]cula|m[uú]sica|hor[oó]scopo|bitcoin|criptomoneda|inversi[oó]n|turismo)/.test(text);
 }
 
 function broadServiceOverview(history: HistoryMessage[]): string | null {
@@ -154,15 +179,23 @@ function broadServiceOverview(history: HistoryMessage[]): string | null {
 }
 
 function greetingReply(history: HistoryMessage[]): string | null {
-  const text = normalizedInboundText(history)
-    .replace(/[.!¡¿?]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  const text = normalizeIntentText(normalizedInboundText(history));
   if (!/^(?:hola|holi|buen(?:os\s+d[ií]as|as\s+tardes|as\s+noches)|buenas)$/.test(text)) return null;
   const hasPreviousConversation = history.some((message) => message.id !== history.at(-1)?.id);
   return hasPreviousConversation
     ? "¡Hola! Qué gusto leerte nuevamente. ¿En qué puedo ayudarte hoy?"
     : "¡Hola! Soy la asistente virtual de GEIMSER. ¿En qué puedo ayudarte hoy?";
+}
+
+function avoidRepeatedReply(history: HistoryMessage[], reply: string): string {
+  const normalizedReply = normalizeIntentText(reply);
+  const recentOutbound = history
+    .filter((message) => message.direction === "outbound" && message.text_body?.trim())
+    .slice(-2)
+    .some((message) => normalizeIntentText(message.text_body ?? "") === normalizedReply);
+  return recentOutbound
+    ? "Quiero responderte sin repetirme. ¿Qué punto necesitas que aclare de forma concreta?"
+    : reply;
 }
 
 function conversationalStyleIssue(reply: string): string | null {
@@ -175,9 +208,35 @@ function conversationalStyleIssue(reply: string): string | null {
   return null;
 }
 
-function historicalContext(messages: WhatsAppMemoryMessage[], recentIds: Set<string>) {
+function activeConversationHistory(history: HistoryMessage[]): HistoryMessage[] {
+  for (let index = history.length - 2; index >= 0; index -= 1) {
+    const message = history[index];
+    if (message.direction !== "outbound" || !message.text_body) continue;
+    const text = normalizeIntentText(message.text_body);
+    if (/gracias\s+por\s+contactarnos.*excelente\s+d[ií]a/.test(text)) {
+      return history.slice(index + 1);
+    }
+    if (/en\s+qu[eé]\s+puedo\s+ayudarte\s+hoy/.test(text)) {
+      const priorIsGreeting = index > 0
+        && history[index - 1].direction === "inbound"
+        && /^(?:hola|holi|buen(?:os\s+d[ií]as|as\s+tardes|as\s+noches)|buenas)$/.test(
+          normalizeIntentText(history[index - 1].text_body ?? ""),
+        );
+      return history.slice(priorIsGreeting ? index - 1 : index);
+    }
+  }
+  return history;
+}
+
+function historicalContext(
+  messages: WhatsAppMemoryMessage[],
+  recentIds: Set<string>,
+  sessionStartedAt: string | null,
+) {
+  const sessionStart = sessionStartedAt ? Date.parse(sessionStartedAt) : Number.NaN;
   return messages
-    .filter((message) => !recentIds.has(message.id))
+    .filter((message) => !recentIds.has(message.id)
+      && (!Number.isFinite(sessionStart) || Date.parse(message.created_at) >= sessionStart))
     .map((message) => ({
       id: message.id,
       role: message.direction === "inbound" ? "contacto" : message.sent_by ? "equipo_humano" : "asistente",
@@ -235,6 +294,7 @@ async function askMercury(input: {
     }).format(currentTime),
     timezone: "America/Santiago",
     automatic_appointment_booking: input.automaticAppointmentBooking,
+    current_session_started_at: input.history.at(0)?.created_at ?? null,
   };
   const messages = input.history.flatMap((message) => {
     if (!message.text_body?.trim()) return [];
@@ -246,7 +306,11 @@ async function askMercury(input: {
     }];
   });
   const recentIds = new Set(input.history.map((message) => message.id));
-  const priorMessages = historicalContext(input.memoryMessages, recentIds);
+  const priorMessages = historicalContext(
+    input.memoryMessages,
+    recentIds,
+    input.history.at(0)?.created_at ?? null,
+  );
 
   const response = await fetch("https://api.inceptionlabs.ai/v1/chat/completions", {
     method: "POST",
@@ -274,8 +338,10 @@ async function askMercury(input: {
             "DIVULGACIÓN PROGRESIVA: responde una sola capa de información por turno. No menciones precios, públicos, módulos, CRM, horarios, contratación ni derivación si la persona no lo preguntó y no es indispensable para responder.",
             "La respuesta normal debe tener entre 160 y 320 caracteres cuando sea posible, nunca más de 420; máximo tres frases, dos párrafos y una sola pregunta. No uses listas salvo que la persona pida comparar o enumerar.",
             "No cierres cada respuesta con una venta o derivación. Una pregunta concreta puede terminar solo con su respuesta.",
+            "ALCANCE: atiende únicamente consultas sobre GEIMSER, Secretaría Virtual, sus servicios, contratación y la continuidad de esta conversación comercial. Para preguntas ajenas (cultura general, historia, política, clima, entretenimiento, programación u otros temas), devuelve scope=out_of_scope, handoff=false y no respondas el contenido solicitado. Para una duda comercial relacionada pero no respaldada, devuelve scope=uncertain y handoff_kind=unknown para que la confirme una persona. En los demás casos usa scope=in_scope.",
             "Ofrecer que una persona explique algo NO significa que el contacto aceptó la derivación: en ese caso devuelve handoff=false. Usa human_requested, appointment o quote solo cuando el último mensaje del contacto lo solicite explícitamente.",
             "La información aprobada es una fuente de hechos, no un guion: no copies párrafos literalmente ni descargues toda la ficha. Explica con tus propias palabras y selecciona solo lo relevante para este momento de la conversación.",
+            "MEMORIA Y SESIÓN: conserva datos estables del contacto, pero no trates una cita, fecha, promesa o pregunta pendiente de una sesión anterior como vigente. Después de una despedida o de un nuevo saludo, solo reactiva un compromiso si el contacto lo menciona nuevamente.",
             "Haz como máximo una pregunta de seguimiento y solo cuando ayude a avanzar. No interrogues antes de responder. Puedes usar como máximo un emoji ocasional si aporta calidez.",
             "Ante una objeción comercial, primero reconoce la inquietud, luego responde brevemente con hechos aprobados y termina con un siguiente paso concreto. No discutas, presiones ni prometas descuentos.",
             "No entregues precios finales, plazos contractuales, fechas de activación garantizadas ni condiciones especiales no autorizadas. No reveles información financiera, contractual o personal de otros clientes.",
@@ -484,11 +550,15 @@ export async function respondToWhatsAppInbound(input: {
     const gratitudeOnly = !finishedByCustomer && isGratitudeOnly(history);
     const greeting = !finishedByCustomer && !gratitudeOnly ? greetingReply(history) : null;
     const overview = !finishedByCustomer && !gratitudeOnly && !greeting ? broadServiceOverview(history) : null;
+    const clearlyOutOfScope = !finishedByCustomer && !gratitudeOnly && !greeting && !overview
+      ? isClearlyOutOfScope(history)
+      : false;
+    const suppressClosingEcho = finishedByCustomer && alreadySaidGoodbye(history);
     let memoryContext: Awaited<ReturnType<typeof loadWhatsAppConversationMemory>> = {
       memory: EMPTY_WHATSAPP_CONVERSATION_MEMORY,
       messages: [],
     };
-    if (!finishedByCustomer && !gratitudeOnly && !greeting && !overview) {
+    if (!finishedByCustomer && !gratitudeOnly && !greeting && !overview && !clearlyOutOfScope) {
       try {
         memoryContext = await loadWhatsAppConversationMemory(input.conversationId);
       } catch (error) {
@@ -500,13 +570,18 @@ export async function respondToWhatsAppInbound(input: {
     }
 
     let shouldPersistMemory = false;
-    const generated = finishedByCustomer || gratitudeOnly || greeting || overview
+    const generated = finishedByCustomer || gratitudeOnly || greeting || overview || clearlyOutOfScope
       ? {
-          reply: finishedByCustomer ? CUSTOMER_GOODBYE : FINAL_HELP_QUESTION,
+          reply: finishedByCustomer
+            ? CUSTOMER_GOODBYE
+            : clearlyOutOfScope
+              ? OUT_OF_SCOPE_REPLY
+              : FINAL_HELP_QUESTION,
           handoff: false,
           handoff_kind: "none" as const,
           handoff_reason: "",
           appointment_at: null,
+          scope: clearlyOutOfScope ? "out_of_scope" as const : "in_scope" as const,
           memory: memoryContext.memory,
           providerRequestId: null,
           usage: {},
@@ -522,7 +597,7 @@ export async function respondToWhatsAppInbound(input: {
               campaignName: campaign?.name ?? "WhatsApp",
               automaticAppointmentBooking: config.automatic_appointment_booking === true,
               referral: record(conversation.referral) ?? {},
-              history,
+              history: activeConversationHistory(history),
               conversationMemory: memoryContext.memory,
               memoryMessages: memoryContext.messages,
             });
@@ -540,6 +615,7 @@ export async function respondToWhatsAppInbound(input: {
               handoff_kind: "unknown" as const,
               handoff_reason: "La respuesta automática falló y requiere continuidad humana.",
               appointment_at: null,
+              scope: "uncertain" as const,
               memory: memoryContext.memory,
               providerRequestId: null,
               usage: {},
@@ -548,11 +624,15 @@ export async function respondToWhatsAppInbound(input: {
           }
         })();
     const forcedKind = forcedHandoffKind(history);
+    const outOfScope = clearlyOutOfScope || generated.scope === "out_of_scope";
+    if (outOfScope) shouldPersistMemory = false;
     // The model may offer human help conversationally, but it cannot transfer
     // ownership unless the contact explicitly asked for it. Only an unknown
     // answer may be escalated directly by the model as a safe factual boundary.
-    const modelUnknownHandoff = generated.handoff && generated.handoff_kind === "unknown";
-    const handoff = !finishedByCustomer && !gratitudeOnly && (forcedKind !== null || modelUnknownHandoff);
+    const modelUnknownHandoff = generated.scope === "uncertain"
+      || (generated.handoff && generated.handoff_kind === "unknown");
+    const handoff = !finishedByCustomer && !gratitudeOnly && !outOfScope
+      && (forcedKind !== null || modelUnknownHandoff);
     const handoffKind = forcedKind ?? (modelUnknownHandoff ? "unknown" as const : "none" as const);
     const handoffReason = !handoff ? "" : forcedKind === "appointment"
         ? "El contacto solicitó coordinar un agendamiento con una especialista."
@@ -567,7 +647,7 @@ export async function respondToWhatsAppInbound(input: {
     const appointmentAt = handoffKind === "appointment" && automaticAppointmentBooking
       ? validFutureAppointment(generated.appointment_at)
       : null;
-    const reply = finishedByCustomer
+    const selectedReply = finishedByCustomer
       ? CUSTOMER_GOODBYE
       : gratitudeOnly
         ? FINAL_HELP_QUESTION
@@ -575,6 +655,8 @@ export async function respondToWhatsAppInbound(input: {
           ? greeting
         : overview
           ? overview
+        : outOfScope
+          ? OUT_OF_SCOPE_REPLY
         : handoffKind === "appointment" && !automaticAppointmentBooking
           ? "Perfecto. Voy a derivar tu solicitud a una persona de nuestro equipo para que confirme contigo la disponibilidad y la coordinación por este mismo WhatsApp."
         : appointmentAt
@@ -582,6 +664,7 @@ export async function respondToWhatsAppInbound(input: {
           : forcedKind && !generated.handoff
             ? `${generated.reply.trim()} Te derivaré con nuestra especialista para coordinarlo.`
             : generated.reply;
+    const reply = avoidRepeatedReply(history, selectedReply);
 
     // Generation can take seconds. Re-read the general switch as well as
     // ownership so a supervisor pause or a human handoff cancels this reply.
@@ -615,6 +698,37 @@ export async function respondToWhatsAppInbound(input: {
     if (!await stillOwnsReply(input.inboundMessageId, "auto")) {
       await completeRun(run.id, { status: "skipped", error_message: "El control general, la propiedad o el mensaje vigente cambiaron antes del envío." });
       return { status: "skipped" as const };
+    }
+
+    // A short acknowledgement after our goodbye reopens the row at ingestion
+    // time. Close it again without sending the same farewell repeatedly.
+    if (suppressClosingEcho) {
+      const { data: closureReason, error: closureReasonError } = await admin
+        .from("whatsapp_closure_reasons")
+        .select("id")
+        .eq("campaign_id", conversation.campaign_id)
+        .eq("code", "customer_finished")
+        .eq("is_active", true)
+        .eq("is_automatic", true)
+        .single();
+      if (closureReasonError || !closureReason) {
+        throw closureReasonError ?? new Error("No existe una tipificación automática para despedir la conversación.");
+      }
+      const { error: closeError } = await admin.rpc("close_whatsapp_conversation", {
+        p_conversation_id: input.conversationId,
+        p_reason_id: closureReason.id,
+        p_note: "El contacto confirmó el cierre después de la despedida.",
+        p_actor_id: null,
+        p_automatic: true,
+      });
+      if (closeError) throw new Error(`No se pudo cerrar la conversación finalizada: ${closeError.message}`);
+      await completeRun(run.id, {
+        status: "completed",
+        handoff: false,
+        handoff_kind: "none",
+        handoff_reason: null,
+      });
+      return { status: "completed" as const, closed: true, appointmentAt: null };
     }
 
     if (handoff) {
