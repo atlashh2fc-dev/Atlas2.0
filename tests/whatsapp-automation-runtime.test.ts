@@ -19,6 +19,7 @@ async function runAutomation(options: {
   generatedAppointmentAt?: string | null;
   modelFailure?: boolean;
   memorySummary?: string;
+  resumeExpiredHandoff?: boolean;
 } = {}) {
   let providerCalls = 0;
   const sentBodies: string[] = [];
@@ -34,6 +35,9 @@ async function runAutomation(options: {
   const client = {
     async rpc(name: string) {
       rpcCalls.push(name);
+      if (name === "resume_expired_whatsapp_ai_handoff") {
+        return { data: options.resumeExpiredHandoff ?? false, error: null };
+      }
       if (name === "handoff_whatsapp_conversation") handoffCompleted = true;
       if (name === "close_whatsapp_conversation") closeCalls++;
       return { data: null, error: null };
@@ -213,6 +217,26 @@ test("una consulta amplia recibe divulgación progresiva y no un folleto", async
   assert.match(run.sentBodies[0], /ejecutiva real atiende tus llamadas o WhatsApp/i);
   assert.doesNotMatch(run.sentBodies[0], /1 UF|módulos|PyMEs|CRM/);
   assert.ok(!run.rpcCalls.includes("handoff_whatsapp_conversation"));
+});
+
+test("un saludo nunca reactiva una coordinación histórica", async () => {
+  const run = await runAutomation({ inboundText: "Hola" });
+  assert.equal(run.result.status, "completed");
+  assert.equal(run.generatedCalls, 0);
+  assert.match(run.sentBodies[0], /¿En qué puedo ayudarte hoy\?/);
+  assert.doesNotMatch(run.sentBodies[0], /agend|llamada|mañana|12:00/i);
+});
+
+test("un handoff Mercury vencido sin respuesta humana vuelve a IA solo en ese hilo", async () => {
+  const run = await runAutomation({
+    initialState: "handoff",
+    resumeExpiredHandoff: true,
+    inboundText: "Hola",
+  });
+  assert.equal(run.result.status, "completed");
+  assert.equal(run.providerCalls, 1);
+  assert.ok(run.rpcCalls.includes("resume_expired_whatsapp_ai_handoff"));
+  assert.match(run.sentBodies[0], /¿En qué puedo ayudarte hoy\?/);
 });
 
 test("la pregunta concreta sobre qué hace responde solo funciones", async () => {

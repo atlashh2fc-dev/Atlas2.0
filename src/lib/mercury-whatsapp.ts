@@ -153,6 +153,18 @@ function broadServiceOverview(history: HistoryMessage[]): string | null {
   return null;
 }
 
+function greetingReply(history: HistoryMessage[]): string | null {
+  const text = normalizedInboundText(history)
+    .replace(/[.!¡¿?]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!/^(?:hola|holi|buen(?:os\s+d[ií]as|as\s+tardes|as\s+noches)|buenas)$/.test(text)) return null;
+  const hasPreviousConversation = history.some((message) => message.id !== history.at(-1)?.id);
+  return hasPreviousConversation
+    ? "¡Hola! Qué gusto leerte nuevamente. ¿En qué puedo ayudarte hoy?"
+    : "¡Hola! Soy la asistente virtual de GEIMSER. ¿En qué puedo ayudarte hoy?";
+}
+
 function conversationalStyleIssue(reply: string): string | null {
   if (reply.length > MAX_MERCURY_WHATSAPP_REPLY_LENGTH) return "supera 420 caracteres";
   if ((reply.match(/\?/g) ?? []).length > 1) return "contiene más de una pregunta";
@@ -404,10 +416,20 @@ export async function respondToWhatsAppInbound(input: {
       await completeRun(run.id, { status: "skipped", error_message: "El asistente general está deshabilitado para la campaña." });
       return { status: "skipped" as const };
     }
-    if (conversation.ai_state !== "auto") {
+    let effectiveAiState = conversation.ai_state;
+    if (effectiveAiState === "handoff" && conversation.status !== "closed") {
+      const { data: resumed, error: resumeError } = await admin.rpc("resume_expired_whatsapp_ai_handoff", {
+        p_conversation_id: input.conversationId,
+        p_inbound_message_id: input.inboundMessageId,
+        p_idle_minutes: 480,
+      });
+      if (resumeError) throw new Error(`No se pudo comprobar la vigencia de la derivación: ${resumeError.message}`);
+      if (resumed === true) effectiveAiState = "auto";
+    }
+    if (effectiveAiState !== "auto") {
       await completeRun(run.id, {
         status: "skipped",
-        error_message: conversation.ai_state === "handoff"
+        error_message: effectiveAiState === "handoff"
           ? "La conversación está bajo atención humana."
           : "La automatización está pausada en esta conversación.",
       });
@@ -460,12 +482,13 @@ export async function respondToWhatsAppInbound(input: {
 
     const finishedByCustomer = customerFinishedConversation(history);
     const gratitudeOnly = !finishedByCustomer && isGratitudeOnly(history);
-    const overview = !finishedByCustomer && !gratitudeOnly ? broadServiceOverview(history) : null;
+    const greeting = !finishedByCustomer && !gratitudeOnly ? greetingReply(history) : null;
+    const overview = !finishedByCustomer && !gratitudeOnly && !greeting ? broadServiceOverview(history) : null;
     let memoryContext: Awaited<ReturnType<typeof loadWhatsAppConversationMemory>> = {
       memory: EMPTY_WHATSAPP_CONVERSATION_MEMORY,
       messages: [],
     };
-    if (!finishedByCustomer && !gratitudeOnly && !overview) {
+    if (!finishedByCustomer && !gratitudeOnly && !greeting && !overview) {
       try {
         memoryContext = await loadWhatsAppConversationMemory(input.conversationId);
       } catch (error) {
@@ -477,7 +500,7 @@ export async function respondToWhatsAppInbound(input: {
     }
 
     let shouldPersistMemory = false;
-    const generated = finishedByCustomer || gratitudeOnly || overview
+    const generated = finishedByCustomer || gratitudeOnly || greeting || overview
       ? {
           reply: finishedByCustomer ? CUSTOMER_GOODBYE : FINAL_HELP_QUESTION,
           handoff: false,
@@ -548,6 +571,8 @@ export async function respondToWhatsAppInbound(input: {
       ? CUSTOMER_GOODBYE
       : gratitudeOnly
         ? FINAL_HELP_QUESTION
+        : greeting
+          ? greeting
         : overview
           ? overview
         : handoffKind === "appointment" && !automaticAppointmentBooking

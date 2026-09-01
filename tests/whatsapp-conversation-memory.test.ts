@@ -12,6 +12,10 @@ const migration = readFileSync(
   new URL("../supabase/migrations/20260901221500_whatsapp_durable_memory_and_retry.sql", import.meta.url),
   "utf8",
 );
+const handoffExpiryMigration = readFileSync(
+  new URL("../supabase/migrations/20260901225500_resume_expired_whatsapp_ai_handoffs.sql", import.meta.url),
+  "utf8",
+);
 const mercury = readFileSync(new URL("../src/lib/mercury-whatsapp.ts", import.meta.url), "utf8");
 const worker = readFileSync(
   new URL("../src/app/api/integrations/meta/whatsapp/ai-worker/route.ts", import.meta.url),
@@ -56,4 +60,12 @@ test("un trabajo durable recupera mensajes sin ejecución y fallos reintentables
   assert.match(worker, /respondToWhatsAppInbound/);
   assert.match(worker, /CRON_SECRET/);
   assert.match(middleware, /\/api\/integrations\/meta\/whatsapp\/ai-worker/);
+});
+
+test("solo vence handoffs Mercury antiguos que nunca recibieron respuesta humana", () => {
+  assert.match(handoffExpiryMigration, /resume_expired_whatsapp_ai_handoff/);
+  assert.match(handoffExpiryMigration, /metadata->>'source' <> 'mercury'/);
+  assert.match(handoffExpiryMigration, /message\.sent_by is not null/);
+  assert.match(handoffExpiryMigration, /v_inbound_created_at < v_handoff\.created_at \+ make_interval/);
+  assert.match(handoffExpiryMigration, /conversation\.ai_state = 'handoff'/);
 });
