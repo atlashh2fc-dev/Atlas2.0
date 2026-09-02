@@ -12,7 +12,7 @@ import {
 import { SupervisorAgentMetricsTable } from "@/components/supervisor-agent-metrics-table";
 import { ChartDownloadButton } from "@/components/chart-download-button";
 import Link from "next/link";
-import { Button, Card, InfoTooltip, Select } from "@/components/ui";
+import { Button, Callout, Card, InfoTooltip, Select } from "@/components/ui";
 import { metricDefinition, type MetricId } from "@/lib/metric-definitions";
 import { resolveCampaignScope } from "@/lib/campaign-scope";
 import { formatReportRangeLabel, resolveReportRange, toDateInput } from "@/lib/report-range";
@@ -231,7 +231,21 @@ export default async function ReportesPage({
       supabase.rpc("get_report_scope_campaigns"),
     ]);
 
-    if (error) throw new Error(error.message);
+    // La RPC levanta excepciones de negocio legibles ("tu supervisor no tiene
+    // equipos asignados"). Relanzarlas dejaba la pantalla en negro con un
+    // "server error" que no dice nada y parece una caída del sitio.
+    if (error) {
+      return (
+        <Callout tone="warning">
+          <p className="font-medium">No se pudo armar tu reporte.</p>
+          <p className="mt-1">{error.message}</p>
+          <p className="mt-2 text-xs">
+            Si el mensaje habla de equipos, un administrador tiene que asignarte equipos en
+            Administración → Usuarios y equipos.
+          </p>
+        </Callout>
+      );
+    }
 
     const report = data as SupervisorReportSummary;
     const campaigns = (campaignRows ?? []) as { id: string; name: string }[];
@@ -402,7 +416,14 @@ export default async function ReportesPage({
     p_campaign_id: selectedCampaignId,
   });
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    return (
+      <Callout tone="warning">
+        <p className="font-medium">No se pudo armar el reporte.</p>
+        <p className="mt-1">{error.message}</p>
+      </Callout>
+    );
+  }
   dashboardSummary = data as CampaignDashboardSummaryData;
 
   return (
