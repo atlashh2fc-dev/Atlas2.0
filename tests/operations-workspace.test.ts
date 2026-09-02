@@ -111,8 +111,14 @@ test("filtros validados y antigüedad explícita", () => {
   );
 });
 
+// El puesto de atención ahora tiene una pestaña por canal: el guardia de
+// permisos vive en el layout y la bandeja de WhatsApp en su propia ruta.
+const attentionLayout = readFileSync(
+  new URL("../src/app/dashboard/conversaciones/layout.tsx", import.meta.url),
+  "utf8",
+).replace(/\s+/g, " ");
 const inbox = readFileSync(
-  new URL("../src/app/dashboard/conversaciones/page.tsx", import.meta.url),
+  new URL("../src/app/dashboard/conversaciones/whatsapp/page.tsx", import.meta.url),
   "utf8",
 ).replace(/\s+/g, " ");
 const monitor = readFileSync(
@@ -125,11 +131,13 @@ const loader = readFileSync(
 );
 
 test("administración redirige antes de consultar conversaciones y no hay selección automática", () => {
-  assert.ok(
-    inbox.indexOf(
-      'if (!permissions.canReadConversationContent) redirect("/dashboard/operacion")',
-    ) < inbox.indexOf('.from("whatsapp_conversations")'),
+  // El layout envuelve a todas las pestañas, así que su redirección corre
+  // antes que cualquier consulta de conversaciones de sus hijos.
+  assert.match(
+    attentionLayout,
+    /if \(!permissions\.canReadConversationContent\) redirect\("\/dashboard\/operacion"\)/,
   );
+  assert.doesNotMatch(attentionLayout, /whatsapp_conversations/);
   assert.doesNotMatch(inbox, /conversations\[0\]/);
   assert.match(
     inbox,

@@ -2,44 +2,71 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Layers } from "lucide-react";
-import { CAMPAIGN_SCOPE_COOKIE } from "@/lib/campaign-scope-shared";
+import type { AppRole } from "@/lib/types";
 
 type CampaignOption = { id: string; name: string };
 
+/**
+ * Rutas donde el alcance de campaña cambia lo que se ve. Se listan por rol
+ * porque cada espacio de trabajo tiene su propio árbol (nav.config.ts): el
+ * supervisor tiene "Mi equipo" y no tiene el reporte global del admin.
+ *
+ * `/dashboard/reportes` estaba solo en la lista del admin, así que el
+ * supervisor no tenía **ninguna** forma de cambiar la campaña en sus reportes:
+ * esa pantalla no trae filtro propio y depende por completo de este selector.
+ * `/dashboard/reportes/discador` queda fuera a propósito: ese reporte no
+ * segmenta por campaña y el selector aparecería sin hacer nada.
+ */
+const SCOPED_ROUTES: Record<AppRole, string[]> = {
+  admin: ["/dashboard/leads", "/dashboard/reportes", "/dashboard/reportes/integridad"],
+  supervisor: [
+    "/dashboard/leads",
+    "/dashboard/team",
+    "/dashboard/reportes",
+    "/dashboard/reportes/integridad",
+  ],
+  agente: ["/dashboard/leads", "/dashboard/agenda"],
+};
+
+function supportsScope(pathname: string, role: AppRole) {
+  return SCOPED_ROUTES[role].some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`)
+  );
+}
+
+/**
+ * Selector de campaña del encabezado.
+ *
+ * El valor se lee de `useSearchParams`, no de un prop del layout. Los layouts
+ * de Next no se vuelven a renderizar en una navegación blanda, así que el
+ * `select` controlado recibía siempre el valor viejo y saltaba de vuelta solo:
+ * parecía que elegir una campaña no hacía nada.
+ */
 export function CampaignScopeSwitcher({
   campaigns,
-  selectedCampaignId,
   role,
 }: {
   campaigns: CampaignOption[];
-  selectedCampaignId: string | null;
-  role: "agente" | "supervisor" | "admin";
+  role: AppRole;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const supportedRoutes = role === "admin"
-    ? ["/dashboard/reportes", "/dashboard/leads", "/dashboard/agenda"]
-    : ["/dashboard/leads", "/dashboard/agenda", "/dashboard/team"];
-  const supportsScope = supportedRoutes.some(
-    (route) => pathname === route || pathname.startsWith(`${route}/`)
-  );
+  if (!supportsScope(pathname, role)) return null;
 
-  if (!supportsScope) return null;
+  const requested = searchParams.get("campaign") ?? "";
+  const selected = campaigns.some((campaign) => campaign.id === requested) ? requested : "";
 
   function changeScope(campaignId: string) {
-    if (campaignId) {
-      document.cookie = `${CAMPAIGN_SCOPE_COOKIE}=${encodeURIComponent(campaignId)}; Path=/; Max-Age=2592000; SameSite=Lax`;
-    } else {
-      document.cookie = `${CAMPAIGN_SCOPE_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`;
-    }
-
     const params = new URLSearchParams(searchParams.toString());
     if (campaignId) params.set("campaign", campaignId);
     else params.delete("campaign");
+    // Cambiar de campaña reinicia la paginación: la página 7 de otra campaña
+    // no significa nada.
+    params.delete("page");
     const query = params.toString();
-    router.replace(query ? `${pathname}?${query}` : pathname);
+    router.push(query ? `${pathname}?${query}` : pathname);
   }
 
   return (
@@ -48,7 +75,7 @@ export function CampaignScopeSwitcher({
       <span className="sr-only">Contexto de campaña</span>
       <select
         aria-label="Contexto de campaña"
-        value={selectedCampaignId ?? ""}
+        value={selected}
         onChange={(event) => changeScope(event.target.value)}
         className="max-w-48 bg-transparent font-medium text-foreground outline-none"
       >

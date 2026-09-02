@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Profile } from "@/lib/types";
 import { MobileNav, WorkspaceContext } from "@/components/mobile-nav";
 import type { NavBadgeCounts } from "@/components/sidebar";
@@ -11,12 +12,10 @@ import { LogOut } from "lucide-react";
 export function Header({
   profile,
   campaigns,
-  selectedCampaignId,
   badges,
 }: {
   profile: Profile;
   campaigns: { id: string; name: string }[];
-  selectedCampaignId: string | null;
   badges?: NavBadgeCounts;
 }) {
   return (
@@ -27,7 +26,11 @@ export function Header({
       </div>
 
       <div className="flex items-center gap-3">
-        <CampaignScopeSwitcher campaigns={campaigns} selectedCampaignId={selectedCampaignId} role={profile.role} />
+        {/* Lee la campaña de la URL, así que necesita su propio límite de
+            Suspense igual que el selector de período de los reportes. */}
+        <Suspense fallback={null}>
+          <CampaignScopeSwitcher campaigns={campaigns} role={profile.role} />
+        </Suspense>
         <QuickSearch role={profile.role} userId={profile.id} />
         {profile.role === "agente" && <AgendaBell />}
         <ThemeToggle />

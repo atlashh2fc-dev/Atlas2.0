@@ -144,7 +144,7 @@ export function AgendaBell() {
                   <li key={i.id}>
                     <Link
                       href={i.next_action_channel === "whatsapp" && conversationId
-                        ? `/dashboard/conversaciones?status=all&conversation=${conversationId}`
+                        ? `/dashboard/conversaciones/whatsapp?status=all&conversation=${conversationId}`
                         : `/dashboard/leads/${i.id}`}
                       onClick={() => setOpen(false)}
                       className="block px-4 py-3 hover:bg-surface-muted"

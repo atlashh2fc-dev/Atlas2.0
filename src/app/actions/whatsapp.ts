@@ -23,8 +23,8 @@ const MAX_MEDIA_CAPTION_LENGTH = 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function revalidateWhatsApp(conversationId?: string) {
-  revalidatePath("/dashboard/conversaciones");
-  if (conversationId) revalidatePath(`/dashboard/conversaciones?conversation=${conversationId}`);
+  revalidatePath("/dashboard/conversaciones/whatsapp");
+  if (conversationId) revalidatePath(`/dashboard/conversaciones/whatsapp?conversation=${conversationId}`);
 }
 
 async function assertHumanAttentionAllowed(conversation: { campaign_id: string; ai_state: string }) {
@@ -592,5 +592,5 @@ export async function saveWhatsAppChannelConfig(formData: FormData) {
   if (routeResult.error) throw new Error(routeResult.error.message);
 
   revalidatePath("/dashboard/admin/integraciones/whatsapp");
-  revalidatePath("/dashboard/conversaciones");
+  revalidatePath("/dashboard/conversaciones/whatsapp");
 }

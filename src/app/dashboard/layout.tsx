@@ -6,7 +6,6 @@ import { AgendaBanner, AgendaProvider } from "@/components/agenda-reminder";
 import { CtiBar } from "@/components/cti-bar";
 import { ToastProvider } from "@/components/ui";
 import { createClient } from "@/lib/supabase/server";
-import { resolveCampaignScope } from "@/lib/campaign-scope";
 import { ForceLogoutGuard } from "@/components/force-logout-guard";
 import { getWorkspacePermissions } from "@/lib/workspace-permissions";
 
@@ -32,8 +31,6 @@ export default async function DashboardLayout({
   const campaigns = campaignRows.filter(
     (campaign) => profile.role !== "agente" || assignedCampaignIds.has(campaign.id)
   );
-  const requestedScope = await resolveCampaignScope();
-  const selectedCampaignId = campaigns.some((campaign) => campaign.id === requestedScope) ? requestedScope : null;
 
   // Contador del menú: las agendas vencidas del ejecutivo. Es una cuenta con
   // `head: true`, no trae filas.
@@ -58,16 +55,11 @@ export default async function DashboardLayout({
         <div className="flex flex-1 flex-col overflow-hidden">
           {showAgendaReminder ? (
             <AgendaProvider userId={profile.id}>
-              <Header
-                profile={profile}
-                campaigns={campaigns}
-                selectedCampaignId={selectedCampaignId}
-                badges={badges}
-              />
+              <Header profile={profile} campaigns={campaigns} badges={badges} />
               <AgendaBanner />
             </AgendaProvider>
           ) : (
-            <Header profile={profile} campaigns={campaigns} selectedCampaignId={selectedCampaignId} />
+            <Header profile={profile} campaigns={campaigns} />
           )}
           <main className="flex-1 overflow-y-auto p-5">{children}</main>
         </div>

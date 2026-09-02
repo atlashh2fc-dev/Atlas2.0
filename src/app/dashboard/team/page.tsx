@@ -190,7 +190,7 @@ export default async function TeamPage({
 }) {
   await requireProfile(["supervisor"]);
   const { agent, campaign, status } = await searchParams;
-  const campaignScope = await resolveCampaignScope(campaign);
+  const campaignScope = resolveCampaignScope(campaign);
   const supabase = await createClient();
   const filters = {
     agent: agent || "",

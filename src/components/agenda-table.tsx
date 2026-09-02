@@ -91,7 +91,7 @@ const COLUMNS: Column<AgendaRow>[] = [
       : row.channel === "whatsapp" && row.conversationId
         ? (
             <Link
-              href={`/dashboard/conversaciones?status=all&conversation=${row.conversationId}`}
+              href={`/dashboard/conversaciones/whatsapp?status=all&conversation=${row.conversationId}`}
               className={cn(buttonClasses({ variant: "secondary", size: "sm" }), "gap-1.5")}
             >
               <MessageCircle size={14} aria-hidden="true" /> Abrir chat

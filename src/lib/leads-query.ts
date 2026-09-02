@@ -60,13 +60,21 @@ const NO_PHONE_OR = "phone.is.null,phone.eq.";
 
 type Query = ReturnType<ReturnType<SupabaseClient["from"]>["select"]>;
 
-/** Aplica a una consulta las condiciones de la vista operativa. */
+/**
+ * Aplica a una consulta las condiciones de la vista operativa.
+ *
+ * Ojo: las vistas son colas de trabajo, no un índice de la base. Todas menos
+ * "bloqueados" exigen teléfono utilizable, así que **no sirven para buscar**:
+ * un registro sin teléfono existe pero no aparece en ninguna. Por eso
+ * `fetchLeadsPage` se salta esta función cuando hay término de búsqueda.
+ */
 function applyView(query: Query, view: LeadView) {
   const { start, end, now } = dayBounds();
 
   if (view === "bloqueados") return query.or(NO_PHONE_OR);
 
-  // El resto de las vistas exige teléfono utilizable.
+  // El resto de las vistas exige teléfono utilizable. El builder de PostgREST
+  // muta, así que `query` ya lleva esta condición cuando se retorna al final.
   const withPhone = query.not("phone", "is", null).neq("phone", "");
 
   if (view === "vencidas") return withPhone.lte("next_action_at", now);
@@ -108,6 +116,13 @@ export type LeadsPage<T> = {
   counts: Record<LeadView, number>;
   /** Estados realmente presentes en la selección, para no ofrecer filtros vacíos. */
   statuses: string[];
+  /**
+   * Resultado crudo de la búsqueda por texto, antes de los filtros de campaña,
+   * ejecutivo y estado. Permite distinguir "ese RUT no existe" de "ese RUT
+   * existe pero lo estás filtrando", que es el caso que dejaba la pantalla en
+   * blanco sin explicación.
+   */
+  search: { term: string; matches: number } | null;
   error: string | null;
 };
 
@@ -140,6 +155,7 @@ export async function fetchLeadsPage<T>(
         pageCount: 1,
         counts: emptyCounts(),
         statuses: [],
+        search: { term: filters.q, matches: 0 },
         error: error.message,
       };
     }
@@ -153,6 +169,7 @@ export async function fetchLeadsPage<T>(
         pageCount: 1,
         counts: emptyCounts(),
         statuses: [],
+        search: { term: filters.q, matches: 0 },
         error: null,
       };
     }
@@ -178,7 +195,10 @@ export async function fetchLeadsPage<T>(
         ids,
         options.role
       );
-      const scoped = applyView(base, view);
+      // Buscar manda sobre la cola: si el usuario escribió un RUT quiere ese
+      // registro, no "ese registro siempre que además esté en la vista
+      // Prioridad y tenga teléfono".
+      const scoped = filters.q ? base : applyView(base, view);
       const page = Math.max(1, options.page);
       const from = (page - 1) * pageSize;
       const { data, count, error } = await scoped
@@ -204,6 +224,7 @@ export async function fetchLeadsPage<T>(
       ? (Object.fromEntries(LEAD_VIEWS.map((item) => [item.id, viewCounts[item.id] ?? 0])) as Record<LeadView, number>)
       : emptyCounts(),
     statuses: viewCounts?.estados ?? [],
+    search: filters.q ? { term: filters.q, matches: ids?.length ?? 0 } : null,
     error: listing.error ?? countsResult.error?.message ?? null,
   };
 }

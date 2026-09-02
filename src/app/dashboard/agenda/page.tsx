@@ -11,7 +11,7 @@ export default async function MyAgendaPage({
 }) {
   const profile = await requireProfile(["agente"]);
   const { campaign } = await searchParams;
-  const campaignScope = await resolveCampaignScope(campaign);
+  const campaignScope = resolveCampaignScope(campaign);
   const supabase = await createClient();
 
   // El embed tiene que nombrar la clave foránea: `campaigns(name)` es ambiguo

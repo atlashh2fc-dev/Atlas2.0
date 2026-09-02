@@ -137,6 +137,9 @@ const CONSOLE: NavSpace = {
           icon: MessageCircle,
           roles: ["agente", "supervisor"],
           description: "Atención asignada para ejecutivos; consulta de historial para supervisión",
+          // El índice redirige al primer canal habilitado en la campaña, así
+          // que el ítem tiene que seguir activo en /voz, /whatsapp y /correo.
+          match: ["/dashboard/conversaciones"],
         },
         {
           id: "agenda",

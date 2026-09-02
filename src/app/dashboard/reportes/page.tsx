@@ -212,7 +212,7 @@ export default async function ReportesPage({
 }) {
   const profile = await requireProfile(["supervisor", "admin"]);
   const { campaign: campaignParam, preset, from, to } = await searchParams;
-  const campaignScope = await resolveCampaignScope(campaignParam);
+  const campaignScope = resolveCampaignScope(campaignParam);
   const supabase = await createClient();
   // El período llega por la URL desde el selector del layout; ya no hay una
   // ventana fija de 30 días decidida acá.

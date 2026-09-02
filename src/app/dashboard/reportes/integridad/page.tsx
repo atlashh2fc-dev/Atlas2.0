@@ -12,7 +12,7 @@ export default async function ReportesIntegridadPage({
 }) {
   await requireProfile(["admin", "supervisor"]);
   const { campaign, preset, from, to } = await searchParams;
-  const campaignScope = await resolveCampaignScope(campaign);
+  const campaignScope = resolveCampaignScope(campaign);
   const range = resolveReportRange({ preset, from, to });
 
   const report = await getManagementIntegrityReport({

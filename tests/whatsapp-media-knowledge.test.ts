@@ -16,7 +16,7 @@ const knowledgeMigration = readFileSync(
   "utf8",
 );
 const mercury = readFileSync(new URL("../src/lib/mercury-whatsapp.ts", import.meta.url), "utf8");
-const conversations = readFileSync(new URL("../src/app/dashboard/conversaciones/page.tsx", import.meta.url), "utf8");
+const conversations = readFileSync(new URL("../src/app/dashboard/conversaciones/whatsapp/page.tsx", import.meta.url), "utf8");
 const handoffMigration = readFileSync(
   new URL("../supabase/migrations/20260826231000_route_whatsapp_handoffs_to_laura.sql", import.meta.url),
   "utf8",

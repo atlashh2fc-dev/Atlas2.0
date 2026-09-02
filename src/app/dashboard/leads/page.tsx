@@ -11,7 +11,7 @@ import {
   type LeadFilters,
 } from "@/lib/leads-query";
 import { LeadsQueue, type LeadQueueRow } from "@/components/leads-queue";
-import { Field, FilterBar, Input, PageHeader, Select, buttonClasses } from "@/components/ui";
+import { Callout, Field, FilterBar, Input, PageHeader, Select, buttonClasses } from "@/components/ui";
 
 type FilterOption = { id: string; full_name?: string; name?: string };
 
@@ -56,7 +56,7 @@ export default async function LeadsPage({
 }) {
   const profile = await requireProfile();
   const { q, view: viewParam, agent, campaign, status, page: pageParam } = await searchParams;
-  const campaignScope = await resolveCampaignScope(campaign);
+  const campaignScope = resolveCampaignScope(campaign);
   const view = parseLeadView(viewParam);
   const supabase = await createClient();
   const copy = roleCopy(profile.role);
@@ -94,6 +94,19 @@ export default async function LeadsPage({
       label: LEAD_STATUSES.find((status) => status.value === value)?.label ?? value,
     }))
     .sort((a, b) => a.label.localeCompare(b.label, "es"));
+
+  // Cuando la búsqueda encuentra el registro pero los filtros lo esconden, hay
+  // que decirlo: la pantalla en blanco hacía creer que el RUT no existía.
+  const activeFilters = [
+    filters.campaign &&
+      `campaña ${((campaignOptions ?? []) as FilterOption[]).find((option) => option.id === filters.campaign)?.name ?? "seleccionada"}`,
+    filters.agent &&
+      `ejecutivo ${((agentOptions ?? []) as FilterOption[]).find((option) => option.id === filters.agent)?.full_name ?? "seleccionado"}`,
+    filters.status &&
+      `estado ${LEAD_STATUSES.find((status) => status.value === filters.status)?.label ?? filters.status}`,
+  ].filter(Boolean) as string[];
+  const hiddenBySearchFilters =
+    result.search !== null && result.search.matches > 0 && result.total === 0;
 
   return (
     <div className="space-y-5">
@@ -172,6 +185,22 @@ export default async function LeadsPage({
 
         <input type="hidden" name="view" value={view} />
       </FilterBar>
+
+      {hiddenBySearchFilters && (
+        <Callout tone="warning">
+          <p>
+            {`Hay ${result.search?.matches === 1 ? "1 registro que coincide" : `${result.search?.matches} registros que coinciden`} con “${filters.q}”, pero ${activeFilters.length > 0 ? `están fuera de los filtros activos (${activeFilters.join(", ")}).` : "quedan fuera de tu alcance de visibilidad."}`}
+          </p>
+          {activeFilters.length > 0 && (
+            <Link
+              href={`/dashboard/leads?q=${encodeURIComponent(filters.q)}`}
+              className="mt-2 inline-block font-medium underline underline-offset-2"
+            >
+              Buscar sin filtros
+            </Link>
+          )}
+        </Callout>
+      )}
 
       <LeadsQueue
         leads={result.rows}

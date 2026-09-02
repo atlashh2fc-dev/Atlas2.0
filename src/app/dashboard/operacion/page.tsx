@@ -789,7 +789,7 @@ export default async function OperationsPage({
                             </Link>
                           ) : (
                             <Link
-                              href={`/dashboard/conversaciones?status=all${filters.campaign ? `&campaign=${filters.campaign}` : ""}&queue=${queue.id}`}
+                              href={`/dashboard/conversaciones/whatsapp?status=all${filters.campaign ? `&campaign=${filters.campaign}` : ""}&queue=${queue.id}`}
                               className="text-xs font-medium text-primary hover:underline"
                             >
                               Supervisar asignaciones
