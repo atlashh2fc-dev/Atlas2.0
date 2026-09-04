@@ -12,11 +12,35 @@ import type { AppRole } from "./types";
 export const CAMPAIGN_CHANNELS = ["phone", "whatsapp", "mail"] as const;
 export type CampaignChannel = (typeof CAMPAIGN_CHANNELS)[number];
 
+const ATTENTION_CHANNEL_HREFS = {
+  phone: "/dashboard/conversaciones/voz",
+  whatsapp: "/dashboard/conversaciones/whatsapp",
+  mail: "/dashboard/conversaciones/correo",
+} satisfies Record<CampaignChannel, string>;
+
 export const ATTENTION_TABS: { channel: CampaignChannel; label: string; href: string }[] = [
-  { channel: "phone", label: "Voz", href: "/dashboard/conversaciones/voz" },
-  { channel: "whatsapp", label: "WhatsApp", href: "/dashboard/conversaciones/whatsapp" },
-  { channel: "mail", label: "Correo", href: "/dashboard/conversaciones/correo" },
+  { channel: "phone", label: "Voz", href: ATTENTION_CHANNEL_HREFS.phone },
+  { channel: "whatsapp", label: "WhatsApp", href: ATTENTION_CHANNEL_HREFS.whatsapp },
+  { channel: "mail", label: "Correo", href: ATTENTION_CHANNEL_HREFS.mail },
 ];
+
+/**
+ * Construye un deep link dentro del canal solicitado. Los filtros y la
+ * conversación seleccionada nunca deben pasar por el índice genérico, porque
+ * ese índice elige el primer canal habilitado y descarta el estado de la URL.
+ */
+export function attentionChannelHref(
+  channel: CampaignChannel,
+  params: Record<string, string | null | undefined> = {},
+) {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value) search.set(key, value);
+  }
+
+  const query = search.toString();
+  return `${ATTENTION_CHANNEL_HREFS[channel]}${query ? `?${query}` : ""}`;
+}
 
 export function isCampaignChannel(value: unknown): value is CampaignChannel {
   return typeof value === "string" && (CAMPAIGN_CHANNELS as readonly string[]).includes(value);

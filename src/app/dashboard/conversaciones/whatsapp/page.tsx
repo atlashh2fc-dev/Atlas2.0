@@ -34,6 +34,7 @@ import {
   buttonClasses,
 } from "@/components/ui";
 import { requireProfile } from "@/lib/auth";
+import { attentionChannelHref } from "@/lib/campaign-channels";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 import { getWorkspacePermissions } from "@/lib/workspace-permissions";
@@ -212,11 +213,12 @@ function conversationsHref({
   queue?: string | null;
   conversation?: string | null;
 }) {
-  const params = new URLSearchParams({ status });
-  if (campaign) params.set("campaign", campaign);
-  if (queue) params.set("queue", queue);
-  if (conversation) params.set("conversation", conversation);
-  return `/dashboard/conversaciones?${params.toString()}`;
+  return attentionChannelHref("whatsapp", {
+    status,
+    campaign,
+    queue,
+    conversation,
+  });
 }
 
 function ContextSection({
@@ -463,7 +465,7 @@ export default async function WhatsAppInboxPage({
 
             <form
               className="grid grid-cols-2 gap-2 border-b border-border p-3"
-              action="/dashboard/conversaciones"
+              action={attentionChannelHref("whatsapp")}
             >
               <input type="hidden" name="status" value={status} />
               {queueFilter && (
