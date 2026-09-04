@@ -15,8 +15,10 @@ import { assertPrivateRecordingBucket } from "./recording/storage";
 import { registerRecordingIngestRoute } from "./recording/ingest";
 import { OperationalHealthTracker } from "./operationalHealth";
 import { publishOperationalHealth } from "./operationalHealthPublisher";
+import { publishAgentSipProvisioningStates } from "./supabaseClient";
 
 const AGENT_DIRECTORY_REFRESH_MS = 10_000;
+const AGENT_ENDPOINT_RECONCILE_MS = 60_000;
 const AGENT_PAUSE_SYNC_MS = 10_000;
 const AGENT_HEARTBEAT_CHECK_MS = 30_000;
 
@@ -62,13 +64,34 @@ async function main() {
   // Cada refresh también aprovisiona en Asterisk (vía AMI) cualquier
   // extensión nueva y reconcilia las claves SIP existentes con la fuente de
   // verdad, corrigiendo divergencias DB↔PBX sin recargar si ya coinciden.
-  const syncAgentDirectoryAndEndpoints = async () => {
+  const refreshDirectory = async () => {
     const directoryOk = await refreshAgentDirectory(config.agentExtensionMap);
     if (directoryOk) health.success("agentDirectory");
     else health.failure("agentDirectory", "supabase_agent_directory_failed");
+  };
 
+  const reconcileAgentEndpoints = async () => {
+    const credentials = getActiveCredentials();
     try {
-      const report = await ensureAgentEndpoints(ami, getActiveCredentials());
+      const report = await ensureAgentEndpoints(
+        ami,
+        credentials,
+        config.agentPjsipConfigFile
+      );
+      const resultByExtension = new Map(report.results.map((result) => [result.extension, result]));
+      await publishAgentSipProvisioningStates(
+        credentials.map((credential) => {
+          const result = resultByExtension.get(credential.extension);
+          return {
+            profileId: credential.profileId,
+            extension: credential.extension,
+            desiredUpdatedAt: credential.updatedAt,
+            status: result?.status ?? "error",
+            failureCode: result?.failureCode ?? "agent_sync_result_missing",
+          };
+        }),
+        config.release,
+      );
       if (report.ok) health.success("agentConfigSync");
       else health.failure("agentConfigSync", "ami_agent_config_failed");
     } catch (err) {
@@ -76,13 +99,36 @@ async function main() {
       logger.error({ err }, "Sync de extensiones PJSIP falló");
     }
   };
-  await syncAgentDirectoryAndEndpoints();
-  setInterval(() => {
-    syncAgentDirectoryAndEndpoints().catch((err) => {
-      health.failure("agentDirectory", "agent_directory_unhandled_error");
-      logger.error({ err }, "Sync de directorio de agentes falló");
-    });
-  }, AGENT_DIRECTORY_REFRESH_MS);
+  await refreshDirectory();
+  await reconcileAgentEndpoints();
+
+  const scheduleDirectoryRefresh = () => {
+    setTimeout(async () => {
+      try {
+        await refreshDirectory();
+      } catch (err) {
+        health.failure("agentDirectory", "agent_directory_unhandled_error");
+        logger.error({ err }, "Sync de directorio de agentes falló");
+      } finally {
+        scheduleDirectoryRefresh();
+      }
+    }, AGENT_DIRECTORY_REFRESH_MS);
+  };
+  scheduleDirectoryRefresh();
+
+  // Reconciliación single-flight separada de la lectura del directorio. Así
+  // una caída de AMI no acumula ciclos superpuestos ni tormentas de logs, y el
+  // costo de verificar endpoints crece linealmente con una cadencia acotada.
+  const scheduleEndpointReconciliation = () => {
+    setTimeout(async () => {
+      try {
+        await reconcileAgentEndpoints();
+      } finally {
+        scheduleEndpointReconciliation();
+      }
+    }, AGENT_ENDPOINT_RECONCILE_MS);
+  };
+  scheduleEndpointReconciliation();
 
   // Estado del agente (AUX o cierre/tipificación): se sincroniza a QueuePause
   // antes de iniciar el pacing y luego continuamente. Así un reinicio del
@@ -119,7 +165,7 @@ async function main() {
   const scheduleAgentControl = () => {
     setTimeout(async () => {
       try {
-        await processAgentControlCommands(ami);
+        await processAgentControlCommands(ami, config.agentPjsipConfigFile);
         health.success("agentControl");
       } catch (err) {
         health.failure("agentControl", "agent_control_failed");

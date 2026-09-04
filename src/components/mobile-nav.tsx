@@ -2,16 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowLeft, Menu, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import type { Profile } from "@/lib/types";
-import { ROLE_LABEL, spaceForPath, workspaceLabel } from "@/lib/nav.config";
+import { ROLE_LABEL, workspaceLabel } from "@/lib/nav.config";
 import { NavFooter, NavTree, type NavBadgeCounts } from "@/components/sidebar";
 
 export function WorkspaceContext({ role }: { role: Profile["role"] }) {
-  const pathname = usePathname();
-  return <span className="hidden text-sm font-medium text-foreground md:block">{workspaceLabel(role, pathname)}</span>;
+  return <span className="hidden text-sm font-medium text-foreground md:block">{workspaceLabel(role)}</span>;
 }
 
 /**
@@ -21,7 +19,6 @@ export function WorkspaceContext({ role }: { role: Profile["role"] }) {
 export function MobileNav({ profile, badges }: { profile: Profile; badges?: NavBadgeCounts }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const inAdmin = spaceForPath(pathname) === "admin";
   const drawerRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -88,7 +85,7 @@ export function MobileNav({ profile, badges }: { profile: Profile; badges?: NavB
               <div className="leading-none">
                 <span className="text-sm font-semibold text-foreground">Atlas</span>
                 <p className="mt-0.5 text-[10px] text-muted-foreground">
-                  {workspaceLabel(profile.role, pathname)} · {ROLE_LABEL[profile.role]}
+                  {workspaceLabel(profile.role)} · {ROLE_LABEL[profile.role]}
                 </p>
               </div>
               <button
@@ -100,17 +97,6 @@ export function MobileNav({ profile, badges }: { profile: Profile; badges?: NavB
                 <X size={17} />
               </button>
             </div>
-
-            {inAdmin && (
-              <Link
-                href="/dashboard"
-                onClick={() => setOpen(false)}
-                className="mx-2 mt-2 flex items-center gap-2 rounded-lg px-3 py-2 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.045] hover:text-foreground"
-              >
-                <ArrowLeft size={16} />
-                Volver a Control
-              </Link>
-            )}
 
             <nav className="flex-1 overflow-y-auto p-2">
               <NavTree

@@ -18,12 +18,10 @@ import {
   type NavSection,
 } from "@/lib/nav.config";
 import {
-  ArrowLeft,
   ChevronDown,
   CircleHelp,
   PanelLeftClose,
   PanelLeftOpen,
-  Settings,
 } from "lucide-react";
 
 const COLLAPSED_KEY = "atlas.nav.collapsed";
@@ -225,27 +223,10 @@ export function NavFooter({
   rail?: boolean;
   onNavigate?: () => void;
 }) {
-  const inAdmin = spaceForPath(pathname) === "admin";
   const helpActive = pathname.startsWith(HELP_HREF);
 
   return (
     <div className="border-t border-border p-2">
-      {profile.role === "admin" && !inAdmin && (
-        <Link
-          href="/dashboard/admin/campanas"
-          onClick={onNavigate}
-          title={rail ? "Administración" : undefined}
-          className={`group relative flex items-center gap-3 rounded-lg text-sm font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.045] hover:text-foreground ${
-            rail ? "justify-center px-2 py-2" : "px-3 py-2"
-          }`}
-        >
-          <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground/80 group-hover:text-foreground">
-            <Settings size={16} />
-          </span>
-          {!rail && "Administración"}
-        </Link>
-      )}
-
       <Link
         href={HELP_HREF}
         onClick={onNavigate}
@@ -288,7 +269,6 @@ export function NavFooter({
 
 export function Sidebar({ profile, badges }: { profile: Profile; badges?: NavBadgeCounts }) {
   const pathname = usePathname();
-  const inAdmin = spaceForPath(pathname) === "admin";
   const [rail, setRail] = useState(false);
 
   return (
@@ -312,7 +292,7 @@ export function Sidebar({ profile, badges }: { profile: Profile; badges?: NavBad
             <div className="leading-none">
               <span className="text-sm font-semibold text-foreground">Atlas</span>
               <p className="mt-0.5 text-[10px] text-muted-foreground">
-                {workspaceLabel(profile.role, pathname)} · {ROLE_LABEL[profile.role]}
+                {workspaceLabel(profile.role)} · {ROLE_LABEL[profile.role]}
               </p>
             </div>
             <button
@@ -336,19 +316,6 @@ export function Sidebar({ profile, badges }: { profile: Profile; badges?: NavBad
         >
           <PanelLeftOpen size={17} />
         </button>
-      )}
-
-      {inAdmin && (
-        <Link
-          href="/dashboard"
-          title={rail ? "Volver a Control" : undefined}
-          className={`group mx-2 mt-2 flex items-center gap-2 rounded-lg py-2 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.045] hover:text-foreground ${
-            rail ? "justify-center px-2" : "px-3"
-          }`}
-        >
-          <ArrowLeft size={16} className="flex-shrink-0" />
-          {!rail && "Volver a Control"}
-        </Link>
       )}
 
       <nav className="flex-1 overflow-y-auto p-2">

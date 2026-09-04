@@ -58,6 +58,10 @@ Ver `.env.example`. Las críticas:
   ejecutivos, cargar el mapa completo antes de arrancar. A futuro conviene
   mover esto a una columna `profiles.extension` en el CRM para no mantener
   dos fuentes de verdad.
+- `AGENT_PJSIP_CONFIG_FILE`: archivo PJSIP administrable que ya está incluido
+  por Asterisk. En producción es `pjsip_elevenlabs_atlas.conf`; nunca apuntar
+  el sincronizador a `pjsip.conf`, porque sus directivas principales no son
+  compatibles con `AMI GetConfig` y bloquearían todas las extensiones nuevas.
 - `DIALER_CAMPAIGN_IDS`: solo las campañas con discado outbound activo pasan
   por el loop de pacing.
 - `AI_VOICE_CAMPAIGN_IDS`: lista separada de campañas atendidas exclusivamente

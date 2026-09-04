@@ -772,6 +772,10 @@ export function CtiBar({ profile }: { profile: Profile }) {
           ? "No se pudo conectar el teléfono. Avisa a tu supervisor: no recibirás llamadas."
           : "Restableciendo automáticamente la conexión con la central."
       );
+      // Una falla persistente no puede convertirse en un loop infinito de
+      // REGISTER + escrituras de telemetría. Tras los intentos silenciosos se
+      // detiene hasta que el ejecutivo use la acción manual de reintento.
+      if (failing) return;
       const delay = Math.min(
         MAX_RECONNECT_DELAY_MS,
         2_000 * 2 ** Math.min(registrationAttempt, 3)

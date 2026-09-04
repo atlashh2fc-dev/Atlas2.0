@@ -20,7 +20,12 @@ export function amiAction(
         reject(new Error(typeof err === "object" ? JSON.stringify(err) : String(err)));
         return;
       }
-      resolve(res as Record<string, unknown>);
+      const response = res as Record<string, unknown>;
+      if (String(response?.Response ?? "").toLowerCase() === "error") {
+        reject(new Error(String(response.Message ?? "AMI rechazó la acción")));
+        return;
+      }
+      resolve(response);
     });
   });
 }
@@ -105,6 +110,7 @@ function buildUpdateConfigAction(
 
 const AGENT_ENDPOINT_TEMPLATE = "atlas-agent-endpoint-template";
 const AGENT_AOR_TEMPLATE = "atlas-agent-aor-template";
+export const DEFAULT_AGENT_PJSIP_CONFIG_FILE = "pjsip_elevenlabs_atlas.conf";
 const OUTBOUND_QUEUE_STRATEGY = "leastrecent";
 
 type ConfigLine = {
@@ -115,14 +121,40 @@ type ConfigLine = {
   options?: string;
 };
 
+export type AgentEndpointSyncResult = {
+  extension: string;
+  status: "synced" | "error";
+  failureCode: string | null;
+};
+
+export type AgentEndpointSyncReport = {
+  ok: boolean;
+  checked: number;
+  failed: number;
+  results: AgentEndpointSyncResult[];
+};
+
+async function verifyAgentEndpointLoaded(ami: AmiClient, extension: string): Promise<boolean> {
+  try {
+    await amiAction(ami, { Action: "PJSIPShowEndpoint", Endpoint: extension });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * UpdateConfig puede devolver un error que incluya el action original. Como
  * ese action contiene la contraseña SIP, reemplazamos el error antes de que
  * llegue al logger. La extensión se registra en el caller, nunca el secreto.
  */
-async function applyAgentPjsipConfig(ami: AmiClient, lines: ConfigLine[]): Promise<void> {
+async function applyAgentPjsipConfig(
+  ami: AmiClient,
+  filename: string,
+  lines: ConfigLine[]
+): Promise<void> {
   try {
-    await amiAction(ami, buildUpdateConfigAction("pjsip.conf", lines));
+    await amiAction(ami, buildUpdateConfigAction(filename, lines));
   } catch {
     throw new Error("AMI rechazó la actualización de configuración PJSIP del agente");
   }
@@ -130,7 +162,8 @@ async function applyAgentPjsipConfig(ami: AmiClient, lines: ConfigLine[]): Promi
 
 async function ensureAgentTemplates(
   ami: AmiClient,
-  existing: Set<string>
+  existing: Set<string>,
+  filename: string
 ): Promise<boolean> {
   if (existing.has(AGENT_ENDPOINT_TEMPLATE) && existing.has(AGENT_AOR_TEMPLATE)) {
     return true;
@@ -196,7 +229,7 @@ async function ensureAgentTemplates(
   }
 
   try {
-    await amiAction(ami, buildUpdateConfigAction("pjsip.conf", lines));
+    await amiAction(ami, buildUpdateConfigAction(filename, lines));
     existing.add(AGENT_ENDPOINT_TEMPLATE);
     existing.add(AGENT_AOR_TEMPLATE);
     logger.info("Templates PJSIP de agentes verificados");
@@ -216,23 +249,43 @@ async function ensureAgentTemplates(
  */
 export async function ensureAgentEndpoints(
   ami: AmiClient,
-  agents: { extension: string; sipPassword: string }[]
-): Promise<{ ok: boolean; checked: number; failed: number }> {
-  if (agents.length === 0) return { ok: true, checked: 0, failed: 0 };
+  agents: { extension: string; sipPassword: string }[],
+  filename = DEFAULT_AGENT_PJSIP_CONFIG_FILE
+): Promise<AgentEndpointSyncReport> {
+  if (agents.length === 0) return { ok: true, checked: 0, failed: 0, results: [] };
 
   let snapshot: ConfigSnapshot;
   try {
-    snapshot = await getConfigSnapshot(ami, "pjsip.conf");
+    snapshot = await getConfigSnapshot(ami, filename);
   } catch (err) {
-    logger.error({ err }, "GetConfig pjsip.conf falló; se salta el sync de extensiones este ciclo");
-    return { ok: false, checked: agents.length, failed: agents.length };
+    logger.error({ err, filename }, "GetConfig del archivo PJSIP de agentes falló; se salta el sync de extensiones este ciclo");
+    return {
+      ok: false,
+      checked: agents.length,
+      failed: agents.length,
+      results: agents.map(({ extension }) => ({
+        extension,
+        status: "error",
+        failureCode: "ami_config_read_failed",
+      })),
+    };
   }
 
-  if (!(await ensureAgentTemplates(ami, snapshot.categories))) {
-    return { ok: false, checked: agents.length, failed: agents.length };
+  if (!(await ensureAgentTemplates(ami, snapshot.categories, filename))) {
+    return {
+      ok: false,
+      checked: agents.length,
+      failed: agents.length,
+      results: agents.map(({ extension }) => ({
+        extension,
+        status: "error",
+        failureCode: "ami_template_sync_failed",
+      })),
+    };
   }
 
   let failed = 0;
+  const results: AgentEndpointSyncResult[] = [];
 
   for (const agent of agents) {
     const authCat = `${agent.extension}-auth`;
@@ -280,21 +333,36 @@ export async function ensureAgentEndpoints(
         });
       }
 
-      if (lines.length === 0) continue;
-      try {
-        await applyAgentPjsipConfig(ami, lines);
-        snapshot.categories.add(authCat);
-        logger.info(
-          { extension: agent.extension },
-          "Configuración PJSIP de agente reconciliada con el directorio"
-        );
-      } catch (err) {
-        failed += 1;
-        logger.error(
-          { err, extension: agent.extension },
-          "No se pudo reconciliar el endpoint PJSIP del agente"
-        );
+      if (lines.length > 0) {
+        try {
+          await applyAgentPjsipConfig(ami, filename, lines);
+          snapshot.categories.add(authCat);
+          logger.info(
+            { extension: agent.extension },
+            "Configuración PJSIP de agente reconciliada con el directorio"
+          );
+        } catch (err) {
+          failed += 1;
+          results.push({
+            extension: agent.extension,
+            status: "error",
+            failureCode: "ami_config_apply_failed",
+          });
+          logger.error(
+            { err, extension: agent.extension },
+            "No se pudo reconciliar el endpoint PJSIP del agente"
+          );
+          continue;
+        }
       }
+
+      const loaded = await verifyAgentEndpointLoaded(ami, agent.extension);
+      if (!loaded) failed += 1;
+      results.push({
+        extension: agent.extension,
+        status: loaded ? "synced" : "error",
+        failureCode: loaded ? null : "asterisk_endpoint_not_loaded",
+      });
       continue;
     }
 
@@ -335,16 +403,32 @@ export async function ensureAgentEndpoints(
     );
 
     try {
-      await applyAgentPjsipConfig(ami, lines);
+      await applyAgentPjsipConfig(ami, filename, lines);
       snapshot.categories.add(agent.extension);
       snapshot.categories.add(authCat);
-      logger.info({ extension: agent.extension }, "Endpoint PJSIP creado para agente nuevo");
+      const loaded = await verifyAgentEndpointLoaded(ami, agent.extension);
+      if (!loaded) {
+        failed += 1;
+        results.push({
+          extension: agent.extension,
+          status: "error",
+          failureCode: "asterisk_endpoint_not_loaded",
+        });
+      } else {
+        results.push({ extension: agent.extension, status: "synced", failureCode: null });
+        logger.info({ extension: agent.extension }, "Endpoint PJSIP creado y cargado para agente nuevo");
+      }
     } catch (err) {
       failed += 1;
+      results.push({
+        extension: agent.extension,
+        status: "error",
+        failureCode: "ami_config_apply_failed",
+      });
       logger.error({ err, extension: agent.extension }, "No se pudo crear el endpoint PJSIP del agente");
     }
   }
-  return { ok: failed === 0, checked: agents.length, failed };
+  return { ok: failed === 0, checked: agents.length, failed, results };
 }
 
 /**
@@ -355,9 +439,10 @@ export async function ensureAgentEndpoints(
 export async function updateAgentSipPassword(
   ami: AmiClient,
   extension: string,
-  sipPassword: string
+  sipPassword: string,
+  filename = DEFAULT_AGENT_PJSIP_CONFIG_FILE
 ): Promise<void> {
-  await applyAgentPjsipConfig(ami, [
+  await applyAgentPjsipConfig(ami, filename, [
     {
       action: "Update",
       cat: `${extension}-auth`,

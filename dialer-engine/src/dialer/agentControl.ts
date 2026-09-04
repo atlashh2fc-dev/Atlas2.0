@@ -75,7 +75,11 @@ async function countAgentContacts(ami: AmiClient, extension: string): Promise<nu
   return count;
 }
 
-async function executeCommand(ami: AmiClient, command: AgentControlCommand) {
+async function executeCommand(
+  ami: AmiClient,
+  command: AgentControlCommand,
+  agentPjsipConfigFile?: string
+) {
   const criticalErrors: string[] = [];
   const result: Record<string, unknown> = {
     extension: command.extension,
@@ -101,7 +105,12 @@ async function executeCommand(ami: AmiClient, command: AgentControlCommand) {
   }
 
   try {
-    await updateAgentSipPassword(ami, command.extension, command.sip_password);
+    await updateAgentSipPassword(
+      ami,
+      command.extension,
+      command.sip_password,
+      agentPjsipConfigFile
+    );
     result.sip_password_rotated = true;
   } catch (error) {
     criticalErrors.push(`rotación SIP: ${error instanceof Error ? error.message : String(error)}`);
@@ -182,12 +191,15 @@ async function processHybridManualRequests(ami: AmiClient): Promise<void> {
   }
 }
 
-export async function processAgentControlCommands(ami: AmiClient): Promise<void> {
+export async function processAgentControlCommands(
+  ami: AmiClient,
+  agentPjsipConfigFile?: string
+): Promise<void> {
   await processHybridManualRequests(ami);
   const commands = await claimAgentControlCommands(workerId);
   for (const command of commands) {
     try {
-      const result = await executeCommand(ami, command);
+    const result = await executeCommand(ami, command, agentPjsipConfigFile);
       await completeAgentControlCommand({ commandId: command.command_id, success: true, result });
       logger.info(
         { commandId: command.command_id, profileId: command.profile_id, result },

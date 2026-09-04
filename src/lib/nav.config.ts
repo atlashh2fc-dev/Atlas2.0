@@ -173,10 +173,10 @@ const CONSOLE: NavSpace = {
         },
         {
           id: "calidad",
-          label: "Calidad",
+          label: "Grabaciones y calidad",
           href: "/dashboard/calidad/grabaciones",
           icon: Headphones,
-          roles: ["supervisor"],
+          roles: OPERACION,
           description: "Grabaciones, transcripciones y análisis de calidad",
           match: ["/dashboard/calidad"],
           tabs: [
@@ -198,8 +198,10 @@ const CONSOLE: NavSpace = {
 const WORKSPACE_SECTIONS: Record<AppRole, { id: string; label?: string; itemIds: string[] }[]> = {
   admin: [
     { id: "control-home", itemIds: ["inicio"] },
-    { id: "control-operation", label: "Control operativo", itemIds: ["operacion", "campanas-operativas", "registros"] },
-    { id: "control-results", itemIds: ["reportes"] },
+    { id: "control-operation", label: "Control diario", itemIds: ["operacion", "registros"] },
+    { id: "control-results", label: "Revisión", itemIds: ["reportes", "calidad"] },
+    { id: "admin-operation", label: "Configuración", itemIds: ["campanas", "colas", "flujos", "estados-agente", "cargas"] },
+    { id: "admin-platform", label: "Plataforma", itemIds: ["usuarios", "extensiones", "integraciones"] },
   ],
   supervisor: [
     { id: "supervision-home", itemIds: ["inicio"] },
@@ -330,14 +332,30 @@ export function getSpace(id: NavSpaceId): NavSpace {
 }
 
 /** Etiqueta del espacio real, no un selector que permita asumir otro rol. */
-export function workspaceLabel(role: AppRole, pathname = "/dashboard"): string {
-  return spaceForPath(pathname) === "admin" && role === "admin"
-    ? "Administración"
-    : getWorkspacePermissions(role).workspaceLabel;
+export function workspaceLabel(role: AppRole): string {
+  if (role === "admin") return "Administración";
+  return getWorkspacePermissions(role).workspaceLabel;
 }
 
 /** Secciones visibles de un espacio para un rol, ya filtradas y sin secciones vacías. */
 export function visibleSections(spaceId: NavSpaceId, role: AppRole): NavSection[] {
+  if (role === "admin") {
+    const inventory = new Map(
+      [...CONSOLE.sections, ...ADMIN.sections]
+        .flatMap((section) => section.items)
+        .map((item) => [item.id, item])
+    );
+    return WORKSPACE_SECTIONS.admin
+      .map(({ id, label, itemIds }) => ({
+        id,
+        label,
+        items: itemIds.flatMap((itemId) => {
+          const item = inventory.get(itemId);
+          return item?.roles.includes(role) ? [item] : [];
+        }),
+      }))
+      .filter((section) => section.items.length > 0);
+  }
   const space = getSpace(spaceId);
   if (!space.roles.includes(role)) return [];
   if (spaceId === "console") {
@@ -358,9 +376,11 @@ export function visibleSections(spaceId: NavSpaceId, role: AppRole): NavSection[
 
 /** Todos los ítems accesibles por un rol, en orden de menú (usado por la búsqueda global). */
 export function allItemsForRole(role: AppRole): NavItem[] {
-  const items = NAV_SPACES.filter((space) => space.roles.includes(role)).flatMap((space) =>
-    visibleSections(space.id, role).flatMap((section) => section.items)
-  );
+  const items = role === "admin"
+    ? visibleSections("console", role).flatMap((section) => section.items)
+    : NAV_SPACES.filter((space) => space.roles.includes(role)).flatMap((space) =>
+        visibleSections(space.id, role).flatMap((section) => section.items)
+      );
   return [...items, HELP_ITEM];
 }
 

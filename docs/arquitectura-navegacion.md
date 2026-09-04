@@ -17,7 +17,9 @@ existentes. No se agrega un selector para asumir otro rol.
 | Supervisor | Supervisión | Colas y carga de sus equipos, asignación, revisión y resultados | Consulta autorizada de historial, sin responder como ejecutivo |
 | Agente | Atención | Interacciones asignadas, llamadas, registros propios y seguimientos | Opera dentro de su asignación y alcance |
 
-`Administración` es un espacio separado de configuración, exclusivo del administrador.
+Para el administrador, control y configuración forman un único árbol de tareas. La
+autorización sigue separada por página y acción, pero la persona no tiene que cambiar de
+"modo" ni perder el contexto para llegar a una configuración.
 La IA se controla a nivel general desde el espacio operativo autorizado: no es un interruptor
 por ejecutivo ni una función de cada conversación.
 
@@ -44,20 +46,28 @@ estructura explícita de secciones por rol. Sidebar, drawer móvil y búsqueda u
 
 ```text
 Resumen
-Control operativo
+Control diario
   Operación
-  Campañas
   Registros
-Reportes
-──────────────────────
-Administración
+Revisión
+  Reportes
+  Grabaciones y calidad
+Configuración
+  Campañas
+  Colas y enrutamiento
+  Flujos de gestión
+  Estados de agente
+  Cargas y listas
+Plataforma
+  Usuarios y equipos
+  Extensiones SIP
+  Integraciones
 Ayuda · perfil
 ```
 
 Operación abre `/dashboard/operacion`: el destino de colas, capacidad y excepciones, no una
-conversación seleccionada automáticamente. No hay entradas de Conversaciones ni Calidad en
-el menú del administrador. Esto no redefine por sí solo permisos de otros módulos: los permisos
-de calidad existentes se conservan, y su ausencia del menú no equivale a una revocación.
+conversación seleccionada automáticamente. El administrador puede revisar grabaciones y calidad
+desde el mismo árbol; no existe una segunda entrada de Campañas ni un enlace "Volver a Control".
 
 ### Supervisor — Supervisión
 
@@ -70,7 +80,7 @@ Supervisión
   Registros
 Revisión y resultados
   Historial
-  Calidad
+  Grabaciones y calidad
   Reportes
 ──────────────────────
 Ayuda · perfil
@@ -92,24 +102,6 @@ Ayuda · perfil
 
 Mi atención abre `/dashboard/conversaciones`. Voice conserva su puesto de atención y la
 gestión de llamadas; no se traslada al espacio de Control por compartir plataforma.
-
-### Administración — configuración
-
-```text
-Volver a Control
-Operación
-  Campañas
-  Colas y enrutamiento
-  Flujos de gestión
-  Estados de agente
-  Cargas y listas
-Plataforma
-  Usuarios y equipos
-  Extensiones SIP
-  Integraciones
-──────────────────────
-Ayuda · perfil
-```
 
 No se agrega una entrada de Auditoría sin una ruta funcional existente. Las acciones de crear,
 importar y editar viven junto al objeto correspondiente, no como destinos de primer nivel.

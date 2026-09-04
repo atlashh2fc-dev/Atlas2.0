@@ -58,7 +58,7 @@ Estas doce funciones limitan la acción al usuario o a la sesión corriente y so
 
 ### Operaciones de administración, supervisión e importación
 
-Estas 24 funciones tienen validación explícita de rol, equipo, campaña o pertenencia y son parte de la interfaz operacional autenticada:
+Estas 25 funciones tienen validación explícita de rol, equipo, campaña o pertenencia y son parte de la interfaz operacional autenticada:
 
 - `apply_mail_result_batch`
 - `assign_lead`
@@ -79,6 +79,7 @@ Estas 24 funciones tienen validación explícita de rol, equipo, campaña o pert
 - `get_mail_operational_queue_page`
 - `get_management_integrity_report`
 - `get_queue_health`
+- `get_supervisor_report_summary`
 - `get_workflow_compliance`
 - `import_vocalcom_events`
 - `release_callbacks_to_pool`
@@ -93,6 +94,16 @@ La permanencia en esta allowlist exige, en cada cambio de función:
 4. Validación de rol y alcance dentro de la misma transacción.
 5. Prueba negativa para usuario fuera de alcance.
 6. Nueva revisión del Security Advisor.
+
+`get_supervisor_report_summary` valida `auth.uid()`, rol y todos los equipos
+supervisados antes de leer hechos. Se ejecuta como `SECURITY DEFINER` para no
+repetir esas mismas políticas RLS por cada fila; mantiene `search_path` fijo y
+no acepta un usuario sustituto por parámetro.
+
+`record_agent_sip_provisioning` y
+`mark_agent_sip_provisioning_pending` no forman parte de la API autenticada:
+la primera se concede sólo a `service_role` y la segunda se ejecuta únicamente
+como trigger interno.
 
 ## Pendiente de propietario
 

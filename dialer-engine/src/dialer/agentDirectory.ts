@@ -17,6 +17,7 @@ export type AgentCredential = {
   profileId: string;
   extension: string;
   sipPassword: string;
+  updatedAt: string;
 };
 
 let extensionToProfileId: Record<string, string> = {};
@@ -34,19 +35,25 @@ export async function refreshAgentDirectory(staticFallback: Record<string, strin
   try {
     const { data, error } = await supabase
       .from("agent_sip_credentials")
-      .select("profile_id, extension, sip_password")
+      .select("profile_id, extension, sip_password, updated_at")
       .eq("is_active", true);
     if (error) throw new Error(error.message);
 
     const nextMap: Record<string, string> = { ...staticFallback };
     const nextCreds = new Map<string, AgentCredential>();
 
-    for (const row of (data ?? []) as { profile_id: string; extension: string; sip_password: string }[]) {
+    for (const row of (data ?? []) as {
+      profile_id: string;
+      extension: string;
+      sip_password: string;
+      updated_at: string;
+    }[]) {
       nextMap[row.extension] = row.profile_id;
       nextCreds.set(row.extension, {
         profileId: row.profile_id,
         extension: row.extension,
         sipPassword: row.sip_password,
+        updatedAt: row.updated_at,
       });
     }
 

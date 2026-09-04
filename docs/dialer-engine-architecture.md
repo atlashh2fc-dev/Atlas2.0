@@ -61,6 +61,28 @@ Tablas nuevas: `dialer_campaign_configs` (modo de discado y ratio por
 campaña), `dialer_agent_sessions` (estado en vivo del agente), `dial_attempts`
 (un registro por intento de marcado, previo a existir un `call`).
 
+## Aprovisionamiento de agentes: estado deseado y estado real
+
+`agent_sip_credentials` es el estado deseado de Atlas; no demuestra que la
+extensión exista ni que esté cargada en Asterisk. El motor reconcilia esa
+fuente contra el archivo administrable e incluido
+`pjsip_elevenlabs_atlas.conf`, nunca contra el `pjsip.conf` principal, y
+confirma cada extensión con `PJSIPShowEndpoint` después de comparar o aplicar
+la configuración.
+
+El resultado se persiste por agente en `agent_sip_provisioning_status` con
+cuatro estados explícitos: `pending`, `synced`, `error` y `disabled`. Un
+trigger devuelve la extensión a `pending` cuando cambia su número, clave o
+activación. El motor es el único que puede marcarla `synced`, conserva el
+último éxito y publica un código de falla controlado, nunca el secreto SIP.
+
+La lectura del directorio corre cada 10 segundos; la reconciliación Asterisk
+corre single-flight cada 60 segundos. Separarlas evita ciclos superpuestos y
+tormentas de reintentos cuando AMI o el archivo de configuración fallan. La
+pantalla administrativa muestra el estado por agente y una alarma global del
+servicio: tener credenciales ya no se presenta como sinónimo de estar
+operativo.
+
 ### Screen-pop: cero cambios en el CRM
 
 Como `register_dial_event` inserta en `call_events` igual que el resto de
@@ -79,10 +101,9 @@ de contestación y abandono reales con los 20 ejecutivos — no antes.
 
 ## Pendiente / fuera de alcance de esta primera versión
 
-- Mapear extensión → agente vive hoy en una variable de entorno
-  (`AGENT_EXTENSION_MAP`) del motor. Si el volumen de agentes crece, conviene
-  una columna `profiles.extension` en el CRM para no mantener dos fuentes de
-  verdad.
+- `AGENT_EXTENSION_MAP` se conserva sólo como compatibilidad para 6001/6002.
+  Los agentes productivos se aprovisionan desde `agent_sip_credentials`, que
+  es la fuente de verdad viva y no requiere redeploy al crecer el equipo.
 - Detección de contestador (AMD) y validación de compliance de tasa de
   abandono: no implementadas todavía: agregar antes de subir el ratio a modo
   predictivo real.
@@ -104,8 +125,8 @@ de contestación y abandono reales con los 20 ejecutivos — no antes.
   hay cluster, o directamente Docker + systemd si es una sola instancia).
 - **Observabilidad**: logs JSON (`pino`) a CloudWatch Logs; `/health` como
   target de health check si se pone detrás de un target group.
-- **Escalamiento a 20 agentes**: una sola instancia moderada (2 vCPU / 2GB)
-  alcanza sobrado para el volumen de eventos AMI de 20 ejecutivos. Escalar
-  horizontalmente el motor mismo no es necesario a este tamaño — el cuello de
-  botella real, si aparece, va a estar en la troncal SIP, no en el proceso
-  Node.
+- **Escalamiento inicial**: una sola instancia moderada (2 vCPU / 2GB) alcanza
+  para decenas de ejecutivos. Antes de escalar horizontalmente, separar la
+  propiedad de cada campaña con un lease durable: dos motores reconciliando
+  el mismo PBX o reclamando la misma campaña sin liderazgo explícito vuelve
+  ambiguo el estado operativo aunque la base use `skip locked`.

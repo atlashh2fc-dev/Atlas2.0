@@ -1,6 +1,33 @@
 import { supabase } from "./supabase";
 export { supabase } from "./supabase";
 
+export type AgentSipProvisioningState = {
+  profileId: string;
+  extension: string;
+  desiredUpdatedAt: string;
+  status: "synced" | "error";
+  failureCode: string | null;
+};
+
+/** Persiste estado observado por extensión sin exponer credenciales SIP. */
+export async function publishAgentSipProvisioningStates(
+  states: AgentSipProvisioningState[],
+  engineRelease: string,
+): Promise<void> {
+  if (states.length === 0) return;
+  const { error } = await supabase.rpc("record_agent_sip_provisioning", {
+    p_states: states.map((state) => ({
+      profile_id: state.profileId,
+      extension: state.extension,
+      desired_updated_at: state.desiredUpdatedAt,
+      status: state.status,
+      failure_code: state.failureCode,
+    })),
+    p_engine_release: engineRelease,
+  });
+  if (error) throw new Error(`agent_sip_provisioning_status: ${error.message}`);
+}
+
 /**
  * Cliente único con la service_role key. Bypassa RLS y es el único que puede
  * ejecutar claim_next_dial_targets / register_dial_event /

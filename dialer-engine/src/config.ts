@@ -13,6 +13,10 @@ const envSchema = z.object({
   AMI_PORT: z.coerce.number().int().positive().default(5038),
   AMI_USERNAME: z.string().min(1),
   AMI_SECRET: z.string().min(1),
+  AGENT_PJSIP_CONFIG_FILE: z
+    .string()
+    .regex(/^[a-zA-Z0-9._-]+\.conf$/, "AGENT_PJSIP_CONFIG_FILE debe ser un archivo .conf seguro")
+    .default("pjsip_elevenlabs_atlas.conf"),
 
   DIAL_TECH: z.string().default("PJSIP"),
   DIAL_TRUNK: z.string().min(1),
@@ -81,6 +85,7 @@ export const config = {
     username: env.AMI_USERNAME,
     secret: env.AMI_SECRET,
   },
+  agentPjsipConfigFile: env.AGENT_PJSIP_CONFIG_FILE,
 
   dialTech: env.DIAL_TECH,
   dialTrunk: env.DIAL_TRUNK,

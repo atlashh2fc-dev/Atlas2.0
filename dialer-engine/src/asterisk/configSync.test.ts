@@ -60,10 +60,12 @@ test("parsea variables de categorías GetConfig repetidas sin perder el endpoint
 test("no recarga PJSIP cuando la contraseña existente ya coincide con Supabase", async () => {
   const { ami, actions } = fakeAmi(managedEndpointSnapshot("clave-vigente"));
 
-  await ensureAgentEndpoints(ami, [{ extension: "6015", sipPassword: "clave-vigente" }]);
+  const report = await ensureAgentEndpoints(ami, [{ extension: "6015", sipPassword: "clave-vigente" }]);
 
-  assert.equal(actions.length, 1);
+  assert.equal(actions.length, 2);
   assert.equal(actions[0].Action, "GetConfig");
+  assert.equal(actions[1].Action, "PJSIPShowEndpoint");
+  assert.deepEqual(report.results, [{ extension: "6015", status: "synced", failureCode: null }]);
 });
 
 test("reconcilia una contraseña divergente mediante UpdateConfig y reload", async () => {
@@ -71,15 +73,54 @@ test("reconcilia una contraseña divergente mediante UpdateConfig y reload", asy
 
   await ensureAgentEndpoints(ami, [{ extension: "6015", sipPassword: "clave-nueva" }]);
 
-  assert.equal(actions.length, 2);
+  assert.equal(actions.length, 3);
   const update = actions[1];
   assert.equal(update.Action, "UpdateConfig");
+  assert.equal(update.SrcFilename, "pjsip_elevenlabs_atlas.conf");
+  assert.equal(update.DstFilename, "pjsip_elevenlabs_atlas.conf");
   assert.equal(update.Reload, "yes");
   assert.equal(update["Action-000000"], "Update");
   assert.equal(update["Cat-000000"], "6015-auth");
   assert.equal(update["Var-000000"], "password");
   assert.equal(update["Value-000000"], "clave-nueva");
   assert.equal(update["Action-000001"], undefined);
+  assert.equal(actions[2].Action, "PJSIPShowEndpoint");
+});
+
+test("no declara sincronizada una extensión que Asterisk no cargó", async () => {
+  const actions: AmiAction[] = [];
+  const ami = {
+    action(action: AmiAction, callback: (error: unknown, response?: unknown) => void) {
+      actions.push(action);
+      if (action.Action === "GetConfig") callback(null, managedEndpointSnapshot("clave-vigente"));
+      else callback(null, { Response: "Error", Message: "Unable to retrieve PJSIP endpoint" });
+    },
+  } as unknown as AmiClient;
+
+  const report = await ensureAgentEndpoints(ami, [{ extension: "6015", sipPassword: "clave-vigente" }]);
+
+  assert.equal(report.ok, false);
+  assert.equal(report.failed, 1);
+  assert.deepEqual(report.results, [{
+    extension: "6015",
+    status: "error",
+    failureCode: "asterisk_endpoint_not_loaded",
+  }]);
+});
+
+test("permite elegir el archivo PJSIP administrable sin tocar pjsip.conf", async () => {
+  const { ami, actions } = fakeAmi(managedEndpointSnapshot("clave-antigua"));
+
+  await ensureAgentEndpoints(
+    ami,
+    [{ extension: "6015", sipPassword: "clave-nueva" }],
+    "pjsip_atlas_agents.conf"
+  );
+
+  assert.equal(actions[0].Filename, "pjsip_atlas_agents.conf");
+  assert.equal(actions[1].SrcFilename, "pjsip_atlas_agents.conf");
+  assert.equal(actions[1].DstFilename, "pjsip_atlas_agents.conf");
+  assert.notEqual(actions[1].SrcFilename, "pjsip.conf");
 });
 
 test("repara la categoría auth faltante de un endpoint existente", async () => {

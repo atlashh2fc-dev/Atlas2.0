@@ -16,6 +16,9 @@ export type AgentSipRow = {
   role: string;
   extension: string | null;
   is_active: boolean | null;
+  provisioning_status: "pending" | "synced" | "error" | "disabled" | null;
+  provisioning_failure_code: string | null;
+  provisioning_last_success_at: string | null;
 };
 
 export type DialerContact = {
@@ -176,18 +179,28 @@ export async function listAgentSipRows(): Promise<AgentSipRow[]> {
   // administrador; la política de la tabla ya solo permite leer la fila propia,
   // así que este listado usa la clave de servicio y nunca selecciona la clave.
   const service = createAdminClient();
-  const [{ data: profiles, error: profilesError }, { data: creds, error: credsError }] = await Promise.all([
+  const [
+    { data: profiles, error: profilesError },
+    { data: creds, error: credsError },
+    { data: provisioning, error: provisioningError },
+  ] = await Promise.all([
     supabase.from("profiles").select("id, full_name, email, role").eq("role", "agente").order("full_name"),
     service.from("agent_sip_credentials").select("profile_id, extension, is_active"),
+    service
+      .from("agent_sip_provisioning_status")
+      .select("profile_id, status, failure_code, last_success_at"),
   ]);
 
   if (profilesError) throw new Error(profilesError.message);
   if (credsError) throw new Error(credsError.message);
+  if (provisioningError) throw new Error(provisioningError.message);
 
   const credByProfile = new Map((creds ?? []).map((c) => [c.profile_id, c]));
+  const provisioningByProfile = new Map((provisioning ?? []).map((row) => [row.profile_id, row]));
 
   return (profiles ?? []).map((p) => {
     const cred = credByProfile.get(p.id);
+    const actual = provisioningByProfile.get(p.id);
     return {
       profile_id: p.id,
       full_name: p.full_name,
@@ -195,6 +208,9 @@ export async function listAgentSipRows(): Promise<AgentSipRow[]> {
       role: p.role,
       extension: cred?.extension ?? null,
       is_active: cred?.is_active ?? null,
+      provisioning_status: (actual?.status as AgentSipRow["provisioning_status"]) ?? null,
+      provisioning_failure_code: actual?.failure_code ?? null,
+      provisioning_last_success_at: actual?.last_success_at ?? null,
     };
   });
 }
