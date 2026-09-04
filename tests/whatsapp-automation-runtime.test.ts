@@ -20,6 +20,7 @@ async function runAutomation(options: {
   generatedHandoffKind?: "none" | "human_requested" | "appointment" | "quote" | "unknown" | "complaint";
   generatedAppointmentAt?: string | null;
   generatedAppointmentChannel?: "none" | "phone" | "whatsapp" | "video_meeting" | "in_person";
+  generatedReply?: string;
   modelFailure?: boolean;
   memorySummary?: string;
   resumeExpiredHandoff?: boolean;
@@ -151,7 +152,7 @@ async function runAutomation(options: {
         return { ok: false, status: 503, json: async () => ({ error: { message: "unavailable" } }) };
       }
       const generatedHandoffKind = options.generatedHandoffKind ?? (options.handoff ? "human_requested" : "none");
-      return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ reply: "Ofrecemos atención comercial.", handoff: options.handoff ?? false, handoff_kind: generatedHandoffKind, handoff_reason: options.handoff ? "Solicita atención humana" : "", appointment_at: options.generatedAppointmentAt ?? null, appointment_channel: options.generatedAppointmentChannel ?? "none", scope: generatedHandoffKind === "unknown" ? "uncertain" : "in_scope", memory: conversationMemory.EMPTY_WHATSAPP_CONVERSATION_MEMORY }) } }] }) };
+      return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ reply: options.generatedReply ?? "Ofrecemos atención comercial.", handoff: options.handoff ?? false, handoff_kind: generatedHandoffKind, handoff_reason: options.handoff ? "Solicita atención humana" : "", appointment_at: options.generatedAppointmentAt ?? null, appointment_channel: options.generatedAppointmentChannel ?? "none", scope: generatedHandoffKind === "unknown" ? "uncertain" : "in_scope", memory: conversationMemory.EMPTY_WHATSAPP_CONVERSATION_MEMORY }) } }] }) };
     },
   });
   const result = await testModule.exports.respondToWhatsAppInbound({ conversationId: "conversation", inboundMessageId: "inbound" });
@@ -285,6 +286,38 @@ test("la pregunta concreta sobre qué hace responde solo funciones", async () =>
   assert.equal(run.generatedCalls, 0);
   assert.match(run.sentBodies[0], /toma los datos y el motivo/i);
   assert.doesNotMatch(run.sentBodies[0], /1 UF|módulos|PyMEs|CRM/);
+});
+
+test("una solicitud genérica de información desde el anuncio recibe respuesta directa", async () => {
+  const run = await runAutomation({ inboundText: "Hola!, me gustaría saber más información." });
+  assert.equal(run.result.status, "completed");
+  assert.equal(run.generatedCalls, 0);
+  assert.equal(run.providerCalls, 1);
+  assert.match(run.sentBodies[0], /ejecutiva real atiende tus llamadas o WhatsApp/i);
+  assert.ok(!run.rpcCalls.includes("handoff_whatsapp_conversation"));
+});
+
+test("una respuesta Mercury extensa se compacta antes de enviarse y no deriva al contacto", async () => {
+  const run = await runAutomation({
+    generatedReply: `${"Nuestra ejecutiva atiende tus contactos y registra cada solicitud para que tu negocio mantenga continuidad. ".repeat(5)}¿Quieres cubrir llamadas o WhatsApp?`,
+  });
+  assert.equal(run.result.status, "completed");
+  assert.equal(run.generatedCalls, 1);
+  assert.equal(run.providerCalls, 1);
+  assert.ok(run.sentBodies[0].length <= replySchema.MAX_MERCURY_WHATSAPP_REPLY_LENGTH);
+  assert.doesNotMatch(run.sentBodies[0], /no pude procesarlo correctamente/i);
+  assert.ok(!run.rpcCalls.includes("handoff_whatsapp_conversation"));
+});
+
+test("una respuesta Mercury de más de tres frases conserva el cierre útil sin derivar", async () => {
+  const run = await runAutomation({
+    generatedReply: "Atendemos en nombre de tu negocio. Registramos cada solicitud. Te avisamos de inmediato. Así mantienes continuidad. ¿Necesitas llamadas o WhatsApp?",
+  });
+  assert.equal(run.result.status, "completed");
+  assert.equal(run.providerCalls, 1);
+  assert.match(run.sentBodies[0], /¿Necesitas llamadas o WhatsApp\?/);
+  assert.equal(run.sentBodies[0].split(/[.!?]+(?:\s|$)/).filter((part) => part.trim()).length, 3);
+  assert.ok(!run.rpcCalls.includes("handoff_whatsapp_conversation"));
 });
 
 test("Mercury recibe la memoria acumulada para continuar sin volver a preguntar", async () => {

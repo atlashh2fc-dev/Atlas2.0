@@ -267,13 +267,14 @@ function isClearlyOutOfScope(history: HistoryMessage[]): boolean {
 }
 
 function broadServiceOverview(history: HistoryMessage[]): string | null {
-  const text = normalizedInboundText(history);
+  const text = normalizeIntentText(normalizedInboundText(history));
   const asksAboutSecretary = /secretar(?:ia|ía)|recepci[oó]n/.test(text);
-  if (!asksAboutSecretary) return null;
+  const genericInformationRequest = /^(?:(?:hola|holi|buen(?:os\s+d[ií]as|as\s+tardes|as\s+noches)|buenas)\s+)?(?:(?:me|nos)\s+gustar[ií]a|quisiera|quiero|queremos|necesito|necesitamos|podr[ií]as|podr[ií]an)?\s*(?:saber|recibir|tener|pedir)?\s*(?:m[aá]s\s+)?(?:informaci[oó]n|info)(?:\s+(?:sobre|acerca\s+de|del?)\s+(?:esto|el\s+servicio|los\s+servicios))?$/.test(text);
+  if (!asksAboutSecretary && !genericInformationRequest) return null;
   if (/(?:qu[eé]|que)\s+hace|c[oó]mo\s+funciona|para\s+qu[eé]\s+sirve/.test(text)) {
     return "Responde en nombre de tu negocio, toma los datos y el motivo del contacto, y te avisa para que decidas cómo continuar. Antes de comenzar se define qué puede informar y cómo derivar cada caso.";
   }
-  if (/publicaci[oó]n|quiero\s+(?:informaci[oó]n|info)|dame\s+(?:informaci[oó]n|info)/.test(text)) {
+  if (genericInformationRequest || /publicaci[oó]n|quiero\s+(?:informaci[oó]n|info)|dame\s+(?:informaci[oó]n|info)/.test(text)) {
     return "Claro. Una ejecutiva real atiende tus llamadas o WhatsApp cuando tú no puedes, registra el motivo y te avisa para que decidas cómo seguir. ¿Necesitas cubrir llamadas, WhatsApp o ambos?";
   }
   return null;
@@ -307,6 +308,40 @@ function conversationalStyleIssue(reply: string): string | null {
   const sentenceCount = reply.split(/[.!?]+(?:\s|$)/).filter((part) => part.trim()).length;
   if (sentenceCount > 3) return "contiene más de tres frases";
   return null;
+}
+
+function compactConversationalReply(value: string): string {
+  const flattened = value
+    .replace(/(^|\n)\s*(?:[-*•]|\d+[.)])\s+/g, "$1")
+    .replace(/\s*\n+\s*/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const sentences = flattened.match(/[^.!?]*[.!?]+(?=\s|$)|[^.!?]+$/g)
+    ?.map((sentence) => sentence.trim())
+    .filter(Boolean) ?? [];
+  const finalQuestion = sentences.at(-1)?.endsWith("?") ? sentences.at(-1) : null;
+  const selected = sentences.length > 3
+    ? [...sentences.slice(0, finalQuestion ? 2 : 3), ...(finalQuestion ? [finalQuestion] : [])]
+    : sentences;
+  let reply = (selected.length ? selected.join(" ") : flattened).trim();
+  if (reply.length <= MAX_MERCURY_WHATSAPP_REPLY_LENGTH) return reply;
+
+  const clipped = reply.slice(0, MAX_MERCURY_WHATSAPP_REPLY_LENGTH - 1).trimEnd();
+  const sentenceBoundary = Math.max(
+    clipped.lastIndexOf(". "),
+    clipped.lastIndexOf("? "),
+    clipped.lastIndexOf("! "),
+  );
+  if (sentenceBoundary >= 120) return clipped.slice(0, sentenceBoundary + 1).trim();
+  const wordBoundary = clipped.lastIndexOf(" ");
+  reply = `${clipped.slice(0, wordBoundary >= 120 ? wordBoundary : clipped.length).replace(/[,:;\s]+$/g, "")}…`;
+  return reply;
+}
+
+function normalizeMercuryCompletionPayload(value: unknown): unknown {
+  const payload = record(value);
+  if (!payload || typeof payload.reply !== "string") return value;
+  return { ...payload, reply: compactConversationalReply(payload.reply) };
 }
 
 function activeConversationHistory(history: HistoryMessage[]): HistoryMessage[] {
@@ -490,7 +525,8 @@ async function askMercury(input: {
     choices: z.array(z.object({ message: z.object({ content: z.string() }) })).min(1),
     usage: z.record(z.string(), z.unknown()).optional(),
   }).parse(payload);
-  const reply = mercuryCompletionSchema.parse(JSON.parse(envelope.choices[0].message.content));
+  const parsedContent: unknown = JSON.parse(envelope.choices[0].message.content);
+  const reply = mercuryCompletionSchema.parse(normalizeMercuryCompletionPayload(parsedContent));
   const styleIssue = conversationalStyleIssue(reply.reply);
   if (styleIssue) throw new Error(`Mercury incumplió el formato conversacional: ${styleIssue}.`);
   return {
