@@ -12,7 +12,7 @@ export default async function UsersLayout({ children }: { children: React.ReactN
     <div className="space-y-5">
       <PageHeader
         title="Usuarios y equipos"
-        description="Quién entra a Atlas, con qué rol y a qué operación pertenece."
+        description="Crea la cuenta, define rol y equipo, y asigna campañas. Atlas completa la habilitación operativa."
         className="border-b-0 pb-0"
         actions={<UserCreatePanel teams={teams ?? []} />}
       />

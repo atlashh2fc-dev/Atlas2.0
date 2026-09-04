@@ -1,5 +1,5 @@
 import { requireProfile } from "@/lib/auth";
-import { listAgentSipRows, provisionAgentExtension, setAgentExtensionActive } from "@/app/actions/agent-sip";
+import { listAgentSipRows, setAgentExtensionActive } from "@/app/actions/agent-sip";
 import { RevealSipCredentialButton } from "@/components/reveal-sip-credential-button";
 import { ActionForm, ActionSubmit, Callout } from "@/components/ui";
 import { getAgentSipSyncHealth } from "@/lib/dialer-health";
@@ -45,11 +45,10 @@ export default async function AgentesSipPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold text-foreground">Extensiones SIP</h1>
+        <h1 className="text-xl font-semibold text-foreground">Diagnóstico de telefonía</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Cada ejecutivo necesita su propia extensión para usar la barra CTI y para que el motor de
-          discado lo agregue a la cola de una campaña. Al generar una extensión, el motor la detecta solo
-          (hasta 10 seg.) y crea el endpoint en Asterisk — no hace falta tocar la instancia a mano.
+          Atlas genera y activa la extensión cuando asignas una campaña automática. Esta pantalla no es
+          parte del alta normal: úsala solo para revisar sincronización o resolver una contingencia.
         </p>
       </div>
 
@@ -58,8 +57,8 @@ export default async function AgentesSipPage() {
           <p className="font-medium">La central no está confirmando las extensiones de Atlas.</p>
           <p className="mt-1">
             Las extensiones activas de la lista existen en Atlas, pero no se pueden considerar
-            operativas en Asterisk hasta recuperar la sincronización. Evita generar o rotar
-            credenciales mientras aparezca este aviso.
+            operativas en Asterisk hasta recuperar la sincronización. Evita activar, desactivar o
+            revelar credenciales mientras aparezca este aviso.
           </p>
           <p className="mt-2 text-xs">
             Estado: {syncHealth.status === "failed" ? "fallando" : syncHealth.status === "stale" ? "sin reporte reciente" : "sin confirmar"}
@@ -79,7 +78,7 @@ export default async function AgentesSipPage() {
                 <p className="text-xs text-muted-foreground">{row.email}</p>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center justify-end gap-3">
                 {row.extension ? (
                   <>
                     <span
@@ -94,25 +93,29 @@ export default async function AgentesSipPage() {
                         {failureLabel(row.provisioning_failure_code)}
                       </span>
                     )}
-                    <RevealSipCredentialButton profileId={row.profile_id} />
-                    <ActionForm
-                      action={setAgentExtensionActive}
-                      success={row.is_active ? "Extensión desactivada" : "Extensión activada"}
-                    >
-                      <input type="hidden" name="profile_id" value={row.profile_id} />
-                      <input type="hidden" name="active" value={String(row.is_active)} />
-                      <ActionSubmit variant="secondary" size="sm" pendingLabel="Guardando…">
-                        {row.is_active ? "Desactivar" : "Activar"}
-                      </ActionSubmit>
-                    </ActionForm>
+                    <details>
+                      <summary className="cursor-pointer rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                        Acciones de contingencia
+                      </summary>
+                      <div className="mt-2 flex flex-wrap items-center justify-end gap-2 rounded-lg border border-border bg-background p-2">
+                        <RevealSipCredentialButton profileId={row.profile_id} />
+                        <ActionForm
+                          action={setAgentExtensionActive}
+                          success={row.is_active ? "Extensión desactivada" : "Extensión activada"}
+                        >
+                          <input type="hidden" name="profile_id" value={row.profile_id} />
+                          <input type="hidden" name="active" value={String(row.is_active)} />
+                          <ActionSubmit variant="secondary" size="sm" pendingLabel="Guardando…">
+                            {row.is_active ? "Desactivar por contingencia" : "Reactivar extensión"}
+                          </ActionSubmit>
+                        </ActionForm>
+                      </div>
+                    </details>
                   </>
                 ) : (
-                  <ActionForm action={provisionAgentExtension} success="Extensión generada">
-                    <input type="hidden" name="profile_id" value={row.profile_id} />
-                    <ActionSubmit size="sm" pendingLabel="Generando…">
-                      Generar extensión
-                    </ActionSubmit>
-                  </ActionForm>
+                  <span className="max-w-64 text-right text-xs text-muted-foreground">
+                    Sin extensión. Se creará automáticamente al asignarle una campaña de discado.
+                  </span>
                 )}
               </div>
             </div>

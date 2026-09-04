@@ -43,11 +43,11 @@ export function UserCampaignsForm({
         <input key={campaign.id} type="hidden" name="campaign_ids" value={campaign.id} />
       ))}
       <div>
-        <p className="text-xs font-medium text-foreground">Skills habilitados</p>
+        <p className="text-xs font-medium text-foreground">Campañas asignadas</p>
         <p className="mt-0.5 text-[11px] text-muted-foreground">
           {lockedCampaigns.length > 0
-            ? "La campaña revisada queda asignada; agrega o quita los otros skills."
-            : "Selecciona todas las campañas que puede operar."}
+            ? "La campaña revisada queda asignada; agrega o quita las demás campañas. Atlas completa la habilitación operativa."
+            : "Selecciona todas las campañas que puede operar. Al guardar, Atlas habilita telefonía, campaña activa y colas vinculadas."}
         </p>
       </div>
       {lockedCampaigns.length > 0 && (

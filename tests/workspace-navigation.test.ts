@@ -40,7 +40,7 @@ test("Control is an overview, not a response inbox", () => {
     "Estados de agente",
     "Cargas y listas",
     "Usuarios y equipos",
-    "Extensiones SIP",
+    "Telefonía · diagnóstico",
     "Integraciones",
   ]);
   assert.ok(nav.allItemsForRole("admin").every((item) => !item.href.startsWith("/dashboard/conversaciones")));

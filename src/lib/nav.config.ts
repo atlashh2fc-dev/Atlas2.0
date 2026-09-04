@@ -279,11 +279,11 @@ const ADMIN: NavSpace = {
         },
         {
           id: "extensiones",
-          label: "Extensiones SIP",
+          label: "Telefonía · diagnóstico",
           href: "/dashboard/admin/agentes-sip",
           icon: PhoneCall,
           roles: ["admin"],
-          description: "Anexos y credenciales de telefonía",
+          description: "Salud de anexos automáticos y acciones de contingencia",
         },
         {
           id: "integraciones",

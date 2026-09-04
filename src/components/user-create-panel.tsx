@@ -26,7 +26,7 @@ export function UserCreatePanel({ teams }: { teams: { id: string; name: string }
         open={open}
         onClose={() => setOpen(false)}
         title="Nuevo usuario"
-        description="La cuenta queda activa de inmediato con la contraseña temporal que definas."
+        description="La cuenta queda activa de inmediato. Si es agente, luego asígnale una campaña: Atlas habilitará telefonía y enrutamiento automáticamente."
       >
         <ActionForm
           action={createUserAccount}

@@ -5,9 +5,11 @@ import test from "node:test";
 const page = readFileSync("src/app/dashboard/admin/agentes-sip/page.tsx", "utf8");
 const health = readFileSync("src/lib/dialer-health.ts", "utf8");
 
-test("Extensiones SIP separa la credencial CRM del estado real de Asterisk", () => {
+test("Diagnóstico SIP separa la configuración automática del estado real de Asterisk", () => {
   assert.match(page, /getAgentSipSyncHealth/);
-  assert.match(page, /Evita generar o rotar/);
+  assert.match(page, /Evita activar, desactivar o/);
+  assert.match(page, /Acciones de contingencia/);
+  assert.doesNotMatch(page, /provisionAgentExtension/);
   assert.match(page, /Operativa en Asterisk/);
   assert.match(page, /Error de aprovisionamiento/);
   assert.match(page, /Pendiente de Asterisk/);
