@@ -9,6 +9,7 @@ import {
   SECRETARIA_VIRTUAL_RUBRIC_KEY,
   SECRETARIA_VIRTUAL_RUBRIC_VERSION,
 } from "@/lib/secretaria-virtual-quality-rubric";
+import { getSupervisedTeamIds } from "@/lib/supervisor-scope";
 
 export const RECORDINGS_PAGE_SIZE = 50;
 
@@ -91,15 +92,6 @@ type RecordingRecord = {
   status: RecordingStatus;
 };
 
-async function supervisorTeamIds(supabase: SupabaseClient, profileId: string): Promise<string[]> {
-  const { data: teams, error: teamsError } = await supabase
-    .from("teams")
-    .select("id")
-    .eq("supervisor_id", profileId);
-  if (teamsError) throw new Error(teamsError.message);
-  return (teams ?? []).map((team) => team.id as string);
-}
-
 /**
  * Read model del menú Calidad. La sesión del usuario y RLS son la primera
  * frontera; el filtro por equipos supervisados agrega defensa en profundidad.
@@ -124,7 +116,7 @@ export async function fetchQualityRecordings(
   try {
     let allowedTeamIds: string[] | null = null;
     if (profile.role === "supervisor") {
-      allowedTeamIds = await supervisorTeamIds(supabase, profile.id);
+      allowedTeamIds = await getSupervisedTeamIds(supabase);
       if (allowedTeamIds.length === 0) return empty();
     }
 

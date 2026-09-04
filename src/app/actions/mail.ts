@@ -21,6 +21,31 @@ export type InboundConversionResult = {
   error?: string;
 };
 
+export async function queueAssignedMailReply(formData: FormData) {
+  await requireProfile(["agente"]);
+
+  const leadId = String(formData.get("lead_id") ?? "");
+  const sourceMessageId = String(formData.get("source_message_id") ?? "");
+  const bodyText = String(formData.get("body_text") ?? "");
+  const idempotencyKey = String(formData.get("idempotency_key") ?? "");
+  if (!leadId || !sourceMessageId || !idempotencyKey) {
+    throw new Error("Falta el contexto del correo que quieres responder.");
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("enqueue_assigned_mail_reply", {
+    p_lead_id: leadId,
+    p_source_message_id: sourceMessageId,
+    p_body_text: bodyText,
+    p_idempotency_key: idempotencyKey,
+  });
+  if (error) throw new Error(error.message);
+  const result = data as { queued?: boolean } | null;
+  if (!result?.queued) throw new Error("La respuesta no pudo quedar encolada.");
+
+  revalidatePath(`/dashboard/leads/${leadId}`);
+}
+
 export async function syncInboundMailbox(): Promise<InboundSyncResult> {
   await requireProfile(["supervisor", "admin"]);
   const result = await syncAbogadoLegalInbox();

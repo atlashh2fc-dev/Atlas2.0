@@ -44,6 +44,7 @@ type Relation<T> = T | T[] | null;
 type Queue = {
   id: string;
   name: string;
+  description: string | null;
   is_active: boolean;
   routing_mode: string;
   max_concurrent_per_agent: number | null;
@@ -148,7 +149,7 @@ export default async function OperationsPage({
     supabase
       .from("contact_center_queues")
       .select(
-        "id, name, is_active, routing_mode, max_concurrent_per_agent, service_level_seconds",
+        "id, name, description, is_active, routing_mode, max_concurrent_per_agent, service_level_seconds",
         { count: "exact" },
       )
       .order("name")
@@ -178,12 +179,15 @@ export default async function OperationsPage({
     showMail
       ? supabase.rpc("get_mail_engagement_report_read_model", {
           p_mail_campaign_id: null,
-          p_campaign_id: filters.campaign || null,
+          p_campaign_id: null,
         })
       : Promise.resolve({ data: null, error: null }),
     !showWhatsApp
       ? Promise.resolve({ data: null, error: null })
-      : loadOperationalConversations(supabase, filters),
+      : loadOperationalConversations(supabase, {
+          campaign: "",
+          queue: filters.queue,
+        }),
     supabase
       .from("whatsapp_ai_configs")
       .select("campaign_id, enabled", { count: "exact" })
@@ -232,28 +236,29 @@ export default async function OperationsPage({
       queue.is_active !== (filters.state === "active")
     )
       return false;
-    return (
-      (showWhatsApp &&
-        stockResult.data?.some((item) => item.queue_id === queue.id)) ||
+    const belongsToCampaign = !filters.campaign || sources.some(
+      (source) =>
+        source.queue_id === queue.id &&
+        source.is_active &&
+        source.campaign_id === filters.campaign,
+    );
+    if (!belongsToCampaign) return false;
+    return (showWhatsApp && stockResult.data?.some((item) => item.queue_id === queue.id)) ||
       sources.some(
         (source) =>
           source.queue_id === queue.id &&
           source.is_active &&
-          (!filters.campaign || source.campaign_id === filters.campaign) &&
-          (filters.channel === "all" ||
-            source.channel_type === filters.channel),
-      )
-    );
+          (filters.channel === "all" || source.channel_type === filters.channel),
+      );
   });
   const allStock = stockResult.data;
-  // Campaign and queue are already filtered in the query. Inactive/missing
-  // routing must not hide an existing backlog from the global stock.
+  const matchingQueueIds = new Set(matchingQueues.map((queue) => queue.id));
+  // La campaña selecciona su unidad operativa; no elimina los canales hermanos
+  // que usan otra campaña interna dentro de la misma unidad.
   const filteredStock =
     allStock?.filter(
       (item) =>
-        filters.state === "all" ||
-        queues.find((queue) => queue.id === item.queue_id)?.is_active ===
-          (filters.state === "active"),
+        item.queue_id !== null && matchingQueueIds.has(item.queue_id),
     ) ?? null;
   const stock = filteredStock
     ? summarizeConversationStock(filteredStock)
@@ -283,7 +288,6 @@ export default async function OperationsPage({
           : "Mixta";
   const automationHistory = (automationHistoryResult.data ??
     []) as AutomationChange[];
-  const matchingQueueIds = new Set(matchingQueues.map((queue) => queue.id));
   const mailCampaignIdsForQueue = new Set(
     sources
       .filter(
@@ -315,36 +319,32 @@ export default async function OperationsPage({
   const voiceQueues = ((voiceResult.data ?? []) as QueueHealth[]).filter(
     (queue) => {
       if (filters.state === "inactive") return false; // The RPC explicitly returns active dialer campaigns.
-      if (filters.campaign && queue.campaign_id !== filters.campaign)
-        return false;
-      if (
-        filters.queue &&
-        !sources.some(
-          (source) =>
-            source.queue_id === filters.queue &&
-            source.channel_type === "voice" &&
-            source.campaign_id === queue.campaign_id,
-        )
-      )
-        return false;
-      return true;
+      return sources.some(
+        (source) =>
+          matchingQueueIds.has(source.queue_id) &&
+          source.channel_type === "voice" &&
+          source.is_active &&
+          source.campaign_id === queue.campaign_id,
+      );
     },
   );
   const liveAgents = ((agentsResult.data ?? []) as AgentLiveStatus[]).filter(
     (agent) => {
       if (filters.state === "inactive") return false;
-      if (filters.campaign && agent.campaign_id !== filters.campaign)
-        return false;
-      if (
-        filters.queue &&
-        !members.some(
+      return (
+        members.some(
           (member) =>
-            member.queue_id === filters.queue &&
+            matchingQueueIds.has(member.queue_id) &&
             member.profile_id === agent.profile_id,
+        ) ||
+        sources.some(
+          (source) =>
+            matchingQueueIds.has(source.queue_id) &&
+            source.channel_type === "voice" &&
+            source.is_active &&
+            source.campaign_id === agent.campaign_id,
         )
-      )
-        return false;
-      return true;
+      );
     },
   );
   const voiceUnavailable = Boolean(
@@ -360,7 +360,7 @@ export default async function OperationsPage({
         (source) =>
           source.queue_id === queue.id &&
           source.channel_type === "whatsapp" &&
-          (!filters.campaign || source.campaign_id === filters.campaign),
+          source.is_active,
       ),
   );
   const stockByAgent = new Map<string, number>();
@@ -451,7 +451,7 @@ export default async function OperationsPage({
             </Select>
           </label>
           <label className="flex min-w-48 flex-[2] flex-col gap-1 text-xs font-medium">
-            Cola ACD
+            Unidad operativa
             <Select name="queue" defaultValue={filters.queue} fieldSize="sm">
               <option value="">Todas las autorizadas</option>
               {queues.map((queue) => (
@@ -627,6 +627,34 @@ export default async function OperationsPage({
         </div>
       </SectionCard>
 
+      <SectionCard
+        title={
+          <span className="flex items-center gap-2">
+            <Users size={16} />
+            {matchingQueues.length === 1
+              ? matchingQueues[0].name
+              : "Unidades operativas"}
+          </span>
+        }
+        description={
+          matchingQueues.length === 1
+            ? matchingQueues[0].description ?? "Operación omnicanal con sus canales y campañas internas."
+            : "Cada unidad agrupa sus canales y campañas sin convertirlos en operaciones separadas."
+        }
+      >
+        <div className="space-y-4 p-4">
+          {matchingQueues.length > 0 && (
+            <div className="flex flex-wrap gap-2 text-xs">
+              {[...new Set(sources
+                .filter((source) => matchingQueueIds.has(source.queue_id) && source.is_active)
+                .map((source) => source.channel_type))]
+                .map((channel) => (
+                  <Badge key={channel} tone="neutral">
+                    {channel === "voice" ? "Voz outbound" : channel === "whatsapp" ? "Meta WhatsApp" : channel === "email" ? "Correo" : channel}
+                  </Badge>
+                ))}
+            </div>
+          )}
       <div
         className={
           filters.channel === "all" ? "grid gap-4 xl:grid-cols-3" : "grid gap-4"
@@ -741,8 +769,8 @@ export default async function OperationsPage({
 
       {showWhatsApp && (
         <SectionCard
-          title="Colas de WhatsApp"
-          description="Carga por cola y estado del canal. El límite es una regla configurada, no una medición de capacidad disponible."
+          title="WhatsApp · detalle interno"
+          description="Carga y estado del canal WhatsApp dentro de la unidad seleccionada."
         >
           <div className="overflow-x-auto">
             <Table>
@@ -776,9 +804,7 @@ export default async function OperationsPage({
                     const queueSources = sources.filter(
                       (source) =>
                         source.queue_id === queue.id &&
-                        source.channel_type === "whatsapp" &&
-                        (!filters.campaign ||
-                          source.campaign_id === filters.campaign),
+                        source.channel_type === "whatsapp",
                     );
                     const disabledChannels = queueSources.filter((source) => {
                       const route = one(source.whatsapp_campaign_routes);
@@ -863,7 +889,7 @@ export default async function OperationsPage({
                             </Link>
                           ) : (
                             <Link
-                              href={`/dashboard/conversaciones/whatsapp?status=all${filters.campaign ? `&campaign=${filters.campaign}` : ""}&queue=${queue.id}`}
+                              href={`/dashboard/conversaciones/whatsapp?status=all&queue=${queue.id}`}
                               className="text-xs font-medium text-primary hover:underline"
                             >
                               Supervisar asignaciones
@@ -890,7 +916,7 @@ export default async function OperationsPage({
 
       {showVoice && (
         <SectionCard
-          title="Campañas y colas de voz"
+          title="Voz outbound · detalle interno"
           description="Contadores de hoy según America/Santiago. Fuente: motor de discado; no incluye contenido ni grabaciones."
         >
           {voiceResult.error && (
@@ -942,7 +968,7 @@ export default async function OperationsPage({
 
       {showMail && (
         <SectionCard
-          title="Campañas y cola de correo"
+          title="Correo · detalle interno"
           description="Las oportunidades conservan su campaña y responsable CRM; la asignación se realiza sin duplicar contactos."
         >
           {mailResult.error && (
@@ -997,7 +1023,7 @@ export default async function OperationsPage({
       <SectionCard
         title={
           <span className="flex items-center gap-2">
-            <Users size={16} /> Equipo y carga por canal
+            <Users size={16} /> Equipo omnicanal y carga por canal
           </span>
         }
         description="La presencia telefónica no prueba disponibilidad para WhatsApp. Los miembros habilitados son configuración, no presencia en línea."
@@ -1079,8 +1105,8 @@ export default async function OperationsPage({
                       La carga y asignación por ejecutivo se administra en{" "}
                       <Link
                         href={
-                          filters.campaign
-                            ? `/dashboard/mail?campaign=${filters.campaign}`
+                          mailReports[0]?.campaign_id
+                            ? `/dashboard/mail?campaign=${mailReports[0].campaign_id}`
                             : "/dashboard/mail"
                         }
                         className="font-medium text-primary hover:underline"
@@ -1094,6 +1120,8 @@ export default async function OperationsPage({
               )}
             </Tbody>
           </Table>
+        </div>
+      </SectionCard>
         </div>
       </SectionCard>
 
@@ -1123,10 +1151,11 @@ export default async function OperationsPage({
             de cola.
           </p>
           <p>
-            Voz en curso incluye intentos en cola, originando, sonando y
-            conectados. No representa el número de clientes esperando. Las filas
-            de voz se organizan por campaña del marcador; las de WhatsApp, por
-            cola ACD. No se suman canales con semánticas distintas.
+            La unidad operativa se identifica por su cola omnicanal. Voz en
+            curso incluye intentos en cola, originando, sonando y conectados;
+            WhatsApp conserva su stock y correo sus resultados. Las diferencias
+            se presentan dentro de la unidad y no se suman como si compartieran
+            la misma semántica.
           </p>
           <p>
             Consultar esta vista no asigna interacciones, no ocupa cupos, no

@@ -19,11 +19,13 @@ export function AgendaCallButton({
   fullName,
   variant = "primary",
   label = "Llamar ahora",
+  source = "agenda",
 }: {
   leadId: string;
   fullName: string;
   variant?: "primary" | "secondary";
   label?: string;
+  source?: "agenda" | "assigned_lead";
 }) {
   const [dialing, setDialing] = useState(false);
 
@@ -36,7 +38,7 @@ export function AgendaCallButton({
         event.preventDefault();
         event.stopPropagation();
         setDialing(true);
-        requestAgentDial({ leadId, fullName });
+        requestAgentDial({ leadId, fullName, source });
         // Desde aquí manda el CTI, incluido el screen-pop. El bloqueo es solo
         // para que un doble clic no dispare dos gestiones.
         window.setTimeout(() => setDialing(false), 4000);

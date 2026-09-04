@@ -6,6 +6,7 @@ import Link from "next/link";
 import type { AgentPerformance, HomeDashboardSummary, Profile } from "@/lib/types";
 import { endOfDay, REPORT_TIME_ZONE, startOfDay } from "@/lib/report-range";
 import { Activity, ArrowUpRight, BarChart3, Settings2 } from "lucide-react";
+import { getSupervisedTeamIds } from "@/lib/supervisor-scope";
 
 function countValue(result: { count: number | null; error?: unknown }): string {
   return result.error || result.count === null ? "Sin datos" : result.count.toLocaleString("es-CL");
@@ -31,14 +32,13 @@ export default async function DashboardPage() {
   const loadedAt = new Date();
 
   if (profile.role === "supervisor") {
-    // El vínculo de un supervisor con sus equipos vive en teams.supervisor_id.
-    // profiles.team_id pertenece al ejecutivo y puede ser null cuando el
-    // supervisor administra uno o más equipos.
-    const { data: supervisedTeams, error: teamsError } = await supabase
-      .from("teams")
-      .select("id")
-      .eq("supervisor_id", profile.id);
-    const teamIds = (supervisedTeams ?? []).map((team) => team.id);
+    let teamIds: string[] = [];
+    let teamsError: Error | null = null;
+    try {
+      teamIds = await getSupervisedTeamIds(supabase);
+    } catch (error) {
+      teamsError = error instanceof Error ? error : new Error("No se pudo consultar el alcance supervisor.");
+    }
     const today = new Date();
     const nowIso = today.toISOString();
     const todayStart = startOfDay(today).toISOString();

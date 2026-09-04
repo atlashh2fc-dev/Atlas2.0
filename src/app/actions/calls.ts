@@ -276,6 +276,48 @@ export async function beginAgendaCallback(
   }
 }
 
+/** Opens one auditable call management for the currently assigned lead. */
+export async function beginAssignedLeadCall(
+  leadId: string
+): Promise<CallActionResult<AgendaCallbackManagement>> {
+  try {
+    const { supabase } = await requireAgent();
+    const { data, error } = await supabase.rpc("begin_agent_assigned_lead_call", {
+      p_lead_id: leadId,
+    });
+    if (error) throw new Error(error.message);
+
+    const value = data && typeof data === "object" ? (data as Record<string, unknown>) : null;
+    const callId = value?.call_id;
+    const campaignId = value?.campaign_id;
+    const phone = value?.phone;
+    const subscriber = value?.subscriber;
+    if (
+      typeof callId !== "string" ||
+      typeof campaignId !== "string" ||
+      typeof phone !== "string" ||
+      typeof subscriber !== "string"
+    ) {
+      throw new Error("La llamada asignada no devolvió una gestión válida.");
+    }
+
+    revalidatePath(`/dashboard/leads/${leadId}`);
+    return {
+      ok: true,
+      data: {
+        leadId,
+        callId,
+        campaignId,
+        phone,
+        subscriber,
+        fullName: typeof value?.full_name === "string" ? value.full_name : null,
+      },
+    };
+  } catch (error) {
+    return callActionError("beginAssignedLeadCall", error, { leadId });
+  }
+}
+
 /**
  * Abre la gestión que respalda una llamada manual de un ejecutivo. A
  * diferencia de `registerManualCall`, esta operación crea/reutiliza el lead y

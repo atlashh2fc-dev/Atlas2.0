@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { ManualLeadRecordForm } from "@/components/manual-lead-record-form";
+import { getSupervisedTeamIds } from "@/lib/supervisor-scope";
 
 type TeamRow = {
   id: string;
@@ -34,11 +35,7 @@ export default async function NewLeadRecordPage() {
   const teamsQuery = supabase.from("teams").select("id, name").order("name");
 
   if (profile.role === "supervisor") {
-    const { data: supervisedTeams } = await supabase
-      .from("teams")
-      .select("id")
-      .eq("supervisor_id", profile.id);
-    const teamIds = (supervisedTeams ?? []).map((team) => team.id);
+    const teamIds = await getSupervisedTeamIds(supabase);
     agentsQuery.in("team_id", teamIds.length ? teamIds : ["00000000-0000-0000-0000-000000000000"]);
     teamsQuery.in("id", teamIds.length ? teamIds : ["00000000-0000-0000-0000-000000000000"]);
   }

@@ -11,6 +11,7 @@ const nodeRequire = createRequire(import.meta.url);
 const ids = {
   campaign: "00000000-0000-4000-8000-000000000101",
   otherCampaign: "00000000-0000-4000-8000-000000000102",
+  metaCampaign: "00000000-0000-4000-8000-000000000103",
   queue: "00000000-0000-4000-8000-000000000201",
   agent: "00000000-0000-4000-8000-000000000301",
 };
@@ -61,17 +62,17 @@ async function renderOperations({
   const reads: Read[] = [];
   let connections = 0;
   const tables: Record<string, Row[]> = {
-    contact_center_queues: [{ id: ids.queue, name: "Atención digital", is_active: true, routing_mode: "least_loaded", max_concurrent_per_agent: 10, service_level_seconds: 60 }],
+    contact_center_queues: [{ id: ids.queue, name: "Secretaría Virtual", description: "Unidad operativa omnicanal", is_active: true, routing_mode: "least_loaded", max_concurrent_per_agent: 10, service_level_seconds: 60 }],
     contact_center_queue_sources: [
-      { queue_id: ids.queue, campaign_id: ids.campaign, channel_type: "whatsapp", is_active: true, whatsapp_campaign_routes: { whatsapp_channels: { status: "active" } } },
+      { queue_id: ids.queue, campaign_id: ids.metaCampaign, channel_type: "whatsapp", is_active: true, whatsapp_campaign_routes: { whatsapp_channels: { status: "active" } } },
       { queue_id: ids.queue, campaign_id: ids.campaign, channel_type: "voice", is_active: true, whatsapp_campaign_routes: null },
       { queue_id: ids.queue, campaign_id: ids.campaign, channel_type: "email", is_active: true, whatsapp_campaign_routes: null },
     ],
     contact_center_queue_members: [{ queue_id: ids.queue, profile_id: ids.agent, is_active: true, max_concurrent: 10, profiles: { id: ids.agent, full_name: "Ejecutivo autorizado", active: true } }],
-    campaigns: [{ id: ids.campaign, name: "Campaña autorizada" }, { id: ids.otherCampaign, name: "Segunda campaña autorizada" }],
-    whatsapp_ai_configs: [{ campaign_id: ids.campaign, enabled: true }, { campaign_id: ids.otherCampaign, enabled: false }],
+    campaigns: [{ id: ids.campaign, name: "Secretaria Virtual outbound" }, { id: ids.metaCampaign, name: "Meta WhatsApp Secretaria Virtual" }, { id: ids.otherCampaign, name: "Segunda campaña autorizada" }],
+    whatsapp_ai_configs: [{ campaign_id: ids.metaCampaign, enabled: true }, { campaign_id: ids.otherCampaign, enabled: false }],
     whatsapp_automation_changes: [],
-    whatsapp_conversations: [{ id: "conversation-meta", queue_id: ids.queue, campaign_id: ids.campaign, assigned_to: ids.agent, status: "open", last_inbound_at: "2026-08-27T10:00:00Z", last_outbound_at: null, last_message_at: "2026-08-27T10:00:00Z",
+    whatsapp_conversations: [{ id: "conversation-meta", queue_id: ids.queue, campaign_id: ids.metaCampaign, assigned_to: ids.agent, status: "open", last_inbound_at: "2026-08-27T10:00:00Z", last_outbound_at: null, last_message_at: "2026-08-27T10:00:00Z",
       // Sentinels deliberately present even though the real projection excludes them.
       contact_name: "PRIVATE-CUSTOMER-NAME", contact_phone: "+56999888777", text_body: "PRIVATE-TRANSCRIPT-BODY" }],
   };
@@ -146,7 +147,7 @@ test("real admin Operations render contains queue metadata and no customer inbox
   const { html, reads } = await renderOperations();
   assert.match(html, /Centro de operaciones/);
   assert.match(html, /Administración sin atención al cliente/);
-  assert.match(html, /Atención digital/);
+  assert.match(html, /Secretaría Virtual/);
   assert.match(html, /Configurar colas/);
   assert.match(html, /Correo · Operación actual/);
   assert.match(html, /Gestionar correo/);
@@ -184,12 +185,22 @@ test("general automation remains outside monitor filters, even for a Voice-only 
   assert.equal(reads.some((read) => read.table === "whatsapp_conversations"), false);
 });
 
+test("una campaña Meta selecciona la unidad completa y conserva Voz y Correo como canales internos", async () => {
+  const { html } = await renderOperations({ params: { campaign: ids.metaCampaign } });
+  assert.match(html, /Secretaría Virtual/);
+  assert.match(html, /Meta WhatsApp/);
+  assert.match(html, /Voz outbound · detalle interno/);
+  assert.match(html, /Correo · detalle interno/);
+  assert.match(html, /Secretaria Virtual outbound/);
+  assert.doesNotMatch(html, />Colas de WhatsApp<|>Campañas y colas de voz<|>Campañas y cola de correo</);
+});
+
 test("correo usa sólo colas coincidentes y deriva la carga al espacio de asignación", async () => {
   const active = await renderOperations({ params: { channel: "email", state: "active" } });
   assert.match(active.html, /Correo · Operación actual/);
   assert.match(active.html, /Correo autorizado/);
   assert.match(active.html, /La carga y asignación por ejecutivo se administra en/);
-  assert.match(active.html, /href="\/dashboard\/mail"/);
+  assert.match(active.html, /href="\/dashboard\/mail(?:\?campaign=[^"]+)?"/);
   assert.doesNotMatch(active.html, /WhatsApp · Stock actual|Campañas y colas de voz/);
   assert.equal(active.reads.some((read) => read.table === "whatsapp_conversations"), false);
 

@@ -24,10 +24,11 @@ export default async function UsersAdminPage({
   const supabase = await createClient();
   const { campaign: requestedCampaignId, role: roleFilter, active: activeFilter } = await searchParams;
 
-  const [{ data: users, error: usersError }, { data: teams }, { data: campaigns }, { data: campaignMemberships }] =
+  const [{ data: users, error: usersError }, { data: teams }, { data: teamSupervisors }, { data: campaigns }, { data: campaignMemberships }] =
     await Promise.all([
     supabase.from("profiles").select("*").order("created_at", { ascending: true }),
     supabase.from("teams").select("*").order("name"),
+    supabase.from("team_supervisors").select("team_id, supervisor_id"),
     supabase.from("campaigns").select("id, name").eq("is_active", true).order("name"),
     supabase.from("campaign_agents").select("profile_id, campaign_id"),
   ]);
@@ -37,11 +38,15 @@ export default async function UsersAdminPage({
 
   const teamById = new Map((teams ?? []).map((team) => [team.id, team]));
   const supervisedTeamIdsByUser = new Map<string, string[]>();
-  for (const team of teams ?? []) {
-    if (!team.supervisor_id) continue;
-    supervisedTeamIdsByUser.set(team.supervisor_id, [
-      ...(supervisedTeamIdsByUser.get(team.supervisor_id) ?? []),
-      team.id,
+  const supervisorIdsByTeam = new Map<string, string[]>();
+  for (const membership of teamSupervisors ?? []) {
+    supervisedTeamIdsByUser.set(membership.supervisor_id, [
+      ...(supervisedTeamIdsByUser.get(membership.supervisor_id) ?? []),
+      membership.team_id,
+    ]);
+    supervisorIdsByTeam.set(membership.team_id, [
+      ...(supervisorIdsByTeam.get(membership.team_id) ?? []),
+      membership.supervisor_id,
     ]);
   }
 
@@ -66,9 +71,9 @@ export default async function UsersAdminPage({
     })
     .map((user) => {
       const team = user.team_id ? teamById.get(user.team_id) ?? null : null;
-      const supervisor = team?.supervisor_id
-        ? supervisors.find((candidate) => candidate.id === team.supervisor_id) ?? null
-        : null;
+      const supervisorNames = (team ? supervisorIdsByTeam.get(team.id) ?? [] : [])
+        .map((id) => supervisors.find((candidate) => candidate.id === id)?.full_name)
+        .filter((name): name is string => Boolean(name));
       return {
         id: user.id,
         full_name: user.full_name,
@@ -77,7 +82,7 @@ export default async function UsersAdminPage({
         team_id: user.team_id,
         active: user.active,
         team_name: team?.name ?? null,
-        supervisor_name: supervisor?.full_name ?? "Sin supervisor",
+        supervisor_names: supervisorNames,
         supervised_team_ids: supervisedTeamIdsByUser.get(user.id) ?? [],
         campaign_ids: campaignIdsByAgent.get(user.id) ?? [],
       };

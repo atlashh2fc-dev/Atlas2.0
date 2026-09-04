@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveReportRange, toDateInput } from "@/lib/report-range";
 import { fetchQualityRecordings, type RecordingFilters } from "@/lib/quality-recordings";
+import { getSupervisedTeamIds } from "@/lib/supervisor-scope";
 import { QualityRecordingsTable } from "@/components/quality-recordings-table";
 import { Callout, Field, FilterBar, Input, Select } from "@/components/ui";
 
@@ -48,8 +49,7 @@ export default async function GrabacionesPage({
       .order("full_name");
     agentOptions = (data ?? []) as Option[];
   } else {
-    const { data: teams } = await supabase.from("teams").select("id").eq("supervisor_id", profile.id);
-    const teamIds = (teams ?? []).map((team) => team.id);
+    const teamIds = await getSupervisedTeamIds(supabase);
     if (teamIds.length > 0) {
       const { data } = await supabase
         .from("profiles")

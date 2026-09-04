@@ -31,7 +31,7 @@ export type UserRow = {
   team_id: string | null;
   active: boolean;
   team_name: string | null;
-  supervisor_name: string | null;
+  supervisor_names: string[];
   supervised_team_ids: string[];
   campaign_ids: string[];
 };
@@ -82,8 +82,10 @@ export function UsersTable({
             <span className="block">
               <span className="font-medium text-foreground">{row.full_name}</span>
               <span className="mt-0.5 block break-all text-xs text-muted-foreground">{row.email}</span>
-              {row.role === "agente" && row.supervisor_name && (
-                <span className="mt-1 block text-xs text-muted-foreground">Supervisor: {row.supervisor_name}</span>
+              {row.role === "agente" && (
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  Supervisores: {row.supervisor_names.length > 0 ? row.supervisor_names.join(" · ") : "Sin supervisor"}
+                </span>
               )}
             </span>
             <UserPasswordDialog user={{ id: row.id, fullName: row.full_name, email: row.email }} />

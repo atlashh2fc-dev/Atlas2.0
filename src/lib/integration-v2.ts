@@ -8,6 +8,7 @@ export const INTEGRATION_V2_SIGNATURE_TOLERANCE_SECONDS = 300;
 export type IntegrationV2EventType =
   | "intelligence.decision.v1"
   | "engagement.event.v1"
+  | "mail.message.v1"
   | "integration.canary.v1";
 
 export type IntegrationEngagementEventKind =
@@ -135,6 +136,35 @@ function parseEngagementPayload(payload: Record<string, unknown>, index: number)
   };
 }
 
+function parseMailMessagePayload(payload: Record<string, unknown>, index: number) {
+  const direction = requiredText(payload.direction, `items[${index}].payload.direction`, 20);
+  if (direction !== "inbound" && direction !== "outbound") {
+    throw new IntegrationV2ValidationError(`items[${index}].payload.direction no es soportado.`);
+  }
+  return {
+    ...payload,
+    external_campaign_key: requiredText(
+      payload.external_campaign_key,
+      `items[${index}].payload.external_campaign_key`,
+      300,
+    ),
+    message_id: requiredText(payload.message_id, `items[${index}].payload.message_id`, 500),
+    message_subject: requiredText(
+      payload.message_subject,
+      `items[${index}].payload.message_subject`,
+      1000,
+    ),
+    message_body: requiredText(payload.message_body, `items[${index}].payload.message_body`, 100000),
+    direction,
+    parent_message_id: optionalText(payload.parent_message_id, `items[${index}].payload.parent_message_id`, 500),
+    provider_message_id: optionalText(payload.provider_message_id, `items[${index}].payload.provider_message_id`, 500),
+    from_email: optionalText(payload.from_email, `items[${index}].payload.from_email`, 320),
+    to_email: optionalText(payload.to_email, `items[${index}].payload.to_email`, 320),
+    reply_to_email: optionalText(payload.reply_to_email, `items[${index}].payload.reply_to_email`, 320),
+    source_lead_id: optionalText(payload.source_lead_id, `items[${index}].payload.source_lead_id`, 500),
+  };
+}
+
 export function integrationV2EventSource(sourceCode: string): IntegrationV2Item["event_source"] {
   const normalized = sourceCode.trim().toLowerCase().replaceAll("_", "-");
   if (normalized === "atlas2" || normalized === "atlas-lead" || normalized === "bigdata") {
@@ -190,7 +220,7 @@ export function parseIntegrationV2Batch(value: unknown, sourceCode = "bigdata"):
     }
     seen.add(idempotencyIdentity);
     const eventType = requiredText(candidate.event_type, `items[${index}].event_type`, 80);
-    if (eventType !== "intelligence.decision.v1" && eventType !== "engagement.event.v1" && eventType !== "integration.canary.v1") {
+    if (eventType !== "intelligence.decision.v1" && eventType !== "engagement.event.v1" && eventType !== "mail.message.v1" && eventType !== "integration.canary.v1") {
       throw new IntegrationV2ValidationError(`event_type no soportado: ${eventType}.`);
     }
     const occurredAt = requiredText(candidate.occurred_at, `items[${index}].occurred_at`, 40);
@@ -209,6 +239,8 @@ export function parseIntegrationV2Batch(value: unknown, sourceCode = "bigdata"):
       }
     } else if (eventType === "engagement.event.v1") {
       payload = parseEngagementPayload(candidate.payload, index);
+    } else if (eventType === "mail.message.v1") {
+      payload = parseMailMessagePayload(candidate.payload, index);
     }
     const suppliedEventSource = candidate.event_source === undefined
       ? expectedEventSource

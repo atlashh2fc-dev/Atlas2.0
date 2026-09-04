@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getSupervisedTeamIds } from "@/lib/supervisor-scope";
 
 const SIGNED_URL_TTL_SECONDS = 5 * 60;
 
@@ -24,16 +25,9 @@ function jsonError(message: string, status: number) {
 
 async function supervisorCanPlay(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  supervisorId: string,
   recording: Pick<RecordingAccessRow, "team_id">
 ) {
-  const { data: teams, error: teamsError } = await supabase
-    .from("teams")
-    .select("id")
-    .eq("supervisor_id", supervisorId);
-  if (teamsError) throw new Error(teamsError.message);
-
-  const teamIds = (teams ?? []).map((team) => team.id as string);
+  const teamIds = await getSupervisedTeamIds(supabase);
   return recording.team_id !== null && teamIds.includes(recording.team_id);
 }
 
@@ -69,7 +63,7 @@ export async function GET(
   }
 
   try {
-    if (profile.role === "supervisor" && !(await supervisorCanPlay(supabase, profile.id, recording))) {
+    if (profile.role === "supervisor" && !(await supervisorCanPlay(supabase, recording))) {
       return jsonError("La grabación no pertenece a uno de tus equipos.", 403);
     }
 

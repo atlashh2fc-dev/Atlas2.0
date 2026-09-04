@@ -12,6 +12,7 @@ import {
   TableEmpty,
   Tr,
 } from "@/components/ui";
+import { getSupervisedTeamIds } from "@/lib/supervisor-scope";
 
 type UploadRow = {
   id: string;
@@ -45,7 +46,8 @@ export default async function BulkUploadPage({
 
   const teamsQuery = supabase.from("teams").select("id, name").order("name");
   if (profile.role === "supervisor") {
-    teamsQuery.eq("supervisor_id", profile.id);
+    const teamIds = await getSupervisedTeamIds(supabase);
+    teamsQuery.in("id", teamIds.length ? teamIds : ["00000000-0000-0000-0000-000000000000"]);
   }
 
   const [{ data: teams }, { data: workflows }, { data: campaigns }, { data: uploads }] = await Promise.all([

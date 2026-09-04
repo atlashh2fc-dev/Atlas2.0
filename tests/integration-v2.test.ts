@@ -374,6 +374,46 @@ test("engagement rechaza semántica, tipo y enlace inválidos", () => {
   );
 });
 
+test("mail.message proyecta el cuerpo completo sólo con identidad de hilo válida", () => {
+  const message = {
+    event_id: "mail.message.v1:message-1",
+    event_type: "mail.message.v1",
+    event_source: "urn:geimser:atlas-lead",
+    subject: "urn:geimser:atlas-lead:mail-message:message-1",
+    external_key: "123e4567-e89b-42d3-a456-426614174111",
+    occurred_at: "2026-09-04T12:00:00Z",
+    data_schema: "urn:geimser:schema:mail.message.v1:1",
+    tenant_id: "geimser",
+    entity_version: 1,
+    correlation_id: "message-1",
+    causation_id: null,
+    payload: {
+      external_campaign_key: "123e4567-e89b-42d3-a456-426614174222",
+      source_lead_id: "123e4567-e89b-42d3-a456-426614174111",
+      message_id: "message-1",
+      direction: "outbound",
+      from_email: "contacto@send.geimser.cl",
+      to_email: "cliente@example.com",
+      message_subject: "Propuesta comercial",
+      message_body: "Contenido visible para el ejecutivo asignado.",
+    },
+  };
+  const parsed = parseIntegrationV2Batch({
+    campaign_key: message.payload.external_campaign_key,
+    schema_version: "2",
+    items: [message],
+  }, "atlas_lead");
+  assert.equal(parsed.items[0].payload.message_body, message.payload.message_body);
+  assert.throws(
+    () => parseIntegrationV2Batch({
+      campaign_key: message.payload.external_campaign_key,
+      schema_version: "2",
+      items: [{ ...message, payload: { ...message.payload, message_body: "" } }],
+    }, "atlas_lead"),
+    /message_body/,
+  );
+});
+
 test("carga canónica queda acotada a 500 eventos", () => {
   const items = Array.from({ length: 500 }, (_, index) => decision(index + 1));
   const parsed = parseIntegrationV2Batch({ campaign_key: "bounded-load", items }, "bigdata");

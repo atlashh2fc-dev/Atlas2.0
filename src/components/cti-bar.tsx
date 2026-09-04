@@ -45,6 +45,7 @@ import {
 } from "@/app/actions/agent-status";
 import {
   beginAgendaCallback,
+  beginAssignedLeadCall,
   beginManualCallManagement,
   discardCallTechnicalError,
   getMyPendingCallManagement,
@@ -1505,7 +1506,9 @@ export function CtiBar({ profile }: { profile: Profile }) {
       return;
     }
 
-    const result = await beginAgendaCallback(detail.leadId);
+    const result = detail.source === "assigned_lead"
+      ? await beginAssignedLeadCall(detail.leadId)
+      : await beginAgendaCallback(detail.leadId);
     if (!result.ok) {
       setCallError(result.error);
       return;

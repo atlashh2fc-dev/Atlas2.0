@@ -13,6 +13,10 @@ const NON_RETRYABLE_PROJECTION_ERRORS = new Set([
   "invalid_priority_rank",
   "invalid_engagement_semantics",
   "invalid_event_kind",
+  "invalid_message_id",
+  "invalid_message_direction",
+  "invalid_message_subject",
+  "invalid_message_body",
 ]);
 
 async function nack(
@@ -39,7 +43,7 @@ async function processGroup(
   admin: ReturnType<typeof createAdminClient>,
   workerId: string,
   ids: string[],
-  rpc: "apply_intelligence_decisions_v2" | "apply_engagement_events_v2",
+  rpc: "apply_intelligence_decisions_v2" | "apply_engagement_events_v2" | "apply_mail_messages_v1",
 ) {
   if (!ids.length) return { succeeded: 0, retried: 0, rejected: 0 };
   const { data, error } = await admin.rpc(rpc, { p_worker_id: workerId, p_item_ids: ids });
@@ -93,14 +97,16 @@ async function handle(request: NextRequest, requestedLimit: number) {
     const claimed = (data ?? []) as ClaimedItem[];
     const decisions = claimed.filter((item) => item.event_type === "intelligence.decision.v1").map((item) => item.item_id);
     const engagements = claimed.filter((item) => item.event_type === "engagement.event.v1").map((item) => item.item_id);
+    const mailMessages = claimed.filter((item) => item.event_type === "mail.message.v1").map((item) => item.item_id);
 
     const decisionResult = await processGroup(admin, workerId, decisions, "apply_intelligence_decisions_v2");
     const engagementResult = await processGroup(admin, workerId, engagements, "apply_engagement_events_v2");
+    const mailResult = await processGroup(admin, workerId, mailMessages, "apply_mail_messages_v1");
     return NextResponse.json({
       claimed: claimed.length,
-      succeeded: decisionResult.succeeded + engagementResult.succeeded,
-      retried: decisionResult.retried + engagementResult.retried,
-      rejected: decisionResult.rejected + engagementResult.rejected,
+      succeeded: decisionResult.succeeded + engagementResult.succeeded + mailResult.succeeded,
+      retried: decisionResult.retried + engagementResult.retried + mailResult.retried,
+      rejected: decisionResult.rejected + engagementResult.rejected + mailResult.rejected,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "worker_failed";

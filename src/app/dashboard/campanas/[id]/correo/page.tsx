@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { getSupervisedTeamIds } from "@/lib/supervisor-scope";
 import { InboundMailbox, type InboundEmailRow } from "@/components/inbound-mailbox";
 import { PageHeader } from "@/components/ui";
 
@@ -54,8 +55,7 @@ export default async function CampaignInboxPage({ params }: { params: Promise<{ 
       .order("full_name");
 
     if (profile.role === "supervisor") {
-      const { data: supervisedTeams } = await supabase.from("teams").select("id").eq("supervisor_id", profile.id);
-      const teamIds = (supervisedTeams ?? []).map((team) => team.id);
+      const teamIds = await getSupervisedTeamIds(supabase);
       if (teamIds.length > 0) agentsQuery.in("team_id", teamIds);
       else agentsQuery.eq("id", "00000000-0000-0000-0000-000000000000");
     }

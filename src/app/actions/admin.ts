@@ -88,45 +88,17 @@ export async function updateUserRole(formData: FormData) {
     throw new Error("El rol seleccionado no es válido.");
   }
 
-  // `profiles.role` es la única fuente de permisos de Atlas: requireProfile,
-  // las políticas y las vistas de la aplicación consultan esa columna. No
-  // actualizamos app_metadata aquí porque Auth puede ejecutar sincronizaciones
-  // que vuelven a escribir el perfil con un valor anterior.
-  const admin = createAdminClient();
-  if (role === "supervisor" && supervisorTeamIds.length > 0) {
-    const { data: validTeams, error: teamsError } = await admin
-      .from("teams")
-      .select("id")
-      .in("id", supervisorTeamIds);
-    if (teamsError || (validTeams?.length ?? 0) !== supervisorTeamIds.length) {
-      throw new Error(teamsError?.message ?? "Uno de los equipos seleccionados no existe.");
-    }
-  }
-  // Usar el cliente de servicio evita que una política RLS desactualizada se
-  // convierta en un update de cero filas sin error. select().single() obliga
-  // además a verificar que el valor efectivamente quedó persistido.
-  const { data: profile, error: profileError } = await admin
-    .from("profiles")
-    .update({ role, team_id: role === "supervisor" ? null : teamId })
-    .eq("id", userId)
-    .select("id, role, team_id")
-    .single();
-
-  if (profileError) throw new Error(profileError.message);
-  if (profile.role !== role || profile.team_id !== (role === "supervisor" ? null : teamId)) {
-    throw new Error("El rol o el equipo no pudieron guardarse.");
-  }
-
-  const { error: clearError } = await admin.from("teams").update({ supervisor_id: null }).eq("supervisor_id", userId);
-  if (clearError) throw new Error(clearError.message);
-
-  if (role === "supervisor" && supervisorTeamIds.length > 0) {
-    const { error: assignError } = await admin
-      .from("teams")
-      .update({ supervisor_id: userId })
-      .in("id", supervisorTeamIds);
-    if (assignError) throw new Error(assignError.message);
-  }
+  // La transacción cambia el rol y el alcance muchos-a-muchos como una sola
+  // operación. Así, agregar a Andrea no desplaza a Elizabeth y un error no deja
+  // el perfil guardado a medias.
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("set_user_role_and_team_scope", {
+    p_user_id: userId,
+    p_role: role,
+    p_team_id: role === "supervisor" ? null : teamId,
+    p_supervised_team_ids: role === "supervisor" ? supervisorTeamIds : [],
+  });
+  if (error) throw new Error(error.message);
   revalidatePath("/dashboard/admin/usuarios");
 }
 
@@ -193,28 +165,35 @@ export async function bulkSetUserActive(
 
 export async function createTeam(formData: FormData) {
   await requireProfile(["admin"]);
-  const name = formData.get("name") as string;
-  const supervisorId = (formData.get("supervisor_id") as string) || null;
+  const name = String(formData.get("name") ?? "").trim();
+  const supervisorIds = [...new Set(formData.getAll("supervisor_ids").map(String).filter(Boolean))];
+  if (!name) throw new Error("El nombre del equipo es obligatorio.");
   const supabase = await createClient();
-  const { error } = await supabase.from("teams").insert({ name, supervisor_id: supervisorId });
+  const { error } = await supabase.rpc("create_team_with_supervisors", {
+    p_name: name,
+    p_supervisor_ids: supervisorIds,
+  });
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/admin/usuarios");
+  revalidatePath("/dashboard/admin/usuarios/equipos");
 }
 
-/** Asigna o cambia el supervisor a cargo de un equipo (define de quién dependen sus agentes). */
-export async function updateTeamSupervisor(formData: FormData) {
+/** Reemplaza el conjunto de supervisores sin desplazar a otro por accidente. */
+export async function updateTeamSupervisors(formData: FormData) {
   await requireProfile(["admin"]);
-  const teamId = formData.get("team_id") as string;
-  const supervisorId = (formData.get("supervisor_id") as string) || null;
+  const teamId = String(formData.get("team_id") ?? "");
+  const supervisorIds = [...new Set(formData.getAll("supervisor_ids").map(String).filter(Boolean))];
+  if (!teamId) throw new Error("No se identificó el equipo.");
 
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("teams")
-    .update({ supervisor_id: supervisorId })
-    .eq("id", teamId);
+  const { error } = await supabase.rpc("replace_team_supervisors", {
+    p_team_id: teamId,
+    p_supervisor_ids: supervisorIds,
+  });
 
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/admin/usuarios");
+  revalidatePath("/dashboard/admin/usuarios/equipos");
 }
 
 /**

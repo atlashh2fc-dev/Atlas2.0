@@ -18,6 +18,12 @@ import type { ReactNode } from "react";
 import { getCampaignAppointmentScheduleUrl } from "@/lib/campaign-appointment-schedules";
 import { getWorkspacePermissions } from "@/lib/workspace-permissions";
 import { LearningMemoryPanel } from "@/components/learning-memory-panel";
+import {
+  MailThreadPanel,
+  type LeadMailMessage,
+  type LeadMailReplyCommand,
+} from "@/components/mail-thread-panel";
+import { canOperateAssignedConversation } from "@/lib/workspace-permissions";
 
 /** Fila etiqueta/valor de la columna de identidad. */
 function InfoRow({ label, children }: { label: ReactNode; children: ReactNode }) {
@@ -193,7 +199,13 @@ export default async function LeadDetailPage({
     (workflowBranches ?? []) as WorkflowStepBranch[]
   );
 
-  const [{ data: externalRefsData }, { data: externalEventsData }, { data: whatsAppMessagesData }] = await Promise.all([
+  const [
+    { data: externalRefsData },
+    { data: externalEventsData },
+    { data: whatsAppMessagesData },
+    { data: mailMessagesData },
+    { data: mailReplyCommandsData },
+  ] = await Promise.all([
     supabase
       .from("lead_external_refs")
       .select("id, external_key, first_seen_at, last_seen_at, integration_sources(code, name)")
@@ -212,15 +224,30 @@ export default async function LeadDetailPage({
       .eq("whatsapp_conversations.lead_id", id)
       .order("provider_timestamp", { ascending: false, nullsFirst: false })
       .limit(30) : Promise.resolve({ data: [] }),
+    permissions.canReadConversationContent ? supabase
+      .from("lead_mail_messages")
+      .select("id, direction, from_email, to_email, subject, body_text, occurred_at")
+      .eq("lead_id", id)
+      .order("occurred_at", { ascending: true })
+      .limit(50) : Promise.resolve({ data: [] }),
+    permissions.canReadConversationContent ? supabase
+      .from("mail_reply_commands")
+      .select("id, subject, body_text, status, last_error, created_at")
+      .eq("lead_id", id)
+      .order("created_at", { ascending: false })
+      .limit(20) : Promise.resolve({ data: [] }),
   ]);
   const externalRefs = (externalRefsData ?? []) as ExternalReference[];
   const externalEvents = (externalEventsData ?? []) as ExternalEvent[];
   const whatsAppMessages = (whatsAppMessagesData ?? []) as WhatsAppTimelineMessage[];
+  const mailMessages = (mailMessagesData ?? []) as LeadMailMessage[];
+  const mailReplyCommands = (mailReplyCommandsData ?? []) as LeadMailReplyCommand[];
 
   // El render solo consulta una gestión abierta. Crear una llamada aquí provoca
   // duplicados cuando el cierre revalida la página antes de navegar.
   const canManageCall = permissions.canAttendCustomers;
   const canReassign = permissions.canManageAssignments;
+  const canOperateAssigned = canOperateAssignedConversation(profile, lead.assigned_to);
   const call = canManageCall ? await getOpenCall(id) : null;
   const revisableCall =
     canManageCall && !call && lead.managed_by === profile.id
@@ -307,12 +334,13 @@ export default async function LeadDetailPage({
             {/* Sin gestión abierta, un compromiso propio se puede marcar desde
                 aquí aunque la campaña sea automática: el discador solo entrega
                 el callback dentro de su ventana y después queda incallable. */}
-            {canManageCall && !call && lead.next_action_at && lead.managed_by === profile.id && (
+            {canManageCall && !call && canOperateAssigned && lead.phone && (
               <AgendaCallButton
                 leadId={lead.id}
                 fullName={lead.full_name}
                 variant="secondary"
-                label={overdue ? "Llamar compromiso vencido" : "Llamar ahora"}
+                label={lead.next_action_at && overdue ? "Llamar compromiso vencido" : "Llamar ahora"}
+                source="assigned_lead"
               />
             )}
             {revisableCall && !correctionRequested && (
@@ -535,6 +563,13 @@ export default async function LeadDetailPage({
               </p>
             </div>
           </Card>
+
+          <MailThreadPanel
+            leadId={lead.id}
+            messages={mailMessages}
+            commands={mailReplyCommands}
+            canReply={canOperateAssigned}
+          />
 
           <LeadTimeline entries={entries} />
         </main>

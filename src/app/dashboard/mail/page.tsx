@@ -1,5 +1,6 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { getSupervisedTeamIds } from "@/lib/supervisor-scope";
 import { redirect } from "next/navigation";
 import {
   MailControlCenter,
@@ -288,11 +289,9 @@ export default async function MailDashboardPage({
     }
   }
 
-  const { data: supervisedTeams } =
-    profile.role === "supervisor"
-      ? await supabase.from("teams").select("id").eq("supervisor_id", profile.id)
-      : { data: [] as { id: string }[] };
-  const supervisedTeamIds = (supervisedTeams ?? []).map((team) => team.id);
+  const supervisedTeamIds = profile.role === "supervisor"
+    ? await getSupervisedTeamIds(supabase)
+    : [];
 
   const agentsQuery = supabase
     .from("profiles")

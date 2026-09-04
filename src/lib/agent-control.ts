@@ -21,6 +21,7 @@ export function notifyAgentManagementClosed() {
 
 export type AgentDialRequestEventDetail = {
   leadId: string;
+  source?: "agenda" | "assigned_lead";
   /** Solo para feedback inmediato en el CTI: el teléfono real lo resuelve el servidor. */
   fullName?: string | null;
 };
