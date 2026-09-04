@@ -1,5 +1,6 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
 import {
   MailControlCenter,
   type MailControlBucket,
@@ -262,6 +263,31 @@ export default async function MailDashboardPage({
   const activeBucket = queueParam && MAIL_BUCKETS.has(queueParam) ? queueParam : "all";
   const cursor = decodeCursor(cursorParam);
   const supabase = await createClient();
+
+  // La entrada general de Correo debe abrir una operación concreta. Ejecutar
+  // los read models sin campaña obliga a consolidar todo el histórico mail y
+  // puede superar el statement timeout de Postgres. La cola ya declara qué
+  // campaña alimenta el canal email, por lo que reutilizamos esa relación
+  // canónica en vez de inventar otra preferencia de navegación.
+  if (!selectedCampaignId && !selectedMailCampaignId && !campaignContext && !umbrella) {
+    const { data: emailSources, error: emailSourcesError } = await supabase
+      .from("contact_center_queue_sources")
+      .select("campaign_id")
+      .eq("channel_type", "email")
+      .eq("is_active", true)
+      .not("campaign_id", "is", null)
+      .limit(2);
+
+    if (emailSourcesError) throw new Error(emailSourcesError.message);
+
+    const emailCampaignIds = [
+      ...new Set((emailSources ?? []).map((source) => source.campaign_id).filter(Boolean)),
+    ];
+    if (emailCampaignIds.length === 1) {
+      redirect(`/dashboard/mail?campaign=${emailCampaignIds[0]}`);
+    }
+  }
+
   const { data: supervisedTeams } =
     profile.role === "supervisor"
       ? await supabase.from("teams").select("id").eq("supervisor_id", profile.id)

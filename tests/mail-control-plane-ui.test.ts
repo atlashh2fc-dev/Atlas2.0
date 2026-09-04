@@ -56,3 +56,11 @@ test("el selector sólo ofrece ejecutivos habilitados para campañas y equipos d
   assert.match(mailControl, /assignmentCampaignIds\.every/);
   assert.match(mailControl, /assignmentTeamIds\.every/);
 });
+
+test("la entrada general de correo usa la campaña email de la cola nativa", () => {
+  assert.match(mailPage, /\.from\("contact_center_queue_sources"\)/);
+  assert.match(mailPage, /\.eq\("channel_type", "email"\)/);
+  assert.match(mailPage, /\.eq\("is_active", true\)/);
+  assert.match(mailPage, /redirect\(`\/dashboard\/mail\?campaign=\$\{emailCampaignIds\[0\]\}`\)/);
+  assert.doesNotMatch(mailPage, /111cb0ed-6e72-4c68-a83f-236d3c86b60b/);
+});
