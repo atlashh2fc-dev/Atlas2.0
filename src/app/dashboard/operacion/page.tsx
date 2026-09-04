@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import {
   ArrowUpRight,
   Bot,
+  Mail,
   MessageCircle,
   Phone,
   ShieldCheck,
@@ -72,6 +73,18 @@ type AutomationChange = {
   campaigns: Relation<{ name: string }>;
   profiles: Relation<{ full_name: string }>;
 };
+type MailReportRow = {
+  mail_campaign_id: string | null;
+  mail_campaign_name: string;
+  campaign_id: string;
+  campaign_name: string;
+  sent_leads: number;
+  opened_leads: number;
+  clicked_leads: number;
+  hot_leads: number;
+  assigned_hot_leads: number;
+  managed_hot_leads: number;
+};
 const one = <T,>(value: Relation<T>): T | null =>
   Array.isArray(value) ? (value[0] ?? null) : value;
 
@@ -116,6 +129,9 @@ export default async function OperationsPage({
   const permissions = getWorkspacePermissions(profile.role);
   if (!permissions.canMonitorOperations) redirect("/dashboard");
   const filters = parseOperationFilters(await searchParams);
+  const showVoice = filters.channel === "all" || filters.channel === "voice";
+  const showWhatsApp = filters.channel === "all" || filters.channel === "whatsapp";
+  const showMail = filters.channel === "all" || filters.channel === "email";
   const supabase = await createClient();
   const [
     queuesResult,
@@ -124,6 +140,7 @@ export default async function OperationsPage({
     campaignsResult,
     voiceResult,
     agentsResult,
+    mailResult,
     stockResult,
     automationResult,
     automationHistoryResult,
@@ -158,7 +175,13 @@ export default async function OperationsPage({
       .limit(1000),
     supabase.rpc("get_queue_health"),
     supabase.rpc("get_agent_live_status"),
-    filters.channel === "voice"
+    showMail
+      ? supabase.rpc("get_mail_engagement_report_read_model", {
+          p_mail_campaign_id: null,
+          p_campaign_id: filters.campaign || null,
+        })
+      : Promise.resolve({ data: null, error: null }),
+    !showWhatsApp
       ? Promise.resolve({ data: null, error: null })
       : loadOperationalConversations(supabase, filters),
     supabase
@@ -210,11 +233,12 @@ export default async function OperationsPage({
     )
       return false;
     return (
-      (filters.channel !== "voice" &&
+      (showWhatsApp &&
         stockResult.data?.some((item) => item.queue_id === queue.id)) ||
       sources.some(
         (source) =>
           source.queue_id === queue.id &&
+          source.is_active &&
           (!filters.campaign || source.campaign_id === filters.campaign) &&
           (filters.channel === "all" ||
             source.channel_type === filters.channel),
@@ -259,6 +283,35 @@ export default async function OperationsPage({
           : "Mixta";
   const automationHistory = (automationHistoryResult.data ??
     []) as AutomationChange[];
+  const matchingQueueIds = new Set(matchingQueues.map((queue) => queue.id));
+  const mailCampaignIdsForQueue = new Set(
+    sources
+      .filter(
+        (source) =>
+          matchingQueueIds.has(source.queue_id) &&
+          source.channel_type === "email" &&
+          source.is_active &&
+          source.campaign_id,
+      )
+      .map((source) => source.campaign_id as string),
+  );
+  const mailReports = ((mailResult.data ?? []) as MailReportRow[]).filter(
+    (row) => mailCampaignIdsForQueue.has(row.campaign_id),
+  );
+  const mailUnavailable = Boolean(
+    showMail && (mailResult.error || catalogUnavailable || invalidSelection),
+  );
+  const mailTotals = mailReports.reduce(
+    (total, row) => ({
+      sent: total.sent + Number(row.sent_leads ?? 0),
+      opened: total.opened + Number(row.opened_leads ?? 0),
+      clicked: total.clicked + Number(row.clicked_leads ?? 0),
+      prioritized: total.prioritized + Number(row.hot_leads ?? 0),
+      assigned: total.assigned + Number(row.assigned_hot_leads ?? 0),
+      managed: total.managed + Number(row.managed_hot_leads ?? 0),
+    }),
+    { sent: 0, opened: 0, clicked: 0, prioritized: 0, assigned: 0, managed: 0 },
+  );
   const voiceQueues = ((voiceResult.data ?? []) as QueueHealth[]).filter(
     (queue) => {
       if (filters.state === "inactive") return false; // The RPC explicitly returns active dialer campaigns.
@@ -376,9 +429,10 @@ export default async function OperationsPage({
               defaultValue={filters.channel}
               fieldSize="sm"
             >
-              <option value="all">Voz y WhatsApp</option>
+              <option value="all">Voz, WhatsApp y correo</option>
               <option value="voice">Voz</option>
               <option value="whatsapp">WhatsApp</option>
+              <option value="email">Correo</option>
             </Select>
           </label>
           <label className="flex min-w-48 flex-[2] flex-col gap-1 text-xs font-medium">
@@ -441,7 +495,7 @@ export default async function OperationsPage({
           Limpia los filtros para consultar tu alcance autorizado.
         </Callout>
       )}
-      {stockResult.error && filters.channel !== "voice" && (
+      {stockResult.error && showWhatsApp && (
         <Callout tone="warning">{stockResult.error}</Callout>
       )}
 
@@ -575,10 +629,10 @@ export default async function OperationsPage({
 
       <div
         className={
-          filters.channel === "all" ? "grid gap-4 xl:grid-cols-2" : "grid gap-4"
+          filters.channel === "all" ? "grid gap-4 xl:grid-cols-3" : "grid gap-4"
         }
       >
-        {filters.channel !== "voice" && (
+        {showWhatsApp && (
           <SectionCard
             title={
               <span className="flex items-center gap-2">
@@ -617,7 +671,7 @@ export default async function OperationsPage({
             </dl>
           </SectionCard>
         )}
-        {filters.channel !== "whatsapp" && (
+        {showVoice && (
           <SectionCard
             title={
               <span className="flex items-center gap-2">
@@ -663,9 +717,29 @@ export default async function OperationsPage({
             </dl>
           </SectionCard>
         )}
+        {showMail && (
+          <SectionCard
+            title={
+              <span className="flex items-center gap-2">
+                <Mail size={16} /> Correo · Operación actual
+              </span>
+            }
+            description="Resultados y oportunidades de las campañas de correo conectadas a la cola seleccionada."
+          >
+            <dl className="grid grid-cols-2 gap-5 p-5 sm:grid-cols-4">
+              <DataNumber label="Enviados" value={mailUnavailable ? null : mailTotals.sent} />
+              <DataNumber label="Aperturas" value={mailUnavailable ? null : mailTotals.opened} />
+              <DataNumber label="Clicks" value={mailUnavailable ? null : mailTotals.clicked} />
+              <DataNumber
+                label="Sin asignar"
+                value={mailUnavailable ? null : Math.max(mailTotals.prioritized - mailTotals.assigned, 0)}
+              />
+            </dl>
+          </SectionCard>
+        )}
       </div>
 
-      {filters.channel !== "voice" && (
+      {showWhatsApp && (
         <SectionCard
           title="Colas de WhatsApp"
           description="Carga por cola y estado del canal. El límite es una regla configurada, no una medición de capacidad disponible."
@@ -814,7 +888,7 @@ export default async function OperationsPage({
         </SectionCard>
       )}
 
-      {filters.channel !== "whatsapp" && (
+      {showVoice && (
         <SectionCard
           title="Campañas y colas de voz"
           description="Contadores de hoy según America/Santiago. Fuente: motor de discado; no incluye contenido ni grabaciones."
@@ -866,6 +940,60 @@ export default async function OperationsPage({
         </SectionCard>
       )}
 
+      {showMail && (
+        <SectionCard
+          title="Campañas y cola de correo"
+          description="Las oportunidades conservan su campaña y responsable CRM; la asignación se realiza sin duplicar contactos."
+        >
+          {mailResult.error && (
+            <Callout tone="warning">
+              No fue posible consultar la operación de correo.
+            </Callout>
+          )}
+          <div className="overflow-x-auto">
+            <Table>
+              <Thead>
+                <Th>Campaña</Th>
+                <Th align="right">Enviados</Th>
+                <Th align="right">Aperturas</Th>
+                <Th align="right">Clicks</Th>
+                <Th align="right">Asignados</Th>
+                <Th align="right">Gestionados</Th>
+                <Th>Acción</Th>
+              </Thead>
+              <Tbody>
+                {mailUnavailable ? (
+                  <TableEmpty colSpan={7}>Datos de correo no disponibles.</TableEmpty>
+                ) : mailReports.length === 0 ? (
+                  <TableEmpty colSpan={7}>
+                    No hay campañas de correo conectadas que coincidan con estos filtros.
+                  </TableEmpty>
+                ) : (
+                  mailReports.map((report) => (
+                    <Tr key={`${report.mail_campaign_id ?? report.campaign_id}-${report.campaign_id}`}>
+                      <Td strong>{report.mail_campaign_name}</Td>
+                      <Td align="right">{report.sent_leads}</Td>
+                      <Td align="right">{report.opened_leads}</Td>
+                      <Td align="right">{report.clicked_leads}</Td>
+                      <Td align="right">{report.assigned_hot_leads}</Td>
+                      <Td align="right">{report.managed_hot_leads}</Td>
+                      <Td>
+                        <Link
+                          href={`/dashboard/mail?campaign=${report.campaign_id}`}
+                          className="text-xs font-medium text-primary hover:underline"
+                        >
+                          Gestionar correo
+                        </Link>
+                      </Td>
+                    </Tr>
+                  ))
+                )}
+              </Tbody>
+            </Table>
+          </div>
+        </SectionCard>
+      )}
+
       <SectionCard
         title={
           <span className="flex items-center gap-2">
@@ -890,7 +1018,7 @@ export default async function OperationsPage({
                 </TableEmpty>
               ) : (
                 <>
-                  {filters.channel !== "whatsapp" &&
+                  {showVoice &&
                     (agentsUnavailable ? (
                       <TableEmpty colSpan={5}>
                         No se pudo consultar la presencia de voz.
@@ -914,7 +1042,7 @@ export default async function OperationsPage({
                         </Tr>
                       ))
                     ))}
-                  {filters.channel !== "voice" &&
+                  {showWhatsApp &&
                     (membersUnavailable ? (
                       <TableEmpty colSpan={5}>
                         No se pudo consultar la membresía de WhatsApp.
@@ -946,6 +1074,22 @@ export default async function OperationsPage({
                           </Tr>
                         ))
                     ))}
+                  {filters.channel === "email" && (
+                    <TableEmpty colSpan={5}>
+                      La carga y asignación por ejecutivo se administra en{" "}
+                      <Link
+                        href={
+                          filters.campaign
+                            ? `/dashboard/mail?campaign=${filters.campaign}`
+                            : "/dashboard/mail"
+                        }
+                        className="font-medium text-primary hover:underline"
+                      >
+                        Correo
+                      </Link>
+                      .
+                    </TableEmpty>
+                  )}
                 </>
               )}
             </Tbody>

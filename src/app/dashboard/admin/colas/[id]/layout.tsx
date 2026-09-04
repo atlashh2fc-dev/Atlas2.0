@@ -8,6 +8,14 @@ import { createClient } from "@/lib/supabase/server";
 
 type Relation<T> = T | T[] | null;
 
+const CHANNEL_LABELS: Record<string, string> = {
+  voice: "Voz",
+  whatsapp: "WhatsApp",
+  email: "Correo",
+  chat: "Chat",
+  instagram: "Instagram",
+};
+
 function one<T>(value: Relation<T>): T | null {
   return Array.isArray(value) ? value[0] ?? null : value;
 }
@@ -30,12 +38,12 @@ export default async function ContactCenterQueueLayout({ children, params }: { c
         title={queue.name}
         description={queue.description ?? "Cola ACD omnicanal"}
         className="border-b-0 pb-0"
-        actions={<div className="flex flex-wrap gap-2"><Badge tone={queue.is_active ? "success" : "danger"}>{queue.is_active ? "Cola activa" : "Cola inactiva"}</Badge>{(sources ?? []).map((source, index) => { const campaign = one(source.campaigns as Relation<{ name: string }>); return <Badge key={`${source.channel_type}-${index}`} tone="info">{source.channel_type === "whatsapp" ? "WhatsApp" : source.channel_type} · {campaign?.name ?? "Sin campaña"}</Badge>; })}</div>}
+        actions={<div className="flex flex-wrap gap-2"><Badge tone={queue.is_active ? "success" : "danger"}>{queue.is_active ? "Cola activa" : "Cola inactiva"}</Badge>{(sources ?? []).map((source, index) => { const campaign = one(source.campaigns as Relation<{ name: string }>); return <Badge key={`${source.channel_type}-${index}`} tone="info">{CHANNEL_LABELS[source.channel_type] ?? source.channel_type} · {campaign?.name ?? "Sin campaña"}</Badge>; })}</div>}
       />
       <NavTabs tabs={[
         { label: "Resumen de configuración", href: base },
         { label: "Enrutamiento", href: `${base}/enrutamiento` },
-        { label: "Miembros", href: `${base}/miembros` },
+        { label: "Miembros WhatsApp", href: `${base}/miembros` },
         { label: "Fuentes", href: `${base}/fuentes` },
       ]} />
       {children}

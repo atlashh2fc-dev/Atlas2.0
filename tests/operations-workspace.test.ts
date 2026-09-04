@@ -101,6 +101,7 @@ test("filtros validados y antigüedad explícita", () => {
     parseOperationFilters({ channel: "whatsapp", state: "inactive" }).channel,
     "whatsapp",
   );
+  assert.equal(parseOperationFilters({ channel: "email" }).channel, "email");
   assert.equal(formatOperationalAge(null, Date.now()), "—");
   assert.equal(
     formatOperationalAge(

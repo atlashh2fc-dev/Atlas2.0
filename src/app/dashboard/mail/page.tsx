@@ -465,8 +465,8 @@ export default async function MailDashboardPage({
   return (
     <div className="space-y-6">
       <PageHeader
-        title={selectedCampaign ? `Señales de correo · ${selectedCampaign.name}` : "Señales de correo"}
-        description="Leads con apertura o click, listos para asignación manual."
+        title={selectedCampaign ? `Correo · ${selectedCampaign.name}` : "Correo"}
+        description="Cola de correo saliente: aperturas y clicks listos para asignación y seguimiento."
         actions={
           <CampaignFilterForm
             campaigns={campaigns}

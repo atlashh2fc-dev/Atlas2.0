@@ -114,7 +114,7 @@ export default async function ContactCenterQueuePage({
         Este espacio configura la cola. La carga, los equipos y las excepciones
         se consultan en Operación, sin abrir conversaciones ni asumir atención.
         <Link
-          href={`/dashboard/operacion?queue=${id}&channel=whatsapp`}
+          href={`/dashboard/operacion?queue=${id}&channel=all`}
           className={buttonClasses({
             variant: "secondary",
             size: "sm",
@@ -246,7 +246,7 @@ export default async function ContactCenterQueuePage({
                           ? channel.status === "active"
                             ? "Activo"
                             : "Requiere revisión"
-                          : "No informado"}
+                          : "No aplica"}
                       </Td>
                     </Tr>
                   );
@@ -258,14 +258,14 @@ export default async function ContactCenterQueuePage({
       </SectionCard>
 
       <SectionCard
-        title="Membresía y límites individuales"
-        description="La habilitación de una cuenta y su membresía no equivalen a estar disponible para atender."
+        title="Membresía ACD de WhatsApp"
+        description="Este roster gobierna el enrutamiento automático de WhatsApp. Voz y correo usan los ejecutivos habilitados en su campaña."
         actions={
           <Link
             href={`${base}/miembros`}
             className={buttonClasses({ variant: "secondary", size: "sm" })}
           >
-            Editar miembros
+            Editar miembros WhatsApp
           </Link>
         }
       >

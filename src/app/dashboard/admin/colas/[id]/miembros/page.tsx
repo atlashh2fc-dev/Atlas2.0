@@ -14,7 +14,7 @@ export default async function QueueMembersPage({ params }: { params: Promise<{ i
   const selected = new Set((members ?? []).map((member) => member.profile_id));
 
   return (
-    <SectionCard title={`Miembros de la cola (${selected.size})`} description="La membresía ACD es independiente del proveedor y de la propiedad comercial de un lead.">
+    <SectionCard title={`Miembros ACD de WhatsApp (${selected.size})`} description="Este roster recibe el enrutamiento automático de WhatsApp. Los ejecutivos de voz y correo se administran en la campaña correspondiente.">
       <ActionForm action={saveContactCenterQueueMembers} success="Miembros actualizados" className="p-4">
         <input type="hidden" name="queue_id" value={id} />
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">

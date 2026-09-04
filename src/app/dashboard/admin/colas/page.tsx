@@ -25,6 +25,14 @@ function one<T>(value: Relation<T>): T | null {
   return Array.isArray(value) ? (value[0] ?? null) : value;
 }
 
+const CHANNEL_LABELS: Record<string, string> = {
+  voice: "Voz",
+  whatsapp: "WhatsApp",
+  email: "Correo",
+  chat: "Chat",
+  instagram: "Instagram",
+};
+
 export default async function ContactCenterQueuesPage() {
   await requireProfile(["admin"]);
   const supabase = await createClient();
@@ -106,7 +114,7 @@ export default async function ContactCenterQueuesPage() {
     <div className="space-y-5">
       <PageHeader
         title="Colas y enrutamiento"
-        description="Configuración ACD: fuentes, membresía, estrategia, límites y objetivos. El stock WhatsApp no representa capacidad ocupada."
+        description="Configuración omnicanal: fuentes, estrategia y membresía ACD de WhatsApp. Voz y correo conservan sus ejecutivos por campaña."
         actions={
           <Link
             href="/dashboard/operacion"
@@ -144,7 +152,7 @@ export default async function ContactCenterQueuesPage() {
               <Th>Cola</Th>
               <Th>Fuentes conectadas</Th>
               <Th>Enrutamiento</Th>
-              <Th align="right">Miembros habilitados</Th>
+              <Th align="right">Miembros ACD WhatsApp</Th>
               <Th align="right">WhatsApp sin cerrar</Th>
               <Th align="right">WhatsApp sin asignar</Th>
               <Th>Objetivo configurado</Th>
@@ -210,9 +218,8 @@ export default async function ContactCenterQueuesPage() {
                                   key={`${source.channel_type}-${index}`}
                                   tone="info"
                                 >
-                                  {source.channel_type === "whatsapp"
-                                    ? "WhatsApp"
-                                    : source.channel_type}{" "}
+                                  {CHANNEL_LABELS[source.channel_type] ??
+                                    source.channel_type}{" "}
                                   ·{" "}
                                   {campaign?.name ??
                                     channel?.display_phone_number ??

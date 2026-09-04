@@ -83,7 +83,7 @@ export default async function OperationalCampaignPage({ params }: { params: Prom
   if (relatedMailCampaigns.length > 0) {
     const isUmbrella = relatedMailCampaigns.some((mailCampaign) => mailCampaign.umbrella_key === campaignKey);
     capabilities.push({
-      title: "Señales de correo",
+      title: "Correo",
       description: "Prioriza aperturas y clicks generados por las campañas de correo.",
       href: isUmbrella
         ? `/dashboard/mail?campaignContext=${id}&umbrella=${encodeURIComponent(campaignKey)}`

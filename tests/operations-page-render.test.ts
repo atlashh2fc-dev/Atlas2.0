@@ -62,7 +62,11 @@ async function renderOperations({
   let connections = 0;
   const tables: Record<string, Row[]> = {
     contact_center_queues: [{ id: ids.queue, name: "Atención digital", is_active: true, routing_mode: "least_loaded", max_concurrent_per_agent: 10, service_level_seconds: 60 }],
-    contact_center_queue_sources: [{ queue_id: ids.queue, campaign_id: ids.campaign, channel_type: "whatsapp", is_active: true, whatsapp_campaign_routes: { whatsapp_channels: { status: "active" } } }],
+    contact_center_queue_sources: [
+      { queue_id: ids.queue, campaign_id: ids.campaign, channel_type: "whatsapp", is_active: true, whatsapp_campaign_routes: { whatsapp_channels: { status: "active" } } },
+      { queue_id: ids.queue, campaign_id: ids.campaign, channel_type: "voice", is_active: true, whatsapp_campaign_routes: null },
+      { queue_id: ids.queue, campaign_id: ids.campaign, channel_type: "email", is_active: true, whatsapp_campaign_routes: null },
+    ],
     contact_center_queue_members: [{ queue_id: ids.queue, profile_id: ids.agent, is_active: true, max_concurrent: 10, profiles: { id: ids.agent, full_name: "Ejecutivo autorizado", active: true } }],
     campaigns: [{ id: ids.campaign, name: "Campaña autorizada" }, { id: ids.otherCampaign, name: "Segunda campaña autorizada" }],
     whatsapp_ai_configs: [{ campaign_id: ids.campaign, enabled: true }, { campaign_id: ids.otherCampaign, enabled: false }],
@@ -74,6 +78,7 @@ async function renderOperations({
   const rpcRows: Record<string, Row[]> = {
     get_queue_health: [{ campaign_id: ids.campaign, campaign_name: "Campaña autorizada", queue_name: "voice-queue", campaign_type: "outbound", in_flight: 2, attempts_today: 6, answered_today: 3, completed_today: 2 }],
     get_agent_live_status: [{ profile_id: ids.agent, full_name: "Ejecutivo autorizado", campaign_id: ids.campaign, campaign_name: "Campaña autorizada", phone_status: "available", is_pause: false, reason_code: "disponible" }],
+    get_mail_engagement_report_read_model: [{ mail_campaign_id: "mail-1", mail_campaign_name: "Correo autorizado", campaign_id: ids.campaign, campaign_name: "Campaña autorizada", sent_leads: 20, opened_leads: 8, clicked_leads: 2, hot_leads: 8, assigned_hot_leads: 3, managed_hot_leads: 1 }],
   };
   const client = {
     from(table: string) {
@@ -143,6 +148,8 @@ test("real admin Operations render contains queue metadata and no customer inbox
   assert.match(html, /Administración sin atención al cliente/);
   assert.match(html, /Atención digital/);
   assert.match(html, /Configurar colas/);
+  assert.match(html, /Correo · Operación actual/);
+  assert.match(html, /Gestionar correo/);
   assert.doesNotMatch(html, /PRIVATE-CUSTOMER|PRIVATE-TRANSCRIPT|56999888777|<textarea|href="\/dashboard\/conversaciones/);
   assert.doesNotMatch(html, />Enviar<|>Responder<|Marcar leída/);
   const stockRead = reads.find((read) => read.table === "whatsapp_conversations");
@@ -177,11 +184,26 @@ test("general automation remains outside monitor filters, even for a Voice-only 
   assert.equal(reads.some((read) => read.table === "whatsapp_conversations"), false);
 });
 
+test("correo usa sólo colas coincidentes y deriva la carga al espacio de asignación", async () => {
+  const active = await renderOperations({ params: { channel: "email", state: "active" } });
+  assert.match(active.html, /Correo · Operación actual/);
+  assert.match(active.html, /Correo autorizado/);
+  assert.match(active.html, /La carga y asignación por ejecutivo se administra en/);
+  assert.match(active.html, /href="\/dashboard\/mail"/);
+  assert.doesNotMatch(active.html, /WhatsApp · Stock actual|Campañas y colas de voz/);
+  assert.equal(active.reads.some((read) => read.table === "whatsapp_conversations"), false);
+
+  const inactive = await renderOperations({ params: { channel: "email", state: "inactive" } });
+  assert.match(inactive.html, /No hay campañas de correo conectadas que coincidan/);
+  assert.doesNotMatch(inactive.html, /Correo autorizado|Gestionar correo/);
+});
+
 test("query failures render unavailable metrics, not false zero or an active automation control", async () => {
-  const { html } = await renderOperations({ failures: ["whatsapp_conversations", "get_queue_health", "get_agent_live_status", "whatsapp_ai_configs", "whatsapp_automation_changes"] });
+  const { html } = await renderOperations({ failures: ["whatsapp_conversations", "get_queue_health", "get_agent_live_status", "get_mail_engagement_report_read_model", "whatsapp_ai_configs", "whatsapp_automation_changes"] });
   assert.match(html, /No fue posible consultar el stock de WhatsApp/);
   assert.match(html, /Datos de voz no disponibles/);
   assert.match(html, /No se pudo consultar la presencia de voz/);
+  assert.match(html, /No fue posible consultar la operación de correo/);
   assert.match(html, /el control está deshabilitado/);
   assert.doesNotMatch(html, /data-action="general-automation"/);
   const metrics = [...html.matchAll(/<dd[^>]*>(.*?)<\/dd>/g)].map((match) => match[1]);
@@ -194,6 +216,7 @@ test("an empty successful result is explicitly different from failed data", asyn
   assert.match(html, /Sin configurar/);
   assert.match(html, /No hay colas de WhatsApp que coincidan/);
   assert.match(html, /No hay campañas activas de voz que coincidan/);
+  assert.match(html, /No hay campañas de correo conectadas que coincidan/);
   assert.match(html, /<dd[^>]*>0<\/dd>/);
   assert.doesNotMatch(html, /el control está deshabilitado|No fue posible consultar el stock/);
 });

@@ -6,6 +6,7 @@ import {
   Database,
   Headphones,
   LayoutDashboard,
+  Mail,
   Megaphone,
   MessageCircle,
   Network,
@@ -101,9 +102,17 @@ const CONSOLE: NavSpace = {
           href: "/dashboard/operacion",
           icon: Activity,
           roles: OPERACION,
-          description: "Colas de Voice y WhatsApp, capacidad y excepciones; sin atender clientes",
+          description: "Colas de voz, WhatsApp y correo, capacidad y excepciones; sin atender clientes",
           badge: "live-agents",
           match: ["/dashboard/operacion", "/dashboard/supervision/monitor"],
+        },
+        {
+          id: "correo",
+          label: "Correo",
+          href: "/dashboard/mail",
+          icon: Mail,
+          roles: OPERACION,
+          description: "Cola de correo, asignación a ejecutivos y resultados por campaña",
         },
         {
           id: "equipo",
@@ -198,14 +207,14 @@ const CONSOLE: NavSpace = {
 const WORKSPACE_SECTIONS: Record<AppRole, { id: string; label?: string; itemIds: string[] }[]> = {
   admin: [
     { id: "control-home", itemIds: ["inicio"] },
-    { id: "control-operation", label: "Control diario", itemIds: ["operacion", "registros"] },
+    { id: "control-operation", label: "Control diario", itemIds: ["operacion", "correo", "registros"] },
     { id: "control-results", label: "Revisión", itemIds: ["reportes", "calidad"] },
     { id: "admin-operation", label: "Configuración", itemIds: ["campanas", "colas", "flujos", "estados-agente", "cargas"] },
     { id: "admin-platform", label: "Plataforma", itemIds: ["usuarios", "extensiones", "integraciones"] },
   ],
   supervisor: [
     { id: "supervision-home", itemIds: ["inicio"] },
-    { id: "supervision-operation", label: "Supervisión", itemIds: ["operacion", "equipo", "campanas-operativas", "registros"] },
+    { id: "supervision-operation", label: "Supervisión", itemIds: ["operacion", "correo", "equipo", "campanas-operativas", "registros"] },
     { id: "supervision-review", label: "Revisión y resultados", itemIds: ["conversaciones", "calidad", "reportes"] },
   ],
   agente: [

@@ -12,6 +12,14 @@ const scopeMigration = readFileSync(
   "utf8",
 );
 const campaignsPage = readFileSync(new URL("../src/app/dashboard/campanas/page.tsx", import.meta.url), "utf8");
+const omnichannelMigration = readFileSync(
+  new URL("../supabase/migrations/20260904154921_connect_secretaria_virtual_omnichannel_sources.sql", import.meta.url),
+  "utf8",
+);
+const channelScopedMembershipMigration = readFileSync(
+  new URL("../supabase/migrations/20260904162500_scope_queue_membership_to_whatsapp_sources.sql", import.meta.url),
+  "utf8",
+);
 
 test("la cola ACD es independiente de campañas y proveedores", () => {
   assert.match(migration, /create table public\.contact_center_queues/);
@@ -39,4 +47,23 @@ test("una campaña conectada a ACD aparece en el alcance y muestra su canal", ()
   assert.match(scopeMigration, /source\.campaign_id = c\.id/);
   assert.match(campaignsPage, /contact_center_queue_sources/);
   assert.match(campaignsPage, /WhatsApp Business/);
+});
+
+test("Secretaría Virtual reutiliza una cola para voz, WhatsApp y correo", () => {
+  assert.match(omnichannelMigration, /'voice'::text/);
+  assert.match(omnichannelMigration, /'email'::text/);
+  assert.match(omnichannelMigration, /where queue\.name = 'Secretaría Virtual · Atención Digital'/);
+  assert.match(omnichannelMigration, /where campaign\.name = 'Secretaria Virtual'/);
+  assert.doesNotMatch(omnichannelMigration, /contact_center_queue_members/);
+  assert.match(omnichannelMigration, /channel_type in \('voice', 'email'\)/);
+  assert.doesNotMatch(omnichannelMigration, /create table|create or replace function/);
+});
+
+test("la membresía ACD sigue el skill WhatsApp, no los skills de voz o correo", () => {
+  assert.match(channelScopedMembershipMigration, /source\.channel_type = ''whatsapp''/);
+  assert.match(channelScopedMembershipMigration, /removed_source\.channel_type = ''whatsapp''/);
+  assert.match(channelScopedMembershipMigration, /remaining_source\.channel_type = ''whatsapp''/);
+  assert.match(channelScopedMembershipMigration, /set is_active = false/);
+  assert.match(channelScopedMembershipMigration, /drop index if exists public\.contact_center_queue_sources_channel_campaign_uidx/);
+  assert.match(channelScopedMembershipMigration, /channel_type in \('voice', 'email'\)/);
 });

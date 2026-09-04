@@ -75,7 +75,7 @@ export function formatOperationalAge(
 }
 
 export type OperationFilters = {
-  channel: "all" | "voice" | "whatsapp";
+  channel: "all" | "voice" | "whatsapp" | "email";
   campaign: string;
   queue: string;
   state: "all" | "active" | "inactive";
@@ -88,7 +88,7 @@ export function parseOperationFilters(
 ): OperationFilters {
   return {
     channel:
-      params.channel === "voice" || params.channel === "whatsapp"
+      params.channel === "voice" || params.channel === "whatsapp" || params.channel === "email"
         ? params.channel
         : "all",
     campaign:

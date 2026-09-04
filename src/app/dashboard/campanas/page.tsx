@@ -90,7 +90,7 @@ export default async function OperationalCampaignsPage() {
             const channels = [
               withAiVoice.has(campaign.id) ? { label: "Voz IA · ElevenLabs", icon: Bot } : null,
               withPhone.has(campaign.id) ? { label: "Teléfono", icon: Phone } : null,
-              withMailSignals.has(campaign.id) ? { label: "Señales de correo", icon: Mail } : null,
+              withMailSignals.has(campaign.id) ? { label: "Correo", icon: Mail } : null,
               withMailbox.has(campaign.id) ? { label: "Bandeja de entrada", icon: Mail } : null,
               withWhatsApp.has(campaign.id) ? { label: "WhatsApp Business", icon: MessageCircle } : null,
             ].filter(Boolean) as Array<{ label: string; icon: typeof Phone }>;
