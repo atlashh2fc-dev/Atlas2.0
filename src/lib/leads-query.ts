@@ -190,7 +190,11 @@ export async function fetchLeadsPage<T>(
       // conversación y fueron la causa de registros ajenos en esta pantalla.
       const relation = leadRelationForRole(options.role);
       const base = applyFilters(
-        supabase.from(relation).select(LEAD_SELECT, { count: "exact" }),
+        // Una cuenta exacta recorría decenas de miles de filas bajo RLS antes
+        // de devolver las primeras 50. Para paginación basta el plan del
+        // optimizador; los contadores operativos siguen siendo exactos en la
+        // RPC dedicada que corre en paralelo.
+        supabase.from(relation).select(LEAD_SELECT, { count: "planned" }),
         filters,
         ids,
         options.role

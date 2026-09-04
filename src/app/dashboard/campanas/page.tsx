@@ -28,22 +28,13 @@ export default async function OperationalCampaignsPage() {
   const campaigns = (scopeRows ?? []) as CampaignRow[];
   const ids = campaigns.map((campaign) => campaign.id);
 
-  const [mailResult, mailboxResult, dialerResult, aiVoiceResult, queueSourceResult, leadCounts] = ids.length > 0
+  const [mailResult, mailboxResult, dialerResult, aiVoiceResult, queueSourceResult] = ids.length > 0
     ? await Promise.all([
         supabase.from("mail_campaigns").select("campaign_id,umbrella_key").eq("status", "active"),
         supabase.from("inbound_mailboxes").select("campaign_id").in("campaign_id", ids).eq("active", true),
         supabase.from("dialer_campaign_configs").select("campaign_id").in("campaign_id", ids),
         supabase.from("ai_voice_campaign_configs").select("campaign_id,is_active").in("campaign_id", ids),
         supabase.from("contact_center_queue_sources").select("campaign_id,channel_type").in("campaign_id", ids).eq("is_active", true),
-        Promise.all(
-          ids.map(async (id) => {
-            const { count } = await supabase
-              .from("leads")
-              .select("id", { count: "exact", head: true })
-              .eq("campaign_id", id);
-            return [id, count ?? 0] as const;
-          })
-        ),
       ])
     : [
         { data: [] as { campaign_id: string; umbrella_key: string }[] },
@@ -51,7 +42,6 @@ export default async function OperationalCampaignsPage() {
         { data: [] as { campaign_id: string }[] },
         { data: [] as { campaign_id: string; is_active: boolean }[] },
         { data: [] as { campaign_id: string; channel_type: string }[] },
-        [] as ReadonlyArray<readonly [string, number]>,
       ];
 
   const withMailSignals = new Set((mailResult.data ?? []).map((row) => row.campaign_id));
@@ -67,7 +57,6 @@ export default async function OperationalCampaignsPage() {
       .filter((row) => row.channel_type === "whatsapp")
       .map((row) => row.campaign_id),
   );
-  const countByCampaign = new Map(leadCounts);
 
   return (
     <div className="space-y-5">
@@ -107,7 +96,7 @@ export default async function OperationalCampaignsPage() {
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-foreground group-hover:text-primary">{campaign.name}</p>
                   <p className="mt-0.5 truncate text-sm text-muted-foreground">
-                    {campaign.description ?? `${(countByCampaign.get(campaign.id) ?? 0).toLocaleString("es-CL")} registros`}
+                    {campaign.description ?? "Campaña operativa"}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     <Badge tone="neutral"><Users size={12} className="mr-1" /> Registros</Badge>

@@ -1,8 +1,14 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 import type { Profile } from "@/lib/types";
 
-export async function getCurrentProfile(): Promise<Profile | null> {
+/**
+ * Layouts and pages call this helper independently during the same render.
+ * React cache keeps that render to one auth/session/profile round-trip instead
+ * of repeating the three requests at every nested dashboard boundary.
+ */
+export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
@@ -20,7 +26,7 @@ export async function getCurrentProfile(): Promise<Profile | null> {
     .single();
 
   return profile as Profile | null;
-}
+});
 
 export async function requireProfile(allowed?: Profile["role"][]) {
   const profile = await getCurrentProfile();

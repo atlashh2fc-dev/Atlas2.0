@@ -150,7 +150,6 @@ export default async function OperationsPage({
       .from("contact_center_queues")
       .select(
         "id, name, description, is_active, routing_mode, max_concurrent_per_agent, service_level_seconds",
-        { count: "exact" },
       )
       .order("name")
       .limit(1000),
@@ -158,20 +157,18 @@ export default async function OperationsPage({
       .from("contact_center_queue_sources")
       .select(
         "queue_id, campaign_id, channel_type, is_active, whatsapp_campaign_routes(whatsapp_channels(status))",
-        { count: "exact" },
       )
       .limit(1000),
     supabase
       .from("contact_center_queue_members")
       .select(
         "queue_id, profile_id, max_concurrent, profiles(id, full_name, active)",
-        { count: "exact" },
       )
       .eq("is_active", true)
       .limit(1000),
     supabase
       .from("campaigns")
-      .select("id, name", { count: "exact" })
+      .select("id, name")
       .order("name")
       .limit(1000),
     supabase.rpc("get_queue_health"),
@@ -190,7 +187,7 @@ export default async function OperationsPage({
         }),
     supabase
       .from("whatsapp_ai_configs")
-      .select("campaign_id, enabled", { count: "exact" })
+      .select("campaign_id, enabled")
       .limit(1000),
     supabase
       .from("whatsapp_automation_changes")
@@ -206,12 +203,12 @@ export default async function OperationsPage({
     queuesResult.error ||
     sourcesResult.error ||
     campaignsResult.error ||
-    (queuesResult.count ?? 0) > 1000 ||
-    (sourcesResult.count ?? 0) > 1000 ||
-    (campaignsResult.count ?? 0) > 1000,
+    (queuesResult.data?.length ?? 0) >= 1000 ||
+    (sourcesResult.data?.length ?? 0) >= 1000 ||
+    (campaignsResult.data?.length ?? 0) >= 1000,
   );
   const membersUnavailable = Boolean(
-    membersResult.error || (membersResult.count ?? 0) > 1000,
+    membersResult.error || (membersResult.data?.length ?? 0) >= 1000,
   );
   const queues = (queuesResult.data ?? []) as Queue[];
   const sources = (sourcesResult.data ?? []) as Source[];
