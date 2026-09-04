@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Clock3, Mail, MousePointerClick, UserRound } from "lucide-react";
+import { CheckCheck, ChevronRight, Clock3, Mail, MessageCircleReply, MousePointerClick, UserRound } from "lucide-react";
 import { bulkAssignMailEngagementLeads } from "@/app/actions/mail";
 import { Badge, Button, Select, SlideOver } from "@/components/ui";
 import { useToast } from "@/components/ui/toast";
@@ -78,6 +78,8 @@ function bucketTone(tone: MailControlBucket["tone"] = "neutral") {
 }
 
 function queueState(row: MailQueueRow) {
+  if (row.queue_bucket === "customer_replied") return { label: "Respuesta cliente", tone: "warning" as const, icon: MessageCircleReply };
+  if (row.queue_bucket === "agent_replied") return { label: "Respondido", tone: "success" as const, icon: CheckCheck };
   if (row.clicked) return { label: "Click", tone: "success" as const, icon: MousePointerClick };
   return { label: "Apertura", tone: "warning" as const, icon: Mail };
 }

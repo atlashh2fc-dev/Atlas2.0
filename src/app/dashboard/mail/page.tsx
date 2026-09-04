@@ -146,11 +146,13 @@ function CampaignFilterForm({
 const MAIL_PAGE_SIZE = 25;
 const MAIL_BUCKETS = new Set([
   "all",
+  "customer_replied",
   "overdue",
   "unassigned",
   "clicked_uncontacted",
   "opened_uncontacted",
   "next_action",
+  "agent_replied",
   "managed",
   "monitor",
 ]);
@@ -432,17 +434,19 @@ export default async function MailDashboardPage({
     },
     { sent: 0, opened: 0, clicked: 0, hot: 0, assigned: 0, managed: 0 }
   );
-  const totalPrioritized = selectedMailCampaignId ? reports[0]?.hot_leads ?? 0 : totals.hot;
+  const totalPrioritized = bucketSummary.reduce((sum, bucket) => sum + bucket.lead_count, 0);
   const nextQueueHref = hasMoreQueue && queue.length > 0
     ? mailHref(selectedMailCampaignId, activeBucket, encodeCursor(queue[queue.length - 1]), selectedCampaignId, campaignContext, umbrella)
     : null;
   const resetQueueHref = mailHref(selectedMailCampaignId, activeBucket, undefined, selectedCampaignId, campaignContext, umbrella);
   const bucketTone: Record<string, MailControlBucket["tone"]> = {
+    customer_replied: "warning",
     overdue: "danger",
     unassigned: "warning",
     clicked_uncontacted: "warning",
     opened_uncontacted: "info",
     next_action: "info",
+    agent_replied: "success",
     managed: "success",
     monitor: "neutral",
   };
@@ -491,7 +495,7 @@ export default async function MailDashboardPage({
     <div className="space-y-6">
       <PageHeader
         title={selectedCampaign ? `Correo · ${selectedCampaign.name}` : "Correo"}
-        description="Cola de correo saliente: aperturas y clicks listos para asignación y seguimiento."
+        description="Cola omnicanal de correo: respuestas de clientes, atención del agente, aperturas y clicks."
         actions={
           <CampaignFilterForm
             campaigns={campaigns}

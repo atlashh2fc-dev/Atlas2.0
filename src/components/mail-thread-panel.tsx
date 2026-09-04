@@ -2,6 +2,7 @@ import { Mail, Reply } from "lucide-react";
 
 import { queueAssignedMailReply } from "@/app/actions/mail";
 import { ActionForm, ActionSubmit, Badge, Card } from "@/components/ui";
+import { parseMailMessageBody } from "@/lib/mail-message-body";
 
 export type LeadMailMessage = {
   id: string;
@@ -58,25 +59,58 @@ export function MailThreadPanel({
       </div>
 
       <div className="space-y-3">
-        {messages.map((message) => (
-          <article key={message.id} className="rounded-xl border border-border bg-surface-muted/40 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Badge tone={message.direction === "inbound" ? "success" : "neutral"}>
-                  {message.direction === "inbound" ? "Recibido" : "Enviado"}
-                </Badge>
-                <p className="text-sm font-medium text-foreground">{message.subject}</p>
+        {messages.map((message) => {
+          const bodySegments = parseMailMessageBody(message.body_text);
+
+          return (
+            <article key={message.id} className="overflow-hidden rounded-xl border border-border bg-surface-muted/40">
+              <div className="p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Badge tone={message.direction === "inbound" ? "success" : "neutral"}>
+                      {message.direction === "inbound" ? "Recibido" : "Enviado"}
+                    </Badge>
+                    <p className="text-sm font-medium text-foreground">{message.subject}</p>
+                  </div>
+                  <time className="text-xs text-muted-foreground">{formatDateTime(message.occurred_at)}</time>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {message.from_email ?? "—"} → {message.to_email ?? "—"}
+                </p>
               </div>
-              <time className="text-xs text-muted-foreground">{formatDateTime(message.occurred_at)}</time>
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              {message.from_email ?? "—"} → {message.to_email ?? "—"}
-            </p>
-            <div className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-foreground">
-              {message.body_text}
-            </div>
-          </article>
-        ))}
+              <div className="space-y-3 border-t border-border/70 bg-surface p-4">
+                {bodySegments.map((segment, index) =>
+                  segment.kind === "text" ? (
+                    <p key={`text-${index}`} className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground">
+                      {segment.value.trim()}
+                    </p>
+                  ) : (
+                    <figure key={`image-${index}`} className="space-y-2">
+                      {/* Dynamic campaign assets cannot be declared as fixed Next Image hosts. */}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={segment.url}
+                        alt={`Pieza gráfica del correo: ${message.subject}`}
+                        loading="lazy"
+                        className="mx-auto max-h-[720px] w-full rounded-xl border border-border bg-white object-contain"
+                      />
+                      <figcaption className="text-right">
+                        <a
+                          href={segment.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs font-medium text-primary hover:underline"
+                        >
+                          Abrir pieza en tamaño completo
+                        </a>
+                      </figcaption>
+                    </figure>
+                  ),
+                )}
+              </div>
+            </article>
+          );
+        })}
       </div>
 
       {commands.length > 0 && (
