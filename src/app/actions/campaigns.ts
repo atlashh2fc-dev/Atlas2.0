@@ -265,7 +265,7 @@ export async function addCampaignAgent(formData: FormData) {
   const { error } = await supabase
     .from("campaign_agents")
     .upsert(
-      profileIds.map((profileId) => ({ campaign_id: campaignId, profile_id: profileId, schedule_required: true })),
+      profileIds.map((profileId) => ({ campaign_id: campaignId, profile_id: profileId, schedule_required: false })),
       { onConflict: "campaign_id,profile_id", ignoreDuplicates: true }
     );
 

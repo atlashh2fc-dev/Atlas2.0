@@ -45,7 +45,7 @@ export async function setAgentCampaigns(formData: FormData) {
   if (toAdd.length > 0) {
     const { error } = await supabase
       .from("campaign_agents")
-      .upsert(toAdd.map((campaignId) => ({ campaign_id: campaignId, profile_id: profileId, schedule_required: true })), {
+      .upsert(toAdd.map((campaignId) => ({ campaign_id: campaignId, profile_id: profileId, schedule_required: false })), {
         onConflict: "campaign_id,profile_id",
         ignoreDuplicates: true,
       });

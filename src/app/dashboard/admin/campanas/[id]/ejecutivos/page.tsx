@@ -62,7 +62,7 @@ export default async function CampaignAgentsPage({ params }: { params: Promise<{
     <div className="space-y-5">
       <SectionCard
         title={`Ejecutivos asignados (${(members ?? []).length})`}
-        description="El permiso híbrido habilita llamadas manuales seguras dentro de esta misma campaña, sin duplicar campañas, colas ni gestiones."
+        description="Al asignar un ejecutivo, Atlas habilita por detrás su extensión, campaña activa y colas vinculadas. El permiso híbrido solo agrega llamadas manuales seguras."
       >
         {(members ?? []).length > 0 && (
           <div className="flex flex-wrap items-center gap-2 border-b border-border p-4">
@@ -149,17 +149,17 @@ export default async function CampaignAgentsPage({ params }: { params: Promise<{
                   ))}
 
                   {memberSchedules.length === 0 && (
-                    <span className="text-[11px] text-warning">
+                    <span className="text-[11px] text-muted-foreground">
                       {member.schedule_required
                         ? "Sin horario: no recibirá llamadas automáticas."
-                        : "Sin horario: disponible siempre (configuración anterior)."}
+                        : "Sin horario especial: opera al conectarse en su campaña activa."}
                     </span>
                   )}
                 </div>
 
                 <details className="mt-2">
                   <summary className="cursor-pointer text-xs font-medium text-primary">
-                    Agregar horario de conexión
+                    Agregar horario especial (opcional)
                   </summary>
                   <ActionForm
                     action={addCampaignAgentSchedule}
@@ -212,7 +212,7 @@ export default async function CampaignAgentsPage({ params }: { params: Promise<{
         title="Agregar ejecutivos"
         description={
           availableAgents.length > 0
-            ? "Usa Ctrl o Cmd + clic para elegir varios."
+            ? "Usa Ctrl o Cmd + clic para elegir varios. Atlas completa automáticamente la habilitación operativa."
             : "Todos los ejecutivos activos ya están en esta campaña."
         }
       >
