@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import test from "node:test";
 import type AmiClient from "asterisk-manager";
 import {
+  amiAction,
   ensureAgentEndpoints,
   ensureQueue,
   parseConfigSnapshot,
@@ -106,6 +107,19 @@ test("no declara sincronizada una extensión que Asterisk no cargó", async () =
     status: "error",
     failureCode: "asterisk_endpoint_not_loaded",
   }]);
+});
+
+test("rechaza respuestas AMI de error con claves en minúscula", async () => {
+  const ami = {
+    action(_action: AmiAction, callback: (error: unknown, response?: unknown) => void) {
+      callback(null, { response: "Error", message: "endpoint inexistente" });
+    },
+  } as unknown as AmiClient;
+
+  await assert.rejects(
+    amiAction(ami, { Action: "PJSIPShowEndpoint", Endpoint: "6013" }),
+    /endpoint inexistente/
+  );
 });
 
 test("permite elegir el archivo PJSIP administrable sin tocar pjsip.conf", async () => {

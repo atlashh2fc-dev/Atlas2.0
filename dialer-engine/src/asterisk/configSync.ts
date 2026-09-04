@@ -21,8 +21,10 @@ export function amiAction(
         return;
       }
       const response = res as Record<string, unknown>;
-      if (String(response?.Response ?? "").toLowerCase() === "error") {
-        reject(new Error(String(response.Message ?? "AMI rechazó la acción")));
+      const responseStatus = response?.Response ?? response?.response;
+      if (String(responseStatus ?? "").toLowerCase() === "error") {
+        const responseMessage = response?.Message ?? response?.message;
+        reject(new Error(String(responseMessage ?? "AMI rechazó la acción")));
         return;
       }
       resolve(response);

@@ -87,7 +87,9 @@ async function main() {
             extension: credential.extension,
             desiredUpdatedAt: credential.updatedAt,
             status: result?.status ?? "error",
-            failureCode: result?.failureCode ?? "agent_sync_result_missing",
+            // `null` es el valor sano cuando Asterisk cargó el endpoint. El
+            // fallback sólo corresponde si el reconciliador omitió la fila.
+            failureCode: result ? result.failureCode : "agent_sync_result_missing",
           };
         }),
         config.release,
