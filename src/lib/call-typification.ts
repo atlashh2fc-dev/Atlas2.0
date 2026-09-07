@@ -19,6 +19,12 @@ export interface CallReasonConfig {
   resultLabel: string;
   resultOrderIndex: number;
   reasonOrderIndex: number;
+  /**
+   * Activa los campos comerciales heredados de Equifax para este cierre.
+   * La misma etiqueta (por ejemplo, COTIZACION ENVIADA) puede existir en
+   * otros flujos sin compartir ese contrato de datos.
+   */
+  requiresEquifaxData?: boolean;
 }
 
 export const CALL_STATUSES: { value: CallStatus; label: string }[] = [
@@ -153,6 +159,7 @@ export const CALL_REASONS: CallReasonConfig[] = ([
     status: "connected",
     outcome: "interested",
     agenda: "required",
+    requiresEquifaxData: true,
   },
   {
     value: "VENTA EN VALIDACION",
@@ -165,6 +172,7 @@ export const CALL_REASONS: CallReasonConfig[] = ([
     status: "connected",
     outcome: "sale",
     agenda: "none",
+    requiresEquifaxData: true,
   },
   {
     value: "NO CALIFICA",
@@ -509,13 +517,13 @@ function inferOutcome(stateLabel: string, resultLabel: string, reason: string): 
   return "other";
 }
 
-function inferAgenda(reason: string): AgendaRequirement {
+function inferAgenda(reason: string, requiresEquifaxData: boolean): AgendaRequirement {
   const normalized = normalizeKey(reason);
   if (
     normalized.includes("VOLVER A LLAMAR") ||
     normalized.includes("REUNION") ||
-    normalized.includes("COTIZACION") ||
-    normalized.includes("NO ES EL MOMENTO")
+    normalized.includes("NO ES EL MOMENTO") ||
+    (requiresEquifaxData && normalized.includes("COTIZACION"))
   ) {
     return "required";
   }
@@ -558,6 +566,9 @@ export function buildCallReasonCatalogFromWorkflow(
 ): CallReasonConfig[] {
   const workflowSteps = steps ?? [];
   const workflowBranches = branches ?? [];
+  const workflowRequiresEquifaxData = workflowSteps.some((step) =>
+    normalizeKey(`${step.name} ${step.description ?? ""}`).includes("EQUIFAX")
+  );
   const startStep = workflowSteps.find((step) => step.is_start) ?? workflowSteps[0];
   const startOptions = stepOptions(startStep);
   if (!startStep || startOptions.length === 0) return [];
@@ -577,12 +588,16 @@ export function buildCallReasonCatalogFromWorkflow(
     if (!value) return;
     const status = inferStatus(`${input.stateLabel} ${input.reasonLabel}`);
     const outcome = inferOutcome(input.stateLabel, input.resultLabel, input.reasonLabel);
+    const requiresEquifaxData =
+      workflowRequiresEquifaxData &&
+      (value === "COTIZACION ENVIADA" || outcome === "sale");
     catalog.push({
       value,
       label: input.reasonLabel,
       status,
       outcome,
-      agenda: inferAgenda(input.reasonLabel),
+      agenda: inferAgenda(input.reasonLabel, requiresEquifaxData),
+      requiresEquifaxData,
       stateLabel: input.stateLabel,
       stateOrderIndex: input.stateOrderIndex,
       resultLabel: input.resultLabel,
@@ -695,7 +710,7 @@ export function validateCallClosure(payload: CallClosurePayload, catalog: CallRe
     errors.push("Para registrar venta usa la tipificacion VENTA EN VALIDACION.");
   }
 
-  const requiresProductAndUf = payload.reason === "COTIZACION ENVIADA" || payload.outcome === "sale";
+  const requiresProductAndUf = reasonConfig.requiresEquifaxData === true;
   if (requiresProductAndUf && payload.equifax_products.length === 0) {
     errors.push("Selecciona al menos un producto Equifax.");
   }
@@ -703,7 +718,7 @@ export function validateCallClosure(payload: CallClosurePayload, catalog: CallRe
     errors.push("Ingresa la UF mensual de la oportunidad.");
   }
 
-  if (payload.reason === "COTIZACION ENVIADA") {
+  if (reasonConfig.requiresEquifaxData && payload.reason === "COTIZACION ENVIADA") {
     const email = payload.equifax_recipient_email || payload.contact_email || payload.lead_email;
     if (!email) {
       errors.push("Indica un email destinatario para la cotizacion.");

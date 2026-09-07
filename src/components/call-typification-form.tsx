@@ -153,7 +153,7 @@ export function CallTypificationForm({
   // nueva tipificación no la admite, la fecha antigua nunca debe viajar oculta
   // en el payload aunque el estado de React todavía no se haya actualizado.
   const closureNextActionAt = reasonConfig?.agenda === "none" ? null : localInputToIso(nextActionAt);
-  const showEquifaxBlock = reason === "COTIZACION ENVIADA" || outcome === "sale";
+  const showEquifaxBlock = reasonConfig?.requiresEquifaxData === true;
   const inferredNextActionWindow = localInputToWindow(nextActionAt);
   const legalBreakRemaining = Math.max(
     0,

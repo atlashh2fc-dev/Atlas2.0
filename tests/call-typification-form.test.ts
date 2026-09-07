@@ -16,7 +16,13 @@ type Element = React.ReactElement<Record<string, unknown>>;
 
 // Execute the production component's handlers and state transitions. Only the
 // browser/router and server actions are replaced; no database or phone is used.
-function fixture(options: { revision?: boolean; legal?: boolean; breakActive?: boolean; empty?: boolean } = {}) {
+function fixture(options: {
+  revision?: boolean;
+  legal?: boolean;
+  breakActive?: boolean;
+  empty?: boolean;
+  catalog?: typification.CallReasonConfig[];
+} = {}) {
   const slots: unknown[] = [];
   let cursor = 0;
   const submissions: Record<string, unknown>[] = [];
@@ -58,7 +64,7 @@ function fixture(options: { revision?: boolean; legal?: boolean; breakActive?: b
   const props = {
     lead: { id: "lead-test", email: null, observacion_actual: null },
     call: { id: "call-test", reason: null, status: null, outcome: null, notes: null, next_action_at: null },
-    reasonCatalog: options.empty ? [] : catalog,
+    reasonCatalog: options.empty ? [] : (options.catalog ?? catalog),
     appointmentScheduleUrl: options.legal === false ? null : "https://calendar.example.test",
     revision: options.revision ?? false,
   };
@@ -179,4 +185,49 @@ test("active management is rendered before imported campaign fields and is keyed
   const page = readFileSync(new URL("../src/app/dashboard/leads/[id]/page.tsx", import.meta.url), "utf8");
   assert.ok(page.indexOf("<CallTypificationForm") < page.indexOf("{campaignData.length > 0"));
   assert.match(page, /key=\{call.id\}/);
+});
+
+test("Secretaria Virtual quote closes without rendering or validating Equifax fields", async () => {
+  const secretariaQuote: typification.CallReasonConfig = {
+    value: "COTIZACION ENVIADA",
+    label: "Cotización Enviada",
+    status: "connected",
+    outcome: "other",
+    agenda: "none",
+    stateLabel: "CONTACTO",
+    stateOrderIndex: 10,
+    resultLabel: "COTIZACION ENVIADA",
+    resultOrderIndex: 10,
+    reasonOrderIndex: 10,
+    requiresEquifaxData: false,
+  };
+  const f = fixture({ catalog: [secretariaQuote], legal: false });
+
+  f.click("Cotización Enviada");
+  assert.equal(
+    f.all((e) => e.type === "h3" && e.props.children === "Datos comerciales Equifax").length,
+    0
+  );
+  f.click("Guardar y cerrar");
+  assert.equal(f.submissions.length, 1);
+  assert.equal((f.submissions[0].equifax_products as unknown[]).length, 0);
+  assert.equal(f.submissions[0].equifax_uf_amount, null);
+  f.finish();
+  await f.flush();
+});
+
+test("Equifax quote keeps its scoped commercial fields and blocks incomplete closure", () => {
+  const equifaxQuote = typification.CALL_REASONS.find(
+    (reason) => reason.value === "COTIZACION ENVIADA"
+  );
+  assert.ok(equifaxQuote);
+  const f = fixture({ catalog: [equifaxQuote], legal: false });
+
+  f.click("Cotizacion enviada");
+  assert.equal(
+    f.all((e) => e.type === "h3" && e.props.children === "Datos comerciales Equifax").length,
+    1
+  );
+  f.click("Guardar y cerrar");
+  assert.equal(f.submissions.length, 0);
 });
