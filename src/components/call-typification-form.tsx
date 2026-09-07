@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { notifyAgentManagementClosed } from "@/lib/agent-control";
 import type { Call, Lead } from "@/lib/types";
 import {
-  CALL_REASONS,
   EQUIFAX_PRODUCTS,
   getReasonConfigFrom,
   validateCallClosure,
@@ -54,12 +53,19 @@ export function CallTypificationForm({
   lead,
   call,
   reasonCatalog,
+  equifaxCommercialFieldsEnabled,
   appointmentScheduleUrl,
   revision = false,
 }: {
   lead: Lead;
   call: Call;
-  reasonCatalog?: CallReasonConfig[];
+  reasonCatalog: CallReasonConfig[];
+  /**
+   * Contrato explícito del workflow. Evita que una opción con el mismo nombre
+   * herede los campos Equifax desde el catálogo histórico durante hidratación
+   * o corrección de una gestión antigua.
+   */
+  equifaxCommercialFieldsEnabled: boolean;
   /** Agenda pública específica de la campaña, mostrada dentro del CRM. */
   appointmentScheduleUrl?: string | null;
   /** Corrige una gestión ya cerrada sin crear una llamada ficticia. */
@@ -67,10 +73,23 @@ export function CallTypificationForm({
 }) {
   const router = useRouter();
   const fieldId = useId();
-  // `undefined` significa que el lead no tiene workflow y usa el catálogo
-  // histórico. Un arreglo vacío es un workflow inválido y nunca debe caer a
-  // Equifax, porque ofrecería tipificaciones que la base luego rechazará.
-  const catalog = reasonCatalog === undefined ? CALL_REASONS : reasonCatalog;
+  // La ficha siempre recibe el catálogo de su workflow. En campañas que no
+  // declaran el contrato Equifax se neutraliza además cualquier bandera
+  // heredada en una gestión antigua antes de renderizar o validar.
+  const catalog = useMemo(
+    () =>
+      equifaxCommercialFieldsEnabled
+        ? reasonCatalog
+        : reasonCatalog.map((option) => ({
+            ...option,
+            requiresEquifaxData: false,
+            agenda:
+              option.value === "COTIZACION ENVIADA" && option.requiresEquifaxData
+                ? "none"
+                : option.agenda,
+          })),
+    [equifaxCommercialFieldsEnabled, reasonCatalog]
+  );
   const initialReason = getReasonConfigFrom(catalog, call.reason);
   const [status, setStatus] = useState<CallStatus | null>((call.status as CallStatus | null) ?? initialReason?.status ?? null);
   const [outcome, setOutcome] = useState<CallOutcome | null>((call.outcome as CallOutcome | null) ?? initialReason?.outcome ?? null);

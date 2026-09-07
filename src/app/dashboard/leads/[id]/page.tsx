@@ -198,6 +198,9 @@ export default async function LeadDetailPage({
     (workflowSteps ?? []) as WorkflowStep[],
     (workflowBranches ?? []) as WorkflowStepBranch[]
   );
+  const equifaxCommercialFieldsEnabled = reasonCatalog.some(
+    (reason) => reason.requiresEquifaxData === true
+  );
 
   const [
     { data: externalRefsData },
@@ -408,6 +411,7 @@ export default async function LeadDetailPage({
             lead={lead}
             call={call}
             reasonCatalog={reasonCatalog}
+            equifaxCommercialFieldsEnabled={equifaxCommercialFieldsEnabled}
             appointmentScheduleUrl={appointmentScheduleUrl}
           />
         </section>
@@ -420,6 +424,7 @@ export default async function LeadDetailPage({
             lead={lead}
             call={revisableCall}
             reasonCatalog={reasonCatalog}
+            equifaxCommercialFieldsEnabled={equifaxCommercialFieldsEnabled}
             appointmentScheduleUrl={appointmentScheduleUrl}
             revision
           />

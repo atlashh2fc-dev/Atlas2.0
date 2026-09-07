@@ -22,6 +22,7 @@ function fixture(options: {
   breakActive?: boolean;
   empty?: boolean;
   catalog?: typification.CallReasonConfig[];
+  equifaxCommercialFieldsEnabled?: boolean;
 } = {}) {
   const slots: unknown[] = [];
   let cursor = 0;
@@ -61,10 +62,14 @@ function fixture(options: {
     window: { location: { assign: (url: string) => navigations.push(url) } },
     console, Date,
   });
+  const reasonCatalog = options.empty ? [] : (options.catalog ?? catalog);
   const props = {
     lead: { id: "lead-test", email: null, observacion_actual: null },
     call: { id: "call-test", reason: null, status: null, outcome: null, notes: null, next_action_at: null },
-    reasonCatalog: options.empty ? [] : (options.catalog ?? catalog),
+    reasonCatalog,
+    equifaxCommercialFieldsEnabled:
+      options.equifaxCommercialFieldsEnabled ??
+      reasonCatalog.some((reason) => reason.requiresEquifaxData === true),
     appointmentScheduleUrl: options.legal === false ? null : "https://calendar.example.test",
     revision: options.revision ?? false,
   };
@@ -214,6 +219,31 @@ test("Secretaria Virtual quote closes without rendering or validating Equifax fi
   assert.equal(f.submissions[0].equifax_uf_amount, null);
   f.finish();
   await f.flush();
+});
+
+test("non-Equifax workflow contract neutralizes a stale historical quote config", async () => {
+  const staleQuote = typification.CALL_REASONS.find(
+    (reason) => reason.value === "COTIZACION ENVIADA"
+  );
+  assert.ok(staleQuote);
+  const f = fixture({
+    catalog: [staleQuote],
+    equifaxCommercialFieldsEnabled: false,
+    legal: false,
+    revision: true,
+  });
+
+  f.click("Cotizacion enviada");
+  assert.equal(
+    f.all((e) => e.type === "h3" && e.props.children === "Datos comerciales Equifax").length,
+    0
+  );
+  f.click("Guardar corrección");
+  await f.flush();
+  assert.equal(f.revisionCount, 1);
+  assert.equal((f.submissions[0].equifax_products as unknown[]).length, 0);
+  assert.equal(f.submissions[0].equifax_uf_amount, null);
+  assert.equal(f.submissions[0].next_action_at, null);
 });
 
 test("Equifax quote keeps its scoped commercial fields and blocks incomplete closure", () => {
