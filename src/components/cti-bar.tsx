@@ -59,6 +59,7 @@ import {
   LEGAL_INTERCALL_BREAK_SECONDS,
 } from "@/lib/intercall-break";
 import { cn } from "@/lib/utils";
+import { resolveCallManagementNavigation } from "@/lib/call-management-navigation";
 import {
   AGENT_DIAL_REQUEST_EVENT,
   AGENT_FORCE_LOGOUT_EVENT,
@@ -1143,8 +1144,17 @@ export function CtiBar({ profile }: { profile: Profile }) {
 
   function openManualManagement(management: ManualCallManagement) {
     manualManagementRef.current = null;
-    router.push(`/dashboard/leads/${management.leadId}`);
-    router.refresh();
+    openManagementScreen(management.leadId);
+  }
+
+  function openManagementScreen(leadId: string) {
+    setExpanded(false);
+    const navigation = resolveCallManagementNavigation(window.location.pathname, leadId);
+    if (navigation.kind === "refresh") {
+      router.refresh();
+      return;
+    }
+    router.push(navigation.href);
   }
 
   function openAutomaticManagement(context: IncomingDialContext | null) {
@@ -1155,9 +1165,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
     // la llamada. Así la ficha 360 completa queda visible durante la
     // conversación y no recién después del corte. Al colgar, esta misma URL
     // conserva la gestión destacada para completar la tipificación.
-    setExpanded(false);
-    router.push(`/dashboard/leads/${context.lead_id}?tipificar=1`);
-    router.refresh();
+    openManagementScreen(context.lead_id);
   }
 
   async function handleOpenPendingTypification() {
@@ -1174,9 +1182,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
         );
         return;
       }
-      setExpanded(false);
-      router.push(`/dashboard/leads/${pending.leadId}?tipificar=1`);
-      router.refresh();
+      openManagementScreen(pending.leadId);
     } catch (err) {
       setCallError(
         err instanceof Error ? err.message : "No se pudo abrir la tipificación pendiente."
@@ -1404,9 +1410,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
       // La gestión ya existe aquí, así que hacemos el screen-pop antes de
       // originar para tener Agenda Reunión y notas durante la conversación.
       if (profile.role === "agente" && management) {
-        setExpanded(false);
-        router.push(`/dashboard/leads/${management.leadId}?tipificar=1`);
-        router.refresh();
+        openManagementScreen(management.leadId);
       }
 
       const callAttempt = callAttemptRef.current + 1;
@@ -1517,10 +1521,6 @@ export function CtiBar({ profile }: { profile: Profile }) {
     const { leadId, callId, campaignId, subscriber: target, fullName } = result.data;
     setSelectedName(fullName);
     setSubscriber(target);
-
-    // La ficha se abre antes de que conteste, igual que en el discado
-    // automático: el ejecutivo necesita el contexto durante la conversación.
-    router.push(`/dashboard/leads/${leadId}`);
 
     await handleCall({
       management: { leadId, callId, campaignId, leadCreated: false, leadReused: true },
