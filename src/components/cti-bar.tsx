@@ -59,7 +59,11 @@ import {
   LEGAL_INTERCALL_BREAK_SECONDS,
 } from "@/lib/intercall-break";
 import { cn } from "@/lib/utils";
-import { resolveCallManagementNavigation } from "@/lib/call-management-navigation";
+import {
+  resolveCallManagementNavigation,
+  resolveManualCallManagementAction,
+  type ManualCallEndState,
+} from "@/lib/call-management-navigation";
 import {
   AGENT_DIAL_REQUEST_EVENT,
   AGENT_FORCE_LOGOUT_EVENT,
@@ -1206,6 +1210,18 @@ export function CtiBar({ profile }: { profile: Profile }) {
       );
   }
 
+  function finishManualManagement(
+    management: ManualCallManagement,
+    endState: ManualCallEndState
+  ) {
+    if (manualManagementRef.current?.callId !== management.callId) return;
+    if (resolveManualCallManagementAction(endState) === "discard") {
+      discardUnconnectedManualManagement(management);
+      return;
+    }
+    openManualManagement(management);
+  }
+
   function openManualRecovery() {
     const campaignId = operatingMode?.session?.campaign_id ?? "";
     setManualRecoveryCampaignId(campaignId);
@@ -1466,9 +1482,12 @@ export function CtiBar({ profile }: { profile: Profile }) {
               void startLegalIntercallBreak().catch((err) =>
                 console.error("CTI: no se pudo registrar la interrupción legal", err)
               );
-              if (management) openManualManagement(management);
-            } else if (management) {
-              discardUnconnectedManualManagement(management);
+            }
+            if (management) {
+              finishManualManagement(
+                management,
+                wasEstablished ? "answered" : "not_answered"
+              );
             }
             stopLocalRingback();
             detachRemoteAudio();
@@ -1491,7 +1510,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
       // rechazaba en silencio todas las entrantes por el resto del turno.
       sessionRef.current = null;
       setCallState("idle");
-      if (management) discardUnconnectedManualManagement(management);
+      if (management) finishManualManagement(management, "origination_failed");
       setCallError("No se pudo iniciar la llamada. Reintenta en unos segundos.");
     }
   }
@@ -1576,12 +1595,13 @@ export function CtiBar({ profile }: { profile: Profile }) {
         void startLegalIntercallBreak().catch((err) =>
           console.error("CTI: no se pudo registrar la interrupción legal", err)
         );
-        if (management && manualManagementRef.current?.callId === management.callId) {
-          openManualManagement(management);
-        }
         if (isIncomingCall) openAutomaticManagement(automaticContext);
-      } else if (management) {
-        discardUnconnectedManualManagement(management);
+      }
+      if (management) {
+        finishManualManagement(
+          management,
+          wasEstablished ? "answered" : "not_answered"
+        );
       }
       stopLocalRingback();
       detachRemoteAudio();
