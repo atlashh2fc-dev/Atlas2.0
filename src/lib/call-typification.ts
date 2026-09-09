@@ -500,6 +500,16 @@ function displayResultLabel(stateLabel: string, value: string) {
 
 function inferStatus(label: string): CallStatus {
   const normalized = normalizeKey(label);
+  // Alguien contestó aunque no fuera el titular: para contactabilidad la línea
+  // conectó, y el catálogo del producto ya trata así ambos casos.
+  if (
+    normalized.includes("CON TERCERO") ||
+    normalized.includes("NUMERO ERRONEO") ||
+    normalized.includes("NUMERO EQUIVOCADO") ||
+    normalized.includes("NO CORRESPONDE")
+  ) {
+    return "connected";
+  }
   if (normalized.includes("BUZON")) return "voicemail";
   if (normalized.includes("OCUP")) return "busy";
   if (normalized.includes("FUERA") || normalized.includes("SERVICIO")) return "out_of_service";
@@ -507,9 +517,37 @@ function inferStatus(label: string): CallStatus {
   return "connected";
 }
 
+/**
+ * Cierres de cobranza. Van antes que la lectura comercial porque son frases
+ * completas y propias del ciclo de cartera ("convenio suscrito", "compromiso de
+ * pago"): ningún catálogo de venta las contiene, así que no cambian el
+ * comportamiento de los workflows existentes.
+ */
+function inferCollectionsOutcome(text: string): CallOutcome | null {
+  if (
+    text.includes("CONVENIO SUSCRITO") ||
+    text.includes("PAGO YA REALIZADO") ||
+    text.includes("PAGO CONFIRMADO") ||
+    text.includes("PAGO TOTAL")
+  ) {
+    // Es la plata que entra: el equivalente de la venta en una cartera.
+    return "sale";
+  }
+  if (text.includes("COMPROMISO DE PAGO") || text.includes("NEGOCIACION EN CURSO")) {
+    // Promesa con fecha: la gestión sigue viva y necesita agenda.
+    return "callback";
+  }
+  if (text.includes("SIN CAPACIDAD DE PAGO") || text.includes("RECHAZA LA DEUDA")) return "not_interested";
+  if (text.includes("RECLAMO A LA FUNDACION") || text.includes("ALUMNO RETIRADO")) return "not_interested";
+  if (text.includes("COBRANZA PREJUDICIAL") || text.includes("SEGUIMIENTO DE CONVENIO")) return "other";
+  return null;
+}
+
 function inferOutcome(stateLabel: string, resultLabel: string, reason: string): CallOutcome {
   const text = normalizeKey(`${stateLabel} ${resultLabel} ${reason}`);
   if (stateLabel === "NO CONTACTO") return "other";
+  const collections = inferCollectionsOutcome(text);
+  if (collections) return collections;
   if (text.includes("VENTA")) return "sale";
   if (text.includes("VOLVER") || text.includes("REUNION") || text.includes("AGEND") || text.includes("MOMENTO")) return "callback";
   if (resultLabel === "NO INTERESADO") return "not_interested";
@@ -523,6 +561,10 @@ function inferAgenda(reason: string, requiresEquifaxData: boolean): AgendaRequir
     normalized.includes("VOLVER A LLAMAR") ||
     normalized.includes("REUNION") ||
     normalized.includes("NO ES EL MOMENTO") ||
+    // Un compromiso sin fecha no es un compromiso: en cobranza la agenda es
+    // parte del acuerdo, no un recordatorio del ejecutivo.
+    normalized.includes("COMPROMISO DE PAGO") ||
+    normalized.includes("NEGOCIACION EN CURSO") ||
     (requiresEquifaxData && normalized.includes("COTIZACION"))
   ) {
     return "required";

@@ -7,6 +7,13 @@ import type { ComponentType } from "react";
 import { AlertTriangle, CalendarClock, CheckCircle2, PhoneCall } from "lucide-react";
 import { LEAD_STATUSES } from "@/lib/types";
 import { LEAD_VIEWS, type LeadView } from "@/lib/leads-query";
+import {
+  debtAgeTone,
+  formatClp,
+  leadStatusLabel,
+  readDebtSnapshot,
+  type CampaignVertical,
+} from "@/lib/campaign-vertical";
 import { bulkAssignLeads, bulkRescheduleLeads } from "@/app/actions/leads";
 import {
   Button,
@@ -22,6 +29,10 @@ import {
 } from "@/components/ui";
 
 const STATUS_LABEL = Object.fromEntries(LEAD_STATUSES.map((status) => [status.value, status.label]));
+
+function statusText(vertical: CampaignVertical, value: string) {
+  return leadStatusLabel(vertical, value, STATUS_LABEL[value] ?? value);
+}
 
 export type LeadQueueRow = {
   id: string;
@@ -39,6 +50,8 @@ export type LeadQueueRow = {
   assignment_status: string | null;
   workflow_status: string | null;
   managed_at: string | null;
+  /** Datos de la carga; en cobranza trae la deuda, la mora y el alumno. */
+  extra?: Record<string, unknown> | null;
 };
 
 type QueueState = {
@@ -106,6 +119,7 @@ export function LeadsQueue({
   agents,
   canManage,
   errorMessage,
+  vertical = "ventas",
 }: {
   leads: LeadQueueRow[];
   view: LeadView;
@@ -118,6 +132,8 @@ export function LeadsQueue({
   agents: { id: string; full_name: string }[];
   canManage: boolean;
   errorMessage?: string | null;
+  /** Vocabulario y columnas de la cola: cartera de cobranza o base comercial. */
+  vertical?: CampaignVertical;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -143,8 +159,32 @@ export function LeadsQueue({
   // refrescar, que es cuando llegan filas nuevas desde el servidor.
   const now = useMemo(() => new Date(), []);
 
-  const columns = useMemo<Column<LeadQueueRow>[]>(
-    () => [
+  const columns = useMemo<Column<LeadQueueRow>[]>(() => {
+    // La deuda es la razón de existir de la cola en cobranza: va junto al
+    // nombre, no escondida en la ficha.
+    const debtColumn: Column<LeadQueueRow> = {
+      id: "deuda",
+      header: "Deuda",
+      value: (row) => readDebtSnapshot(row.extra)?.monto ?? 0,
+      cell: (row) => {
+        const debt = readDebtSnapshot(row.extra);
+        if (!debt) return <span className="text-muted-foreground">—</span>;
+        const tone = debtAgeTone(debt.diasMora);
+        const toneClass =
+          tone === "danger" ? "text-danger" : tone === "warning" ? "text-warning" : "text-muted-foreground";
+        return (
+          <span className="block">
+            <span className="block font-medium tabular-nums text-foreground">{formatClp(debt.monto)}</span>
+            <span className={`mt-0.5 block text-xs ${toneClass}`}>
+              {debt.diasMora !== null ? `${debt.diasMora} días de mora` : "Sin mora informada"}
+              {debt.cuotas !== null ? ` · ${debt.cuotas} cuota${debt.cuotas === 1 ? "" : "s"}` : ""}
+            </span>
+          </span>
+        );
+      },
+    };
+
+    return [
       {
         id: "estado",
         header: "Estado operativo",
@@ -169,14 +209,18 @@ export function LeadsQueue({
         id: "registro",
         header: "Registro",
         value: (row) => row.full_name,
-        cell: (row) => (
-          <span className="block">
-            <span className="font-medium text-foreground">{row.full_name}</span>
-            <span className="mt-0.5 block text-xs text-muted-foreground">
-              {STATUS_LABEL[row.status] ?? row.status}
+        cell: (row) => {
+          const debt = vertical === "cobranza" ? readDebtSnapshot(row.extra) : null;
+          return (
+            <span className="block">
+              <span className="font-medium text-foreground">{row.full_name}</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                {statusText(vertical, row.status)}
+                {debt?.curso ? ` · ${debt.curso}` : ""}
+              </span>
             </span>
-          </span>
-        ),
+          );
+        },
       },
       {
         id: "contacto",
@@ -191,15 +235,16 @@ export function LeadsQueue({
           </span>
         ),
       },
+      ...(vertical === "cobranza" ? [debtColumn] : []),
       {
         id: "agenda",
-        header: "Próxima agenda",
+        header: vertical === "cobranza" ? "Próximo compromiso" : "Próxima agenda",
         value: (row) => row.next_action_at ?? "",
         cell: (row) => dateTimeLabel(row.next_action_at),
       },
       {
         id: "tipificacion",
-        header: "Última tipificación",
+        header: vertical === "cobranza" ? "Último resultado" : "Última tipificación",
         value: (row) => row.tipificacion_actual ?? (row.managed_at ? "Gestionado" : ""),
         className: "text-muted-foreground",
       },
@@ -224,9 +269,8 @@ export function LeadsQueue({
           </Link>
         ),
       },
-    ],
-    [now, action]
-  );
+    ];
+  }, [now, action, vertical]);
 
   const report = useCallback(
     (ok: number, skipped: number, error: string | null, title: string) => {

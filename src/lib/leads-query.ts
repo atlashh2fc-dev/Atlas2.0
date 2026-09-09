@@ -25,8 +25,10 @@ export const LEAD_VIEWS = [
 
 export type LeadView = (typeof LEAD_VIEWS)[number]["id"];
 
+// `extra` viaja en la fila porque las campañas de cobranza muestran deuda y
+// mora en la propia cola; sin él habría que pedir cada lead por separado.
 export const LEAD_SELECT =
-  "id, full_name, rut, phone, status, assigned_to, managed_by, team_id, campaign_id, updated_at, next_action_at, tipificacion_actual, assignment_status, workflow_status, managed_at";
+  "id, full_name, rut, phone, status, assigned_to, managed_by, team_id, campaign_id, updated_at, next_action_at, tipificacion_actual, assignment_status, workflow_status, managed_at, extra";
 
 export const PAGE_SIZE_DEFAULT = 50;
 export const PAGE_SIZE_MAX = 250;

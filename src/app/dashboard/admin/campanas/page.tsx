@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { toggleCampaignActive } from "@/app/actions/campaigns";
 import { setDialerCampaignActive } from "@/app/actions/dialer-config";
 import { DIAL_MODES, type DialMode } from "@/lib/types";
+import { CAMPAIGN_VERTICALS, parseCampaignVertical } from "@/lib/campaign-vertical";
 import Link from "next/link";
 import { Play, Settings2, Square } from "lucide-react";
 import { CampaignCreatePanel } from "@/components/campaign-create-panel";
@@ -121,9 +122,16 @@ export default async function CampaignsPage({
               return (
                 <Tr key={campaign.id}>
                   <Td strong>
-                    <Link href={`/dashboard/admin/campanas/${campaign.id}`} className="hover:text-primary">
-                      {campaign.name}
-                    </Link>
+                    <span className="flex flex-wrap items-center gap-2">
+                      <Link href={`/dashboard/admin/campanas/${campaign.id}`} className="hover:text-primary">
+                        {campaign.name}
+                      </Link>
+                      {parseCampaignVertical(campaign.vertical) === "cobranza" && (
+                        <Badge tone="info">
+                          {CAMPAIGN_VERTICALS.find((option) => option.value === "cobranza")?.label}
+                        </Badge>
+                      )}
+                    </span>
                     {campaign.description && (
                       <p className="mt-0.5 text-xs text-muted-foreground">{campaign.description}</p>
                     )}

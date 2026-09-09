@@ -2,7 +2,8 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { mapAtlasLeadMailCampaign, setCampaignWorkflow } from "@/app/actions/campaigns";
+import { mapAtlasLeadMailCampaign, setCampaignVertical, setCampaignWorkflow } from "@/app/actions/campaigns";
+import { CAMPAIGN_VERTICALS, parseCampaignVertical } from "@/lib/campaign-vertical";
 import { CampaignDashboardSummary, type ContactabilityHour } from "@/components/campaign-dashboard-summary";
 import type {
   CampaignDashboardSummary as CampaignDashboardSummaryData,
@@ -38,6 +39,7 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
 
   const { data: campaign } = await supabase.from("campaigns").select("*").eq("id", id).single();
   if (!campaign) notFound();
+  const campaignVertical = parseCampaignVertical(campaign.vertical);
 
   const to = endOfDay(new Date());
   const from = startOfDay(addDays(to, -(DASHBOARD_WINDOW_DAYS - 1)));
@@ -241,6 +243,32 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
       </SectionCard>
 
       {!aiVoice && <div id="flujo" />}
+      <SectionCard
+        title="Vertical de negocio"
+        description="Define el vocabulario y los KPI de la campaña: una cartera de cobranza mide recuperación, no ventas."
+      >
+        <ActionForm
+          action={setCampaignVertical}
+          success="Vertical actualizado"
+          className="flex flex-wrap items-end gap-3 p-4"
+        >
+          <input type="hidden" name="campaign_id" value={id} />
+          <Field label="Vertical" className="w-72">
+            <Select name="vertical" defaultValue={campaignVertical}>
+              {CAMPAIGN_VERTICALS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <ActionSubmit pendingLabel="Guardando…">Guardar</ActionSubmit>
+          <p className="pb-2 text-xs text-muted-foreground">
+            {CAMPAIGN_VERTICALS.find((option) => option.value === campaignVertical)?.description}
+          </p>
+        </ActionForm>
+      </SectionCard>
+
       {!aiVoice && <SectionCard
         title="Flujo de gestión"
         description="Es el guion que los ejecutivos siguen al atender los registros de esta campaña."
@@ -277,6 +305,7 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
         <CampaignDashboardSummary
           summary={summary as CampaignDashboardSummaryData}
           hourly={(hourly ?? []) as ContactabilityHour[]}
+          vertical={campaignVertical}
         />
       )}
     </div>

@@ -15,6 +15,12 @@ import Link from "next/link";
 import { Button, Callout, Card, InfoTooltip, Select } from "@/components/ui";
 import { metricDefinition, type MetricId } from "@/lib/metric-definitions";
 import { resolveCampaignScope } from "@/lib/campaign-scope";
+import {
+  fetchCampaignVertical,
+  getCampaignVocabulary,
+  parseCampaignVertical,
+  funnelStageLabel,
+} from "@/lib/campaign-vertical";
 import { formatReportRangeLabel, resolveReportRange, toDateInput } from "@/lib/report-range";
 
 type SupervisorReportKpis = {
@@ -221,6 +227,10 @@ export default async function ReportesPage({
   const dashboardTo = range.to;
 
   if (profile.role === "supervisor") {
+    // El vocabulario del reporte lo decide la campaña, no el rol: una cartera
+    // de cobranza no cierra ventas ni envía cotizaciones.
+    const vertical = await fetchCampaignVertical(supabase, campaignScope || null);
+    const vocabulary = getCampaignVocabulary(vertical);
     const [{ data, error }, { data: campaignRows }] = await Promise.all([
       supabase.rpc("get_supervisor_report_summary", {
         p_from: dashboardFrom.toISOString(),
@@ -263,12 +273,12 @@ export default async function ReportesPage({
       Agendas: row.agendas,
     }));
     const pipelineRows = [
-      { Etapa: "Base", Cantidad: kpis.base_total },
-      { Etapa: "Recorridos", Cantidad: kpis.recorridos },
-      { Etapa: "Contactados", Cantidad: kpis.contactados },
-      { Etapa: "CRM tipificado", Cantidad: kpis.crm_gestiones },
-      { Etapa: "Cotizaciones", Cantidad: kpis.cotizaciones },
-      { Etapa: "Ventas", Cantidad: kpis.ventas },
+      { Etapa: funnelStageLabel(vocabulary, "Base"), Cantidad: kpis.base_total },
+      { Etapa: funnelStageLabel(vocabulary, "Recorridos"), Cantidad: kpis.recorridos },
+      { Etapa: funnelStageLabel(vocabulary, "Contactados"), Cantidad: kpis.contactados },
+      { Etapa: funnelStageLabel(vocabulary, "CRM tipificado"), Cantidad: kpis.crm_gestiones },
+      { Etapa: funnelStageLabel(vocabulary, "Cotizaciones"), Cantidad: kpis.cotizaciones },
+      { Etapa: funnelStageLabel(vocabulary, "Ventas"), Cantidad: kpis.ventas },
     ];
     const agentFocusRows = report.agents.map((agent) => ({
       Ejecutivo: agent.full_name,
@@ -277,8 +287,8 @@ export default async function ReportesPage({
       Contactados: agent.contactos_efectivos,
       "No contacto": agent.no_contacto,
       Agendas: agent.agendas,
-      Cotizaciones: agent.cotizaciones,
-      Ventas: agent.ventas,
+      [vocabulary.kpi.intermedio]: agent.cotizaciones,
+      [vocabulary.kpi.cierreNota]: agent.ventas,
       Contactabilidad: agent.contactabilidad,
     }));
 
@@ -293,7 +303,7 @@ export default async function ReportesPage({
 
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <MetricCard
-            label="Base del equipo"
+            label={vocabulary.base}
             href={`/dashboard/leads${campaignQuery}`}
             value={formatNumber(kpis.base_total)}
             detail={`${formatNumber(kpis.asignados)} asignados`}
@@ -315,7 +325,7 @@ export default async function ReportesPage({
             progress={kpis.contactabilidad ?? 0}
           />
           <MetricCard
-            label="Gestiones tipificadas"
+            label={vocabulary.kpi.gestiones}
             value={formatNumber(kpis.crm_gestiones)}
             detail={`${formatNumber(kpis.llamadas_cerradas)} llamadas cerradas`}
             progress={percent(kpis.crm_gestiones, kpis.llamadas_cerradas)}
@@ -328,17 +338,17 @@ export default async function ReportesPage({
             tone="warn"
           />
           <MetricCard
-            label="Agendas creadas"
+            label={vocabulary.kpi.agendas}
             href={`/dashboard/leads?view=hoy${selectedCampaign ? `&campaign=${encodeURIComponent(selectedCampaign.id)}` : ""}`}
             value={formatNumber(kpis.agendas_creadas)}
             detail={`${formatNumber(kpis.agendas_pendientes)} pendientes`}
             progress={percent(kpis.agendas_pendientes, kpis.agendas_creadas)}
           />
           <MetricCard
-            label="Agendas vencidas"
+            label={vocabulary.kpi.agendasVencidas}
             href={`/dashboard/leads?view=vencidas${selectedCampaign ? `&campaign=${encodeURIComponent(selectedCampaign.id)}` : ""}`}
             value={formatNumber(kpis.agendas_vencidas)}
-            detail="Compromisos pendientes de recuperar"
+            detail={vocabulary.kpi.agendasVencidasDetalle}
             tone={kpis.agendas_vencidas > 0 ? "danger" : "default"}
             progress={percent(kpis.agendas_vencidas, kpis.agendas_creadas)}
           />
@@ -349,17 +359,21 @@ export default async function ReportesPage({
             detail="Promedio de llamadas cerradas"
           />
           <MetricCard
-            label="Cotizaciones"
+            label={vocabulary.kpi.intermedio}
             value={formatNumber(kpis.cotizaciones)}
             progress={percent(kpis.cotizaciones, kpis.contactados)}
           />
           <MetricCard
-            label="Ventas / validación"
+            label={vocabulary.kpi.cierre}
             value={formatNumber(kpis.ventas)}
             tone="good"
             progress={percent(kpis.ventas, kpis.cotizaciones)}
           />
-          <MetricCard label="UF comercial" metric="uf" value={formatUf(kpis.uf)} />
+          <MetricCard
+            label={vertical === "cobranza" ? vocabulary.kpi.monto : "UF comercial"}
+            metric="uf"
+            value={formatUf(kpis.uf)}
+          />
           <MetricCard label="Ejecutivos reportados" value={formatNumber(report.agents.length)} />
         </section>
 
@@ -370,11 +384,12 @@ export default async function ReportesPage({
             rangeFrom={report.range.from}
             rangeTo={report.range.to}
             campaignId={selectedCampaign?.id}
+            vertical={vertical}
           />
         </section>
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          <ChartPanel title="Tipificaciones · top 10" filename="tipificaciones-equipo.xlsx" rows={tipificationRows}>
+          <ChartPanel title={vocabulary.tipificacionesTitle} filename="tipificaciones-equipo.xlsx" rows={tipificationRows}>
             <SupervisorTipificationsChart tipifications={report.tipifications} />
           </ChartPanel>
 
@@ -382,7 +397,11 @@ export default async function ReportesPage({
             <SupervisorDailyChart daily={report.daily} />
           </ChartPanel>
 
-          <ChartPanel title="Embudo operativo" filename="embudo-operativo-equipo.xlsx" rows={pipelineRows}>
+          <ChartPanel
+            title={vertical === "cobranza" ? "Embudo de recuperación" : "Embudo operativo"}
+            filename="embudo-operativo-equipo.xlsx"
+            rows={pipelineRows}
+          >
             <SupervisorPipelineChart kpis={kpis} />
           </ChartPanel>
 
@@ -394,10 +413,13 @@ export default async function ReportesPage({
     );
   }
 
-  const { data: campaignList } = await supabase.from("campaigns").select("id, name").order("name");
-  const campaigns = campaignList ?? [];
+  const { data: campaignList } = await supabase.from("campaigns").select("id, name, vertical").order("name");
+  const campaigns = (campaignList ?? []) as { id: string; name: string; vertical?: string | null }[];
   const selectedCampaignId = campaigns.some((campaign) => campaign.id === campaignScope) ? campaignScope : null;
   const selectedCampaign = campaigns.find((c) => c.id === selectedCampaignId) ?? null;
+  // Sin campaña elegida el tablero mezcla verticales, así que se queda con el
+  // vocabulario comercial, que es el común a todas.
+  const adminVertical = parseCampaignVertical(selectedCampaign?.vertical);
   let dashboardSummary: CampaignDashboardSummaryData | null = null;
 
   const { data: hourlyData } = await supabase.rpc("get_contactability_by_hour", {
@@ -432,7 +454,7 @@ export default async function ReportesPage({
         <div className="space-y-1">
           <p className="text-sm text-muted-foreground">
             {selectedCampaign
-              ? `${selectedCampaign.name} · KPIs, embudo y seguimiento de la campaña.`
+              ? `${selectedCampaign.name} · ${adminVertical === "cobranza" ? "KPIs, embudo de recuperación y seguimiento de la cartera." : "KPIs, embudo y seguimiento de la campaña."}`
               : "Todas las campañas · KPIs consolidados."}
           </p>
           {range.notice && <p className="text-sm text-warning">{range.notice}</p>}
@@ -472,6 +494,7 @@ export default async function ReportesPage({
           key={selectedCampaignId ?? "all"}
           summary={dashboardSummary}
           hourly={(hourlyData ?? []) as ContactabilityHour[]}
+          vertical={adminVertical}
         />
       )}
     </div>

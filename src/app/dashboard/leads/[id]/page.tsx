@@ -10,6 +10,13 @@ import { CallTypificationForm } from "@/components/call-typification-form";
 import { CallTimer } from "@/components/call-timer";
 import { LeadTimeline, type TimelineEntry } from "@/components/lead-timeline";
 import { buildCallReasonCatalogFromWorkflow, getReasonConfig } from "@/lib/call-typification";
+import {
+  DEBT_EXTRA_KEYS,
+  debtAgeTone,
+  fetchCampaignVertical,
+  formatClp,
+  readDebtSnapshot,
+} from "@/lib/campaign-vertical";
 import { metricDefinition } from "@/lib/metric-definitions";
 import { completeKovacsDemoAssignment } from "@/app/actions/lead-orchestrator";
 import type { Campaign, Lead, Profile, Team, Workflow, WorkflowStep, WorkflowStepBranch } from "@/lib/types";
@@ -167,9 +174,14 @@ export default async function LeadDetailPage({
   const assignedProfile = record.assigned_profile;
   const team = record.team;
   const contacts = record.contacts ?? [];
+  // En cobranza la deuda tiene ficha propia arriba; repetir esas mismas claves
+  // en el volcado de la carga solo agrega ruido a la pantalla del ejecutivo.
+  const vertical = await fetchCampaignVertical(supabase, lead.campaign_id ?? campaign?.id ?? null);
+  const debt = vertical === "cobranza" ? readDebtSnapshot(lead.extra) : null;
   const campaignData = Object.entries(lead.extra ?? {}).filter(
-    ([, value]) =>
-      typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+    ([key, value]) =>
+      (!debt || !DEBT_EXTRA_KEYS.includes(key)) &&
+      (typeof value === "string" || typeof value === "number" || typeof value === "boolean")
   );
 
   const { data: orchestratorAssignment } = profile.role === "agente"
@@ -428,6 +440,72 @@ export default async function LeadDetailPage({
             appointmentScheduleUrl={appointmentScheduleUrl}
             revision
           />
+        </section>
+      )}
+
+      {debt && (
+        <section className="rounded-2xl border border-border bg-surface p-5">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Estado de la deuda</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Saldo, mora y contexto del alumno con los que se negocia esta gestión.
+              </p>
+            </div>
+            {debt.estado && (
+              <span className="rounded-full bg-surface-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                {debt.estado}
+              </span>
+            )}
+          </div>
+          <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="min-w-0 border-b border-border/70 pb-2">
+              <dt className="text-xs font-medium text-muted-foreground">Saldo pendiente</dt>
+              <dd className="mt-0.5 text-lg font-semibold tabular-nums text-foreground">
+                {formatClp(debt.monto)}
+              </dd>
+              {debt.montoUf !== null && (
+                <dd className="text-xs text-muted-foreground">{debt.montoUf} UF</dd>
+              )}
+            </div>
+            <div className="min-w-0 border-b border-border/70 pb-2">
+              <dt className="text-xs font-medium text-muted-foreground">Mora</dt>
+              <dd
+                className={`mt-0.5 text-sm font-medium ${
+                  debtAgeTone(debt.diasMora) === "danger"
+                    ? "text-danger"
+                    : debtAgeTone(debt.diasMora) === "warning"
+                      ? "text-warning"
+                      : "text-foreground"
+                }`}
+              >
+                {debt.diasMora !== null ? `${debt.diasMora} días` : "Sin informar"}
+              </dd>
+              {debt.tramo && <dd className="text-xs text-muted-foreground">{debt.tramo}</dd>}
+            </div>
+            <div className="min-w-0 border-b border-border/70 pb-2">
+              <dt className="text-xs font-medium text-muted-foreground">Cuotas impagas</dt>
+              <dd className="mt-0.5 text-sm text-foreground">{debt.cuotas ?? "—"}</dd>
+              {debt.tipo && <dd className="text-xs text-muted-foreground">{debt.tipo}</dd>}
+            </div>
+            <div className="min-w-0 border-b border-border/70 pb-2">
+              <dt className="text-xs font-medium text-muted-foreground">Vencimiento más antiguo</dt>
+              <dd className="mt-0.5 text-sm text-foreground">{debt.vencimiento ?? "—"}</dd>
+            </div>
+            {debt.alumno && (
+              <div className="min-w-0 border-b border-border/70 pb-2">
+                <dt className="text-xs font-medium text-muted-foreground">Alumno</dt>
+                <dd className="mt-0.5 text-sm text-foreground">{debt.alumno}</dd>
+                {debt.curso && <dd className="text-xs text-muted-foreground">{debt.curso}</dd>}
+              </div>
+            )}
+            {debt.sede && (
+              <div className="min-w-0 border-b border-border/70 pb-2">
+                <dt className="text-xs font-medium text-muted-foreground">Sede</dt>
+                <dd className="mt-0.5 text-sm text-foreground">{debt.sede}</dd>
+              </div>
+            )}
+          </dl>
         </section>
       )}
 

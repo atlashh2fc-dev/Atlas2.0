@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { CalendarClock, ExternalLink, FileText, Mail, Phone, ShoppingCart, X } from "lucide-react";
 import { Input, LoadingState, Select, buttonClasses } from "@/components/ui";
+import { getCampaignVocabulary, type CampaignVertical } from "@/lib/campaign-vertical";
 
 export type SupervisorAgentMetric = {
   agent_id: string;
@@ -49,7 +50,22 @@ type PriorityFilter =
   | "commercial_opportunity"
   | "no_progress";
 
-const columns: { key: SortKey; label: string; align?: "right" }[] = [
+/**
+ * Encabezados por vertical: la misma métrica se llama distinto en una cartera
+ * de cobranza (recuperaciones) que en una campaña comercial (ventas).
+ */
+function buildColumns(vertical: CampaignVertical): { key: SortKey; label: string; align?: "right" }[] {
+  const vocabulary = getCampaignVocabulary(vertical);
+  return baseColumns.map((column) => {
+    if (column.key === "cotizaciones") return { ...column, label: vocabulary.kpi.intermedio };
+    if (column.key === "ventas") return { ...column, label: vocabulary.kpi.cierreNota };
+    if (column.key === "leads_gestionados" && vertical === "cobranza") return { ...column, label: "Deudores" };
+    if (column.key === "agendas" && vertical === "cobranza") return { ...column, label: "Compromisos" };
+    return column;
+  });
+}
+
+const baseColumns: { key: SortKey; label: string; align?: "right" }[] = [
   { key: "full_name", label: "Ejecutivo" },
   { key: "crm_gestiones", label: "Gestiones", align: "right" },
   { key: "leads_gestionados", label: "Leads", align: "right" },
@@ -66,11 +82,12 @@ const columns: { key: SortKey; label: string; align?: "right" }[] = [
 
 const drilldownColumns = new Set<SortKey>(["agendas", "cotizaciones", "ventas"]);
 
-const metricLabels: Record<DrilldownMetric, string> = {
-  agendas: "Agendas",
-  cotizaciones: "Cotizaciones",
-  ventas: "Ventas",
-};
+function drilldownLabel(vertical: CampaignVertical, metric: DrilldownMetric): string {
+  const vocabulary = getCampaignVocabulary(vertical);
+  if (metric === "cotizaciones") return vocabulary.kpi.intermedio;
+  if (metric === "ventas") return vocabulary.kpi.cierreNota;
+  return vertical === "cobranza" ? "Compromisos" : "Agendas";
+}
 
 type DrilldownContact = {
   id: string;
@@ -234,12 +251,16 @@ export function SupervisorAgentMetricsTable({
   rangeFrom,
   rangeTo,
   campaignId,
+  vertical = "ventas",
 }: {
   agents: SupervisorAgentMetric[];
   rangeFrom: string;
   rangeTo: string;
   campaignId?: string | null;
+  /** Vocabulario de las columnas de cierre. */
+  vertical?: CampaignVertical;
 }) {
+  const columns = useMemo(() => buildColumns(vertical), [vertical]);
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<Scope>("all");
   const [priority, setPriority] = useState<PriorityFilter>("heavy_load");
@@ -455,7 +476,7 @@ export function SupervisorAgentMetricsTable({
             <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
               <div>
                 <p className="text-xs font-medium text-muted-foreground">
-                  {metricLabels[drilldown.metric]} · {drilldown.agent.full_name}
+                  {drilldownLabel(vertical, drilldown.metric)} · {drilldown.agent.full_name}
                 </p>
                 <h3 className="text-lg font-semibold text-foreground">Detalle de gestiones</h3>
               </div>

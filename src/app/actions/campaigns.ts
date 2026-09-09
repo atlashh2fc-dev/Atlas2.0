@@ -160,6 +160,35 @@ export async function setCampaignWorkflow(formData: FormData) {
   revalidatePath(`/dashboard/admin/campanas/${campaignId}`);
 }
 
+/**
+ * Vertical de negocio de la campaña.
+ *
+ * Es configuración, no desarrollo: sumar una cartera de cobranza no requiere
+ * tocar el código, basta con marcarla acá para que Reportes, Registros y la
+ * ficha del deudor hablen su idioma.
+ */
+export async function setCampaignVertical(formData: FormData) {
+  await requireProfile(["admin"]);
+  const campaignId = String(formData.get("campaign_id") ?? "").trim();
+  const vertical = String(formData.get("vertical") ?? "").trim();
+
+  if (!UUID.test(campaignId)) throw new Error("Campaña inválida.");
+  if (vertical !== "ventas" && vertical !== "cobranza") {
+    throw new Error("Vertical no reconocido.");
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("campaigns")
+    .update({ vertical, updated_at: new Date().toISOString() })
+    .eq("id", campaignId);
+
+  if (error) throw new Error(error.message);
+  revalidatePath(`/dashboard/admin/campanas/${campaignId}`);
+  revalidatePath("/dashboard/reportes");
+  revalidatePath("/dashboard/leads");
+}
+
 export async function mapAtlasLeadMailCampaign(formData: FormData) {
   await requireProfile(["admin"]);
   const campaignId = String(formData.get("campaign_id") ?? "").trim();

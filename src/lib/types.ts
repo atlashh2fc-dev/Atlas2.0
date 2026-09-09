@@ -1,4 +1,5 @@
 import type { CampaignDirection } from "@/lib/metric-definitions";
+import type { CampaignVertical } from "@/lib/campaign-vertical";
 
 export type AppRole = "agente" | "supervisor" | "admin";
 
@@ -182,6 +183,12 @@ export interface Campaign {
   id: string;
   name: string;
   description: string | null;
+  /**
+   * Vertical de negocio. Decide el vocabulario y los KPI de las pantallas
+   * (ver src/lib/campaign-vertical.ts). Opcional porque varias consultas
+   * seleccionan solo id y nombre.
+   */
+  vertical?: CampaignVertical | null;
   workflow_id: string | null;
   is_active: boolean;
   created_by: string | null;

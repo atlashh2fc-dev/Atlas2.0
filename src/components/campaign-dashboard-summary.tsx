@@ -16,6 +16,11 @@ import {
 import type { CampaignDashboardSummary as CampaignDashboardSummaryData, CampaignDashboardSummaryMetric } from "@/lib/types";
 import { CALL_REASONS } from "@/lib/call-typification";
 import { REPORT_TIME_ZONE } from "@/lib/report-range";
+import {
+  funnelStageLabel,
+  getCampaignVocabulary,
+  type CampaignVertical,
+} from "@/lib/campaign-vertical";
 
 export type ContactabilityHour = {
   hora: number;
@@ -30,9 +35,25 @@ export type ContactabilityHour = {
 interface Props {
   summary: CampaignDashboardSummaryData;
   hourly: ContactabilityHour[];
+  /** Vocabulario del tablero: una cartera no cierra ventas, recupera deuda. */
+  vertical?: CampaignVertical;
 }
 
 const REASON_LABEL = new Map(CALL_REASONS.map((r) => [r.value, r.label]));
+
+/**
+ * Etiqueta legible de una tipificación. El catálogo comercial cubre los cierres
+ * de venta; los de una cartera vienen del workflow de la campaña, así que se
+ * formatean en vez de mostrarse en mayúsculas como los guarda la base.
+ */
+function reasonLabel(value: string): string {
+  const known = REASON_LABEL.get(value);
+  if (known) return known;
+  const text = value.trim();
+  if (!text) return "Sin tipificar";
+  const lower = text.toLocaleLowerCase("es");
+  return lower.charAt(0).toLocaleUpperCase("es") + lower.slice(1);
+}
 
 const CHART_COLORS = [
   "var(--primary)",
@@ -246,7 +267,8 @@ function ratio(current: number, total: number): number {
   return total > 0 ? current / total : 0;
 }
 
-export function CampaignDashboardSummary({ summary, hourly }: Props) {
+export function CampaignDashboardSummary({ summary, hourly, vertical = "ventas" }: Props) {
+  const vocabulary = getCampaignVocabulary(vertical);
   const kpis = summary.kpis;
   const contactabilidad = {
     current: ratio(kpis.contactadas.current, kpis.gestionadas.current),
@@ -258,7 +280,11 @@ export function CampaignDashboardSummary({ summary, hourly }: Props) {
   };
   const reasonData = summary.reasons.map((r) => ({
     ...r,
-    label: REASON_LABEL.get(r.reason) ?? r.reason,
+    label: reasonLabel(r.reason),
+  }));
+  const funnel = summary.funnel.map((stage) => ({
+    ...stage,
+    name: funnelStageLabel(vocabulary, stage.name),
   }));
 
   return (
@@ -271,21 +297,23 @@ export function CampaignDashboardSummary({ summary, hourly }: Props) {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <KpiCard label="Gestiones" value={fmtInt(kpis.gestionadas.current)} metric={kpis.gestionadas} />
-        <KpiCard label="Contactabilidad" value={fmtPct(contactabilidad.current)} metric={contactabilidad} />
-        <KpiCard label="Ventas en validación" value={fmtInt(kpis.ventas.current)} metric={kpis.ventas} highlight />
-        <KpiCard label="Tasa de conversión" value={fmtPct(tasaConversion.current)} metric={tasaConversion} />
-        <KpiCard label="UF en pipeline" value={`${Number(kpis.uf_total.current).toFixed(1)} UF`} metric={kpis.uf_total} />
+        <KpiCard label={vocabulary.kpi.gestiones} value={fmtInt(kpis.gestionadas.current)} metric={kpis.gestionadas} />
+        <KpiCard label={vocabulary.kpi.contactabilidad} value={fmtPct(contactabilidad.current)} metric={contactabilidad} />
+        <KpiCard label={vocabulary.kpi.cierre} value={fmtInt(kpis.ventas.current)} metric={kpis.ventas} highlight />
+        <KpiCard label={vocabulary.kpi.conversion} value={fmtPct(tasaConversion.current)} metric={tasaConversion} />
+        <KpiCard label={vocabulary.kpi.monto} value={`${Number(kpis.uf_total.current).toFixed(1)} UF`} metric={kpis.uf_total} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-xl border border-border bg-surface p-5">
-          <h3 className="mb-3 text-sm font-semibold text-foreground">Embudo de gestión</h3>
-          <FunnelStages stages={summary.funnel} />
+          <h3 className="mb-3 text-sm font-semibold text-foreground">
+            {vertical === "cobranza" ? "Embudo de recuperación" : "Embudo de gestión"}
+          </h3>
+          <FunnelStages stages={funnel} />
         </div>
 
         <div className="rounded-xl border border-border bg-surface p-5">
-          <h3 className="mb-3 text-sm font-semibold text-foreground">Evolución diaria</h3>
+          <h3 className="mb-3 text-sm font-semibold text-foreground">{vocabulary.evolucionTitle}</h3>
           <ResponsiveContainer width="100%" height={280}>
             <ComposedChart data={summary.time_series}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -306,7 +334,7 @@ export function CampaignDashboardSummary({ summary, hourly }: Props) {
         </div>
 
         <div className="rounded-xl border border-border bg-surface p-5">
-          <h3 className="mb-3 text-sm font-semibold text-foreground">Motivos de gestión</h3>
+          <h3 className="mb-3 text-sm font-semibold text-foreground">{vocabulary.motivosTitle}</h3>
           <ResponsiveContainer width="100%" height={280}>
             <BarChart data={reasonData} layout="vertical" margin={{ left: 24 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -334,14 +362,16 @@ export function CampaignDashboardSummary({ summary, hourly }: Props) {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-xl border border-border bg-surface p-5">
-          <h3 className="mb-3 text-sm font-semibold text-foreground">Agenda y seguimientos</h3>
+          <h3 className="mb-3 text-sm font-semibold text-foreground">{vocabulary.agendaTitle}</h3>
           <div className="max-h-80 overflow-y-auto">
             <table className="w-full text-left text-xs">
               <thead className="sticky top-0 bg-surface text-muted-foreground">
                 <tr>
-                  <th className="py-1.5 font-medium">Lead</th>
+                  <th className="py-1.5 font-medium">
+                    {vertical === "cobranza" ? "Deudor" : "Lead"}
+                  </th>
                   <th className="py-1.5 font-medium">Ejecutivo</th>
-                  <th className="py-1.5 font-medium">Motivo</th>
+                  <th className="py-1.5 font-medium">Resultado</th>
                   <th className="py-1.5 font-medium">Próxima acción</th>
                 </tr>
               </thead>
@@ -357,7 +387,7 @@ export function CampaignDashboardSummary({ summary, hourly }: Props) {
                   <tr key={item.id}>
                     <td className="py-1.5 text-foreground">{item.lead_full_name}</td>
                     <td className="py-1.5 text-muted-foreground">{item.agent_name}</td>
-                    <td className="py-1.5 text-muted-foreground">{REASON_LABEL.get(item.reason ?? "") ?? item.reason ?? "-"}</td>
+                    <td className="py-1.5 text-muted-foreground">{item.reason ? reasonLabel(item.reason) : "-"}</td>
                     <td className={`py-1.5 font-medium ${item.overdue ? "text-[color:var(--danger)]" : "text-foreground"}`}>
                       {new Date(item.next_action_at).toLocaleString("es-CL", {
                         day: "2-digit",
@@ -383,7 +413,7 @@ export function CampaignDashboardSummary({ summary, hourly }: Props) {
                   <th className="py-1.5 font-medium">Ejecutivo</th>
                   <th className="py-1.5 font-medium text-right">Gestiones</th>
                   <th className="py-1.5 font-medium text-right">Contactos</th>
-                  <th className="py-1.5 font-medium text-right">Ventas</th>
+                  <th className="py-1.5 font-medium text-right">{vocabulary.kpi.cierreNota}</th>
                   <th className="py-1.5 font-medium text-right">UF</th>
                 </tr>
               </thead>
@@ -410,10 +440,7 @@ export function CampaignDashboardSummary({ summary, hourly }: Props) {
         </div>
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        Nota: &quot;Venta en validación&quot; refleja la oportunidad registrada por el ejecutivo en la tipificación,
-        no necesariamente un cierre/facturación confirmado por backoffice.
-      </p>
+      <p className="text-xs text-muted-foreground">{vocabulary.disclaimer}</p>
     </div>
   );
 }

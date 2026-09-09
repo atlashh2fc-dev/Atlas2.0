@@ -5,6 +5,11 @@ import Link from "next/link";
 import { LEAD_STATUSES } from "@/lib/types";
 import { resolveCampaignScope } from "@/lib/campaign-scope";
 import {
+  fetchCampaignVertical,
+  leadStatusLabel,
+  type CampaignVertical,
+} from "@/lib/campaign-vertical";
+import {
   PAGE_SIZE_DEFAULT,
   fetchLeadsPage,
   parseLeadView,
@@ -20,24 +25,31 @@ type FilterOption = { id: string; full_name?: string; name?: string };
  * "Registros" para supervisor y admin, "Mis registros" para el ejecutivo.
  * Lo que cambia por rol es el alcance, y eso va en la descripción.
  */
-function roleCopy(role: string) {
+function roleCopy(role: string, vertical: CampaignVertical) {
+  const cobranza = vertical === "cobranza";
   if (role === "supervisor") {
     return {
       title: "Registros",
-      description: "Leads visibles de tu equipo, filtrados por prioridad, ejecutivo y campaña.",
+      description: cobranza
+        ? "Cartera visible de tu equipo, ordenada por compromiso, ejecutivo y tramo de mora."
+        : "Leads visibles de tu equipo, filtrados por prioridad, ejecutivo y campaña.",
       action: "Revisar",
     };
   }
   if (role === "admin") {
     return {
       title: "Registros",
-      description: "Vista global de leads para auditoría, búsqueda y control operacional.",
+      description: cobranza
+        ? "Vista global de la cartera para auditoría, búsqueda de deudores y control operacional."
+        : "Vista global de leads para auditoría, búsqueda y control operacional.",
       action: "Abrir",
     };
   }
   return {
     title: "Mis registros",
-    description: "Clientes que gestionaste, con su tipificación y próximas agendas.",
+    description: cobranza
+      ? "Deudores que gestionaste, con su último resultado y los compromisos por cobrar."
+      : "Clientes que gestionaste, con su tipificación y próximas agendas.",
     action: "Gestionar",
   };
 }
@@ -59,7 +71,9 @@ export default async function LeadsPage({
   const campaignScope = resolveCampaignScope(campaign);
   const view = parseLeadView(viewParam);
   const supabase = await createClient();
-  const copy = roleCopy(profile.role);
+  // La campaña decide cómo se llama lo que hay en la cola: registros o deudores.
+  const vertical = await fetchCampaignVertical(supabase, campaignScope || null);
+  const copy = roleCopy(profile.role, vertical);
   const canManage = profile.role === "supervisor" || profile.role === "admin";
 
   const filters: LeadFilters = {
@@ -91,7 +105,11 @@ export default async function LeadsPage({
   const statusOptions = [...new Set([...result.statuses, filters.status].filter(Boolean))]
     .map((value) => ({
       value,
-      label: LEAD_STATUSES.find((status) => status.value === value)?.label ?? value,
+      label: leadStatusLabel(
+        vertical,
+        value,
+        LEAD_STATUSES.find((status) => status.value === value)?.label ?? value
+      ),
     }))
     .sort((a, b) => a.label.localeCompare(b.label, "es"));
 
@@ -103,7 +121,7 @@ export default async function LeadsPage({
     filters.agent &&
       `ejecutivo ${((agentOptions ?? []) as FilterOption[]).find((option) => option.id === filters.agent)?.full_name ?? "seleccionado"}`,
     filters.status &&
-      `estado ${LEAD_STATUSES.find((status) => status.value === filters.status)?.label ?? filters.status}`,
+      `estado ${leadStatusLabel(vertical, filters.status, LEAD_STATUSES.find((status) => status.value === filters.status)?.label ?? filters.status)}`,
   ].filter(Boolean) as string[];
   const hiddenBySearchFilters =
     result.search !== null && result.search.matches > 0 && result.total === 0;
@@ -211,6 +229,7 @@ export default async function LeadsPage({
         total={result.total}
         pageSize={result.pageSize}
         action={copy.action}
+        vertical={vertical}
         agents={(agentOptions ?? []).map((option) => ({ id: option.id, full_name: option.full_name ?? "Sin nombre" }))}
         canManage={canManage}
         errorMessage={result.error}
