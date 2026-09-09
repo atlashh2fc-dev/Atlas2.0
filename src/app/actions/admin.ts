@@ -14,6 +14,9 @@ export async function createUserAccount(formData: FormData) {
   const password = formData.get("password") as string;
   const role = formData.get("role") as AppRole;
   const teamId = (formData.get("team_id") as string) || null;
+  // Cuenta de demostración: solo habilita alternar la vista entre ejecutivo y
+  // supervisor sobre su propio perfil (ver src/lib/demo-view.ts).
+  const isDemo = formData.get("is_demo") === "1";
 
   if (!fullName || !email || !password) {
     throw new Error("Nombre, correo y contraseña son obligatorios.");
@@ -69,7 +72,7 @@ export async function createUserAccount(formData: FormData) {
   // de una respuesta fallida de Auth.
   const { error: profileError } = await admin
     .from("profiles")
-    .update({ full_name: fullName, email, role, team_id: teamId })
+    .update({ full_name: fullName, email, role, team_id: teamId, is_demo: isDemo })
     .eq("id", userId);
   if (profileError) throw new Error(profileError.message);
 

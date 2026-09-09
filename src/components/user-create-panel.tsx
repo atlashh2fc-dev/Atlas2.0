@@ -78,6 +78,17 @@ export function UserCreatePanel({ teams }: { teams: { id: string; name: string }
             </select>
           </Field>
 
+          <label className="flex items-start gap-2 rounded-lg border border-border bg-surface-muted/40 p-3 text-sm text-foreground">
+            <input type="checkbox" name="is_demo" value="1" className="mt-0.5" />
+            <span>
+              Cuenta de demostración
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                Agrega un selector en el encabezado para alternar entre la vista de ejecutivo y la
+                de supervisor sin cerrar sesión. No entrega permisos de administración.
+              </span>
+            </span>
+          </label>
+
           <div className="flex items-center justify-end gap-2 pt-2">
             <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
               Cancelar

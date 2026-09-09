@@ -8,6 +8,7 @@ import { ToastProvider } from "@/components/ui";
 import { createClient } from "@/lib/supabase/server";
 import { ForceLogoutGuard } from "@/components/force-logout-guard";
 import { getWorkspacePermissions } from "@/lib/workspace-permissions";
+import { listDemoViewAccounts } from "@/lib/demo-accounts";
 
 export default async function DashboardLayout({
   children,
@@ -45,6 +46,9 @@ export default async function DashboardLayout({
       : { count: null };
 
   const badges = { "overdue-agenda": overdueCount ?? 0 };
+  // Solo las cuentas de demostración alternan de vista; para el resto esto no
+  // consulta nada.
+  const demoAccounts = await listDemoViewAccounts(profile);
 
   return (
     <ToastProvider>
@@ -55,11 +59,11 @@ export default async function DashboardLayout({
         <div className="flex flex-1 flex-col overflow-hidden">
           {showAgendaReminder ? (
             <AgendaProvider userId={profile.id}>
-              <Header profile={profile} campaigns={campaigns} badges={badges} />
+              <Header profile={profile} campaigns={campaigns} badges={badges} demoAccounts={demoAccounts} />
               <AgendaBanner />
             </AgendaProvider>
           ) : (
-            <Header profile={profile} campaigns={campaigns} />
+            <Header profile={profile} campaigns={campaigns} demoAccounts={demoAccounts} />
           )}
           <main className="flex-1 overflow-y-auto p-5">{children}</main>
         </div>

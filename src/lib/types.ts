@@ -10,6 +10,8 @@ export interface Profile {
   role: AppRole;
   team_id: string | null;
   active: boolean;
+  /** Cuenta de demostración: puede alternar su vista entre agente y supervisor. */
+  is_demo?: boolean;
   created_at: string;
   updated_at: string;
 }

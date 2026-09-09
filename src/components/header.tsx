@@ -6,6 +6,8 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { QuickSearch } from "@/components/quick-search";
 import { AgendaBell } from "@/components/agenda-reminder";
 import { CampaignScopeSwitcher } from "@/components/campaign-scope-switcher";
+import { DemoRoleSwitcher } from "@/components/demo-role-switcher";
+import type { DemoViewAccount } from "@/lib/demo-view";
 import { signOut } from "@/app/actions/auth";
 import { LogOut } from "lucide-react";
 
@@ -13,10 +15,13 @@ export function Header({
   profile,
   campaigns,
   badges,
+  demoAccounts = [],
 }: {
   profile: Profile;
   campaigns: { id: string; name: string }[];
   badges?: NavBadgeCounts;
+  /** Vistas disponibles cuando la cuenta es de demostración. */
+  demoAccounts?: DemoViewAccount[];
 }) {
   return (
     <header className="flex h-16 flex-shrink-0 items-center justify-between border-b border-border bg-surface px-6">
@@ -26,6 +31,7 @@ export function Header({
       </div>
 
       <div className="flex items-center gap-3">
+        {profile.is_demo && <DemoRoleSwitcher accounts={demoAccounts} currentId={profile.id} />}
         {/* Lee la campaña de la URL, así que necesita su propio límite de
             Suspense igual que el selector de período de los reportes. */}
         <Suspense fallback={null}>
