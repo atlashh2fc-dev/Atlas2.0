@@ -286,3 +286,56 @@ test(
     );
   },
 );
+
+test(
+  "toda migración del repositorio figura como aplicada en la base",
+  { skip: SIN_CREDENCIALES ? motivoSalto : false },
+  async () => {
+    // Esta prueba nace de un incidente real: tres migraciones vivían en el
+    // repositorio sin estar registradas, porque su autor había corrido el SQL a
+    // mano en producción. Las funciones existían, así que nada se veía roto,
+    // pero el historial mentía y levantar un entorno nuevo habría fallado.
+    const { readdirSync } = await import("node:fs");
+    const archivos = readdirSync(new URL("../supabase/migrations", import.meta.url))
+      .filter((f) => f.endsWith(".sql"))
+      .map((f) => f.replace(/\.sql$/, ""));
+
+    const enElRepo = new Map<string, string>();
+    for (const archivo of archivos) {
+      const corte = archivo.indexOf("_");
+      enElRepo.set(archivo.slice(corte + 1), archivo.slice(0, corte));
+    }
+
+    // El esquema del historial no está expuesto por la API, así que se lee por
+    // una función que sólo puede ejecutar la clave de servicio.
+    const { data, error } = await servicio!.rpc("applied_migration_names");
+
+    if (error) {
+      assert.fail(
+        `no se pudo leer el historial de migraciones: ${error.message}. ` +
+          "Revísalo a mano antes de dar por buena esta prueba.",
+      );
+    }
+
+    // Una migración cuenta como aplicada si coincide por nombre O por versión.
+    // Exigir ambas daría falsos positivos sobre historia vieja: hay migraciones
+    // aplicadas desde el panel de Supabase que quedaron con una marca de tiempo
+    // distinta a la del archivo, y un placeholder registrado con otro nombre.
+    // Eso no vale la pena reescribirlo; lo que importa es que ninguna quede sin
+    // aplicar.
+    const filas = (data ?? []) as { version: string; name: string | null }[];
+    const porNombre = new Set(filas.map((f) => f.name).filter(Boolean) as string[]);
+    const porVersion = new Set(filas.map((f) => f.version));
+
+    const sinAplicar = [...enElRepo.entries()]
+      .filter(([nombre, version]) => !porNombre.has(nombre) && !porVersion.has(version))
+      .map(([nombre]) => nombre)
+      .sort();
+
+    assert.deepEqual(
+      sinAplicar,
+      [],
+      "hay migraciones en el repositorio que la base no tiene registradas",
+    );
+  },
+);
