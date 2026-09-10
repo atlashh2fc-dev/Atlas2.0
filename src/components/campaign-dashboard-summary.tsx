@@ -434,12 +434,13 @@ export function CampaignDashboardSummary({
           </ResponsiveContainer>
         </div>
 
-        {/* Reemplaza la barra plana de motivos: mostraba las mismas etiquetas
-            sueltas, sin decir cuáles significan interés y cuáles no. */}
-        <TipificationBreakdown breakdown={tipifications} title={vocabulary.motivosTitle} />
-
         <ContactabilityByHour data={hourly} />
       </div>
+
+      {/* A ancho completo: es el bloque con más contenido del tablero y en media
+          columna obligaba a una lista vertical de veinte filas contra un vacío
+          a la derecha. Acá los resultados caben lado a lado. */}
+      <TipificationBreakdown breakdown={tipifications} title={vocabulary.motivosTitle} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-xl border border-border bg-surface p-5">
