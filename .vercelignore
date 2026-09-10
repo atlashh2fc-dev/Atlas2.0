@@ -1,0 +1,19 @@
+# Que no viaje al build lo que no es codigo de la aplicacion.
+#
+# El CLI sube el disco local tal cual, sin mirar .gitignore. Asi es como un
+# `.git` corrupto de 112 archivos termino subiendo a produccion en cada
+# despliegue manual durante dos meses.
+
+.git-broken*
+.git-old*
+.git.bak*
+
+.trash/
+tmp/
+output/
+Claude outputs/
+movetest*
+test_delete_me*
+test_overwrite*
+
+*.tsbuildinfo

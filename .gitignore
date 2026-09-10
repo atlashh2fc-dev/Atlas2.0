@@ -42,3 +42,20 @@ next-env.d.ts
 migracion/
 supabase/.temp/
 .env*.local
+
+# restos de repositorios rotos
+# Cuando un `.git` se corrompe, la salida facil es renombrarlo y volver a
+# init. Ese cadaver se quedo versionado dos meses y viajaba a produccion en
+# cada build. Que no vuelva a entrar.
+.git-broken*
+.git-old*
+.git.bak*
+
+# scratch de agentes y pruebas manuales
+.trash/
+tmp/
+output/
+Claude outputs/
+movetest*
+test_delete_me*
+test_overwrite*
