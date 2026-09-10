@@ -32,6 +32,7 @@ type CampaignTipificationRow = {
   reason: string;
   status: string | null;
   outcome: string | null;
+  declared_result: string | null;
   total: number;
 };
 
@@ -537,6 +538,7 @@ export default async function ReportesPage({
               count: row.total,
               status: row.status,
               outcome: row.outcome,
+              declaredResult: row.declared_result,
             }))
           }
         />

@@ -30,7 +30,21 @@ export interface TipificationRow {
    */
   status?: string | null;
   outcome?: string | null;
+  /**
+   * Resultado que declara el nodo del workflow al que cuelga este motivo
+   * (`workflow_steps.result_kind`). Es lo más específico que existe: lo declara
+   * el administrador que arma la cascada de la campaña, así que manda sobre
+   * todo lo demás.
+   */
+  declaredResult?: string | null;
 }
+
+/** Traduce la declaración del workflow al vocabulario del tablero. */
+const DECLARED_TO_RESULT: Record<string, string> = {
+  interesado: "INTERESADO",
+  no_interesado: "NO INTERESADO",
+  no_contacto: "NO CONTACTO",
+};
 
 /** Desenlaces que declaran interés. Son los mismos a los que el catálogo
  *  comercial le asigna `resultLabel` INTERESADO, así que no introducen un
@@ -107,14 +121,20 @@ export function groupTipificationsByResult(rows: TipificationRow[]): Tipificatio
     const reason = String(row?.reason ?? "").trim();
     if (!reason) continue;
 
-    // El catálogo manda sobre los motivos que ya conoce, y sólo después se usa
-    // lo que declaró el cierre. No es un detalle de orden: "No es el momento"
-    // se cierra como `callback` igual que "Volver a llamar", pero el negocio lo
-    // cuenta como NO INTERESADO. Preguntar primero al catálogo deja intacta la
-    // clasificación de todo lo heredado de Equifax, y el desenlace del cierre
-    // sólo entra donde el catálogo no llega, que son las campañas con workflow
-    // propio.
+    // Orden de autoridad, de más específico a más genérico:
+    //
+    // 1. Lo que declaró el administrador en el nodo del workflow de ESTA
+    //    campaña. Nadie sabe mejor que él qué significa "Acuerdo de pago".
+    // 2. El catálogo comercial heredado, para los motivos que ya conoce.
+    // 3. El desenlace que grabó el cierre.
+    //
+    // Que el catálogo vaya antes que el cierre no es un detalle: "No es el
+    // momento" se cierra como `callback` igual que "Volver a llamar", pero el
+    // negocio lo cuenta como NO INTERESADO. Hay un test que recorre el catálogo
+    // entero y falla si alguien agrega otro motivo con esa contradicción.
+    const declared = row?.declaredResult ? DECLARED_TO_RESULT[row.declaredResult] : undefined;
     const result =
+      declared ??
       getReasonConfig(reason)?.resultLabel ??
       resultFromClosure(row?.status, row?.outcome) ??
       UNCLASSIFIED_RESULT;
