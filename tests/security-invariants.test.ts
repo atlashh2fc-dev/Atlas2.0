@@ -188,3 +188,38 @@ test("el reporte de supervisor conserva sus mensajes de negocio", () => {
     "volvió la función por fila que costaba el 77 % de los bloques",
   );
 });
+
+test(
+  "el embudo por canal exige rol y no responde a cualquiera con sesión",
+  { skip: SIN_CREDENCIALES ? motivoSalto : false },
+  async () => {
+    // Es SECURITY DEFINER, asi que omite el RLS de leads, calls y whatsapp.
+    // Sin guardia, cualquier agente obtenia base, contactados, interesados y
+    // ventas por canal de la campana completa.
+    const { data, error } = await anonimo!.rpc("get_secretaria_virtual_channel_funnel", {
+      p_from: "2026-01-01T00:00:00Z",
+      p_to: "2026-12-31T23:59:59Z",
+    });
+
+    assert.ok(
+      error,
+      `el embudo por canal devolvio datos sin sesion: ${JSON.stringify(data)?.slice(0, 120)}`,
+    );
+  },
+);
+
+test("el guardia de rol del embudo por canal sigue en su sitio", () => {
+  const sql = soloCodigo(
+    migracion("20260911024000_guard_secretaria_virtual_channel_funnel_by_role.sql"),
+  );
+  assert.match(
+    sql,
+    /not in \(''admin'', ''supervisor''\)/,
+    "desaparecio la comprobacion de rol del embudo por canal",
+  );
+  assert.match(
+    sql,
+    /request_is_service_role\(\)/,
+    "el guardia debe seguir dejando pasar a los procesos con clave de servicio",
+  );
+});
