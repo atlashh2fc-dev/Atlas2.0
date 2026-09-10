@@ -249,3 +249,40 @@ test(
     }
   },
 );
+
+test(
+  "los índices que hacen rápida la búsqueda por RUT siguen existiendo",
+  { skip: SIN_CREDENCIALES ? motivoSalto : false },
+  async () => {
+    // Una limpieza de índices soltó siete que nadie usaba. Estos tres se
+    // parecen a los soltados si uno mira sólo el contador de usos, pero son los
+    // que llevan la búsqueda por RUT de 619 ms a menos de 1. Aparecen con pocos
+    // usos porque el arreglo que los activó es reciente.
+    //
+    // En vez de inspeccionar el catálogo, se comprueba lo que importa: que la
+    // búsqueda siga respondiendo rápido y con resultados.
+    const { data: muestra, error: errorMuestra } = await servicio!
+      .from("leads")
+      .select("rut")
+      .not("rut", "is", null)
+      .neq("rut", "")
+      .limit(1);
+    assert.equal(errorMuestra, null, `no se pudo tomar un RUT de muestra: ${errorMuestra?.message}`);
+    const rut = muestra?.[0]?.rut as string | undefined;
+    assert.ok(rut, "no hay ningún lead con RUT contra el cual probar");
+
+    const inicio = Date.now();
+    const { data, error } = await servicio!.rpc("search_leads_quick", { p_term: rut });
+    const transcurrido = Date.now() - inicio;
+
+    assert.equal(error, null, `la búsqueda por RUT falló: ${error?.message}`);
+    assert.ok((data?.length ?? 0) > 0, `la búsqueda por RUT no encontró ${rut}`);
+    // Sin índice esto recorría 84 mil filas calculando la expresión regular dos
+    // veces por fila. El umbral es holgado a propósito: no mide la máquina,
+    // detecta que se volvió a un recorrido completo.
+    assert.ok(
+      transcurrido < 2000,
+      `la búsqueda por RUT tardó ${transcurrido} ms: parece haber vuelto al recorrido completo`,
+    );
+  },
+);
