@@ -569,6 +569,13 @@ function inferAgenda(reason: string, requiresEquifaxData: boolean): AgendaRequir
   ) {
     return "required";
   }
+  // Fuera del contrato Equifax una cotizacion admite seguimiento pero no lo
+  // exige: el cierre pasa con o sin fecha. La regla espejo vive en
+  // public.management_agenda_requirement (migracion 20260910190000) y es la
+  // unica que valida la base, para que UI y persistencia no puedan divergir.
+  if (normalized.includes("COTIZACION")) {
+    return "optional";
+  }
   return "none";
 }
 
@@ -736,7 +743,6 @@ export function validateCallClosure(payload: CallClosurePayload, catalog: CallRe
   }
 
   const hasAgenda = Boolean(payload.next_action_at);
-  const hasNotes = Boolean(payload.notes && payload.notes.trim().length > 0);
 
   if (reasonConfig.agenda === "required" && !hasAgenda) {
     errors.push("Esta tipificacion requiere fecha y hora de agenda.");
@@ -744,9 +750,8 @@ export function validateCallClosure(payload: CallClosurePayload, catalog: CallRe
   if (reasonConfig.agenda === "none" && hasAgenda) {
     errors.push("Esta tipificacion no admite una agenda.");
   }
-  if (reasonConfig.agenda === "optional" && !hasAgenda && !hasNotes) {
-    errors.push("Si no agendas fecha/hora, deja una observacion con el proximo paso.");
-  }
+  // "optional" no valida nada: la agenda es una decision del ejecutivo y el
+  // cierre nunca se bloquea por ella.
 
   if (payload.outcome === "sale" && payload.reason !== "VENTA EN VALIDACION") {
     errors.push("Para registrar venta usa la tipificacion VENTA EN VALIDACION.");

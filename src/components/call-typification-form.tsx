@@ -83,9 +83,12 @@ export function CallTypificationForm({
         : reasonCatalog.map((option) => ({
             ...option,
             requiresEquifaxData: false,
+            // Sin contrato Equifax la cotizacion no exige agenda, pero si la
+            // admite: dejarla en "none" impedia guardar la gestion, porque la
+            // base si acepta (y la operacion necesita) un seguimiento.
             agenda:
               option.value === "COTIZACION ENVIADA" && option.requiresEquifaxData
-                ? "none"
+                ? "optional"
                 : option.agenda,
           })),
     [equifaxCommercialFieldsEnabled, reasonCatalog]
@@ -209,7 +212,7 @@ export function CallTypificationForm({
       setNextActionAt("");
       setAppointmentScheduleOpen(false);
     }
-    if (appointmentScheduleUrl && option.agenda !== "none") {
+    if (appointmentScheduleUrl && option.agenda === "required") {
       // El calendario debe aparecer al tipificar agenda, mientras el agente
       // todavía puede completar la gestión, y nunca como efecto del corte.
       // Se usa el modal interno: una pestaña con window.open puede ser
@@ -478,7 +481,7 @@ export function CallTypificationForm({
                   >
                     {option.label}
                   </button>
-                  {appointmentScheduleUrl && !revision && option.agenda === "none" && option.outcome !== "sale" && option.value !== "COTIZACION ENVIADA" && (
+                  {appointmentScheduleUrl && !revision && option.agenda === "none" && option.outcome !== "sale" && (
                     <button
                       type="button"
                       aria-label={`Cerrar: ${option.label}`}
@@ -501,6 +504,9 @@ export function CallTypificationForm({
                 <div className="flex items-center gap-2">
                   <CalendarClock size={16} className="text-warning" />
                   <h3 className="text-sm font-semibold text-foreground">Agenda</h3>
+                  {reasonConfig?.agenda === "optional" && (
+                    <span className="text-xs font-medium text-muted-foreground">Opcional</span>
+                  )}
                 </div>
                 {appointmentScheduleUrl && (
                   <AppointmentScheduleEmbed

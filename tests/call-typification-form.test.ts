@@ -198,7 +198,7 @@ test("Secretaria Virtual quote closes without rendering or validating Equifax fi
     label: "Cotización Enviada",
     status: "connected",
     outcome: "other",
-    agenda: "none",
+    agenda: "optional",
     stateLabel: "CONTACTO",
     stateOrderIndex: 10,
     resultLabel: "COTIZACION ENVIADA",
@@ -217,6 +217,36 @@ test("Secretaria Virtual quote closes without rendering or validating Equifax fi
   assert.equal(f.submissions.length, 1);
   assert.equal((f.submissions[0].equifax_products as unknown[]).length, 0);
   assert.equal(f.submissions[0].equifax_uf_amount, null);
+  // El cierre pasa sin fecha: la agenda es opcional, no un requisito oculto.
+  assert.equal(f.submissions[0].next_action_at, null);
+  f.finish();
+  await f.flush();
+});
+
+test("Secretaria Virtual quote offers an optional agenda and submits the chosen date", async () => {
+  const secretariaQuote: typification.CallReasonConfig = {
+    value: "COTIZACION ENVIADA",
+    label: "Cotización Enviada",
+    status: "connected",
+    outcome: "other",
+    agenda: "optional",
+    stateLabel: "CONTACTO",
+    stateOrderIndex: 10,
+    resultLabel: "COTIZACION ENVIADA",
+    resultOrderIndex: 10,
+    reasonOrderIndex: 10,
+    requiresEquifaxData: false,
+  };
+  const f = fixture({ catalog: [secretariaQuote], legal: false });
+
+  f.click("Cotización Enviada");
+  // El bloque de agenda existe: antes la tipificación no ofrecía dónde poner la
+  // fecha que la base exigía, y la gestión quedaba imposible de cerrar.
+  assert.equal(f.all((e) => e.type === "h3" && e.props.children === "Agenda").length, 1);
+  f.change("datetime-local", "2026-09-11T10:00");
+  f.click("Guardar y cerrar");
+  assert.equal(f.submissions.length, 1);
+  assert.ok(f.submissions[0].next_action_at);
   f.finish();
   await f.flush();
 });

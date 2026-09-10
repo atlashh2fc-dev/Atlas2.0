@@ -89,7 +89,10 @@ test("Secretaria Virtual builds its own catalog from explicit workflow branches"
   assert.equal(catalog.find((reason) => reason.value === "NO CONTESTA")?.status, "no_answer");
   assert.equal(catalog.find((reason) => reason.value === "VOLVER A LLAMAR")?.agenda, "required");
   assert.equal(catalog.find((reason) => reason.value === "COTIZACION ENVIADA")?.requiresEquifaxData, false);
-  assert.equal(catalog.find((reason) => reason.value === "COTIZACION ENVIADA")?.agenda, "none");
+  // Fuera de Equifax la cotización admite seguimiento y no lo exige. Marcarla
+  // como "none" dejaba la gestión sin salida: la UI ocultaba la fecha que el
+  // trigger de la base exigía para cerrar.
+  assert.equal(catalog.find((reason) => reason.value === "COTIZACION ENVIADA")?.agenda, "optional");
   assert.deepEqual(
     getCascadeStateOptionsFrom(catalog).map((state) => state.label),
     ["CONTACTO", "NO CONTACTO"]
@@ -114,6 +117,26 @@ test("Secretaria Virtual builds its own catalog from explicit workflow branches"
     ),
     [],
     "Secretaria Virtual must not inherit Equifax product, UF or email requirements"
+  );
+
+  assert.deepEqual(
+    validateCallClosure(
+      {
+        status: "connected",
+        outcome: "other",
+        reason: "COTIZACION ENVIADA",
+        notes: null,
+        next_action_at: "2026-09-11T13:00:00.000Z",
+        equifax_products: [],
+        equifax_uf_amount: null,
+        equifax_recipient_email: null,
+        lead_email: null,
+        contact_email: null,
+      },
+      catalog
+    ),
+    [],
+    "Secretaria Virtual must accept a follow-up date on a sent quote"
   );
 });
 
