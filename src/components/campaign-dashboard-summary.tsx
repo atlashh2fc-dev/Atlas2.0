@@ -19,7 +19,10 @@ import type {
 import { CALL_REASONS } from "@/lib/call-typification";
 import { REPORT_TIME_ZONE } from "@/lib/report-range";
 import { TipificationBreakdown } from "@/components/tipification-breakdown";
-import { groupTipificationsByResult } from "@/lib/tipification-breakdown";
+import {
+  groupTipificationsByResult,
+  type TipificationRow,
+} from "@/lib/tipification-breakdown";
 import {
   funnelStageLabel,
   getCampaignVocabulary,
@@ -43,6 +46,13 @@ interface Props {
   vertical?: CampaignVertical;
   showFunnelOrigins?: boolean;
   channelFunnel?: SecretariaVirtualChannelFunnelRow[];
+  /**
+   * Tipificaciones con el estado y el desenlace que dejó grabado el cierre.
+   * Cuando llegan, mandan sobre `summary.reasons`, que sólo trae el motivo:
+   * son las que permiten clasificar a una campaña con workflow propio. Opcional
+   * para que el panel siga funcionando donde todavía no se pasan.
+   */
+  tipificationRows?: TipificationRow[];
 }
 
 const REASON_LABEL = new Map(CALL_REASONS.map((r) => [r.value, r.label]));
@@ -360,6 +370,7 @@ export function CampaignDashboardSummary({
   vertical = "ventas",
   showFunnelOrigins = false,
   channelFunnel,
+  tipificationRows,
 }: Props) {
   const vocabulary = getCampaignVocabulary(vertical);
   const kpis = summary.kpis;
@@ -374,7 +385,7 @@ export function CampaignDashboardSummary({
     current: ratio(kpis.ventas.current, kpis.contactadas.current),
     previous: ratio(kpis.ventas.previous, kpis.contactadas.previous),
   };
-  const tipifications = groupTipificationsByResult(summary.reasons);
+  const tipifications = groupTipificationsByResult(tipificationRows ?? summary.reasons);
   const funnel = summary.funnel.map((stage) => ({
     ...stage,
     name: funnelStageLabel(vocabulary, stage.name),

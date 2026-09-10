@@ -27,6 +27,14 @@ import {
 import { formatReportRangeLabel, resolveReportRange, toDateInput } from "@/lib/report-range";
 import { isSecretariaVirtualAuditCampaign } from "@/lib/secretaria-virtual-quality-rubric";
 
+/** Fila de `get_campaign_tipification_breakdown`. */
+type CampaignTipificationRow = {
+  reason: string;
+  status: string | null;
+  outcome: string | null;
+  total: number;
+};
+
 type SupervisorReportKpis = {
   base_total: number;
   asignados: number;
@@ -428,7 +436,7 @@ export default async function ReportesPage({
   const showChannelFunnel =
     selectedCampaign !== null && isSecretariaVirtualAuditCampaign(selectedCampaign.name);
 
-  const [hourlyResult, summaryResult, channelFunnelResult] = await Promise.all([
+  const [hourlyResult, summaryResult, channelFunnelResult, tipificationResult] = await Promise.all([
     supabase.rpc("get_contactability_by_hour", {
       p_from: dashboardFrom.toISOString(),
       p_to: dashboardTo.toISOString(),
@@ -449,6 +457,14 @@ export default async function ReportesPage({
           p_to: dashboardTo.toISOString(),
         })
       : Promise.resolve({ data: null, error: null }),
+    // Trae el estado y el desenlace que dejó grabado cada cierre. Es lo que
+    // permite clasificar las tipificaciones de una campaña con workflow propio,
+    // que el resumen no distingue porque sólo devuelve el motivo.
+    supabase.rpc("get_campaign_tipification_breakdown", {
+      p_from: dashboardFrom.toISOString(),
+      p_to: dashboardTo.toISOString(),
+      p_campaign_id: selectedCampaignId,
+    }),
   ]);
   const { data: hourlyData } = hourlyResult;
   const { data, error } = summaryResult;
@@ -514,6 +530,14 @@ export default async function ReportesPage({
             showChannelFunnel
               ? ((channelFunnelResult.data ?? []) as SecretariaVirtualChannelFunnelRow[])
               : undefined
+          }
+          tipificationRows={
+            ((tipificationResult.data ?? []) as CampaignTipificationRow[]).map((row) => ({
+              reason: row.reason,
+              count: row.total,
+              status: row.status,
+              outcome: row.outcome,
+            }))
           }
         />
       )}

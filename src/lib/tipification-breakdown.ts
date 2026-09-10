@@ -19,6 +19,38 @@ const REASON_LABEL = new Map(CALL_REASONS.map((reason) => [reason.value, reason.
 export interface TipificationRow {
   reason: string;
   count: number;
+  /**
+   * Estado y resultado que el cierre dejó grabados en la llamada. Son la
+   * declaración del workflow de la campaña, materializada por gestión: cuando
+   * un ejecutivo cierra, `closeCall` arma el catálogo desde los pasos del
+   * workflow y persiste estos dos campos junto al motivo. Están poblados en el
+   * 100 % de las gestiones, así que son la fuente correcta para decidir si una
+   * tipificación significa interés, en vez de reconocer el texto del motivo.
+   * Opcionales porque una RPC antigua puede no devolverlos todavía.
+   */
+  status?: string | null;
+  outcome?: string | null;
+}
+
+/** Desenlaces que declaran interés. Son los mismos a los que el catálogo
+ *  comercial le asigna `resultLabel` INTERESADO, así que no introducen un
+ *  criterio nuevo: lo extienden a las campañas con workflow propio. */
+const INTERESTED_OUTCOMES = new Set(["sale", "interested", "callback"]);
+
+/**
+ * Resuelve el grupo desde lo que el cierre dejó grabado.
+ *
+ * Devuelve null cuando la gestión fue efectiva pero su desenlace quedó en
+ * `other`, que es justamente el caso que el workflow no clasificó. Ahí se cae
+ * al catálogo, y si tampoco lo cubre queda sin clasificar, en vez de
+ * inventarle una intención.
+ */
+function resultFromClosure(status?: string | null, outcome?: string | null): string | null {
+  if (!status) return null;
+  if (status !== "connected") return "NO CONTACTO";
+  if (outcome && INTERESTED_OUTCOMES.has(outcome)) return "INTERESADO";
+  if (outcome === "not_interested") return "NO INTERESADO";
+  return null;
 }
 
 export interface TipificationDetail {
@@ -75,7 +107,17 @@ export function groupTipificationsByResult(rows: TipificationRow[]): Tipificatio
     const reason = String(row?.reason ?? "").trim();
     if (!reason) continue;
 
-    const result = getReasonConfig(reason)?.resultLabel ?? UNCLASSIFIED_RESULT;
+    // El catálogo manda sobre los motivos que ya conoce, y sólo después se usa
+    // lo que declaró el cierre. No es un detalle de orden: "No es el momento"
+    // se cierra como `callback` igual que "Volver a llamar", pero el negocio lo
+    // cuenta como NO INTERESADO. Preguntar primero al catálogo deja intacta la
+    // clasificación de todo lo heredado de Equifax, y el desenlace del cierre
+    // sólo entra donde el catálogo no llega, que son las campañas con workflow
+    // propio.
+    const result =
+      getReasonConfig(reason)?.resultLabel ??
+      resultFromClosure(row?.status, row?.outcome) ??
+      UNCLASSIFIED_RESULT;
     const bucket = buckets.get(result) ?? new Map<string, number>();
     bucket.set(reason, (bucket.get(reason) ?? 0) + count);
     buckets.set(result, bucket);
