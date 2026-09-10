@@ -3,9 +3,7 @@
 import {
   Area,
   Bar,
-  BarChart,
   CartesianGrid,
-  Cell,
   ComposedChart,
   Line,
   ResponsiveContainer,
@@ -20,6 +18,8 @@ import type {
 } from "@/lib/types";
 import { CALL_REASONS } from "@/lib/call-typification";
 import { REPORT_TIME_ZONE } from "@/lib/report-range";
+import { TipificationBreakdown } from "@/components/tipification-breakdown";
+import { groupTipificationsByResult } from "@/lib/tipification-breakdown";
 import {
   funnelStageLabel,
   getCampaignVocabulary,
@@ -61,18 +61,6 @@ function reasonLabel(value: string): string {
   const lower = text.toLocaleLowerCase("es");
   return lower.charAt(0).toLocaleUpperCase("es") + lower.slice(1);
 }
-
-const CHART_COLORS = [
-  "var(--primary)",
-  "var(--accent)",
-  "var(--foreground)",
-  "var(--muted-foreground)",
-  "var(--success)",
-  "var(--warning)",
-  "var(--danger)",
-  "color-mix(in srgb, var(--primary) 62%, var(--accent))",
-  "color-mix(in srgb, var(--muted-foreground) 55%, var(--accent))",
-];
 
 function fmtInt(n: number): string {
   return Math.round(n).toLocaleString("es-CL");
@@ -386,10 +374,7 @@ export function CampaignDashboardSummary({
     current: ratio(kpis.ventas.current, kpis.contactadas.current),
     previous: ratio(kpis.ventas.previous, kpis.contactadas.previous),
   };
-  const reasonData = summary.reasons.map((r) => ({
-    ...r,
-    label: reasonLabel(r.reason),
-  }));
+  const tipifications = groupTipificationsByResult(summary.reasons);
   const funnel = summary.funnel.map((stage) => ({
     ...stage,
     name: funnelStageLabel(vocabulary, stage.name),
@@ -449,29 +434,9 @@ export function CampaignDashboardSummary({
           </ResponsiveContainer>
         </div>
 
-        <div className="rounded-xl border border-border bg-surface p-5">
-          <h3 className="mb-3 text-sm font-semibold text-foreground">{vocabulary.motivosTitle}</h3>
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={reasonData} layout="vertical" margin={{ left: 24 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis type="number" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
-              <YAxis type="category" dataKey="label" width={150} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
-              <Tooltip
-                contentStyle={{
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  fontSize: 12,
-                }}
-              />
-              <Bar dataKey="count" radius={[0, 4, 4, 0]}>
-                {reasonData.map((entry, i) => (
-                  <Cell key={entry.reason} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        {/* Reemplaza la barra plana de motivos: mostraba las mismas etiquetas
+            sueltas, sin decir cuáles significan interés y cuáles no. */}
+        <TipificationBreakdown breakdown={tipifications} title={vocabulary.motivosTitle} />
 
         <ContactabilityByHour data={hourly} />
       </div>
