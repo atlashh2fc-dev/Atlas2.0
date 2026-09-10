@@ -1,0 +1,11 @@
+# Commits que se desplegaron a produccion sin pasar por el repositorio y cuyo
+# contenido ya se rescato desde el build de Vercel. El SHA original no existe en
+# ningun clon, asi que se listan aqui para que la auditoria no alerte de por vida.
+#
+# Formato: un SHA (o prefijo) por linea.
+
+# 2026-09-10, Matias Duran Munoz, recuperados en la rama recuperacion/matias-filtro-campana
+76e0fb32fe   # Reporta origen del embudo y filtra agenda de Emily
+f4641293ef   # Agrega embudo por canal para Secretaria Virtual
+1137230b9d   # Corrige permisos del embudo por canal
+3fd2ba084d   # Quita filtro global de campana del encabezado
