@@ -10,7 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "test": "node --experimental-strip-types --env-file-if-exists=.env.local --test tests/*.test.ts",
     "deploy:prod": "bash scripts/deploy-prod.sh",
     "auditar:prod": "node scripts/auditar-produccion.mjs"
   },
