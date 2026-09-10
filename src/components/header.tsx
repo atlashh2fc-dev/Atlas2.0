@@ -1,11 +1,9 @@
-import { Suspense } from "react";
 import type { Profile } from "@/lib/types";
 import { MobileNav, WorkspaceContext } from "@/components/mobile-nav";
 import type { NavBadgeCounts } from "@/components/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { QuickSearch } from "@/components/quick-search";
 import { AgendaBell } from "@/components/agenda-reminder";
-import { CampaignScopeSwitcher } from "@/components/campaign-scope-switcher";
 import { DemoRoleSwitcher } from "@/components/demo-role-switcher";
 import type { DemoViewAccount } from "@/lib/demo-view";
 import { signOut } from "@/app/actions/auth";
@@ -13,12 +11,10 @@ import { LogOut } from "lucide-react";
 
 export function Header({
   profile,
-  campaigns,
   badges,
   demoAccounts = [],
 }: {
   profile: Profile;
-  campaigns: { id: string; name: string }[];
   badges?: NavBadgeCounts;
   /** Vistas disponibles cuando la cuenta es de demostración. */
   demoAccounts?: DemoViewAccount[];
@@ -32,11 +28,6 @@ export function Header({
 
       <div className="flex items-center gap-3">
         {profile.is_demo && <DemoRoleSwitcher accounts={demoAccounts} currentId={profile.id} />}
-        {/* Lee la campaña de la URL, así que necesita su propio límite de
-            Suspense igual que el selector de período de los reportes. */}
-        <Suspense fallback={null}>
-          <CampaignScopeSwitcher campaigns={campaigns} role={profile.role} />
-        </Suspense>
         <QuickSearch role={profile.role} userId={profile.id} />
         {profile.role === "agente" && <AgendaBell />}
         <ThemeToggle />

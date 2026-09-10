@@ -400,6 +400,14 @@ export interface CampaignDashboardSummaryMetric {
   previous: number;
 }
 
+export interface SecretariaVirtualChannelFunnelRow {
+  channel: "Mail" | "WhatsApp" | "Llamada / base";
+  base: number;
+  contacted: number;
+  interested: number;
+  sales: number;
+}
+
 export interface CampaignDashboardSummary {
   total_leads: number;
   range: {
@@ -415,7 +423,12 @@ export interface CampaignDashboardSummary {
     uf_total: CampaignDashboardSummaryMetric;
     cotizaciones: number;
   };
-  funnel: { name: string; value: number }[];
+  funnel: {
+    name: string;
+    value: number;
+    /** Un origen por lead; los subtotales coinciden con el valor de la etapa. */
+    origins?: { name: string; value: number }[];
+  }[];
   reasons: { reason: string; count: number }[];
   products: { product: string; count: number; uf: number }[];
   time_series: { date: string; gestiones: number; ventas: number }[];

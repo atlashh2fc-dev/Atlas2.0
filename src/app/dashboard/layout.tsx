@@ -19,19 +19,6 @@ export default async function DashboardLayout({
   const { canAttendCustomers } = getWorkspacePermissions(profile.role);
   const showAgendaReminder = canAttendCustomers;
   const supabase = await createClient();
-  const [{ data: rawCampaignRows }, { data: memberships }] = await Promise.all([
-    profile.role === "agente"
-      ? supabase.from("campaigns").select("id, name").eq("is_active", true).order("name")
-      : supabase.rpc("get_report_scope_campaigns"),
-    profile.role === "agente"
-      ? supabase.from("campaign_agents").select("campaign_id").eq("profile_id", profile.id)
-      : Promise.resolve({ data: [] as { campaign_id: string }[] }),
-  ]);
-  const campaignRows = (rawCampaignRows ?? []) as { id: string; name: string }[];
-  const assignedCampaignIds = new Set((memberships ?? []).map((membership) => membership.campaign_id));
-  const campaigns = campaignRows.filter(
-    (campaign) => profile.role !== "agente" || assignedCampaignIds.has(campaign.id)
-  );
 
   // Contador del menú: las agendas vencidas del ejecutivo. Es una cuenta con
   // `head: true`, no trae filas.
@@ -59,11 +46,11 @@ export default async function DashboardLayout({
         <div className="flex flex-1 flex-col overflow-hidden">
           {showAgendaReminder ? (
             <AgendaProvider userId={profile.id}>
-              <Header profile={profile} campaigns={campaigns} badges={badges} demoAccounts={demoAccounts} />
+              <Header profile={profile} badges={badges} demoAccounts={demoAccounts} />
               <AgendaBanner />
             </AgendaProvider>
           ) : (
-            <Header profile={profile} campaigns={campaigns} demoAccounts={demoAccounts} />
+            <Header profile={profile} demoAccounts={demoAccounts} />
           )}
           <main className="flex-1 overflow-y-auto p-5">{children}</main>
         </div>

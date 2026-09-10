@@ -9,8 +9,10 @@ import type {
   CampaignDashboardSummary as CampaignDashboardSummaryData,
   AiVoiceCampaignConfig,
   DialerCampaignConfig,
+  SecretariaVirtualChannelFunnelRow,
 } from "@/lib/types";
 import { ActionForm, ActionSubmit, Badge, Card, Field, Input, SectionCard, Select } from "@/components/ui";
+import { isSecretariaVirtualAuditCampaign } from "@/lib/secretaria-virtual-quality-rubric";
 
 const DASHBOARD_WINDOW_DAYS = 30;
 
@@ -54,6 +56,7 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
 
   const [
     { data: summary, error: summaryError },
+    { data: channelFunnel },
     { count: leadCount },
     { count: memberCount },
     { data: dialerConfig },
@@ -69,6 +72,12 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
       p_previous_from: previousFrom.toISOString(),
       p_previous_to: previousTo.toISOString(),
     }),
+    isSecretariaVirtualAuditCampaign(campaign.name)
+      ? supabase.rpc("get_secretaria_virtual_channel_funnel", {
+          p_from: from.toISOString(),
+          p_to: to.toISOString(),
+        })
+      : Promise.resolve({ data: null, error: null }),
     supabase.from("leads").select("id", { count: "exact", head: true }).eq("campaign_id", id),
     supabase.from("campaign_agents").select("id", { count: "exact", head: true }).eq("campaign_id", id),
     supabase.from("dialer_campaign_configs").select("*").eq("campaign_id", id).maybeSingle(),
@@ -306,6 +315,11 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
           summary={summary as CampaignDashboardSummaryData}
           hourly={(hourly ?? []) as ContactabilityHour[]}
           vertical={campaignVertical}
+          channelFunnel={
+            isSecretariaVirtualAuditCampaign(campaign.name)
+              ? ((channelFunnel ?? []) as SecretariaVirtualChannelFunnelRow[])
+              : undefined
+          }
         />
       )}
     </div>

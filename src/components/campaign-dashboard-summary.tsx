@@ -13,7 +13,11 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import type { CampaignDashboardSummary as CampaignDashboardSummaryData, CampaignDashboardSummaryMetric } from "@/lib/types";
+import type {
+  CampaignDashboardSummary as CampaignDashboardSummaryData,
+  CampaignDashboardSummaryMetric,
+  SecretariaVirtualChannelFunnelRow,
+} from "@/lib/types";
 import { CALL_REASONS } from "@/lib/call-typification";
 import { REPORT_TIME_ZONE } from "@/lib/report-range";
 import {
@@ -37,9 +41,12 @@ interface Props {
   hourly: ContactabilityHour[];
   /** Vocabulario del tablero: una cartera no cierra ventas, recupera deuda. */
   vertical?: CampaignVertical;
+  showFunnelOrigins?: boolean;
+  channelFunnel?: SecretariaVirtualChannelFunnelRow[];
 }
 
 const REASON_LABEL = new Map(CALL_REASONS.map((r) => [r.value, r.label]));
+const AGENDA_ASSIGNEE = "emily";
 
 /**
  * Etiqueta legible de una tipificación. El catálogo comercial cubre los cierres
@@ -173,7 +180,13 @@ function ContactabilityByHour({ data }: { data: ContactabilityHour[] }) {
  * conserva la proporción pero nunca baja de un mínimo visible, y el dato que
  * importa —cuánto se conserva de una etapa a la siguiente— va escrito.
  */
-function FunnelStages({ stages }: { stages: { name: string; value: number }[] }) {
+function FunnelStages({
+  stages,
+  showOrigins = false,
+}: {
+  stages: CampaignDashboardSummaryData["funnel"];
+  showOrigins?: boolean;
+}) {
   const base = stages[0]?.value ?? 0;
 
   return (
@@ -208,6 +221,24 @@ function FunnelStages({ stages }: { stages: { name: string; value: number }[] })
                 role="presentation"
               />
             </div>
+            {showOrigins && (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                <span className="font-medium">Origen:</span>
+                {(stage.origins ?? []).length === 0 ? (
+                  <span>Sin desglose disponible</span>
+                ) : (
+                  stage.origins?.map((origin) => (
+                    <span
+                      key={origin.name}
+                      className="rounded-full border border-border bg-surface-muted px-2 py-0.5"
+                    >
+                      {origin.name}: <span className="font-semibold text-foreground">{fmtInt(origin.value)}</span>
+                      {stage.value > 0 && ` · ${fmtPct(origin.value / stage.value)}`}
+                    </span>
+                  ))
+                )}
+              </div>
+            )}
           </li>
         );
       })}
@@ -267,9 +298,86 @@ function ratio(current: number, total: number): number {
   return total > 0 ? current / total : 0;
 }
 
-export function CampaignDashboardSummary({ summary, hourly, vertical = "ventas" }: Props) {
+function ChannelFunnelTable({ rows }: { rows: SecretariaVirtualChannelFunnelRow[] }) {
+  const totals = rows.reduce(
+    (sum, row) => ({
+      base: sum.base + row.base,
+      contacted: sum.contacted + row.contacted,
+      interested: sum.interested + row.interested,
+      sales: sum.sales + row.sales,
+    }),
+    { base: 0, contacted: 0, interested: 0, sales: 0 }
+  );
+
+  return (
+    <section className="rounded-xl border border-border bg-surface p-5">
+      <h3 className="text-sm font-semibold text-foreground">Resultado por canal de origen</h3>
+      <p className="mb-4 mt-1 text-xs text-muted-foreground">
+        Atribuye cada lead a su canal de entrada original; una conversación posterior por WhatsApp no cambia su origen.
+      </p>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[560px] text-left text-sm">
+          <thead className="border-b border-border text-xs text-muted-foreground">
+            <tr>
+              <th className="py-2 font-medium">Canal</th>
+              <th className="py-2 text-right font-medium">Base</th>
+              <th className="py-2 text-right font-medium">Contactados</th>
+              <th className="py-2 text-right font-medium">Interesados</th>
+              <th className="py-2 text-right font-medium">Ventas</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {rows.map((row) => (
+              <tr key={row.channel}>
+                <td className="py-2.5 font-medium text-foreground">{row.channel}</td>
+                <td className="py-2.5 text-right tabular-nums text-muted-foreground">{fmtInt(row.base)}</td>
+                <td className="py-2.5 text-right tabular-nums text-muted-foreground">{fmtInt(row.contacted)}</td>
+                <td className="py-2.5 text-right tabular-nums text-muted-foreground">{fmtInt(row.interested)}</td>
+                <td className="py-2.5 text-right font-semibold tabular-nums text-foreground">{fmtInt(row.sales)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot className="border-t border-border font-semibold text-foreground">
+            <tr>
+              <td className="pt-2.5">Total</td>
+              <td className="pt-2.5 text-right tabular-nums">{fmtInt(totals.base)}</td>
+              <td className="pt-2.5 text-right tabular-nums">{fmtInt(totals.contacted)}</td>
+              <td className="pt-2.5 text-right tabular-nums">{fmtInt(totals.interested)}</td>
+              <td className="pt-2.5 text-right tabular-nums">{fmtInt(totals.sales)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <p className="mt-4 text-xs text-muted-foreground">
+        Contactado: conversación efectiva. Interesado: seguimiento, derivación o agenda. Venta: venta en validación registrada.
+      </p>
+    </section>
+  );
+}
+
+function isVisibleAgendaItem(item: CampaignDashboardSummaryData["agenda"][number]): boolean {
+  const assigneeTokens = item.agent_name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("es-CL")
+    .trim()
+    .split(/\s+/);
+
+  return !item.overdue && assigneeTokens.includes(AGENDA_ASSIGNEE);
+}
+
+export function CampaignDashboardSummary({
+  summary,
+  hourly,
+  vertical = "ventas",
+  showFunnelOrigins = false,
+  channelFunnel,
+}: Props) {
   const vocabulary = getCampaignVocabulary(vertical);
   const kpis = summary.kpis;
+  // Los vencidos y los compromisos de otros ejecutivos siguen en la base y en
+  // su trazabilidad; sólo se ocultan en este panel de campañas.
+  const visibleAgenda = summary.agenda.filter(isVisibleAgendaItem);
   const contactabilidad = {
     current: ratio(kpis.contactadas.current, kpis.gestionadas.current),
     previous: ratio(kpis.contactadas.previous, kpis.gestionadas.previous),
@@ -304,12 +412,20 @@ export function CampaignDashboardSummary({ summary, hourly, vertical = "ventas" 
         <KpiCard label={vocabulary.kpi.monto} value={`${Number(kpis.uf_total.current).toFixed(1)} UF`} metric={kpis.uf_total} />
       </div>
 
+      {channelFunnel && channelFunnel.length > 0 && <ChannelFunnelTable rows={channelFunnel} />}
+
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-xl border border-border bg-surface p-5">
-          <h3 className="mb-3 text-sm font-semibold text-foreground">
+          <h3 className="text-sm font-semibold text-foreground">
             {vertical === "cobranza" ? "Embudo de recuperación" : "Embudo de gestión"}
           </h3>
-          <FunnelStages stages={funnel} />
+          {showFunnelOrigins && (
+            <p className="mb-3 mt-1 text-xs text-muted-foreground">
+              Cada etapa se desglosa por la procedencia registrada del lead.
+            </p>
+          )}
+          {!showFunnelOrigins && <div className="mb-3" />}
+          <FunnelStages stages={funnel} showOrigins={showFunnelOrigins} />
         </div>
 
         <div className="rounded-xl border border-border bg-surface p-5">
@@ -376,14 +492,14 @@ export function CampaignDashboardSummary({ summary, hourly, vertical = "ventas" 
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {summary.agenda.length === 0 && (
+                {visibleAgenda.length === 0 && (
                   <tr>
                     <td colSpan={4} className="py-4 text-center text-muted-foreground">
                       Sin agenda pendiente en el período.
                     </td>
                   </tr>
                 )}
-                {summary.agenda.map((item) => (
+                {visibleAgenda.map((item) => (
                   <tr key={item.id}>
                     <td className="py-1.5 text-foreground">{item.lead_full_name}</td>
                     <td className="py-1.5 text-muted-foreground">{item.agent_name}</td>

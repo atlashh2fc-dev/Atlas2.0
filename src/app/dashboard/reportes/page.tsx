@@ -1,7 +1,10 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { ReactNode } from "react";
-import type { CampaignDashboardSummary as CampaignDashboardSummaryData } from "@/lib/types";
+import type {
+  CampaignDashboardSummary as CampaignDashboardSummaryData,
+  SecretariaVirtualChannelFunnelRow,
+} from "@/lib/types";
 import { CampaignDashboardSummary, type ContactabilityHour } from "@/components/campaign-dashboard-summary";
 import {
   SupervisorAgentFocusChart,
@@ -22,6 +25,7 @@ import {
   funnelStageLabel,
 } from "@/lib/campaign-vertical";
 import { formatReportRangeLabel, resolveReportRange, toDateInput } from "@/lib/report-range";
+import { isSecretariaVirtualAuditCampaign } from "@/lib/secretaria-virtual-quality-rubric";
 
 type SupervisorReportKpis = {
   base_total: number;
@@ -421,22 +425,33 @@ export default async function ReportesPage({
   // vocabulario comercial, que es el común a todas.
   const adminVertical = parseCampaignVertical(selectedCampaign?.vertical);
   let dashboardSummary: CampaignDashboardSummaryData | null = null;
+  const showChannelFunnel =
+    selectedCampaign !== null && isSecretariaVirtualAuditCampaign(selectedCampaign.name);
 
-  const { data: hourlyData } = await supabase.rpc("get_contactability_by_hour", {
-    p_from: dashboardFrom.toISOString(),
-    p_to: dashboardTo.toISOString(),
-    p_campaign_id: selectedCampaignId,
-  });
-
-  const { data, error } = await supabase.rpc("get_crm_dashboard_summary", {
-    p_from: dashboardFrom.toISOString(),
-    p_to: dashboardTo.toISOString(),
-    // El comparativo sigue al período elegido: antes restaba 30 días siempre,
-    // así que cualquier otra ventana habría comparado contra un tramo ajeno.
-    p_previous_from: range.previousFrom.toISOString(),
-    p_previous_to: range.previousTo.toISOString(),
-    p_campaign_id: selectedCampaignId,
-  });
+  const [hourlyResult, summaryResult, channelFunnelResult] = await Promise.all([
+    supabase.rpc("get_contactability_by_hour", {
+      p_from: dashboardFrom.toISOString(),
+      p_to: dashboardTo.toISOString(),
+      p_campaign_id: selectedCampaignId,
+    }),
+    supabase.rpc("get_crm_dashboard_summary", {
+      p_from: dashboardFrom.toISOString(),
+      p_to: dashboardTo.toISOString(),
+      // El comparativo sigue al período elegido: antes restaba 30 días siempre,
+      // así que cualquier otra ventana habría comparado contra un tramo ajeno.
+      p_previous_from: range.previousFrom.toISOString(),
+      p_previous_to: range.previousTo.toISOString(),
+      p_campaign_id: selectedCampaignId,
+    }),
+    showChannelFunnel
+      ? supabase.rpc("get_secretaria_virtual_channel_funnel", {
+          p_from: dashboardFrom.toISOString(),
+          p_to: dashboardTo.toISOString(),
+        })
+      : Promise.resolve({ data: null, error: null }),
+  ]);
+  const { data: hourlyData } = hourlyResult;
+  const { data, error } = summaryResult;
 
   if (error) {
     return (
@@ -495,6 +510,11 @@ export default async function ReportesPage({
           summary={dashboardSummary}
           hourly={(hourlyData ?? []) as ContactabilityHour[]}
           vertical={adminVertical}
+          channelFunnel={
+            showChannelFunnel
+              ? ((channelFunnelResult.data ?? []) as SecretariaVirtualChannelFunnelRow[])
+              : undefined
+          }
         />
       )}
     </div>
