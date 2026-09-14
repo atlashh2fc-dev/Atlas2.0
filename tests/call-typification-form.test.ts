@@ -291,3 +291,33 @@ test("Equifax quote keeps its scoped commercial fields and blocks incomplete clo
   f.click("Guardar y cerrar");
   assert.equal(f.submissions.length, 0);
 });
+
+test("a result option with its own step renders as a labelled group whose sub-options still select", () => {
+  const s = (id: string, name: string, options: string[], extra: Record<string, unknown> = {}) => ({
+    id, workflow_id: "wf", step_order: 1, name, description: null, is_mandatory: true, allowed_results: options,
+    field_type: "combobox", options, pos_x: 0, pos_y: 0, is_start: false, created_at: "", ...extra,
+  });
+  const b = (id: string, from: string, option: string, to: string) => ({
+    id, workflow_id: "wf", from_step_id: from, from_option: option, to_step_id: to, created_at: "",
+  });
+  const workflowCatalog = typification.buildCallReasonCatalogFromWorkflow(
+    [
+      s("call", "Llamada", ["Conecta", "No Conecta"], { is_start: true }),
+      s("connected", "Conecta", ["Volver a Llamar", "No Interesa"]),
+      s("not-connected", "No Conecta", ["No Contesta"]),
+      s("not-interested", "No Interesa", ["No lo Necesita", "Por precio"]),
+    ] as never,
+    [
+      b("e1", "call", "Conecta", "connected"),
+      b("e2", "call", "No Conecta", "not-connected"),
+      b("e3", "connected", "No Interesa", "not-interested"),
+    ] as never
+  );
+  const f = fixture({ catalog: workflowCatalog, legal: false });
+
+  f.one((e) => e.props.role === "group" && e.props["aria-label"] === "No Interesa");
+  assert.equal(f.all((e) => e.type === "button" && e.props.children === "No Interesa").length, 0);
+
+  f.click("No lo Necesita");
+  assert.equal(f.one((e) => e.type === "button" && e.props["aria-pressed"] === true).props.children, "No lo Necesita");
+});

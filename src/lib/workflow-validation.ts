@@ -133,6 +133,37 @@ export function validateWorkflow(steps: WorkflowStep[], branches: WorkflowStepBr
     }
   }
 
+  // Una conexión que vuelve a un paso ya recorrido no tiene fin: la ficha corta
+  // el camino en la opción que cierra el ciclo y la ofrece como motivo final.
+  const adjacency = new Map<string, string[]>();
+  for (const branch of branches) {
+    if (!branch.to_step_id) continue;
+    adjacency.set(branch.from_step_id, [...(adjacency.get(branch.from_step_id) ?? []), branch.to_step_id]);
+  }
+  const visitState = new Map<string, "visiting" | "done">();
+  const cyclic = new Set<string>();
+  const walk = (stepId: string) => {
+    visitState.set(stepId, "visiting");
+    for (const next of adjacency.get(stepId) ?? []) {
+      const mark = visitState.get(next);
+      if (mark === "visiting") cyclic.add(stepId);
+      else if (!mark) walk(next);
+    }
+    visitState.set(stepId, "done");
+  };
+  for (const step of steps) {
+    if (!visitState.has(step.id)) walk(step.id);
+  }
+  for (const step of steps) {
+    if (cyclic.has(step.id)) {
+      issues.push({
+        level: "warning",
+        message: `«${step.name}» tiene una conexión que vuelve a un paso anterior; en la ficha ese camino termina ahí.`,
+        stepId: step.id,
+      });
+    }
+  }
+
   return issues;
 }
 

@@ -20,6 +20,13 @@ export interface CallReasonConfig {
   resultOrderIndex: number;
   reasonOrderIndex: number;
   /**
+   * Opciones intermedias del flujo entre el resultado y este motivo, en orden.
+   * «No lo necesita» cuelga de «No Interesa», así que su ruta es ["No Interesa"].
+   * La ficha las muestra como grupos para que el ejecutivo vea el mismo árbol
+   * que armó el administrador.
+   */
+  groupPath?: string[];
+  /**
    * Activa los campos comerciales heredados de Equifax para este cierre.
    * La misma etiqueta (por ejemplo, COTIZACION ENVIADA) puede existir en
    * otros flujos sin compartir ese contrato de datos.
@@ -657,6 +664,7 @@ export function buildCallReasonCatalogFromWorkflow(
     resultOrderIndex: number;
     reasonLabel: string;
     reasonOrderIndex: number;
+    groupPath: string[];
   }) {
     const value = normalizeText(input.reasonLabel);
     if (!value) return;
@@ -677,6 +685,7 @@ export function buildCallReasonCatalogFromWorkflow(
       resultLabel: input.resultLabel,
       resultOrderIndex: input.resultOrderIndex,
       reasonOrderIndex: input.reasonOrderIndex,
+      groupPath: input.groupPath,
     });
   }
 
@@ -695,45 +704,53 @@ export function buildCallReasonCatalogFromWorkflow(
         resultOrderIndex: 10,
         reasonLabel: stateTarget ? titleToReason(stateTarget, stateOption) : stateOption,
         reasonOrderIndex: 10,
+        groupPath: [],
       });
       return;
     }
 
     targetOptions.forEach((resultOption, resultIndex) => {
-      const resultTargetId = branchTarget(workflowBranches, stateTarget.id, resultOption);
-      const resultTarget = resultTargetId ? stepById.get(resultTargetId) ?? null : null;
       const resultLabel = displayResultLabel(stateLabel, resultOption);
       const resultOrderIndex = resultIndex * 10 + 10;
-      const reasonOptions = stepOptions(resultTarget);
+      let reasonOrderIndex = 0;
 
-      if (resultTarget && reasonOptions.length > 0) {
-        reasonOptions.forEach((reasonOption, reasonIndex) => {
-          pushReason({
-            stateLabel,
-            stateOrderIndex,
-            resultLabel,
-            resultOrderIndex,
-            reasonLabel: reasonOption,
-            reasonOrderIndex: reasonIndex * 10 + 10,
-          });
+      // Recorre la rama completa, sin límite de niveles. Antes se leían solo
+      // tres (estado, resultado, motivo): una opción con paso propio se
+      // reemplazaba por sus hijas sin dejar rastro —así desapareció «No
+      // Interesa» de Secretaria Virtual el 2026-09-11— y lo que colgaba de un
+      // cuarto nivel se descartaba. Cada opción intermedia viaja ahora en
+      // `groupPath` y la ficha la dibuja como grupo.
+      const visit = (fromStep: WorkflowStep, option: string, groupPath: string[], seen: Set<string>) => {
+        const targetId = branchTarget(workflowBranches, fromStep.id, option);
+        const target = targetId ? stepById.get(targetId) ?? null : null;
+        const children = stepOptions(target);
+        if (target && children.length > 0 && !seen.has(target.id)) {
+          const nextSeen = new Set(seen).add(target.id);
+          children.forEach((child) => visit(target, child, [...groupPath, option], nextSeen));
+          return;
+        }
+        reasonOrderIndex += 10;
+        pushReason({
+          stateLabel,
+          stateOrderIndex,
+          resultLabel,
+          resultOrderIndex,
+          // Una rama que vuelve a un paso ya recorrido se corta en la opción
+          // que cierra el ciclo; la validación del editor lo advierte.
+          reasonLabel: target && children.length === 0 ? titleToReason(target, option) : option,
+          reasonOrderIndex,
+          groupPath,
         });
-        return;
-      }
+      };
 
-      pushReason({
-        stateLabel,
-        stateOrderIndex,
-        resultLabel,
-        resultOrderIndex,
-        reasonLabel: resultTarget ? titleToReason(resultTarget, resultOption) : resultOption,
-        reasonOrderIndex: 10,
-      });
+      visit(stateTarget, resultOption, [], new Set([startStep.id, stateTarget.id]));
     });
   });
 
   const byValue = new Map<string, CallReasonConfig>();
   for (const reason of catalog) {
-    byValue.set(`${reason.stateLabel}|${reason.resultLabel}|${reason.value}`, reason);
+    const group = (reason.groupPath ?? []).join(">");
+    byValue.set(`${reason.stateLabel}|${reason.resultLabel}|${group}|${reason.value}`, reason);
   }
 
   return Array.from(byValue.values()).sort((a, b) => {
@@ -744,6 +761,60 @@ export function buildCallReasonCatalogFromWorkflow(
       a.value.localeCompare(b.value, "es")
     );
   });
+}
+
+/** Motivos agrupados por estado (CONTACTO / NO CONTACTO), en el orden del flujo. */
+export function groupReasonsByState(catalog: CallReasonConfig[]) {
+  const states = new Map<string, { label: string; orderIndex: number; reasons: CallReasonConfig[] }>();
+  for (const option of catalog) {
+    const state = states.get(option.stateLabel) ?? {
+      label: option.stateLabel,
+      orderIndex: option.stateOrderIndex,
+      reasons: [],
+    };
+    state.reasons.push(option);
+    states.set(option.stateLabel, state);
+  }
+
+  return Array.from(states.values())
+    .sort((a, b) => a.orderIndex - b.orderIndex || a.label.localeCompare(b.label, "es"))
+    .map((state) => ({
+      ...state,
+      reasons: [...state.reasons].sort(
+        (a, b) =>
+          a.resultOrderIndex - b.resultOrderIndex ||
+          a.reasonOrderIndex - b.reasonOrderIndex ||
+          a.label.localeCompare(b.label, "es")
+      ),
+    }));
+}
+
+export type ReasonOptionNode =
+  | { kind: "reason"; option: CallReasonConfig }
+  | { kind: "group"; label: string; children: ReasonOptionNode[] };
+
+/**
+ * Anida los motivos de un estado según su `groupPath`, sin alterar el orden.
+ * La ficha del ejecutivo y la vista previa del editor dibujan este mismo
+ * árbol, así que lo que ve el administrador es lo que se tipifica.
+ */
+export function nestReasonOptions(reasons: CallReasonConfig[]): ReasonOptionNode[] {
+  const root: ReasonOptionNode[] = [];
+  for (const reason of reasons) {
+    let level = root;
+    for (const label of reason.groupPath ?? []) {
+      const last = level[level.length - 1];
+      if (last?.kind === "group" && last.label === label) {
+        level = last.children;
+      } else {
+        const group = { kind: "group" as const, label, children: [] as ReasonOptionNode[] };
+        level.push(group);
+        level = group.children;
+      }
+    }
+    level.push({ kind: "reason", option: reason });
+  }
+  return root;
 }
 
 export function validateCallClosure(payload: CallClosurePayload, catalog: CallReasonConfig[] = CALL_REASONS): string[] {

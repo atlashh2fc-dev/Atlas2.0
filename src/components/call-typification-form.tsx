@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { AlertCircle, CalendarClock, CheckCircle2, Clock3, MessageSquare } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { notifyAgentManagementClosed } from "@/lib/agent-control";
@@ -8,10 +9,13 @@ import type { Call, Lead } from "@/lib/types";
 import {
   EQUIFAX_PRODUCTS,
   getReasonConfigFrom,
+  groupReasonsByState,
+  nestReasonOptions,
   validateCallClosure,
   type CallOutcome,
   type CallReasonConfig,
   type CallStatus,
+  type ReasonOptionNode,
 } from "@/lib/call-typification";
 import {
   closeCall,
@@ -141,34 +145,7 @@ export function CallTypificationForm({
     return () => clearInterval(id);
   }, [legalBreakUntil, clockNow]);
 
-  const reasonGroups = useMemo(() => {
-    const states = new Map<
-      string,
-      { label: string; orderIndex: number; reasons: CallReasonConfig[] }
-    >();
-
-    for (const option of catalog) {
-      const state = states.get(option.stateLabel) ?? {
-        label: option.stateLabel,
-        orderIndex: option.stateOrderIndex,
-        reasons: [],
-      };
-      state.reasons.push(option);
-      states.set(option.stateLabel, state);
-    }
-
-    return Array.from(states.values())
-      .sort((a, b) => a.orderIndex - b.orderIndex || a.label.localeCompare(b.label, "es"))
-      .map((state) => ({
-        ...state,
-        reasons: state.reasons.sort(
-          (a, b) =>
-            a.resultOrderIndex - b.resultOrderIndex ||
-            a.reasonOrderIndex - b.reasonOrderIndex ||
-            a.label.localeCompare(b.label, "es")
-        ),
-      }));
-  }, [catalog]);
+  const reasonGroups = useMemo(() => groupReasonsByState(catalog), [catalog]);
   const reasonConfig = getReasonConfigFrom(catalog, reason);
   const showAgendaBlock = reasonConfig?.agenda === "required" || reasonConfig?.agenda === "optional";
   // Una corrección puede partir de una gestión que sí tenía agenda. Si la
@@ -311,6 +288,76 @@ export function CallTypificationForm({
         setPending(null);
       }
     }
+  }
+
+  function renderReasonOption(option: CallReasonConfig) {
+    return (
+      <div
+        key={`${option.stateLabel}-${option.resultLabel}-${(option.groupPath ?? []).join(">")}-${option.value}`}
+        className="flex min-w-0 gap-1"
+      >
+        <button
+          type="button"
+          onClick={() => handleReasonSelect(option)}
+          aria-pressed={reason === option.value}
+          className={`min-h-11 min-w-0 flex-1 rounded-lg border px-3 py-2 text-left text-xs font-semibold uppercase transition-colors ${
+            reason === option.value
+              ? "border-primary bg-primary text-primary-foreground shadow-sm"
+              : "border-border bg-background text-foreground hover:border-primary/50 hover:bg-surface-muted"
+          }`}
+        >
+          {option.label}
+        </button>
+        {appointmentScheduleUrl && !revision && option.agenda === "none" && option.outcome !== "sale" && (
+          <button
+            type="button"
+            aria-label={`Cerrar: ${option.label}`}
+            title={`Guardar y cerrar: ${option.label}`}
+            onClick={() => void handleClose(option)}
+            className="rounded-lg border border-border px-2 text-xs font-semibold text-primary hover:border-primary hover:bg-primary/10"
+          >
+            Cerrar
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  // Dibuja el árbol que armó el administrador: una opción con paso propio es
+  // un grupo con sus sub-opciones, en su lugar dentro del flujo. Antes esas
+  // opciones desaparecían y sus hijas quedaban sueltas.
+  function renderReasonNodes(nodes: ReasonOptionNode[], keyPrefix: string): ReactNode {
+    const blocks: ReactNode[] = [];
+    let run: CallReasonConfig[] = [];
+    const flushRun = () => {
+      if (run.length === 0) return;
+      blocks.push(
+        <div key={`${keyPrefix}-options-${blocks.length}`} className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {run.map((option) => renderReasonOption(option))}
+        </div>
+      );
+      run = [];
+    };
+    for (const node of nodes) {
+      if (node.kind === "reason") {
+        run.push(node.option);
+        continue;
+      }
+      flushRun();
+      blocks.push(
+        <div
+          key={`${keyPrefix}-group-${node.label}`}
+          role="group"
+          aria-label={node.label}
+          className="rounded-xl border border-border/70 bg-surface-muted/40 p-3"
+        >
+          <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{node.label}</p>
+          {renderReasonNodes(node.children, `${keyPrefix}-${node.label}`)}
+        </div>
+      );
+    }
+    flushRun();
+    return <div className="space-y-2">{blocks}</div>;
   }
 
   return (
@@ -466,35 +513,7 @@ export function CallTypificationForm({
               >
                 {state.label}
               </h3>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                {state.reasons.map((option) => (
-                  <div key={`${option.stateLabel}-${option.resultLabel}-${option.value}`} className="flex min-w-0 gap-1">
-                  <button
-                    type="button"
-                    onClick={() => handleReasonSelect(option)}
-                    aria-pressed={reason === option.value}
-                    className={`min-h-11 min-w-0 flex-1 rounded-lg border px-3 py-2 text-left text-xs font-semibold uppercase transition-colors ${
-                      reason === option.value
-                        ? "border-primary bg-primary text-primary-foreground shadow-sm"
-                        : "border-border bg-background text-foreground hover:border-primary/50 hover:bg-surface-muted"
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                  {appointmentScheduleUrl && !revision && option.agenda === "none" && option.outcome !== "sale" && (
-                    <button
-                      type="button"
-                      aria-label={`Cerrar: ${option.label}`}
-                      title={`Guardar y cerrar: ${option.label}`}
-                      onClick={() => void handleClose(option)}
-                      className="rounded-lg border border-border px-2 text-xs font-semibold text-primary hover:border-primary hover:bg-primary/10"
-                    >
-                      Cerrar
-                    </button>
-                  )}
-                  </div>
-                ))}
-              </div>
+              {renderReasonNodes(nestReasonOptions(state.reasons), `state-${index}`)}
             </section>
           ))}
 

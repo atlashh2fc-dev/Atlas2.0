@@ -24,6 +24,9 @@ import { X } from "lucide-react";
 import "@xyflow/react/dist/style.css";
 import type { WorkflowFieldType, WorkflowStep, WorkflowStepBranch } from "@/lib/types";
 import { WORKFLOW_FIELD_TYPES } from "@/lib/types";
+import { buildCallReasonCatalogFromWorkflow } from "@/lib/call-typification";
+import { validateWorkflow } from "@/lib/workflow-validation";
+import { TypificationPreview } from "@/components/typification-preview";
 import {
   createWorkflowStepNode,
   deleteBranch,
@@ -407,7 +410,29 @@ function WorkflowCanvasInner({
 
   const selectedStep = steps.find((s) => s.id === selectedId) ?? null;
 
+  // La vista previa y la revisión se calculan sobre el estado vivo del lienzo
+  // con el mismo código que usa la ficha: los cambios se guardan al instante y
+  // llegan de inmediato a la operación, así que aquí se ve lo que se tipifica.
+  const liveBranches = useMemo<WorkflowStepBranch[]>(
+    () =>
+      edges.map((edge) => ({
+        id: edge.id,
+        workflow_id: workflowId,
+        from_step_id: edge.source,
+        from_option: (edge.data as { fromOption?: string | null } | undefined)?.fromOption ?? null,
+        to_step_id: edge.target,
+        created_at: "",
+      })),
+    [edges, workflowId]
+  );
+  const liveCatalog = useMemo(
+    () => buildCallReasonCatalogFromWorkflow(steps, liveBranches),
+    [steps, liveBranches]
+  );
+  const liveIssues = useMemo(() => validateWorkflow(steps, liveBranches), [steps, liveBranches]);
+
   return (
+    <div className="space-y-4">
     <div className="relative h-[70vh] overflow-hidden rounded-xl border border-border bg-background">
       <ReactFlow
         style={{ width: "100%", height: "100%" }}
@@ -528,6 +553,8 @@ function WorkflowCanvasInner({
           }}
         />
       )}
+    </div>
+    <TypificationPreview catalog={liveCatalog} issues={liveIssues} />
     </div>
   );
 }

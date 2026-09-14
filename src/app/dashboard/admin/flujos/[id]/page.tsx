@@ -2,12 +2,11 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { AlertCircle, AlertTriangle } from "lucide-react";
 import { WorkflowCanvas } from "@/components/workflow-canvas";
 import type { WorkflowStep, WorkflowStepBranch } from "@/lib/types";
 import { validateWorkflow, workflowStatus } from "@/lib/workflow-validation";
 import { setWorkflowStatus } from "@/app/actions/workflows";
-import { ActionForm, ActionSubmit, Badge, PageHeader, SectionCard } from "@/components/ui";
+import { ActionForm, ActionSubmit, Badge, Callout, PageHeader } from "@/components/ui";
 
 export default async function WorkflowDetailPage({
   params,
@@ -39,6 +38,14 @@ export default async function WorkflowDetailPage({
     .from("workflow_step_branches")
     .select("*")
     .eq("workflow_id", id);
+
+  const { data: campaigns } = await supabase
+    .from("campaigns")
+    .select("id, name")
+    .eq("workflow_id", id)
+    .eq("is_active", true)
+    .order("name");
+  const activeCampaigns = campaigns ?? [];
 
   const issues = validateWorkflow((steps ?? []) as WorkflowStep[], (branches ?? []) as WorkflowStepBranch[]);
   const status = workflowStatus(issues);
@@ -78,8 +85,8 @@ export default async function WorkflowDetailPage({
                 pendingLabel="Guardando…"
                 title={
                   workflow.status === "published"
-                    ? "Volver a borrador para editarlo sin afectar la operación"
-                    : "Publicar el flujo para que las campañas lo usen"
+                    ? "Lo quita de la lista de flujos asignables a campañas. No detiene a las campañas que ya lo usan: siguen operando con cada cambio."
+                    : "Lo valida y lo deja disponible para asignarlo a campañas."
                 }
               >
                 {workflow.status === "published" ? "Volver a borrador" : "Publicar"}
@@ -89,27 +96,19 @@ export default async function WorkflowDetailPage({
         }
       />
 
-      {issues.length > 0 && (
-        <SectionCard
-          title="Revisión del flujo"
-          description="Corrige esto antes de dejar el flujo operando: son los caminos por donde un ejecutivo puede quedarse sin salida."
-        >
-          <ul className="space-y-2 p-4 text-sm">
-            {issues.map((issue, index) => (
-              <li key={index} className="flex items-start gap-2">
-                {issue.level === "error" ? (
-                  <AlertTriangle size={15} className="mt-0.5 flex-shrink-0 text-danger" aria-hidden="true" />
-                ) : (
-                  <AlertCircle size={15} className="mt-0.5 flex-shrink-0 text-warning" aria-hidden="true" />
-                )}
-                <span className={issue.level === "error" ? "text-foreground" : "text-muted-foreground"}>
-                  {issue.message}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </SectionCard>
-      )}
+      {/* La revisión del flujo vive bajo el lienzo, junto a la vista previa, y
+          se recalcula con cada edición en vez de quedar fija desde la carga. */}
+      <Callout tone={activeCampaigns.length > 0 ? "warning" : "info"}>
+        <p className="font-medium text-foreground">Los cambios de este editor se aplican al instante.</p>
+        <p className="mt-1 text-sm">
+          {activeCampaigns.length > 0
+            ? `Lo ${activeCampaigns.length === 1 ? "usa la campaña activa" : "usan las campañas activas"} ${activeCampaigns
+                .map((campaign) => campaign.name)
+                .join(", ")}: cada paso, opción o conexión que guardes cambia desde ya lo que el ejecutivo ve al tipificar.`
+            : "Ninguna campaña activa lo usa todavía."}{" "}
+          Revisa la vista previa bajo el lienzo antes de salir.
+        </p>
+      </Callout>
 
       {(steps ?? []).length === 0 ? (
         <div className="rounded-xl border border-border bg-surface p-10 text-center text-sm text-muted-foreground">
