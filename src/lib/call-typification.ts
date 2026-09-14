@@ -512,7 +512,9 @@ function inferStatus(label: string): CallStatus {
   }
   if (normalized.includes("BUZON")) return "voicemail";
   if (normalized.includes("OCUP")) return "busy";
-  if (normalized.includes("FUERA") || normalized.includes("SERVICIO")) return "out_of_service";
+  // "SERVICIO" a secas no es una línea caída: "Contrata servicio" o "Ya tiene
+  // el servicio" son contactos efectivos.
+  if (normalized.includes("FUERA") || normalized.includes("SIN SERVICIO")) return "out_of_service";
   if (normalized.includes("NO CONTESTA") || normalized.includes("NO CONECTA") || normalized.includes("NO CONTACTO")) return "no_answer";
   return "connected";
 }
@@ -584,7 +586,7 @@ function titleToReason(step: WorkflowStep, fallback: string) {
   const known = CALL_REASONS.find((reason) => text.includes(normalizeKey(reason.value)));
   if (known) return known.value;
   if (text.includes("VENTA")) return "VENTA EN VALIDACION";
-  if (text.includes("FUERA") || text.includes("SERVICIO")) return "TELEFONO FUERA DE SERVICIO";
+  if (text.includes("FUERA") || text.includes("SIN SERVICIO")) return "TELEFONO FUERA DE SERVICIO";
   if (text.includes("BUZON")) return "BUZON DE VOZ";
   if (text.includes("NO CONTESTA")) return "NO CONTESTA";
   return normalizeText(fallback || step.name);
@@ -595,6 +597,29 @@ function stepOptions(step: WorkflowStep | null | undefined) {
   if (Array.isArray(step.options) && step.options.length > 0) return step.options;
   if (Array.isArray(step.allowed_results) && step.allowed_results.length > 0) return step.allowed_results;
   return [];
+}
+
+/**
+ * Paso donde empieza la cascada. `is_start` lo marca un administrador en el
+ * lienzo y puede terminar en un nodo intermedio: el 2026-09-11 Secretaria
+ * Virtual quedó empezando en «Conecta», sus opciones se leyeron como estados,
+ * todo contacto se grabó como NO CONTACTO y desaparecieron «No contesta» y
+ * «Buzón de voz». Un paso al que llega una rama nunca es el comienzo; si el
+ * marcado apunta a uno así y hay una única raíz con salidas, manda la raíz.
+ */
+function resolveStartStep(steps: WorkflowStep[], branches: WorkflowStepBranch[]) {
+  const marked = steps.find((step) => step.is_start);
+  const incoming = new Set(branches.map((branch) => branch.to_step_id).filter(Boolean));
+  if (marked && !incoming.has(marked.id)) return marked;
+
+  const roots = steps.filter(
+    (step) =>
+      !incoming.has(step.id) &&
+      stepOptions(step).length > 0 &&
+      branches.some((branch) => branch.from_step_id === step.id)
+  );
+  if (roots.length === 1) return roots[0];
+  return marked ?? steps[0];
 }
 
 function branchTarget(
@@ -618,7 +643,7 @@ export function buildCallReasonCatalogFromWorkflow(
   const workflowRequiresEquifaxData = workflowSteps.some((step) =>
     normalizeKey(`${step.name} ${step.description ?? ""}`).includes("EQUIFAX")
   );
-  const startStep = workflowSteps.find((step) => step.is_start) ?? workflowSteps[0];
+  const startStep = resolveStartStep(workflowSteps, workflowBranches);
   const startOptions = stepOptions(startStep);
   if (!startStep || startOptions.length === 0) return [];
 

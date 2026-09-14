@@ -257,3 +257,52 @@ test("agenda persistence includes the executive observation", () => {
     null
   );
 });
+
+test("a start mark left on an intermediate step still builds the cascade from its root", () => {
+  // Secretaria Virtual, 2026-09-11: «Conecta» quedó marcado como inicio.
+  const steps = [
+    step({ id: "call", name: "Llamada", options: ["Conecta", "No Conecta"] }),
+    step({
+      id: "connected",
+      name: "Conecta",
+      step_order: 3,
+      is_start: true,
+      field_type: "combobox",
+      options: ["Volver a Llamar", "Contrata Servicio", "No Interesa"],
+    }),
+    step({
+      id: "not-connected",
+      name: "No Conecta",
+      step_order: 4,
+      field_type: "combobox",
+      options: ["No Contesta", "Buzón de Voz", "Teléfono Fuera de Servicio"],
+    }),
+    step({
+      id: "not-interested",
+      name: "No Interesa",
+      step_order: 5,
+      field_type: "combobox",
+      options: ["No lo Necesita", "Ya tiene el servicio"],
+    }),
+  ];
+  const branches = [
+    branch({ id: "e1", from_step_id: "call", from_option: "Conecta", to_step_id: "connected" }),
+    branch({ id: "e2", from_step_id: "call", from_option: "No Conecta", to_step_id: "not-connected" }),
+    branch({ id: "e3", from_step_id: "connected", from_option: "No Interesa", to_step_id: "not-interested" }),
+  ];
+
+  const byValue = new Map(buildCallReasonCatalogFromWorkflow(steps, branches).map((reason) => [reason.value, reason]));
+
+  assert.equal(byValue.get("VOLVER A LLAMAR")?.stateLabel, "CONTACTO");
+  assert.equal(byValue.get("VOLVER A LLAMAR")?.status, "connected");
+  assert.equal(byValue.get("VOLVER A LLAMAR")?.outcome, "callback");
+  assert.equal(byValue.get("NO CONTESTA")?.status, "no_answer");
+  assert.equal(byValue.get("BUZON DE VOZ")?.status, "voicemail");
+  assert.equal(byValue.get("TELEFONO FUERA DE SERVICIO")?.status, "out_of_service");
+  assert.equal(byValue.get("CONTRATA SERVICIO")?.status, "connected");
+  assert.equal(byValue.get("YA TIENE EL SERVICIO")?.status, "connected");
+  assert.equal(byValue.get("YA TIENE EL SERVICIO")?.outcome, "not_interested");
+
+  const errors = validateWorkflow(steps, branches).filter((issue) => issue.level === "error");
+  assert.ok(errors.some((issue) => issue.stepId === "connected" && issue.message.includes("marcado como inicio")));
+});

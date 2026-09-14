@@ -42,6 +42,19 @@ export function validateWorkflow(steps: WorkflowStep[], branches: WorkflowStepBr
   }
 
   const incoming = new Set(branches.map((branch) => branch.to_step_id).filter((id): id is string => Boolean(id)));
+
+  // Un inicio al que llega una rama deja fuera todo lo que está antes: el
+  // 2026-09-11 Secretaria Virtual quedó empezando en «Conecta» y cada contacto
+  // se grabó como no contactado, sin «No contesta» ni «Buzón» en pantalla.
+  for (const start of starts) {
+    if (incoming.has(start.id)) {
+      issues.push({
+        level: "error",
+        message: `«${start.name}» está marcado como inicio, pero otro paso lleva hasta él.`,
+        stepId: start.id,
+      });
+    }
+  }
   const outgoing = new Map<string, WorkflowStepBranch[]>();
   for (const branch of branches) {
     outgoing.set(branch.from_step_id, [...(outgoing.get(branch.from_step_id) ?? []), branch]);

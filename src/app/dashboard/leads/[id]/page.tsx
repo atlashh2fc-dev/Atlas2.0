@@ -147,7 +147,8 @@ function formatDateTime(value: string | null | undefined): string {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short" });
+  // Se renderiza en el servidor (UTC): sin zona, una agenda de las 09:13 se leía 12:13.
+  return date.toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short", timeZone: "America/Santiago" });
 }
 
 export default async function LeadDetailPage({

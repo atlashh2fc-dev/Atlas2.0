@@ -26,7 +26,8 @@ function formatDateTime(value: string | null): string {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short" });
+  // El primer render ocurre en el servidor (UTC); la zona fija evita mostrar horas corridas.
+  return date.toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short", timeZone: "America/Santiago" });
 }
 
 /**

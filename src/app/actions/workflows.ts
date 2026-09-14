@@ -356,6 +356,18 @@ export async function setStartStep(input: {
 }): Promise<void> {
   await requireProfile(["admin"]);
   const supabase = await createClient();
+  // Marcar como inicio un paso intermedio corta la cascada que ve el ejecutivo
+  // y reclasifica cada cierre; el lienzo no debe permitirlo.
+  const { data: incoming, error: incomingError } = await supabase
+    .from("workflow_step_branches")
+    .select("id")
+    .eq("workflow_id", input.workflowId)
+    .eq("to_step_id", input.stepId)
+    .limit(1);
+  if (incomingError) throw new Error(incomingError.message);
+  if (incoming && incoming.length > 0) {
+    throw new Error("Este paso recibe conexiones de otro paso; no puede ser el inicio del flujo.");
+  }
   await supabase
     .from("workflow_steps")
     .update({ is_start: false })
