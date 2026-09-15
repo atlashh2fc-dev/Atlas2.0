@@ -3,10 +3,11 @@ import { test } from "node:test";
 
 import { CALL_REASONS } from "../src/lib/call-typification.ts";
 import {
-  UNCLASSIFIED_RESULT,
   groupTipificationsByResult,
   tipificationExportRows,
 } from "../src/lib/tipification-breakdown.ts";
+
+const RESULTADOS = ["INTERESADO", "NO INTERESADO", "NO CONTACTO"];
 
 test("separa interesa de no interesa usando la cascada de cierre", () => {
   const { total, groups } = groupTipificationsByResult([
@@ -28,30 +29,69 @@ test("separa interesa de no interesa usando la cascada de cierre", () => {
   assert.equal(groups[0].share, 20);
 });
 
-test("los motivos de un workflow propio no se cuentan como interés", () => {
+test("los motivos que ninguna fuente clasifica cuentan como no interesa, nunca como interés", () => {
   const { groups } = groupTipificationsByResult([
     { reason: "COMPROMISO DE PAGO", count: 5 },
     { reason: "NO CALIFICA", count: 1 },
   ]);
 
-  const unclassified = groups.find((g) => g.result === UNCLASSIFIED_RESULT);
-  assert.ok(unclassified, "el motivo desconocido necesita su propio grupo");
-  assert.equal(unclassified.count, 5);
-  assert.equal(unclassified.reasons[0].label, "Compromiso de pago");
-  // Nunca se mezcla con un resultado conocido.
-  assert.equal(groups.find((g) => g.result === "INTERESADO"), undefined);
+  assert.deepEqual(groups.map((g) => [g.result, g.count]), [["NO INTERESADO", 6]]);
+  assert.equal(groups[0].reasons[0].label, "Compromiso de pago");
 });
 
-test("un resultado desconocido se ordena al final, nunca antes de los conocidos", () => {
+test("los motivos de nodos mixtos del workflow tienen su resultado fijo", () => {
+  // Tal como llegan de Secretaria Virtual: nodo "Conecta" sin result_kind y
+  // cierre grabado como connected/other.
   const { groups } = groupTipificationsByResult([
-    { reason: "MOTIVO INVENTADO", count: 900 },
-    { reason: "NO CALIFICA", count: 1 },
+    { reason: "NUMERO ERRONEO", count: 114, status: "connected", outcome: "other" },
+    { reason: "CORTA LLAMADA", count: 85, status: "connected", outcome: "other" },
+    { reason: "ENVIAR INFORMACION", count: 60, status: "connected", outcome: "other" },
+  ]);
+
+  assert.deepEqual(
+    groups.map((g) => [g.result, g.count]),
+    [
+      ["INTERESADO", 60],
+      ["NO INTERESADO", 85],
+      ["NO CONTACTO", 114],
+    ],
+  );
+});
+
+test("los motivos de nodos mixtos se reconocen sin importar acentos ni mayúsculas", () => {
+  const { groups } = groupTipificationsByResult([
+    { reason: "Número erróneo", count: 1 },
+    { reason: "corta  llamada", count: 1 },
+    { reason: "Enviar información", count: 1 },
   ]);
 
   assert.deepEqual(
     groups.map((g) => g.result),
-    ["NO INTERESADO", UNCLASSIFIED_RESULT],
+    ["INTERESADO", "NO INTERESADO", "NO CONTACTO"],
   );
+});
+
+test("numero erroneo / no corresponde cuenta como no contacto aunque el catalogo diga no interesado", () => {
+  const config = CALL_REASONS.find((r) => r.value === "NUMERO ERRONEO / NO CORRESPONDE");
+  assert.ok(config, "el motivo tiene que seguir existiendo en el catalogo");
+
+  const { groups } = groupTipificationsByResult([
+    { reason: config.value, count: 6, status: config.status, outcome: config.outcome },
+    { reason: "NUMERO ERRONEO", count: 114, status: "connected", outcome: "other" },
+  ]);
+  assert.deepEqual(groups.map((g) => [g.result, g.count]), [["NO CONTACTO", 120]]);
+});
+
+test("ninguna gestion queda fuera de los tres resultados", () => {
+  const { total, groups } = groupTipificationsByResult([
+    { reason: "MOTIVO INVENTADO", count: 900 },
+    { reason: "No esta el encargado", count: 1, status: "connected", outcome: "other" },
+    { reason: "MOTIVO RARO", count: 4, declaredResult: "vaya_uno_a_saber" },
+    { reason: "NO CALIFICA", count: 1 },
+  ]);
+
+  assert.ok(groups.every((g) => RESULTADOS.includes(g.result)));
+  assert.equal(groups.reduce((sum, g) => sum + g.count, 0), total);
 });
 
 test("suma los repetidos y ordena cada grupo de mayor a menor", () => {
@@ -131,16 +171,9 @@ test("clasifica por lo que el cierre dejo grabado, no por el texto del motivo", 
 test("una gestion efectiva sin desenlace declarado cae al catalogo", () => {
   const { groups } = groupTipificationsByResult([
     // El workflow no la clasifico, pero el catalogo comercial si.
-    { reason: "NO CALIFICA", count: 5, status: "connected", outcome: "other" },
+    { reason: "COTIZACION ENVIADA", count: 5, status: "connected", outcome: "other" },
   ]);
-  assert.deepEqual(groups.map((g) => g.result), ["NO INTERESADO"]);
-});
-
-test("una gestion efectiva que ni el workflow ni el catalogo clasifican queda sin clasificar", () => {
-  const { groups } = groupTipificationsByResult([
-    { reason: "SEGUIMIENTO DE CONVENIO", count: 145, status: "connected", outcome: "other" },
-  ]);
-  assert.deepEqual(groups.map((g) => g.result), [UNCLASSIFIED_RESULT]);
+  assert.deepEqual(groups.map((g) => g.result), ["INTERESADO"]);
 });
 
 test("sin status ni outcome se comporta igual que antes", () => {
@@ -175,12 +208,15 @@ test("el catalogo manda sobre el desenlace en los motivos que ya conoce", () => 
 test("para cada motivo del catalogo el desenlace no cambia su grupo", () => {
   // El resto del catalogo si tiene que ser coherente: si alguien agrega un
   // motivo cuyo (status, outcome) contradiga su resultLabel, este test lo caza
-  // y obliga a decidirlo a mano, como se decidio "No es el momento".
+  // y obliga a decidirlo a mano, como se decidio "No es el momento". Las
+  // gestiones efectivas con desenlace `other` no las decide el cierre, así que
+  // no cuentan como contradicción.
   const divergentes = CALL_REASONS.filter((reason) => {
+    if (reason.status === "connected" && reason.outcome === "other") return false;
     const porCierre = groupTipificationsByResult([
       { reason: "MOTIVO QUE EL CATALOGO NO CONOCE", count: 1, status: reason.status, outcome: reason.outcome },
     ]).groups[0].result;
-    return porCierre !== UNCLASSIFIED_RESULT && porCierre !== reason.resultLabel;
+    return porCierre !== reason.resultLabel;
   }).map((r) => r.value);
 
   assert.deepEqual(divergentes, ["NO ES EL MOMENTO"]);
@@ -189,8 +225,8 @@ test("para cada motivo del catalogo el desenlace no cambia su grupo", () => {
 test("lo que declara el nodo del workflow manda sobre todo lo demas", () => {
   // Cartera de cobranza: el administrador declaro que "Sin acuerdo" es no
   // interesado y "Seguimiento" es interesado. Ambas gestiones fueron efectivas
-  // y su desenlace quedo en `other`, asi que sin la declaracion caerian en
-  // sin clasificar, que es lo que pasaba antes.
+  // y su desenlace quedo en `other`, asi que sin la declaracion no las
+  // resolveria ni el catalogo ni el cierre.
   const { groups } = groupTipificationsByResult([
     { reason: "DERIVADO A COBRANZA PREJUDICIAL", count: 90, status: "connected", outcome: "other", declaredResult: "no_interesado" },
     { reason: "SEGUIMIENTO DE CONVENIO", count: 145, status: "connected", outcome: "other", declaredResult: "interesado" },
@@ -203,11 +239,4 @@ test("lo que declara el nodo del workflow manda sobre todo lo demas", () => {
       ["NO INTERESADO", 90],
     ],
   );
-});
-
-test("una declaracion desconocida no rompe ni se cuela como grupo", () => {
-  const { groups } = groupTipificationsByResult([
-    { reason: "MOTIVO RARO", count: 4, declaredResult: "vaya_uno_a_saber" },
-  ]);
-  assert.deepEqual(groups.map((g) => g.result), [UNCLASSIFIED_RESULT]);
 });

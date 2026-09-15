@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { ChartDownloadButton } from "@/components/chart-download-button";
 import {
-  UNCLASSIFIED_RESULT,
   tipificationExportRows,
   type TipificationBreakdown as Breakdown,
   type TipificationGroup,
@@ -18,11 +17,6 @@ const RESULT_TONE: Record<string, { bar: string; text: string; label: string }> 
   INTERESADO: { bar: "var(--success)", text: "text-[color:var(--success)]", label: "Interesa" },
   "NO INTERESADO": { bar: "var(--danger)", text: "text-[color:var(--danger)]", label: "No interesa" },
   "NO CONTACTO": { bar: "var(--warning)", text: "text-[color:var(--warning)]", label: "No contacto" },
-  [UNCLASSIFIED_RESULT]: {
-    bar: "var(--muted-foreground)",
-    text: "text-muted-foreground",
-    label: "Sin clasificar",
-  },
 };
 
 /** Cuántos motivos se muestran antes de plegar el resto. */
@@ -101,12 +95,9 @@ function ResultColumn({ group, total }: { group: TipificationGroup; total: numbe
 }
 
 /**
- * Desglose de tipificaciones por resultado.
- *
- * Los motivos que no vienen del catálogo de cierre quedan en "Sin clasificar"
- * en lugar de contarse como interés: cuando ese grupo pesa, no es un detalle
- * estético, es que la campaña tipifica con su propio workflow y el eje
- * interesa/no interesa todavía no la cubre. Por eso se avisa en el pie.
+ * Desglose de tipificaciones por resultado: interesa, no interesa y no
+ * contacto. Toda gestión cae en uno de los tres, así que la proporción cubre
+ * el período completo.
  */
 export function TipificationBreakdown({
   breakdown,
@@ -125,9 +116,6 @@ export function TipificationBreakdown({
       </div>
     );
   }
-
-  const unclassified = breakdown.groups.find((g) => g.result === UNCLASSIFIED_RESULT);
-  const unclassifiedShare = unclassified ? unclassified.share : 0;
 
   return (
     <div className="rounded-xl border border-border bg-surface p-5">
@@ -155,19 +143,11 @@ export function TipificationBreakdown({
         ))}
       </div>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {breakdown.groups.map((group) => (
           <ResultColumn key={group.result} group={group} total={breakdown.total} />
         ))}
       </div>
-
-      {unclassifiedShare >= 20 && (
-        <p className="mt-4 text-xs text-muted-foreground">
-          El {fmtPct(unclassifiedShare)} de las gestiones usa tipificaciones propias del workflow de
-          la campaña, que no declaran interés. Mientras sigan sin mapearse, la comparación entre
-          interesa y no interesa sólo cubre el resto.
-        </p>
-      )}
     </div>
   );
 }

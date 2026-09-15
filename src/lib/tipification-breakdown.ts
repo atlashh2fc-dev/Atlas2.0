@@ -4,15 +4,22 @@
 // interesa" quedaban mezclados entre veinte etiquetas y había que sumarlos a
 // mano. La cascada de cierre ya clasifica cada motivo (Estado -> Resultado ->
 // Motivo); acá solo se aprovecha esa clasificación que ya existe.
+//
+// Toda gestión cae en uno de los tres resultados. Un grupo "sin clasificar"
+// dejaba fuera de la comparación a un cuarto de las gestiones, así que lo que
+// ninguna fuente resuelve se cuenta como no interesa (ver FALLBACK_RESULT).
 
 import { CALL_REASONS, getReasonConfig } from "./call-typification.ts";
 
-/** Resultado sin clasificar: motivos que vienen del workflow de una campaña
- *  y no del catálogo de cierre, así que no declaran interés. */
-export const UNCLASSIFIED_RESULT = "SIN CLASIFICAR";
-
 /** Orden de lectura del tablero: primero lo que convierte. */
-const RESULT_ORDER = ["INTERESADO", "NO INTERESADO", "NO CONTACTO", UNCLASSIFIED_RESULT];
+const RESULT_ORDER = ["INTERESADO", "NO INTERESADO", "NO CONTACTO"];
+
+/**
+ * Destino de lo que ni el workflow, ni el catálogo, ni el cierre clasifican.
+ * Si hubo contacto y nadie declaró interés, el negocio no lo cuenta como
+ * interés; y si no hubo contacto, el cierre ya lo resolvió antes de llegar acá.
+ */
+const FALLBACK_RESULT = "NO INTERESADO";
 
 const REASON_LABEL = new Map(CALL_REASONS.map((reason) => [reason.value, reason.label]));
 
@@ -46,6 +53,34 @@ const DECLARED_TO_RESULT: Record<string, string> = {
   no_contacto: "NO CONTACTO",
 };
 
+/**
+ * Resultado fijo por motivo, decidido por el negocio para el tablero.
+ *
+ * Cubre los motivos de workflow que cuelgan de nodos mixtos ("Conecta",
+ * "Estado del contacto"): esos nodos agrupan opciones de distinto resultado,
+ * así que no pueden declarar `result_kind` y el cierre las graba como
+ * `connected/other`. También corrige al catálogo donde el tablero lo cuenta
+ * distinto: "Numero erroneo / no corresponde" se cierra como contacto no
+ * interesado, pero no hubo contacto con la persona buscada. La cascada de
+ * cierre no se toca. Las claves van normalizadas (ver normalizeReason).
+ */
+const REASON_RESULT_OVERRIDE: Record<string, string> = {
+  "NUMERO ERRONEO": "NO CONTACTO",
+  "NUMERO ERRONEO / NO CORRESPONDE": "NO CONTACTO",
+  "CORTA LLAMADA": "NO INTERESADO",
+  "ENVIAR INFORMACION": "INTERESADO",
+};
+
+/** Mayúsculas sin acentos, igual que la RPC compara el motivo contra su nodo. */
+function normalizeReason(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLocaleUpperCase("es")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /** Desenlaces que declaran interés. Son los mismos a los que el catálogo
  *  comercial le asigna `resultLabel` INTERESADO, así que no introducen un
  *  criterio nuevo: lo extienden a las campañas con workflow propio. */
@@ -55,9 +90,7 @@ const INTERESTED_OUTCOMES = new Set(["sale", "interested", "callback"]);
  * Resuelve el grupo desde lo que el cierre dejó grabado.
  *
  * Devuelve null cuando la gestión fue efectiva pero su desenlace quedó en
- * `other`, que es justamente el caso que el workflow no clasificó. Ahí se cae
- * al catálogo, y si tampoco lo cubre queda sin clasificar, en vez de
- * inventarle una intención.
+ * `other`, que es justamente el caso que el workflow no clasificó.
  */
 function resultFromClosure(status?: string | null, outcome?: string | null): string | null {
   if (!status) return null;
@@ -125,8 +158,10 @@ export function groupTipificationsByResult(rows: TipificationRow[]): Tipificatio
     //
     // 1. Lo que declaró el administrador en el nodo del workflow de ESTA
     //    campaña. Nadie sabe mejor que él qué significa "Acuerdo de pago".
-    // 2. El catálogo comercial heredado, para los motivos que ya conoce.
-    // 3. El desenlace que grabó el cierre.
+    // 2. El resultado fijo por motivo que decidió el negocio para el tablero.
+    // 3. El catálogo comercial heredado, para los motivos que ya conoce.
+    // 4. El desenlace que grabó el cierre.
+    // 5. No interesa, para que ninguna gestión quede fuera de la comparación.
     //
     // Que el catálogo vaya antes que el cierre no es un detalle: "No es el
     // momento" se cierra como `callback` igual que "Volver a llamar", pero el
@@ -135,9 +170,10 @@ export function groupTipificationsByResult(rows: TipificationRow[]): Tipificatio
     const declared = row?.declaredResult ? DECLARED_TO_RESULT[row.declaredResult] : undefined;
     const result =
       declared ??
+      REASON_RESULT_OVERRIDE[normalizeReason(reason)] ??
       getReasonConfig(reason)?.resultLabel ??
       resultFromClosure(row?.status, row?.outcome) ??
-      UNCLASSIFIED_RESULT;
+      FALLBACK_RESULT;
     const bucket = buckets.get(result) ?? new Map<string, number>();
     bucket.set(reason, (bucket.get(reason) ?? 0) + count);
     buckets.set(result, bucket);
@@ -161,13 +197,7 @@ export function groupTipificationsByResult(rows: TipificationRow[]): Tipificatio
         .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, "es"));
       return { result, count: groupTotal, share: share(groupTotal, total), reasons };
     })
-    .sort((a, b) => {
-      const orderA = RESULT_ORDER.indexOf(a.result);
-      const orderB = RESULT_ORDER.indexOf(b.result);
-      // Un resultado desconocido va al final, nunca antes de los conocidos.
-      if (orderA !== orderB) return (orderA < 0 ? RESULT_ORDER.length : orderA) - (orderB < 0 ? RESULT_ORDER.length : orderB);
-      return b.count - a.count;
-    });
+    .sort((a, b) => RESULT_ORDER.indexOf(a.result) - RESULT_ORDER.indexOf(b.result));
 
   return { total, groups };
 }
