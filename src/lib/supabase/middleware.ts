@@ -29,6 +29,9 @@ const MACHINE_ONLY_PATHS = new Set([
   "/api/ai/learning-loop/worker",
   "/api/integrations/meta/whatsapp/ai-worker",
   "/api/integrations/meta/whatsapp/timeouts",
+  // altiusignite.com avisa cada reunión, plan o contacto. No tiene sesión web:
+  // el handler exige firma HMAC del cuerpo crudo y marca de tiempo reciente.
+  "/api/integrations/altius/intake",
 ]);
 
 export async function updateSession(request: NextRequest) {
