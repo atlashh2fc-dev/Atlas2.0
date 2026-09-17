@@ -2,6 +2,7 @@ import {
   Activity,
   BarChart3,
   Building2,
+  Handshake,
   CalendarClock,
   CircleHelp,
   Database,
@@ -108,6 +109,15 @@ const CONSOLE: NavSpace = {
           match: ["/dashboard/operacion", "/dashboard/supervision/monitor"],
         },
         {
+          id: "ventas",
+          label: "Ventas",
+          href: "/dashboard/ventas",
+          icon: Handshake,
+          roles: ["admin", "supervisor"],
+          description: "Embudo B2B: empresas, montos, etapa y próxima acción",
+          match: ["/dashboard/ventas"],
+        },
+        {
           id: "correo",
           label: "Correo",
           href: "/dashboard/mail",
@@ -208,14 +218,14 @@ const CONSOLE: NavSpace = {
 const WORKSPACE_SECTIONS: Record<AppRole, { id: string; label?: string; itemIds: string[] }[]> = {
   admin: [
     { id: "control-home", itemIds: ["inicio"] },
-    { id: "control-operation", label: "Control diario", itemIds: ["operacion", "correo", "registros"] },
+    { id: "control-operation", label: "Control diario", itemIds: ["operacion", "ventas", "correo", "registros"] },
     { id: "control-results", label: "Revisión", itemIds: ["reportes", "calidad"] },
     { id: "admin-operation", label: "Configuración", itemIds: ["campanas", "colas", "flujos", "estados-agente", "cargas"] },
     { id: "admin-platform", label: "Plataforma", itemIds: ["empresas", "usuarios", "extensiones", "integraciones"] },
   ],
   supervisor: [
     { id: "supervision-home", itemIds: ["inicio"] },
-    { id: "supervision-operation", label: "Supervisión", itemIds: ["operacion", "correo", "equipo", "campanas-operativas", "registros"] },
+    { id: "supervision-operation", label: "Supervisión", itemIds: ["operacion", "ventas", "correo", "equipo", "campanas-operativas", "registros"] },
     { id: "supervision-review", label: "Revisión y resultados", itemIds: ["conversaciones", "calidad", "reportes"] },
   ],
   agente: [
