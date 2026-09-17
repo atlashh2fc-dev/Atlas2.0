@@ -184,7 +184,7 @@ export default async function EmpresasAdminPage() {
           title="Aplicaciones de la suite"
           description="Cada empresa ve en su menú solo lo que tiene contratado. Apagar una aplicación la hace desaparecer, también si alguien escribe la dirección a mano."
         >
-          <div className="space-y-5">
+          <div className="space-y-5 px-5 py-4">
             {listaEmpresas.map((empresa) => (
               <div key={empresa.id}>
                 <p className="mb-2 text-sm font-medium text-foreground">{empresa.name}</p>

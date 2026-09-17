@@ -106,7 +106,7 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
 
       <div className="grid gap-3 lg:grid-cols-3">
         <SectionCard title="Estado" description="En qué va el negocio.">
-          <div className="space-y-2 text-sm">
+          <div className="space-y-2 px-5 py-4 text-sm">
             <p>
               <Badge tone={negocio.status === "ganada" ? "success" : negocio.status === "perdida" ? "danger" : "neutral"}>
                 {etapaActual?.name ?? "Sin etapa"}
@@ -127,7 +127,7 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
         </SectionCard>
 
         <SectionCard title="Empresa" description="Con quién se está hablando.">
-          <div className="space-y-1 text-sm text-muted-foreground">
+          <div className="space-y-1 px-5 py-4 text-sm text-muted-foreground">
             <p className="font-medium text-foreground">{empresa?.name}</p>
             {empresa?.rut && <p>RUT {empresa.rut}</p>}
             {empresa?.industry && <p>{empresa.industry}</p>}
@@ -144,14 +144,14 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
 
         <SectionCard title="Contacto" description="Quién decide o responde.">
           {contacto ? (
-            <div className="space-y-1 text-sm text-muted-foreground">
+            <div className="space-y-1 px-5 py-4 text-sm text-muted-foreground">
               <p className="font-medium text-foreground">{contacto.full_name}</p>
               {contacto.role_title && <p>{contacto.role_title}</p>}
               {contacto.email && <p>{contacto.email}</p>}
               {contacto.phone && <p>{contacto.phone}</p>}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">Sin contacto registrado.</p>
+            <p className="px-5 py-4 text-sm text-muted-foreground">Sin contacto registrado.</p>
           )}
         </SectionCard>
       </div>
@@ -160,7 +160,7 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
         <SectionCard title="Mover el negocio" description="Cada movimiento queda registrado en la historia.">
           <ActionForm action={moverEtapa} success="Etapa actualizada">
             <input type="hidden" name="oportunidad_id" value={negocio.id} />
-            <div className="flex flex-wrap items-end gap-2">
+            <div className="flex flex-wrap items-end gap-3 px-5 py-4">
               <Field label="Etapa">
                 <Select name="etapa" defaultValue={etapaActual?.key ?? ""}>
                   {(etapas ?? []).map((etapa) => (
@@ -182,7 +182,7 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
       <SectionCard title="Registrar gestión" description="Con fecha futura queda como la próxima acción.">
         <ActionForm action={registrarGestion} success="Gestión registrada">
           <input type="hidden" name="oportunidad_id" value={negocio.id} />
-          <div className="flex flex-wrap items-end gap-2">
+          <div className="flex flex-wrap items-end gap-3 px-5 py-4">
             <Field label="Tipo">
               <Select name="tipo" defaultValue="llamada">
                 <option value="llamada">Llamada</option>

@@ -186,7 +186,7 @@ export default async function VentasPage() {
       </div>
 
       <SectionCard title="Embudo" description="Cuánto hay en cada etapa, solo negocios abiertos.">
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-3 px-5 py-4 sm:grid-cols-2 lg:grid-cols-5">
           {listaEtapas
             .filter((etapa) => !etapa.is_won && !etapa.is_lost)
             .map((etapa) => {
