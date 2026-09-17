@@ -218,3 +218,27 @@ test("las funciones de organización quedan cerradas a visitantes sin sesión", 
     assert.match(soloCodigo(CIERRE), new RegExp(`public\\.${funcion}\\(`), `falta cerrar ${funcion}`);
   }
 });
+
+// Lo que entra por una integración también tiene dueño.
+//
+// `default_organization_id()` mira la sesión de quien escribe. Las integraciones
+// escriben con la llave de servicio y no tienen sesión, así que 40 leads de una
+// campaña de Altius entraron marcados como Geimser y quedaron visibles para los
+// administradores de Geimser. La campaña ya sabe de quién es.
+
+const HEREDA_EMPRESA = migracion("20260917234500_un_lead_hereda_la_empresa_de_su_campana.sql");
+
+test("un lead hereda la empresa de su campaña, no la de la sesión", () => {
+  assert.match(HEREDA_EMPRESA, /create or replace function public\.heredar_empresa_de_la_campana/);
+  assert.match(HEREDA_EMPRESA, /new\.organization_id := v_org;/);
+  for (const tabla of ["leads", "sales_opportunities"]) {
+    assert.match(
+      HEREDA_EMPRESA,
+      new RegExp(`before insert or update of campaign_id on public\\.${tabla}`),
+      `falta el disparador en ${tabla}`,
+    );
+  }
+  // La migración repara lo ya escrito y se niega a terminar si queda algo suelto.
+  assert.match(HEREDA_EMPRESA, /update public\.leads lead\s*\nset organization_id = campaign\.organization_id/);
+  assert.match(HEREDA_EMPRESA, /raise exception 'Quedan % leads en una empresa distinta/);
+});
