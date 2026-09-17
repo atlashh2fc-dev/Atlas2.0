@@ -3,6 +3,7 @@ import { MobileNav, WorkspaceContext } from "@/components/mobile-nav";
 import type { NavBadgeCounts } from "@/components/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { QuickSearch } from "@/components/quick-search";
+import { SelectorEmpresa, type EmpresaDisponible } from "@/components/selector-empresa";
 import { AgendaBell } from "@/components/agenda-reminder";
 import { DemoRoleSwitcher } from "@/components/demo-role-switcher";
 import type { DemoViewAccount } from "@/lib/demo-view";
@@ -13,11 +14,14 @@ export function Header({
   profile,
   badges,
   demoAccounts = [],
+  empresas = [],
 }: {
   profile: Profile;
   badges?: NavBadgeCounts;
   /** Vistas disponibles cuando la cuenta es de demostración. */
   demoAccounts?: DemoViewAccount[];
+  /** Empresas a las que llega la persona. Con una sola, el selector no aparece. */
+  empresas?: EmpresaDisponible[];
 }) {
   return (
     <header className="flex h-16 flex-shrink-0 items-center justify-between border-b border-border bg-surface px-6">
@@ -27,6 +31,7 @@ export function Header({
       </div>
 
       <div className="flex items-center gap-3">
+        <SelectorEmpresa empresas={empresas} actual={profile.viewing_organization_id ?? null} />
         {profile.is_demo && <DemoRoleSwitcher accounts={demoAccounts} currentId={profile.id} />}
         <QuickSearch role={profile.role} userId={profile.id} />
         {profile.role === "agente" && <AgendaBell />}

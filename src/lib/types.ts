@@ -12,6 +12,10 @@ export interface Profile {
   active: boolean;
   /** Cuenta de demostración: puede alternar su vista entre agente y supervisor. */
   is_demo?: boolean;
+  /** Empresa dueña de la persona. Toda su operación vive dentro de ella. */
+  organization_id?: string | null;
+  /** Empresa que está mirando ahora. Nula = todas las que le corresponden. */
+  viewing_organization_id?: string | null;
   created_at: string;
   updated_at: string;
 }

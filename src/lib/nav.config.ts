@@ -1,6 +1,7 @@
 import {
   Activity,
   BarChart3,
+  Building2,
   CalendarClock,
   CircleHelp,
   Database,
@@ -210,7 +211,7 @@ const WORKSPACE_SECTIONS: Record<AppRole, { id: string; label?: string; itemIds:
     { id: "control-operation", label: "Control diario", itemIds: ["operacion", "correo", "registros"] },
     { id: "control-results", label: "Revisión", itemIds: ["reportes", "calidad"] },
     { id: "admin-operation", label: "Configuración", itemIds: ["campanas", "colas", "flujos", "estados-agente", "cargas"] },
-    { id: "admin-platform", label: "Plataforma", itemIds: ["usuarios", "extensiones", "integraciones"] },
+    { id: "admin-platform", label: "Plataforma", itemIds: ["empresas", "usuarios", "extensiones", "integraciones"] },
   ],
   supervisor: [
     { id: "supervision-home", itemIds: ["inicio"] },
@@ -278,6 +279,14 @@ const ADMIN: NavSpace = {
       id: "admin-plataforma",
       label: "Plataforma",
       items: [
+        {
+          id: "empresas",
+          label: "Empresas",
+          href: "/dashboard/admin/empresas",
+          icon: Building2,
+          roles: ["admin"],
+          description: "Empresas del CRM, sus personas y su aislamiento",
+        },
         {
           id: "usuarios",
           label: "Usuarios y equipos",

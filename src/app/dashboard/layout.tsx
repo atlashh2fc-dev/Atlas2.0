@@ -37,6 +37,14 @@ export default async function DashboardLayout({
   // consulta nada.
   const demoAccounts = await listDemoViewAccounts(profile);
 
+  // Empresas a las que llega esta persona. La seguridad por fila ya filtra: casi
+  // siempre es una sola y el selector no se muestra.
+  const { data: empresas } = await supabase
+    .from("organizations")
+    .select("id, name")
+    .eq("active", true)
+    .order("name");
+
   return (
     <ToastProvider>
       <div className="flex h-screen w-full overflow-hidden bg-background">
@@ -46,11 +54,11 @@ export default async function DashboardLayout({
         <div className="flex flex-1 flex-col overflow-hidden">
           {showAgendaReminder ? (
             <AgendaProvider userId={profile.id}>
-              <Header profile={profile} badges={badges} demoAccounts={demoAccounts} />
+              <Header profile={profile} badges={badges} demoAccounts={demoAccounts} empresas={empresas ?? []} />
               <AgendaBanner />
             </AgendaProvider>
           ) : (
-            <Header profile={profile} demoAccounts={demoAccounts} />
+            <Header profile={profile} demoAccounts={demoAccounts} empresas={empresas ?? []} />
           )}
           <main className="flex-1 overflow-y-auto p-5">{children}</main>
         </div>

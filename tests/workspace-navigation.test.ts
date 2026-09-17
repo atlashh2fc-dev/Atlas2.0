@@ -40,6 +40,7 @@ test("Control is an overview, not a response inbox", () => {
     "Flujos de gestión",
     "Estados de agente",
     "Cargas y listas",
+    "Empresas",
     "Usuarios y equipos",
     "Telefonía · diagnóstico",
     "Integraciones",
