@@ -7,6 +7,7 @@ import {
   Badge,
   EmptyState,
   Field,
+  MetricCard,
   Input,
   PageHeader,
   SectionCard,
@@ -160,19 +161,28 @@ export default async function VentasPage() {
         }
       />
 
+      {/* Las métricas usan la tarjeta del estándar, igual que el resto de los tableros. */}
       <div className="grid gap-3 sm:grid-cols-3">
-        <SectionCard title="En juego" description="Suma mensual de los negocios abiertos.">
-          <p className="text-2xl font-semibold text-foreground">{pesos.format(mensualAbierto)}</p>
-          <p className="text-xs text-muted-foreground">{abiertas.length} abiertos</p>
-        </SectionCard>
-        <SectionCard title="Ganado" description="Mensual de los negocios cerrados.">
-          <p className="text-2xl font-semibold text-foreground">{pesos.format(mensualGanado)}</p>
-          <p className="text-xs text-muted-foreground">{ganadas.length} ganados</p>
-        </SectionCard>
-        <SectionCard title="Para hoy" description="Negocios con la próxima acción vencida.">
-          <p className="text-2xl font-semibold text-foreground">{vencidas.length}</p>
-          <p className="text-xs text-muted-foreground">de {abiertas.length} abiertos</p>
-        </SectionCard>
+        <MetricCard
+          label="En juego"
+          value={pesos.format(mensualAbierto)}
+          hint={`${abiertas.length} ${abiertas.length === 1 ? "negocio abierto" : "negocios abiertos"}`}
+          tooltip="Suma del monto mensual de los negocios que siguen abiertos."
+        />
+        <MetricCard
+          label="Ganado"
+          value={pesos.format(mensualGanado)}
+          hint={`${ganadas.length} ${ganadas.length === 1 ? "negocio cerrado" : "negocios cerrados"}`}
+          tone={mensualGanado > 0 ? "good" : "default"}
+          tooltip="Monto mensual ya comprometido por los negocios ganados."
+        />
+        <MetricCard
+          label="Para hoy"
+          value={vencidas.length}
+          hint={`de ${abiertas.length} ${abiertas.length === 1 ? "abierto" : "abiertos"}`}
+          tone={vencidas.length > 0 ? "warn" : "default"}
+          tooltip="Negocios cuya próxima acción ya venció."
+        />
       </div>
 
       <SectionCard title="Embudo" description="Cuánto hay en cada etapa, solo negocios abiertos.">
@@ -182,10 +192,14 @@ export default async function VentasPage() {
             .map((etapa) => {
               const casilla = porEtapa.get(etapa.id);
               return (
-                <div key={etapa.id} className="rounded-lg border border-border p-3">
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">{etapa.name}</p>
-                  <p className="mt-1 text-lg font-semibold text-foreground">{casilla?.total ?? 0}</p>
-                  <p className="text-xs text-muted-foreground">{pesos.format(casilla?.monto ?? 0)}/mes</p>
+                <div key={etapa.id} className="rounded-lg border border-border bg-surface p-4 shadow-sm">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{etapa.name}</p>
+                  <p className="mt-1.5 text-2xl font-semibold tabular-nums tracking-tight text-foreground">
+                    {casilla?.total ?? 0}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {(casilla?.monto ?? 0) > 0 ? `${pesos.format(casilla?.monto ?? 0)}/mes` : "sin monto todavía"}
+                  </p>
                 </div>
               );
             })}
