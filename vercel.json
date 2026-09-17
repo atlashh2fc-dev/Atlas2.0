@@ -32,6 +32,10 @@
     {
       "path": "/api/integrations/meta/whatsapp/ai-worker",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/agentes/calificador",
+      "schedule": "25 * * * *"
     }
   ]
 }

@@ -32,6 +32,8 @@ const MACHINE_ONLY_PATHS = new Set([
   // altiusignite.com avisa cada reunión, plan o contacto. No tiene sesión web:
   // el handler exige firma HMAC del cuerpo crudo y marca de tiempo reciente.
   "/api/integrations/altius/intake",
+  // El agente calificador lo despierta el cron, con el mismo secreto que el resto.
+  "/api/agentes/calificador",
 ]);
 
 export async function updateSession(request: NextRequest) {
