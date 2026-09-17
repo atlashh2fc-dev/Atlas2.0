@@ -99,3 +99,36 @@ test("la importación de Vocalcom solo cruza leads de la empresa que carga", () 
   assert.match(codigo, /from \(select \* from public\.leads where public\.can_access_org\(organization_id\)\) l/);
   assert.match(codigo, /raise exception 'import_vocalcom_events quedó sin frontera de empresa'/);
 });
+
+// Lo que costó una caída en producción, y no puede repetirse.
+//
+// Renombrar la función original a `*_sin_empresa` movió el objeto, no el
+// nombre: las políticas que la usaban quedaron llamando a la versión sin
+// guardia, a la que se le había quitado el permiso de ejecución. Cualquier
+// consulta con sesión contra esas tablas respondía "permission denied" y la
+// pantalla de Correo caía con error 500.
+
+const REPARA_POLITICAS = migracion("20260917230100_las_politicas_vuelven_a_la_funcion_con_guardia.sql");
+const GUARDIA_QUE_FILTRA = migracion("20260917230000_una_guardia_que_filtra_no_revienta.sql");
+
+test("ninguna política puede quedar apuntando a la función sin guardia", () => {
+  assert.match(REPARA_POLITICAS, /replace\(coalesce\(v_politica\.qual, ''\), '_sin_empresa', ''\)/);
+  // La migración se comprueba a sí misma: si queda una, falla al aplicarse.
+  assert.match(REPARA_POLITICAS, /if v_quedan > 0 then\s*\n\s*raise exception/);
+});
+
+test("un predicado filtra y una acción revienta", () => {
+  // Cinco predicados: se usan para decidir si una fila entra en un informe.
+  for (const funcion of [
+    "can_manage_campaign",
+    "can_supervise_campaign",
+    "can_supervise_mail_lead",
+    "has_active_dial_attempt",
+    "management_requires_equifax_data",
+  ]) {
+    assert.ok(GUARDIA_QUE_FILTRA.includes(funcion), `falta ${funcion}`);
+  }
+  assert.match(GUARDIA_QUE_FILTRA, /if not public\.can_access_org\(\\1\) then return false; end if;/);
+  // Tomar una conversación cambia el estado: ahí el error se queda.
+  assert.match(GUARDIA_QUE_FILTRA, /take_over_whatsapp_conversation[\s\S]*?raise exception 'Una acción perdió su guardia dura'/);
+});
