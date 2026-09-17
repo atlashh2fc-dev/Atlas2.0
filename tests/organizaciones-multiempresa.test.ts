@@ -19,6 +19,7 @@ const migracion = (nombre: string) =>
 const BASE = migracion("20260917152300_organizaciones_base.sql");
 const RAIZ = migracion("20260917152400_organizacion_en_tablas_raiz.sql");
 const AISLAMIENTO = migracion("20260917152500_aislamiento_por_organizacion.sql");
+const CIERRE = migracion("20260917152700_cierra_funciones_de_organizacion_a_visitantes.sql");
 
 /** SQL sin comentarios: los comentarios nombran justo lo que se verifica. */
 const soloCodigo = (sql: string) => sql.replace(/--[^\n]*/g, "");
@@ -129,10 +130,18 @@ test("las tablas raíz reciben organization_id obligatorio y con Geimser por def
 
 test("cada tabla operativa queda con su política restrictiva de organización", () => {
   const codigo = soloCodigo(AISLAMIENTO);
+  assert.ok(
+    [...codigo.matchAll(/create policy ([a-z_]+)\n/g)].every((m) => m[1].length <= 63),
+    "ningún nombre de política puede superar los 63 caracteres que admite Postgres",
+  );
   for (const tabla of [...TABLAS_RAIZ, ...TABLAS_HEREDADAS]) {
+    // Postgres corta los identificadores en 63 caracteres: esa tabla usa sufijo corto.
+    const sufijo = tabla === "supervisor_report_daily_agent_tipifications"
+      ? "_org_isolation"
+      : "_organization_isolation";
     assert.match(
       codigo,
-      new RegExp(`create policy ${tabla}_organization_isolation\\non public\\.${tabla}\\nas restrictive`),
+      new RegExp(`create policy ${tabla}${sufijo}\\non public\\.${tabla}\\nas restrictive`),
       `la tabla ${tabla} no tiene política restrictiva de organización`,
     );
   }
@@ -196,3 +205,16 @@ test(
     }
   },
 );
+
+test("las funciones de organización quedan cerradas a visitantes sin sesión", () => {
+  // Supabase concede EXECUTE a `anon` por defecto: revocar a PUBLIC no basta.
+  assert.match(soloCodigo(CIERRE), /revoke execute on function %s from anon/);
+  assert.match(
+    soloCodigo(CIERRE),
+    /revoke execute on function public\.sync_profile_organization_membership\(\) from anon, authenticated/,
+  );
+  assert.match(soloCodigo(CIERRE), /raise exception 'Estas funciones siguen abiertas a visitantes/);
+  for (const funcion of ["is_platform_owner", "current_org_ids", "org_of_lead", "org_of_campaign"]) {
+    assert.match(soloCodigo(CIERRE), new RegExp(`public\\.${funcion}\\(`), `falta cerrar ${funcion}`);
+  }
+});

@@ -25,6 +25,10 @@
 -- contienen operación de otra empresa; cuando Altius empiece a mover eventos,
 -- el paso 5 les agrega su propia columna.
 
+-- Nota de nombres: Postgres corta los identificadores en 63 caracteres. La
+-- política de `supervisor_report_daily_agent_tipifications` usa el sufijo corto
+-- `_org_isolation` para no quedar truncada.
+
 create or replace function public.org_of_lead(p_lead_id uuid)
 returns uuid
 language sql
@@ -1144,8 +1148,8 @@ with check (public.is_platform_owner()
     or team_id is null
     or public.org_of_team(team_id) = any (public.current_org_ids()));
 
-drop policy if exists supervisor_report_daily_agent_tipifications_organization_isolation on public.supervisor_report_daily_agent_tipifications;
-create policy supervisor_report_daily_agent_tipifications_organization_isolation
+drop policy if exists supervisor_report_daily_agent_tipifications_org_isolation on public.supervisor_report_daily_agent_tipifications;
+create policy supervisor_report_daily_agent_tipifications_org_isolation
 on public.supervisor_report_daily_agent_tipifications
 as restrictive
 for all
