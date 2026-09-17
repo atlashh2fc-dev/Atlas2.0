@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { requireProfile } from "@/lib/auth";
+import { esModulo } from "@/lib/modules";
 import { createClient } from "@/lib/supabase/server";
 
 /*
@@ -85,4 +86,29 @@ export async function elegirEmpresaActiva(formData: FormData) {
   if (error) throw new Error(error.message);
   // La empresa elegida cambia lo que ve cada consulta: se revalida todo el panel.
   revalidatePath("/dashboard", "layout");
+}
+
+/**
+ * Contratar o dar de baja una aplicación de la suite para una empresa.
+ *
+ * Es una decisión comercial, no una preferencia: la base comprueba que quien
+ * llama sea el dueño de la plataforma y esta acción solo transporta el dato.
+ */
+export async function cambiarAplicacionDeEmpresa(formData: FormData) {
+  await requireProfile(["admin"]);
+  const empresaId = String(formData.get("empresa_id") ?? "").trim();
+  const modulo = String(formData.get("modulo") ?? "").trim();
+  const activar = String(formData.get("activar") ?? "") === "true";
+
+  if (!UUID.test(empresaId)) throw new Error("Empresa inválida.");
+  if (!esModulo(modulo)) throw new Error("Aplicación desconocida.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("cambiar_modulo_de_empresa", {
+    p_organization_id: empresaId,
+    p_module: modulo,
+    p_enabled: activar,
+  });
+  if (error) throw new Error(error.message);
+  revalidarEmpresas();
 }

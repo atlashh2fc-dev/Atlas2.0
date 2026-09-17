@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ForceLogoutGuard } from "@/components/force-logout-guard";
 import { getWorkspacePermissions } from "@/lib/workspace-permissions";
 import { listDemoViewAccounts } from "@/lib/demo-accounts";
+import { modulosActivos } from "@/lib/modules.server";
 
 export default async function DashboardLayout({
   children,
@@ -37,6 +38,10 @@ export default async function DashboardLayout({
   // consulta nada.
   const demoAccounts = await listDemoViewAccounts(profile);
 
+  // Lo que la empresa activa tiene contratado. El menú se arma con esto: una
+  // empresa sin call center no ve campañas, colas ni grabaciones.
+  const modules = await modulosActivos();
+
   // Empresas a las que llega esta persona. La seguridad por fila ya filtra: casi
   // siempre es una sola y el selector no se muestra.
   const { data: empresas } = await supabase
@@ -50,15 +55,21 @@ export default async function DashboardLayout({
       <div className="flex h-screen w-full overflow-hidden bg-background">
         {profile.role === "agente" && <ForceLogoutGuard userId={profile.id} />}
         {canAttendCustomers && <DialerListener userId={profile.id} />}
-        <Sidebar profile={profile} badges={badges} />
+        <Sidebar profile={profile} badges={badges} modules={modules} />
         <div className="flex flex-1 flex-col overflow-hidden">
           {showAgendaReminder ? (
             <AgendaProvider userId={profile.id}>
-              <Header profile={profile} badges={badges} demoAccounts={demoAccounts} empresas={empresas ?? []} />
+              <Header
+                profile={profile}
+                badges={badges}
+                demoAccounts={demoAccounts}
+                empresas={empresas ?? []}
+                modules={modules}
+              />
               <AgendaBanner />
             </AgendaProvider>
           ) : (
-            <Header profile={profile} demoAccounts={demoAccounts} empresas={empresas ?? []} />
+            <Header profile={profile} demoAccounts={demoAccounts} empresas={empresas ?? []} modules={modules} />
           )}
           <main className="flex-1 overflow-y-auto p-5">{children}</main>
         </div>

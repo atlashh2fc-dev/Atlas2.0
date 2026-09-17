@@ -4,6 +4,7 @@ import { useState, useSyncExternalStore } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { AppModule } from "@/lib/modules";
 import type { AppRole, Profile } from "@/lib/types";
 import {
   HELP_HREF,
@@ -155,16 +156,19 @@ export function NavTree({
   pathname,
   rail = false,
   badges,
+  modules,
   onNavigate,
 }: {
   profile: Profile;
   pathname: string;
   rail?: boolean;
   badges?: NavBadgeCounts;
+  /** Módulos contratados por la empresa activa; el menú se arma con esto. */
+  modules?: AppModule[];
   onNavigate?: () => void;
 }) {
   const space = spaceForPath(pathname);
-  const sections = visibleSections(space, profile.role);
+  const sections = visibleSections(space, profile.role, modules);
 
   const [collapsed, toggleSection] = useCollapsedSections(profile.id, profile.role);
 
@@ -267,7 +271,15 @@ export function NavFooter({
   );
 }
 
-export function Sidebar({ profile, badges }: { profile: Profile; badges?: NavBadgeCounts }) {
+export function Sidebar({
+  profile,
+  badges,
+  modules,
+}: {
+  profile: Profile;
+  badges?: NavBadgeCounts;
+  modules?: AppModule[];
+}) {
   const pathname = usePathname();
   const [rail, setRail] = useState(false);
 
@@ -319,7 +331,7 @@ export function Sidebar({ profile, badges }: { profile: Profile; badges?: NavBad
       )}
 
       <nav className="flex-1 overflow-y-auto p-2">
-        <NavTree profile={profile} pathname={pathname} rail={rail} badges={badges} />
+        <NavTree profile={profile} pathname={pathname} rail={rail} badges={badges} modules={modules} />
       </nav>
 
       <NavFooter profile={profile} pathname={pathname} rail={rail} />

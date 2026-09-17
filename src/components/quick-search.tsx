@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowUpRight, Clock3, Loader2, Search } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { AppRole } from "@/lib/types";
+import type { AppModule } from "@/lib/modules";
 import { allItemsForRole, navLabel } from "@/lib/nav.config";
 
 interface QuickResult {
@@ -43,7 +44,15 @@ const MATCH_LABEL: Record<QuickResult["match_type"], string> = {
  * políticas de visibilidad de la RPC; los destinos se derivan de
  * `nav.config.ts`, así el menú y la paleta nunca divergen.
  */
-export function QuickSearch({ role, userId }: { role: AppRole; userId: string }) {
+export function QuickSearch({
+  role,
+  userId,
+  modules,
+}: {
+  role: AppRole;
+  userId: string;
+  modules?: AppModule[];
+}) {
   const [open, setOpen] = useState(false);
   const [term, setTerm] = useState("");
   const [results, setResults] = useState<QuickResult[]>([]);
@@ -56,7 +65,7 @@ export function QuickSearch({ role, userId }: { role: AppRole; userId: string })
   const dialogRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const router = useRouter();
-  const destinations = useMemo(() => allItemsForRole(role), [role]);
+  const destinations = useMemo(() => allItemsForRole(role, modules), [role, modules]);
   const storageKey = `${RECENT_LEADS_KEY}:${userId}:${role}`;
   const visibleDestinations = destinations.filter((item) =>
     `${navLabel(item, role)} ${item.description}`.toLocaleLowerCase("es").includes(term.trim().toLocaleLowerCase("es"))

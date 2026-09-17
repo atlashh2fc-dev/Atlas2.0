@@ -7,6 +7,7 @@ import { Menu, X } from "lucide-react";
 import type { Profile } from "@/lib/types";
 import { ROLE_LABEL, workspaceLabel } from "@/lib/nav.config";
 import { NavFooter, NavTree, type NavBadgeCounts } from "@/components/sidebar";
+import type { AppModule } from "@/lib/modules";
 
 export function WorkspaceContext({ role }: { role: Profile["role"] }) {
   return <span className="hidden text-sm font-medium text-foreground md:block">{workspaceLabel(role)}</span>;
@@ -16,7 +17,15 @@ export function WorkspaceContext({ role }: { role: Profile["role"] }) {
  * Menú móvil: mismo modelo de datos que el sidebar (nav.config.ts), presentado
  * como drawer. Bajo `md` el sidebar de escritorio está oculto.
  */
-export function MobileNav({ profile, badges }: { profile: Profile; badges?: NavBadgeCounts }) {
+export function MobileNav({
+  profile,
+  badges,
+  modules,
+}: {
+  profile: Profile;
+  badges?: NavBadgeCounts;
+  modules?: AppModule[];
+}) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const drawerRef = useRef<HTMLElement>(null);
@@ -103,6 +112,7 @@ export function MobileNav({ profile, badges }: { profile: Profile; badges?: NavB
                 profile={profile}
                 pathname={pathname}
                 badges={badges}
+                modules={modules}
                 onNavigate={() => setOpen(false)}
               />
             </nav>

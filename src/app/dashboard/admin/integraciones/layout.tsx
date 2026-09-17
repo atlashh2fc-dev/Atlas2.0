@@ -1,4 +1,5 @@
 import { requireProfile } from "@/lib/auth";
+import { requireModule } from "@/lib/modules.server";
 import { NavTabs, PageHeader } from "@/components/ui";
 import { getTabs } from "@/lib/nav.config";
 
@@ -7,6 +8,7 @@ import { getTabs } from "@/lib/nav.config";
  * de la página, no en el menú (docs/arquitectura-navegacion.md §4.4).
  */
 export default async function IntegracionesLayout({ children }: { children: React.ReactNode }) {
+  await requireModule("contact_center", "whatsapp");
   await requireProfile(["admin"]);
 
   return (

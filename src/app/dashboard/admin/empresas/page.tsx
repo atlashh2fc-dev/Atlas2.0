@@ -1,6 +1,7 @@
 import { unstable_noStore as noStore } from "next/cache";
 
 import {
+  cambiarAplicacionDeEmpresa,
   cambiarEstadoEmpresa,
   crearEmpresa,
   moverPersonaDeEmpresa,
@@ -25,6 +26,7 @@ import {
   Tr,
 } from "@/components/ui";
 import { requireProfile } from "@/lib/auth";
+import { APP_MODULES, MODULE_INFO, type AppModule } from "@/lib/modules";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -41,7 +43,13 @@ export default async function EmpresasAdminPage() {
   await requireProfile(["admin"]);
   const supabase = await createClient();
 
-  const [{ data: esDuenio }, { data: empresas }, { data: personas }, { data: campanas }] =
+  const [
+    { data: esDuenio },
+    { data: empresas },
+    { data: personas },
+    { data: campanas },
+    { data: aplicaciones },
+  ] =
     await Promise.all([
       supabase.rpc("is_platform_owner"),
       supabase
@@ -53,6 +61,7 @@ export default async function EmpresasAdminPage() {
         .select("id, full_name, email, role, active, organization_id")
         .order("full_name"),
       supabase.from("campaigns").select("id, organization_id"),
+      supabase.rpc("aplicaciones_de_las_empresas"),
     ]);
 
   const duenioDePlataforma = esDuenio === true;
@@ -78,6 +87,14 @@ export default async function EmpresasAdminPage() {
   }
 
   const nombrePorEmpresa = new Map(listaEmpresas.map((empresa) => [empresa.id, empresa.name]));
+
+  // Qué aplicaciones tiene contratada cada empresa. Lo que no está en la lista
+  // está apagado: una app se contrata, no se hereda.
+  const contratadas = new Set<string>();
+  for (const fila of (aplicaciones ?? []) as { organization_id: string; module: string | null; enabled: boolean }[]) {
+    if (fila.module && fila.enabled) contratadas.add(`${fila.organization_id}:${fila.module}`);
+  }
+  const tieneApp = (empresaId: string, modulo: AppModule) => contratadas.has(`${empresaId}:${modulo}`);
 
   return (
     <div className="space-y-5">
@@ -163,6 +180,56 @@ export default async function EmpresasAdminPage() {
           </Tbody>
         </Table>
       </SectionCard>
+
+      {duenioDePlataforma && (
+        <SectionCard
+          title="Aplicaciones de la suite"
+          description="Cada empresa ve en su menú solo lo que tiene contratado. Apagar una aplicación la hace desaparecer, también si alguien escribe la dirección a mano."
+        >
+          <div className="space-y-5">
+            {listaEmpresas.map((empresa) => (
+              <div key={empresa.id}>
+                <p className="mb-2 text-sm font-medium text-foreground">{empresa.name}</p>
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {APP_MODULES.map((modulo) => {
+                    const info = MODULE_INFO[modulo];
+                    const activa = tieneApp(empresa.id, modulo);
+                    return (
+                      <div
+                        key={modulo}
+                        className={`rounded-lg border p-3 ${activa ? "border-border bg-surface" : "border-dashed border-border"}`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-foreground">{info.label}</p>
+                            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                              {info.producto}
+                              {!info.dentro && " · sistema aparte"}
+                            </p>
+                          </div>
+                          <Badge tone={activa ? "success" : "neutral"}>{activa ? "Activa" : "Apagada"}</Badge>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">{info.description}</p>
+                        <ActionForm
+                          action={cambiarAplicacionDeEmpresa}
+                          success={activa ? "Aplicación dada de baja" : "Aplicación contratada"}
+                        >
+                          <input type="hidden" name="empresa_id" value={empresa.id} />
+                          <input type="hidden" name="modulo" value={modulo} />
+                          <input type="hidden" name="activar" value={activa ? "false" : "true"} />
+                          <ActionSubmit variant="ghost" size="sm">
+                            {activa ? "Dar de baja" : "Contratar"}
+                          </ActionSubmit>
+                        </ActionForm>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      )}
 
       <SectionCard
         title="Personas"

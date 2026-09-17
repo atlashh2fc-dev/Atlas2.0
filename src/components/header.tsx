@@ -1,5 +1,6 @@
 import type { Profile } from "@/lib/types";
 import { MobileNav, WorkspaceContext } from "@/components/mobile-nav";
+import type { AppModule } from "@/lib/modules";
 import type { NavBadgeCounts } from "@/components/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { QuickSearch } from "@/components/quick-search";
@@ -15,9 +16,12 @@ export function Header({
   badges,
   demoAccounts = [],
   empresas = [],
+  modules,
 }: {
   profile: Profile;
   badges?: NavBadgeCounts;
+  /** Módulos contratados por la empresa activa. */
+  modules?: AppModule[];
   /** Vistas disponibles cuando la cuenta es de demostración. */
   demoAccounts?: DemoViewAccount[];
   /** Empresas a las que llega la persona. Con una sola, el selector no aparece. */
@@ -26,14 +30,14 @@ export function Header({
   return (
     <header className="flex h-16 flex-shrink-0 items-center justify-between border-b border-border bg-surface px-6">
       <div className="flex min-w-0 items-center gap-3">
-        <MobileNav profile={profile} badges={badges} />
+        <MobileNav profile={profile} badges={badges} modules={modules} />
         <WorkspaceContext role={profile.role} />
       </div>
 
       <div className="flex items-center gap-3">
         <SelectorEmpresa empresas={empresas} actual={profile.viewing_organization_id ?? null} />
         {profile.is_demo && <DemoRoleSwitcher accounts={demoAccounts} currentId={profile.id} />}
-        <QuickSearch role={profile.role} userId={profile.id} />
+        <QuickSearch role={profile.role} userId={profile.id} modules={modules} />
         {profile.role === "agente" && <AgendaBell />}
         <ThemeToggle />
         <form action={signOut}>

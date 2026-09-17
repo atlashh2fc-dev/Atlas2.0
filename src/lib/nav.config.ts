@@ -21,6 +21,7 @@ import {
   Workflow,
   type LucideIcon,
 } from "lucide-react";
+import type { AppModule } from "./modules";
 import type { AppRole } from "./types";
 import { getWorkspacePermissions } from "./workspace-permissions";
 
@@ -50,6 +51,12 @@ export type NavItem = {
   roles: AppRole[];
   /** Descripción corta reutilizada por la búsqueda global. */
   description: string;
+  /**
+   * Producto al que pertenece el ítem. Sin módulos declarados es transversal
+   * (inicio, ayuda, administración de la plataforma). Con uno o más, la empresa
+   * activa tiene que tener al menos uno contratado para verlo.
+   */
+  modules?: AppModule[];
   badge?: NavBadge;
   /** Prefijos extra que mantienen el ítem activo (acciones y vistas hijas). */
   match?: string[];
@@ -107,6 +114,7 @@ const CONSOLE: NavSpace = {
           description: "Colas de voz, WhatsApp y correo, capacidad y excepciones; sin atender clientes",
           badge: "live-agents",
           match: ["/dashboard/operacion", "/dashboard/supervision/monitor"],
+          modules: ["contact_center"],
         },
         {
           id: "ventas",
@@ -116,6 +124,7 @@ const CONSOLE: NavSpace = {
           roles: ["admin", "supervisor"],
           description: "Embudo B2B: empresas, montos, etapa y próxima acción",
           match: ["/dashboard/ventas"],
+          modules: ["ventas_b2b", "ventas_b2c"],
         },
         {
           id: "correo",
@@ -124,6 +133,7 @@ const CONSOLE: NavSpace = {
           icon: Mail,
           roles: OPERACION,
           description: "Cola de correo, asignación a ejecutivos y resultados por campaña",
+          modules: ["correo"],
         },
         {
           id: "equipo",
@@ -132,6 +142,7 @@ const CONSOLE: NavSpace = {
           icon: UsersRound,
           roles: ["supervisor"],
           description: "Carga, agendas y asignación de tus ejecutivos",
+          modules: ["contact_center"],
         },
         {
           id: "campanas-operativas",
@@ -140,6 +151,7 @@ const CONSOLE: NavSpace = {
           icon: Megaphone,
           roles: OPERACION,
           description: "Operación y canales habilitados por campaña",
+          modules: ["contact_center"],
         },
         {
           id: "registros",
@@ -149,6 +161,7 @@ const CONSOLE: NavSpace = {
           roles: ALL_ROLES,
           description: "Registros dentro de tu alcance; gestión solo para ejecutivos",
           match: ["/dashboard/leads", "/dashboard/llamadas"],
+          modules: ["leads"],
         },
         {
           id: "conversaciones",
@@ -160,6 +173,7 @@ const CONSOLE: NavSpace = {
           // El índice redirige al primer canal habilitado en la campaña, así
           // que el ítem tiene que seguir activo en /voz, /whatsapp y /correo.
           match: ["/dashboard/conversaciones"],
+          modules: ["contact_center", "whatsapp", "correo"],
         },
         {
           id: "agenda",
@@ -169,6 +183,7 @@ const CONSOLE: NavSpace = {
           roles: ["agente"],
           description: "Seguimientos de hoy y vencidos",
           badge: "overdue-agenda",
+          modules: ["leads"],
         },
       ],
     },
@@ -190,6 +205,7 @@ const CONSOLE: NavSpace = {
             // desempeño individual que puede escalar a un proceso disciplinario.
             { label: "Integridad", href: "/dashboard/reportes/integridad", roles: ["admin", "supervisor"] },
           ],
+          modules: ["contact_center"],
         },
         {
           id: "calidad",
@@ -204,6 +220,7 @@ const CONSOLE: NavSpace = {
             { label: "Reportes y análisis", href: "/dashboard/calidad/analisis" },
             { label: "Loop IA", href: "/dashboard/calidad/loop" },
           ],
+          modules: ["contact_center"],
         },
       ],
     },
@@ -250,6 +267,7 @@ const ADMIN: NavSpace = {
           icon: Megaphone,
           roles: ["admin"],
           description: "Configuración y estado de cada operación",
+          modules: ["contact_center"],
         },
         {
           id: "colas",
@@ -258,6 +276,7 @@ const ADMIN: NavSpace = {
           icon: Network,
           roles: ["admin"],
           description: "Distribución omnicanal, capacidad, SLA y miembros",
+          modules: ["contact_center"],
         },
         {
           id: "flujos",
@@ -266,6 +285,7 @@ const ADMIN: NavSpace = {
           icon: Workflow,
           roles: ["admin"],
           description: "Guiones, pasos y tipificaciones",
+          modules: ["contact_center"],
         },
         {
           id: "estados-agente",
@@ -274,6 +294,7 @@ const ADMIN: NavSpace = {
           icon: UserCog,
           roles: ["admin"],
           description: "Catálogo de estados del discador",
+          modules: ["contact_center"],
         },
         {
           id: "cargas",
@@ -282,6 +303,7 @@ const ADMIN: NavSpace = {
           icon: Database,
           roles: ["admin"],
           description: "Importación de bases y su historial",
+          modules: ["leads"],
         },
       ],
     },
@@ -312,6 +334,7 @@ const ADMIN: NavSpace = {
           icon: PhoneCall,
           roles: ["admin"],
           description: "Salud de anexos automáticos y acciones de contingencia",
+          modules: ["contact_center"],
         },
         {
           id: "integraciones",
@@ -325,6 +348,7 @@ const ADMIN: NavSpace = {
             { label: "Ejecutivos históricos", href: "/dashboard/admin/integraciones/historial" },
             { label: "WhatsApp", href: "/dashboard/admin/integraciones/whatsapp" },
           ],
+          modules: ["contact_center", "whatsapp"],
         },
       ],
     },
@@ -365,8 +389,20 @@ export function workspaceLabel(role: AppRole): string {
   return getWorkspacePermissions(role).workspaceLabel;
 }
 
+/**
+ * ¿Este ítem corresponde a la empresa que se está mirando?
+ *
+ * `undefined` significa "todavía no sé qué tiene contratado": se muestra todo,
+ * porque esconder el menú mientras carga es peor que mostrarlo de más, y el
+ * servidor igual cierra la página que no corresponde.
+ */
+function enLosModulos(item: NavItem, modules?: AppModule[]): boolean {
+  if (!modules || !item.modules) return true;
+  return item.modules.some((modulo) => modules.includes(modulo));
+}
+
 /** Secciones visibles de un espacio para un rol, ya filtradas y sin secciones vacías. */
-export function visibleSections(spaceId: NavSpaceId, role: AppRole): NavSection[] {
+export function visibleSections(spaceId: NavSpaceId, role: AppRole, modules?: AppModule[]): NavSection[] {
   if (role === "admin") {
     const inventory = new Map(
       [...CONSOLE.sections, ...ADMIN.sections]
@@ -379,7 +415,7 @@ export function visibleSections(spaceId: NavSpaceId, role: AppRole): NavSection[
         label,
         items: itemIds.flatMap((itemId) => {
           const item = inventory.get(itemId);
-          return item?.roles.includes(role) ? [item] : [];
+          return item?.roles.includes(role) && enLosModulos(item, modules) ? [item] : [];
         }),
       }))
       .filter((section) => section.items.length > 0);
@@ -393,21 +429,24 @@ export function visibleSections(spaceId: NavSpaceId, role: AppRole): NavSection[
       label,
       items: itemIds.flatMap((itemId) => {
         const item = inventory.get(itemId);
-        return item?.roles.includes(role) ? [item] : [];
+        return item?.roles.includes(role) && enLosModulos(item, modules) ? [item] : [];
       }),
     })).filter((section) => section.items.length > 0);
   }
   return space
-    .sections.map((section) => ({ ...section, items: section.items.filter((item) => item.roles.includes(role)) }))
+    .sections.map((section) => ({
+      ...section,
+      items: section.items.filter((item) => item.roles.includes(role) && enLosModulos(item, modules)),
+    }))
     .filter((section) => section.items.length > 0);
 }
 
 /** Todos los ítems accesibles por un rol, en orden de menú (usado por la búsqueda global). */
-export function allItemsForRole(role: AppRole): NavItem[] {
+export function allItemsForRole(role: AppRole, modules?: AppModule[]): NavItem[] {
   const items = role === "admin"
-    ? visibleSections("console", role).flatMap((section) => section.items)
+    ? visibleSections("console", role, modules).flatMap((section) => section.items)
     : NAV_SPACES.filter((space) => space.roles.includes(role)).flatMap((space) =>
-        visibleSections(space.id, role).flatMap((section) => section.items)
+        visibleSections(space.id, role, modules).flatMap((section) => section.items)
       );
   return [...items, HELP_ITEM];
 }
@@ -429,7 +468,7 @@ export function getTabs(itemId: string, role?: AppRole): NavTab[] {
 }
 
 /** Pestañas del destino que contiene la ruta actual (para el PageHeader). */
-export function tabsForPath(pathname: string, role: AppRole): NavTab[] {
-  const item = allItemsForRole(role).find((candidate) => candidate.tabs && isItemActive(candidate, pathname));
+export function tabsForPath(pathname: string, role: AppRole, modules?: AppModule[]): NavTab[] {
+  const item = allItemsForRole(role, modules).find((candidate) => candidate.tabs && isItemActive(candidate, pathname));
   return (item?.tabs ?? []).filter((tab) => !tab.roles || tab.roles.includes(role));
 }

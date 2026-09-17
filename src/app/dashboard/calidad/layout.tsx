@@ -1,8 +1,10 @@
 import { requireProfile } from "@/lib/auth";
+import { requireModule } from "@/lib/modules.server";
 import { getTabs } from "@/lib/nav.config";
 import { NavTabs, PageHeader } from "@/components/ui";
 
 export default async function CalidadLayout({ children }: { children: React.ReactNode }) {
+  await requireModule("contact_center");
   const profile = await requireProfile(["admin", "supervisor"]);
 
   return (

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { requireProfile } from "@/lib/auth";
+import { requireModule } from "@/lib/modules.server";
 import { createClient } from "@/lib/supabase/server";
 import { Callout, NavTabs, PageHeader } from "@/components/ui";
 import { getWorkspacePermissions } from "@/lib/workspace-permissions";
@@ -15,6 +16,7 @@ import { ATTENTION_TABS, getEnabledChannels } from "@/lib/campaign-channels";
  * decide la configuración de la campaña y no el código de la pantalla.
  */
 export default async function AttentionLayout({ children }: { children: React.ReactNode }) {
+  await requireModule("contact_center", "whatsapp", "correo");
   const profile = await requireProfile();
   const permissions = getWorkspacePermissions(profile.role);
   // Administración vigila metadatos; nunca abre la conversación de un cliente.
