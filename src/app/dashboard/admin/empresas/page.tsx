@@ -135,14 +135,12 @@ export default async function EmpresasAdminPage() {
       <SectionCard title="Empresas" description="Personas y campañas que tiene cada una.">
         <Table>
           <Thead>
-            <Tr>
-              <Th>Empresa</Th>
-              <Th>Clave</Th>
-              <Th>Personas</Th>
-              <Th>Campañas</Th>
-              <Th>Estado</Th>
-              {duenioDePlataforma && <Th>Acción</Th>}
-            </Tr>
+            <Th>Empresa</Th>
+            <Th>Clave</Th>
+            <Th>Personas</Th>
+            <Th>Campañas</Th>
+            <Th>Estado</Th>
+            {duenioDePlataforma && <Th>Acción</Th>}
           </Thead>
           <Tbody>
             {listaEmpresas.length === 0 && (
@@ -241,13 +239,11 @@ export default async function EmpresasAdminPage() {
       >
         <Table>
           <Thead>
-            <Tr>
-              <Th>Persona</Th>
-              <Th>Correo</Th>
-              <Th>Rol</Th>
-              <Th>Empresa</Th>
-              {duenioDePlataforma && <Th>Mover a</Th>}
-            </Tr>
+            <Th>Persona</Th>
+            <Th>Correo</Th>
+            <Th>Rol</Th>
+            <Th>Empresa</Th>
+            {duenioDePlataforma && <Th>Mover a</Th>}
           </Thead>
           <Tbody>
             {listaPersonas.length === 0 && (

@@ -24,6 +24,12 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
 const pesos = new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 });
+
+/** Sin precio acordado todavía, decirlo vale más que un "$0" que parece un dato. */
+function montoMensual(valor: unknown): string {
+  const numero = Number(valor ?? 0);
+  return numero > 0 ? `${pesos.format(numero)} al mes` : "Monto por definir";
+}
 const cuando = new Intl.DateTimeFormat("es-CL", {
   day: "2-digit",
   month: "short",
@@ -87,7 +93,7 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
     <div className="space-y-5">
       <PageHeader
         title={empresa?.name ?? "Negocio"}
-        description={`${negocio.name} · ${pesos.format(Number(negocio.monthly_amount ?? 0))} al mes`}
+        description={`${negocio.name} · ${montoMensual(negocio.monthly_amount)}`}
         actions={
           <Link
             className="text-sm text-muted-foreground hover:text-foreground hover:underline"
@@ -201,12 +207,10 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
       <SectionCard title="Historia" description="Todo lo que pasó con este negocio.">
         <Table>
           <Thead>
-            <Tr>
-              <Th>Cuándo</Th>
-              <Th>Tipo</Th>
-              <Th>Detalle</Th>
-              <Th>Estado</Th>
-            </Tr>
+            <Th>Cuándo</Th>
+            <Th>Tipo</Th>
+            <Th>Detalle</Th>
+            <Th>Estado</Th>
           </Thead>
           <Tbody>
             {(gestiones ?? []).length === 0 && <TableEmpty colSpan={4}>Sin gestiones todavía.</TableEmpty>}

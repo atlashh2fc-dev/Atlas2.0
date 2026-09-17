@@ -29,6 +29,12 @@ function primero<T>(valor: T | T[] | null | undefined): T | null {
 }
 
 const pesos = new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 });
+
+/** Un negocio recién llegado de la web todavía no tiene precio: decirlo es más honesto que "$0". */
+function montoMensual(valor: unknown): string {
+  const numero = Number(valor ?? 0);
+  return numero > 0 ? pesos.format(numero) : "Por definir";
+}
 const fecha = new Intl.DateTimeFormat("es-CL", { day: "2-digit", month: "short" });
 
 /**
@@ -195,13 +201,11 @@ export default async function VentasPage() {
         ) : (
           <Table>
             <Thead>
-              <Tr>
-                <Th>Empresa</Th>
-                <Th>Negocio</Th>
-                <Th>Etapa</Th>
-                <Th>Mensual</Th>
-                <Th>Próxima acción</Th>
-              </Tr>
+              <Th>Empresa</Th>
+              <Th>Negocio</Th>
+              <Th>Etapa</Th>
+              <Th>Mensual</Th>
+              <Th>Próxima acción</Th>
             </Thead>
             <Tbody>
               {listaOportunidades.length === 0 && <TableEmpty colSpan={5}>Sin negocios.</TableEmpty>}
@@ -229,7 +233,9 @@ export default async function VentasPage() {
                         {etapaDe(negocio)}
                       </Badge>
                     </Td>
-                    <Td>{pesos.format(Number(negocio.monthly_amount ?? 0))}</Td>
+                    <Td className={Number(negocio.monthly_amount ?? 0) > 0 ? undefined : "text-muted-foreground"}>
+                      {montoMensual(negocio.monthly_amount)}
+                    </Td>
                     <Td className={vencida ? "text-danger" : "text-muted-foreground"}>
                       {negocio.next_action_at
                         ? `${fecha.format(new Date(negocio.next_action_at))}${negocio.next_action_note ? ` · ${negocio.next_action_note}` : ""}`
