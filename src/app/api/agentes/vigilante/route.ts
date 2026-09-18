@@ -155,6 +155,13 @@ export async function GET(request: NextRequest) {
           destino,
         );
       }
+      await admin.rpc("anotar_corrida_de_agente", {
+        p_agente: "vigilante",
+        p_organization_slug: empresa,
+        p_estado: "error",
+        p_resumen: `No pudo revisar: ${motivo}`,
+        p_detalle: {},
+      });
       salida.push({ empresa, error: motivo });
       continue;
     }
@@ -169,6 +176,16 @@ export async function GET(request: NextRequest) {
     const envio = destino
       ? await enviarInforme(asunto, cuerpoHtml(empresa, datosVerificacion, datosResumen), destino)
       : { enviado: false, motivo: "No hay a quién enviarle el informe" };
+
+    // Queda anotado el resultado y si el informe salió: sin esto, un correo que
+    // no llega no distingue entre "el agente murió" y "el envío falló".
+    await admin.rpc("anotar_corrida_de_agente", {
+      p_agente: "vigilante",
+      p_organization_slug: empresa,
+      p_estado: datosVerificacion.alertas > 0 ? "alerta" : "ok",
+      p_resumen: `${datosVerificacion.alertas} alerta(s); informe ${envio.enviado ? "enviado" : "no enviado"}`,
+      p_detalle: { resumen: datosResumen, envio, revisiones: datosVerificacion.revisiones },
+    });
 
     salida.push({ empresa, alertas: datosVerificacion.alertas, resumen: datosResumen, envio });
   }

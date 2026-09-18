@@ -20,6 +20,27 @@ export const maxDuration = 60;
 /** Empresas que tienen el agente encendido. Se amplía cuando otra lo contrate. */
 const EMPRESAS = ["altius"];
 
+/**
+ * Deja constancia de la corrida. Anotar no puede tumbar al agente: si la
+ * bitácora falla, el trabajo ya está hecho y eso vale más que el registro.
+ */
+async function anotar(
+  admin: ReturnType<typeof createAdminClient>,
+  empresa: string,
+  estado: "ok" | "alerta" | "error",
+  resumen: string,
+  detalle: Record<string, unknown>,
+) {
+  const { error } = await admin.rpc("anotar_corrida_de_agente", {
+    p_agente: "calificador",
+    p_organization_slug: empresa,
+    p_estado: estado,
+    p_resumen: resumen,
+    p_detalle: detalle,
+  });
+  if (error) console.error(`[agente-calificador] no se pudo anotar la corrida: ${error.message}`);
+}
+
 export async function GET(request: NextRequest) {
   if (
     !verifyIntegrationV2WorkerAuthorization(
@@ -43,11 +64,21 @@ export async function GET(request: NextRequest) {
     if (error) {
       // Una empresa que falla no puede dejar sin correr a las demás.
       console.error(`[agente-calificador] ${empresa}: ${error.message}`);
+      await anotar(admin, empresa, "error", `No pudo calificar: ${error.message}`, {});
       corridas.push({ empresa, error: error.message });
       continue;
     }
 
-    corridas.push(data as Record<string, unknown>);
+    const resultado = data as Record<string, unknown>;
+    // Sin este rastro, un agente caído se ve igual que un día sin novedades.
+    await anotar(
+      admin,
+      empresa,
+      "ok",
+      `${resultado.negocios_creados ?? 0} negocio(s) nuevos desde el interés en el correo`,
+      resultado,
+    );
+    corridas.push(resultado);
   }
 
   return NextResponse.json({ ok: true, corridas });
