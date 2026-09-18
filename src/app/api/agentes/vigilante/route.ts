@@ -75,6 +75,10 @@ function cuerpoHtml(empresa: string, verificacion: Verificacion, resumen: Resume
           <span style="color:#64748b;font-size:12px">negocios nuevos</span>
         </td>
         <td style="padding:10px 12px;background:#f8fafc;border-radius:6px">
+          <strong style="font-size:22px">${numero("respuestas_recibidas")}</strong><br>
+          <span style="color:#64748b;font-size:12px">respuestas</span>
+        </td>
+        <td style="padding:10px 12px;background:#f8fafc;border-radius:6px">
           <strong style="font-size:22px">${numero("reuniones_agendadas")}</strong><br>
           <span style="color:#64748b;font-size:12px">reuniones</span>
         </td>
@@ -85,8 +89,9 @@ function cuerpoHtml(empresa: string, verificacion: Verificacion, resumen: Resume
     <table style="border-collapse:collapse;width:100%;font-size:13px">${filas}</table>
 
     <p style="margin:24px 0 0;color:#334155;font-size:13px">
-      Hay <strong>${numero("negocios_abiertos")}</strong> negocios abiertos y
-      <strong>${numero("para_hoy")}</strong> con acción para hoy.
+      Hay <strong>${numero("negocios_abiertos")}</strong> negocios abiertos,
+      <strong>${numero("para_hoy")}</strong> con acción para hoy y
+      <strong>${numero("esperando_tu_revision")}</strong> respuesta(s) del agente esperando tu visto bueno.
     </p>
     <p style="margin:16px 0 0;color:#94a3b8;font-size:12px">
       Este correo llega todos los días, esté todo bien o no. Si un día no llega, el vigilante se cayó.
@@ -139,9 +144,10 @@ export async function GET(request: NextRequest) {
   const destino = process.env.REPORTE_TO_EMAIL ?? correoDuenio;
 
   for (const empresa of EMPRESAS) {
-    const [verificacion, resumen] = await Promise.all([
+    const [verificacion, resumen, delVendedor] = await Promise.all([
       admin.rpc("verificar_procesos_de_empresa", { p_organization_slug: empresa }),
       admin.rpc("resumen_del_dia", { p_organization_slug: empresa }),
+      admin.rpc("revisiones_del_vendedor", { p_organization_slug: empresa }),
     ]);
 
     if (verificacion.error || resumen.error) {
@@ -168,6 +174,12 @@ export async function GET(request: NextRequest) {
 
     const datosVerificacion = verificacion.data as unknown as Verificacion;
     const datosResumen = resumen.data as unknown as Resumen;
+
+    // Las revisiones del vendedor van en el mismo informe: un agente que redacta
+    // y nadie revisa es un prospecto esperando, y eso no puede quedar en otra parte.
+    const revisionesVendedor = (delVendedor.data ?? []) as Revision[];
+    datosVerificacion.revisiones = [...datosVerificacion.revisiones, ...revisionesVendedor];
+    datosVerificacion.alertas += revisionesVendedor.filter((r) => r.estado === "alerta").length;
 
     const asunto = datosVerificacion.alertas > 0
       ? `Atlas · ${empresa}: ${datosVerificacion.alertas} alerta(s) que revisar`

@@ -1,0 +1,11 @@
+-- Dos silencios nuevos que vigilar, ahora que el vendedor existe.
+--
+-- El primero: que el vendedor deje de latir. Corre cada quince minutos; si pasa
+-- una hora sin anotar nada, alguien respondió y no hay quien lo lea.
+--
+-- El segundo, y es el que de verdad duele: que el agente redacte respuestas y
+-- nadie las revise. En modo borrador, un borrador sin decidir es un prospecto
+-- esperando. Si se acumulan, el agente está trabajando para la nada.
+--
+-- El cuerpo aplicado está en las funciones `revisiones_del_vendedor` y
+-- `resumen_del_dia`, que esta migración reemplaza.
