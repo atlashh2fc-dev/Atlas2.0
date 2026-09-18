@@ -35,6 +35,7 @@ const MACHINE_ONLY_PATHS = new Set([
   // El agente calificador lo despierta el cron, con el mismo secreto que el resto.
   "/api/agentes/calificador",
   "/api/agentes/vigilante",
+  "/api/agentes/vendedor",
 ]);
 
 export async function updateSession(request: NextRequest) {

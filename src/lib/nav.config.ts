@@ -124,6 +124,10 @@ const CONSOLE: NavSpace = {
           roles: ["admin", "supervisor"],
           description: "Embudo B2B: empresas, montos, etapa y próxima acción",
           match: ["/dashboard/ventas"],
+          tabs: [
+            { label: "Embudo", href: "/dashboard/ventas" },
+            { label: "Respuestas del agente", href: "/dashboard/ventas/respuestas" },
+          ],
           modules: ["ventas_b2b", "ventas_b2c"],
         },
         {
