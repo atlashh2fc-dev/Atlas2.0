@@ -34,6 +34,7 @@ const MACHINE_ONLY_PATHS = new Set([
   "/api/integrations/altius/intake",
   // El agente calificador lo despierta el cron, con el mismo secreto que el resto.
   "/api/agentes/calificador",
+  "/api/agentes/vigilante",
 ]);
 
 export async function updateSession(request: NextRequest) {
