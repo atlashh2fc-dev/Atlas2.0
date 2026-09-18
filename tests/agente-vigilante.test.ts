@@ -10,7 +10,7 @@ import test from "node:test";
 
 const leer = (ruta: string) => readFileSync(new URL(`../${ruta}`, import.meta.url), "utf8");
 
-const MIGRACION = leer("supabase/migrations/20260918140000_agente_vigilante_de_procesos.sql");
+const MIGRACION = leer("supabase/migrations/20260918135039_agente_vigilante_de_procesos.sql");
 const RUTA = leer("src/app/api/agentes/vigilante/route.ts");
 const CRONS = JSON.parse(leer("vercel.json")) as { crons: { path: string; schedule: string }[] };
 const MIDDLEWARE = leer("src/lib/supabase/middleware.ts");

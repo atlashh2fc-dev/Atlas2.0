@@ -63,3 +63,25 @@ test("late cada quince minutos y es ruta de máquina", () => {
   // Y anota cada corrida, como todos los demás.
   assert.match(RUTA, /anotar_corrida_de_agente/);
 });
+
+// Lo que fallo en la primera prueba con datos reales, y no puede repetirse.
+
+test("el agente sabe en que dia vive", () => {
+  // Propuso "el viernes 21" cuando el 21 era lunes: un prospecto lo nota al leerlo.
+  assert.match(LIB, /function fechaDeHoy/);
+  assert.match(LIB, /timeZone: "America\/Santiago"/);
+  assert.match(LIB, /`Hoy es \$\{fechaDeHoy\(\)\}\.`/);
+});
+
+test("la baja no depende de que el modelo acierte la etiqueta", () => {
+  // Clasifico una baja como "rechaza" y por eso no escalo.
+  assert.match(RUTA, /const pideParar = /);
+  assert.match(RUTA, /no me escrib/);
+  assert.match(RUTA, /propuesta\.intencion === "rechaza"/);
+});
+
+test("la baja se cumple, no se anuncia", () => {
+  // Escribio "hemos eliminado su correo de nuestra lista" sin que nadie borrara nada.
+  assert.match(RUTA, /pedir_baja_de_contacto/);
+  assert.match(RUTA, /pideParar \|\| propuesta\.intencion === "baja"/);
+});

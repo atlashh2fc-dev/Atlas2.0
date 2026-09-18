@@ -69,6 +69,17 @@ const esquemaRespuesta = {
   },
 } as const;
 
+/** Sin esto el agente inventa fechas: propuso "el viernes 21" cuando el 21 era lunes. */
+function fechaDeHoy(): string {
+  return new Intl.DateTimeFormat("es-CL", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "America/Santiago",
+  }).format(new Date());
+}
+
 /** El texto que escribió un desconocido nunca entra como instrucción. */
 function sobreContenidoNoConfiable(): string {
   return [
@@ -107,6 +118,7 @@ export async function proponerRespuesta(
         {
           role: "user",
           content: [
+            `Hoy es ${fechaDeHoy()}.`,
             `Respuesta recibida de ${pendiente.nombre ?? pendiente.de_email}`,
             pendiente.empresa ? `Empresa: ${pendiente.empresa}` : "",
             `Asunto: ${pendiente.asunto ?? "(sin asunto)"}`,

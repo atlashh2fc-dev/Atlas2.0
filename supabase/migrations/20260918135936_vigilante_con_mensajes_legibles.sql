@@ -1,0 +1,3 @@
+-- Los mensajes del vigilante se leen en un correo, así que van con acentos.
+-- El cuerpo completo de la función está en 20260918141030, que la reemplaza
+-- agregando la revisión de agentes vivos.

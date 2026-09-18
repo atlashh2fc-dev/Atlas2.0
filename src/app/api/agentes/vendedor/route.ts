@@ -102,8 +102,26 @@ export async function GET(request: NextRequest) {
       try {
         const propuesta = await proponerRespuesta(config, pendiente, apiKey);
 
-        // Quien pide la baja no recibe otra respuesta comercial: se escala y punto.
-        const escalar = propuesta.escalar || propuesta.intencion === "baja" || !propuesta.responder;
+        // Quien no quiere que le escriban no recibe otra respuesta comercial.
+        // No depende de que el modelo acierte la etiqueta: en la primera prueba
+        // clasificó una baja como "rechaza" y por eso no escaló.
+        const pideParar = /\b(no me escrib|no escrib|d(a|e)r de baja|dar de baja|desuscri|unsubscribe|saquen mi correo|sacar mi correo|elimin(en|ar) mi correo|no contact|remove me)/i
+          .test(pendiente.cuerpo);
+        const escalar =
+          propuesta.escalar ||
+          propuesta.intencion === "baja" ||
+          propuesta.intencion === "rechaza" ||
+          pideParar ||
+          !propuesta.responder;
+
+        // Y la baja se cumple, no se anuncia: el negocio se cierra y deja de insistirse.
+        if (pideParar || propuesta.intencion === "baja") {
+          await admin.rpc("pedir_baja_de_contacto", {
+            p_organization_slug: empresa,
+            p_email: pendiente.de_email,
+            p_motivo: "Pidió no recibir más correos",
+          });
+        }
 
         const { error } = await admin.rpc("guardar_borrador_de_venta", {
           p_organization_slug: empresa,

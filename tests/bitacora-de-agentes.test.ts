@@ -10,7 +10,7 @@ import test from "node:test";
 
 const leer = (ruta: string) => readFileSync(new URL(`../${ruta}`, import.meta.url), "utf8");
 
-const BITACORA = leer("supabase/migrations/20260918143000_bitacora_de_los_agentes.sql");
+const BITACORA = leer("supabase/migrations/20260918140237_bitacora_de_los_agentes.sql");
 const CALIFICADOR = leer("src/app/api/agentes/calificador/route.ts");
 const VIGILANTE = leer("src/app/api/agentes/vigilante/route.ts");
 
