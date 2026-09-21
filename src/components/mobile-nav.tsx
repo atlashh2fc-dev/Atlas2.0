@@ -7,6 +7,8 @@ import { Menu, X } from "lucide-react";
 import type { Profile } from "@/lib/types";
 import { ROLE_LABEL, workspaceLabel } from "@/lib/nav.config";
 import { NavFooter, NavTree, type NavBadgeCounts } from "@/components/sidebar";
+import { MarcaAtlas } from "@/components/marca-atlas";
+import type { Edicion } from "@/lib/ediciones";
 import type { AppModule } from "@/lib/modules";
 
 export function WorkspaceContext({ role }: { role: Profile["role"] }) {
@@ -21,10 +23,12 @@ export function MobileNav({
   profile,
   badges,
   modules,
+  edicion = "center",
 }: {
   profile: Profile;
   badges?: NavBadgeCounts;
   modules?: AppModule[];
+  edicion?: Edicion;
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -92,7 +96,7 @@ export function MobileNav({
                 className="size-8 flex-shrink-0 rounded-full object-contain shadow-sm"
               />
               <div className="leading-none">
-                <span className="text-sm font-semibold text-foreground">Atlas</span>
+                <MarcaAtlas edicion={edicion} />
                 <p className="mt-0.5 text-[10px] text-muted-foreground">
                   {workspaceLabel(profile.role)} · {ROLE_LABEL[profile.role]}
                 </p>

@@ -26,6 +26,7 @@ import {
   Tr,
 } from "@/components/ui";
 import { requireProfile } from "@/lib/auth";
+import { EDICIONES, EDICION_INFO, parseEdicion } from "@/lib/ediciones";
 import { APP_MODULES, MODULE_INFO, type AppModule } from "@/lib/modules";
 import { createClient } from "@/lib/supabase/server";
 
@@ -54,7 +55,7 @@ export default async function EmpresasAdminPage() {
       supabase.rpc("is_platform_owner"),
       supabase
         .from("organizations")
-        .select("id, slug, name, active, created_at")
+        .select("id, slug, name, active, edicion, created_at")
         .order("name"),
       supabase
         .from("profiles")
@@ -106,13 +107,25 @@ export default async function EmpresasAdminPage() {
             <CreatePanel
               label="Nueva empresa"
               title="Nueva empresa"
-              description="Nace vacía: sin campañas, sin leads y sin personas. Después mueves o creas su equipo."
+              description="Nace con la plantilla de su edición: aplicaciones, etapas del embudo y catálogo. Sin campañas, leads ni personas; después mueves o creas su equipo."
               action={crearEmpresa}
               submitLabel="Crear empresa"
               successLabel="Empresa creada"
             >
               <Field label="Nombre">
                 <Input name="nombre" required placeholder="Altius Ignite" data-autofocus />
+              </Field>
+              <Field label="Edición">
+                <Select name="edicion" required defaultValue="center">
+                  {EDICIONES.map((edicion) => (
+                    <option key={edicion} value={edicion}>
+                      {EDICION_INFO[edicion].label}
+                    </option>
+                  ))}
+                </Select>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Decide con qué nace la empresa y su color. {EDICIONES.map((edicion) => `${EDICION_INFO[edicion].sufijo}: ${EDICION_INFO[edicion].description}`).join(" ")}
+                </p>
               </Field>
               <Field label="Clave">
                 <Input name="slug" required placeholder="altius" />
@@ -137,6 +150,7 @@ export default async function EmpresasAdminPage() {
           <Thead>
             <Th>Empresa</Th>
             <Th>Clave</Th>
+            <Th>Edición</Th>
             <Th>Personas</Th>
             <Th>Campañas</Th>
             <Th>Estado</Th>
@@ -144,7 +158,7 @@ export default async function EmpresasAdminPage() {
           </Thead>
           <Tbody>
             {listaEmpresas.length === 0 && (
-              <TableEmpty colSpan={duenioDePlataforma ? 6 : 5}>
+              <TableEmpty colSpan={duenioDePlataforma ? 7 : 6}>
                 No hay empresas visibles para tu cuenta.
               </TableEmpty>
             )}
@@ -152,6 +166,11 @@ export default async function EmpresasAdminPage() {
               <Tr key={empresa.id}>
                 <Td className="font-medium text-foreground">{empresa.name}</Td>
                 <Td className="text-muted-foreground">{empresa.slug}</Td>
+                <Td>
+                  <span data-edicion={parseEdicion(empresa.edicion)} className="font-medium text-primary">
+                    {EDICION_INFO[parseEdicion(empresa.edicion)].sufijo}
+                  </span>
+                </Td>
                 <Td>{personasPorEmpresa.get(empresa.id) ?? 0}</Td>
                 <Td>{campanasPorEmpresa.get(empresa.id) ?? 0}</Td>
                 <Td>

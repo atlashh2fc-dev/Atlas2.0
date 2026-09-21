@@ -57,6 +57,73 @@
   --auth-panel-foreground: #f2f2f2;
 }
 
+/* Ediciones. Center es el tema de arriba, tal cual; Dental y Vet solo cambian el
+   acento y el tono de fondo, y todo lo que ya pinta `bg-primary` o `text-accent`
+   se tiñe solo. Contraste del texto blanco sobre la acción (AA pide 4.5:1):
+   Dental #0d7f78 da 4.86:1 y Vet #b8501c da 5.0:1. En oscuro la acción se
+   aclara y el texto encima pasa a ser oscuro. */
+/* Center se declara también para que una marca Center dentro de una pantalla
+   Dental (la lista de empresas, por ejemplo) no herede el verde. */
+[data-edicion="center"] {
+  --background: var(--grey-light);
+  --surface-muted: #e8f7f8;
+  --primary: var(--blue-corp);
+  --primary-foreground: #ffffff;
+  --primary-hover: #0388bd;
+  --accent: var(--aqua-accent);
+  --ring: var(--blue-corp);
+}
+
+.dark [data-edicion="center"] {
+  --background: #1f1f1d;
+  --surface-muted: #32312f;
+  --primary: #049dd9;
+  --primary-foreground: #ffffff;
+  --primary-hover: #20b4ec;
+  --accent: #79f2e6;
+  --ring: #79f2e6;
+}
+
+[data-edicion="dental"] {
+  --background: #f1f6f5;
+  --surface-muted: #e3f4f0;
+  --primary: #0d7f78;
+  --primary-hover: #0a6b65;
+  --accent: #5eead4;
+  --accent-foreground: var(--black-dark);
+  --ring: #0d7f78;
+}
+
+[data-edicion="vet"] {
+  --background: #f7f2ee;
+  --surface-muted: #fbede3;
+  --primary: #b8501c;
+  --primary-hover: #9c4317;
+  --accent: #ffb57a;
+  --accent-foreground: var(--black-dark);
+  --ring: #b8501c;
+}
+
+.dark [data-edicion="dental"] {
+  --background: #1f1f1d;
+  --surface-muted: #24332f;
+  --primary: #2cc2b3;
+  --primary-foreground: #1f1f1d;
+  --primary-hover: #4fd6c8;
+  --accent: #5eead4;
+  --ring: #5eead4;
+}
+
+.dark [data-edicion="vet"] {
+  --background: #1f1f1d;
+  --surface-muted: #3a2d25;
+  --primary: #f59258;
+  --primary-foreground: #1f1f1d;
+  --primary-hover: #f8a676;
+  --accent: #ffb57a;
+  --ring: #ffb57a;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);

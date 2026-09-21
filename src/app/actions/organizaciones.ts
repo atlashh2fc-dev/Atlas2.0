@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect, RedirectType } from "next/navigation";
 
 import { requireProfile } from "@/lib/auth";
+import { esEdicion } from "@/lib/ediciones";
 import { esModulo } from "@/lib/modules";
 import { modulosActivos } from "@/lib/modules.server";
 import { destinoTrasCambiarEmpresa } from "@/lib/nav.config";
@@ -31,6 +32,7 @@ export async function crearEmpresa(formData: FormData) {
   await requireProfile(["admin"]);
   const slug = String(formData.get("slug") ?? "").trim().toLowerCase();
   const nombre = String(formData.get("nombre") ?? "").trim();
+  const edicion = String(formData.get("edicion") ?? "").trim();
 
   if (!SLUG.test(slug)) {
     throw new Error("La clave debe tener entre 3 y 40 caracteres: minúsculas, números y guiones.");
@@ -38,9 +40,16 @@ export async function crearEmpresa(formData: FormData) {
   if (nombre.length < 2) {
     throw new Error("Escribe el nombre de la empresa.");
   }
+  if (!esEdicion(edicion)) {
+    throw new Error("Elige la edición: Center, Dental o Vet.");
+  }
 
   const supabase = await createClient();
-  const { error } = await supabase.rpc("crear_organizacion", { p_slug: slug, p_name: nombre });
+  const { error } = await supabase.rpc("crear_organizacion", {
+    p_slug: slug,
+    p_name: nombre,
+    p_edicion: edicion,
+  });
   if (error) throw new Error(error.message);
   revalidarEmpresas();
 }

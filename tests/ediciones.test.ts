@@ -1,0 +1,72 @@
+// Ediciones de Atlas: Center, Dental y Vet son el mismo CRM con otra plantilla.
+//
+// Si estas reglas se aflojan, una clínica dental vuelve a nacer sin etapas
+// (el error "Tu empresa no tiene etapas configuradas"), una pantalla empieza a
+// preguntar "¿es dental?" en vez de leer el color del tema, o cualquier sesión
+// puede crear empresas.
+
+import assert from "node:assert/strict";
+import { readFileSync, readdirSync } from "node:fs";
+import test from "node:test";
+
+import { EDICIONES, EDICION_INFO, parseEdicion } from "../src/lib/ediciones.ts";
+
+const leer = (ruta: string) => readFileSync(new URL(`../${ruta}`, import.meta.url), "utf8");
+
+const MIGRACION = leer(
+  `supabase/migrations/${readdirSync(new URL("../supabase/migrations", import.meta.url)).find((nombre) =>
+    nombre.endsWith("_ediciones_de_atlas.sql"),
+  )}`,
+);
+const CSS = leer("src/app/globals.css");
+const LAYOUT = leer("src/app/dashboard/layout.tsx");
+const ACCION = leer("src/app/actions/organizaciones.ts");
+
+test("son tres ediciones y lo desconocido cae en Center", () => {
+  assert.deepEqual([...EDICIONES], ["center", "dental", "vet"]);
+  assert.equal(parseEdicion("dental"), "dental");
+  assert.equal(parseEdicion("colegio"), "center");
+  assert.equal(parseEdicion(null), "center");
+  assert.deepEqual(
+    EDICIONES.map((edicion) => EDICION_INFO[edicion].sufijo),
+    ["Center", "Dental", "Vet"],
+  );
+});
+
+test("la base acepta exactamente las mismas ediciones que la aplicación", () => {
+  assert.match(MIGRACION, /check \(edicion in \('center', 'dental', 'vet'\)\)/);
+});
+
+test("cada edición nace con etapas, incluida una ganada y una perdida", () => {
+  for (const edicion of EDICIONES) {
+    const etapas = [...MIGRACION.matchAll(new RegExp(`\\('${edicion}', '[a-z_]+', '[^']+', \\d+, \\d+, (true|false), (true|false)\\)`, "g"))];
+    assert.ok(etapas.length >= 4, `${edicion} tiene pocas etapas`);
+    assert.ok(etapas.some((etapa) => etapa[1] === "true"), `${edicion} no tiene etapa ganada`);
+    assert.ok(etapas.some((etapa) => etapa[2] === "true"), `${edicion} no tiene etapa perdida`);
+  }
+});
+
+test("la plantilla se aplica al crear la empresa, no a mano después", () => {
+  assert.match(MIGRACION, /perform public\.aplicar_plantilla_de_edicion\(new\.id, new\.edicion\)/);
+  assert.match(MIGRACION, /revoke execute on function public\.aplicar_plantilla_de_edicion\(uuid, text\) from anon, authenticated/);
+});
+
+test("crear empresas sigue siendo exclusivo del dueño de la plataforma", () => {
+  const crear = MIGRACION.slice(MIGRACION.indexOf("function public.crear_organizacion"));
+  assert.match(crear.slice(0, 600), /if not public\.is_platform_owner\(\) then/);
+  assert.match(ACCION, /p_edicion: edicion/);
+  assert.match(ACCION, /esEdicion\(edicion\)/);
+});
+
+test("el color sale del tema, no de preguntar la edición en cada pantalla", () => {
+  assert.match(LAYOUT, /data-edicion=\{edicion\}/);
+  for (const edicion of EDICIONES) {
+    assert.match(CSS, new RegExp(`\\[data-edicion="${edicion}"\\] \\{[^}]*--primary:`));
+    assert.match(CSS, new RegExp(`\\.dark \\[data-edicion="${edicion}"\\] \\{[^}]*--primary:`));
+  }
+});
+
+test("el panel pide el contexto de la empresa en una sola consulta", () => {
+  assert.match(LAYOUT, /contextoDeMiEmpresa\(\)/);
+  assert.doesNotMatch(LAYOUT, /from\("organizations"\)/);
+});

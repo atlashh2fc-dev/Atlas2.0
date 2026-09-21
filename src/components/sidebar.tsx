@@ -4,6 +4,8 @@ import { useState, useSyncExternalStore } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { MarcaAtlas } from "@/components/marca-atlas";
+import type { Edicion } from "@/lib/ediciones";
 import type { AppModule } from "@/lib/modules";
 import type { AppRole, Profile } from "@/lib/types";
 import {
@@ -275,10 +277,12 @@ export function Sidebar({
   profile,
   badges,
   modules,
+  edicion = "center",
 }: {
   profile: Profile;
   badges?: NavBadgeCounts;
   modules?: AppModule[];
+  edicion?: Edicion;
 }) {
   const pathname = usePathname();
   const [rail, setRail] = useState(false);
@@ -302,7 +306,7 @@ export function Sidebar({
         {!rail && (
           <>
             <div className="leading-none">
-              <span className="text-sm font-semibold text-foreground">Atlas</span>
+              <MarcaAtlas edicion={edicion} />
               <p className="mt-0.5 text-[10px] text-muted-foreground">
                 {workspaceLabel(profile.role)} · {ROLE_LABEL[profile.role]}
               </p>

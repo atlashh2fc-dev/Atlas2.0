@@ -1,6 +1,8 @@
 import { cache } from "react";
 import { notFound } from "next/navigation";
 
+import type { EmpresaDisponible } from "@/components/selector-empresa";
+import { parseEdicion, type Edicion } from "@/lib/ediciones";
 import { APP_MODULES, type AppModule } from "@/lib/modules";
 import { createClient } from "@/lib/supabase/server";
 
@@ -16,19 +18,37 @@ function soloModulos(valores: unknown): AppModule[] {
   );
 }
 
+export type ContextoDeEmpresa = {
+  edicion: Edicion;
+  modulos: AppModule[];
+  empresas: EmpresaDisponible[];
+};
+
 /**
- * Módulos de la empresa que se está mirando. Se cachea por petición: el menú,
- * la cabecera y la página la piden por separado y es la misma respuesta.
+ * Lo que el panel necesita saber de la empresa que se está mirando —edición,
+ * aplicaciones y a qué empresas llega la persona— en un solo viaje a la base.
+ * Se cachea por petición: el layout, el menú y la página lo piden por separado
+ * y es la misma respuesta.
  */
-export const modulosActivos = cache(async (): Promise<AppModule[]> => {
+export const contextoDeMiEmpresa = cache(async (): Promise<ContextoDeEmpresa> => {
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("modulos_de_mi_empresa");
-  if (error) {
-    console.error("[modulos] no se pudieron leer los módulos de la empresa", error.message);
-    return [];
+  const { data, error } = await supabase.rpc("contexto_de_mi_empresa");
+  if (error || !data || typeof data !== "object") {
+    console.error("[empresa] no se pudo leer el contexto de la empresa", error?.message);
+    return { edicion: "center", modulos: [], empresas: [] };
   }
-  return soloModulos(data);
+  const contexto = data as { edicion?: unknown; modulos?: unknown; empresas?: unknown };
+  return {
+    edicion: parseEdicion(contexto.edicion),
+    modulos: soloModulos(contexto.modulos),
+    empresas: Array.isArray(contexto.empresas) ? (contexto.empresas as EmpresaDisponible[]) : [],
+  };
 });
+
+/** Módulos de la empresa que se está mirando. */
+export async function modulosActivos(): Promise<AppModule[]> {
+  return (await contextoDeMiEmpresa()).modulos;
+}
 
 /**
  * Cierra una página que no corresponde a la empresa activa.

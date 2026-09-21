@@ -9,7 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ForceLogoutGuard } from "@/components/force-logout-guard";
 import { getWorkspacePermissions } from "@/lib/workspace-permissions";
 import { listDemoViewAccounts } from "@/lib/demo-accounts";
-import { modulosActivos } from "@/lib/modules.server";
+import { contextoDeMiEmpresa } from "@/lib/modules.server";
 
 export default async function DashboardLayout({
   children,
@@ -38,24 +38,20 @@ export default async function DashboardLayout({
   // consulta nada.
   const demoAccounts = await listDemoViewAccounts(profile);
 
-  // Lo que la empresa activa tiene contratado. El menú se arma con esto: una
-  // empresa sin call center no ve campañas, colas ni grabaciones.
-  const modules = await modulosActivos();
-
-  // Empresas a las que llega esta persona. La seguridad por fila ya filtra: casi
-  // siempre es una sola y el selector no se muestra.
-  const { data: empresas } = await supabase
-    .from("organizations")
-    .select("id, name")
-    .eq("active", true)
-    .order("name");
+  // Edición, aplicaciones contratadas y empresas a las que llega la persona, en
+  // una sola consulta. El menú se arma con los módulos (una empresa sin call
+  // center no ve campañas ni grabaciones) y el color con la edición.
+  const { edicion, modulos: modules, empresas } = await contextoDeMiEmpresa();
 
   return (
+    // `data-edicion` cambia las variables de color de todo lo que cuelga de acá:
+    // ningún componente sabe en qué edición está, solo pinta `bg-primary`.
+    <div data-edicion={edicion} className="contents">
     <ToastProvider>
       <div className="flex h-screen w-full overflow-hidden bg-background">
         {profile.role === "agente" && <ForceLogoutGuard userId={profile.id} />}
         {canAttendCustomers && <DialerListener userId={profile.id} />}
-        <Sidebar profile={profile} badges={badges} modules={modules} />
+        <Sidebar profile={profile} badges={badges} modules={modules} edicion={edicion} />
         <div className="flex flex-1 flex-col overflow-hidden">
           {showAgendaReminder ? (
             <AgendaProvider userId={profile.id}>
@@ -63,18 +59,20 @@ export default async function DashboardLayout({
                 profile={profile}
                 badges={badges}
                 demoAccounts={demoAccounts}
-                empresas={empresas ?? []}
+                empresas={empresas}
                 modules={modules}
+                edicion={edicion}
               />
               <AgendaBanner />
             </AgendaProvider>
           ) : (
-            <Header profile={profile} demoAccounts={demoAccounts} empresas={empresas ?? []} modules={modules} />
+            <Header profile={profile} demoAccounts={demoAccounts} empresas={empresas} modules={modules} edicion={edicion} />
           )}
           <main className="flex-1 overflow-y-auto p-5">{children}</main>
         </div>
         {canAttendCustomers && <CtiBar profile={profile} />}
       </div>
     </ToastProvider>
+    </div>
   );
 }

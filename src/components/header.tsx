@@ -1,5 +1,6 @@
 import type { Profile } from "@/lib/types";
 import { MobileNav, WorkspaceContext } from "@/components/mobile-nav";
+import type { Edicion } from "@/lib/ediciones";
 import type { AppModule } from "@/lib/modules";
 import type { NavBadgeCounts } from "@/components/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -17,6 +18,7 @@ export function Header({
   demoAccounts = [],
   empresas = [],
   modules,
+  edicion = "center",
 }: {
   profile: Profile;
   badges?: NavBadgeCounts;
@@ -26,11 +28,12 @@ export function Header({
   demoAccounts?: DemoViewAccount[];
   /** Empresas a las que llega la persona. Con una sola, el selector no aparece. */
   empresas?: EmpresaDisponible[];
+  edicion?: Edicion;
 }) {
   return (
     <header className="flex h-16 flex-shrink-0 items-center justify-between border-b border-border bg-surface px-6">
       <div className="flex min-w-0 items-center gap-3">
-        <MobileNav profile={profile} badges={badges} modules={modules} />
+        <MobileNav profile={profile} badges={badges} modules={modules} edicion={edicion} />
         <WorkspaceContext role={profile.role} />
       </div>
 

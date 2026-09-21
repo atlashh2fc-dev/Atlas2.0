@@ -33,7 +33,7 @@ test("el catálogo es puro: el menú es cliente y no puede arrastrar el servidor
   assert.doesNotMatch(CATALOGO, /supabase\/server/);
   assert.doesNotMatch(CATALOGO, /next\/navigation/);
   assert.match(SERVIDOR, /supabase\/server/);
-  assert.match(SERVIDOR, /modulos_de_mi_empresa/);
+  assert.match(SERVIDOR, /contexto_de_mi_empresa/);
 });
 
 test("una ruta sin módulo responde 404, no 403", () => {
@@ -48,8 +48,8 @@ test("el menú filtra por los módulos de la empresa activa", () => {
   assert.match(NAV, /visibleSections\(spaceId: NavSpaceId, role: AppRole, modules\?: AppModule\[\]\)/);
   // Sin respuesta todavía se muestra todo: el servidor igual cierra la página.
   assert.match(NAV, /if \(!modules \|\| !item\.modules\) return true;/);
-  assert.match(LAYOUT, /const modules = await modulosActivos\(\);/);
-  assert.match(LAYOUT, /<Sidebar profile=\{profile\} badges=\{badges\} modules=\{modules\} \/>/);
+  assert.match(LAYOUT, /modulos: modules, empresas \} = await contextoDeMiEmpresa\(\);/);
+  assert.match(LAYOUT, /<Sidebar profile=\{profile\} badges=\{badges\} modules=\{modules\} edicion=\{edicion\} \/>/);
 });
 
 test("lo que es del call center queda marcado como tal", () => {
