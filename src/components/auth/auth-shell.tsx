@@ -2,6 +2,7 @@ import Image from "next/image";
 import type { ReactNode } from "react";
 import { BarChart3, Mail, MessageCircle, PhoneCall, ShieldCheck, Sparkles, Target } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { OmnichannelFigure } from "./omnichannel-figure";
 import { ServiceStatus } from "./service-status";
 
 const VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? "";
@@ -92,6 +93,10 @@ export function AuthShell({
           <div className="mt-6">{children}</div>
 
           {footer ? <div className="mt-6 text-center text-xs text-muted-foreground">{footer}</div> : null}
+
+          {/* Bajo el formulario y no en el panel: ahí el espacio sobra en
+              cualquier pantalla y la figura no compite con la lista. */}
+          <OmnichannelFigure className="mt-12 hidden border-t border-border pt-8 lg:block" />
         </div>
       </div>
     </main>

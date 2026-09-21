@@ -206,3 +206,46 @@ body {
   border-right: 2px solid var(--primary);
   border-bottom: 2px solid var(--primary);
 }
+
+/* Figura omnicanal del acceso: pulsos que recorren cada canal hasta la ficha. */
+@keyframes atlas-omni-flow {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes atlas-omni-pulse {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+.atlas-omni-flow {
+  stroke-dasharray: 10 150;
+  stroke-dashoffset: 160;
+  animation: atlas-omni-flow 2.6s linear infinite;
+}
+
+.atlas-omni-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: atlas-omni-pulse 2.6s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .atlas-omni-flow,
+  .atlas-omni-pulse {
+    animation: none;
+  }
+  .atlas-omni-flow {
+    stroke-dasharray: none;
+  }
+  .atlas-omni-pulse {
+    display: none;
+  }
+}
