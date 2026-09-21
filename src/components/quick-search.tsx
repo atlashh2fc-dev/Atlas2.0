@@ -6,6 +6,7 @@ import { ArrowUpRight, Clock3, Loader2, Search } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { AppRole } from "@/lib/types";
 import type { AppModule } from "@/lib/modules";
+import type { Edicion } from "@/lib/ediciones";
 import { allItemsForRole, navLabel } from "@/lib/nav.config";
 
 interface QuickResult {
@@ -48,10 +49,12 @@ export function QuickSearch({
   role,
   userId,
   modules,
+  edicion,
 }: {
   role: AppRole;
   userId: string;
   modules?: AppModule[];
+  edicion?: Edicion;
 }) {
   const [open, setOpen] = useState(false);
   const [term, setTerm] = useState("");
@@ -65,7 +68,7 @@ export function QuickSearch({
   const dialogRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const router = useRouter();
-  const destinations = useMemo(() => allItemsForRole(role, modules), [role, modules]);
+  const destinations = useMemo(() => allItemsForRole(role, modules, edicion), [role, modules, edicion]);
   const storageKey = `${RECENT_LEADS_KEY}:${userId}:${role}`;
   const visibleDestinations = destinations.filter((item) =>
     `${navLabel(item, role)} ${item.description}`.toLocaleLowerCase("es").includes(term.trim().toLocaleLowerCase("es"))

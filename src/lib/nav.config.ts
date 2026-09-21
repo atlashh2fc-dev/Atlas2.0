@@ -23,8 +23,12 @@ import {
   HeartPulse,
   Package,
   Receipt,
+  CalendarDays,
+  Wallet,
+  BellRing,
 } from "lucide-react";
 import type { AppModule } from "./modules";
+import type { Edicion } from "@/lib/ediciones";
 import type { AppRole } from "./types";
 import { getWorkspacePermissions } from "./workspace-permissions";
 
@@ -60,6 +64,13 @@ export type NavItem = {
    * activa tiene que tener al menos uno contratado para verlo.
    */
   modules?: AppModule[];
+  /**
+   * Ediciones en las que el ítem existe. Sin lista es de todas. Una clínica
+   * no navega por embudo sino por agenda: sus ítems (agenda, caja,
+   * recordatorios) solo aparecen en Dental y Vet, y los del embudo (ventas,
+   * registros) solo en Center. Sin edición conocida se comporta como Center.
+   */
+  ediciones?: Edicion[];
   badge?: NavBadge;
   /** Prefijos extra que mantienen el ítem activo (acciones y vistas hijas). */
   match?: string[];
@@ -132,6 +143,43 @@ const CONSOLE: NavSpace = {
           modules: ["ventas_b2c"],
         },
         {
+          id: "agenda-clinica",
+          label: "Agenda",
+          href: "/dashboard/citas",
+          icon: CalendarDays,
+          roles: ["admin", "supervisor"],
+          description: "Citas del día por profesional: confirmar, pasar a sala, atender",
+          match: ["/dashboard/citas"],
+          modules: ["ventas_b2c"],
+          ediciones: ["dental", "vet"],
+        },
+        {
+          id: "caja",
+          label: "Caja",
+          href: "/dashboard/caja",
+          icon: Wallet,
+          roles: ["admin", "supervisor"],
+          description: "Por cobrar, presupuestos y lo cobrado en el mes",
+          match: ["/dashboard/caja", "/dashboard/ventas"],
+          tabs: [
+            { label: "Por cobrar", href: "/dashboard/caja" },
+            { label: "Presupuestos", href: "/dashboard/ventas" },
+          ],
+          modules: ["ventas_b2c"],
+          ediciones: ["dental", "vet"],
+        },
+        {
+          id: "recordatorios",
+          label: "Recordatorios",
+          href: "/dashboard/recordatorios",
+          icon: BellRing,
+          roles: ["admin", "supervisor"],
+          description: "A quién contactar hoy: citas sin confirmar, vacunas, presupuestos sin respuesta, pacientes que no vuelven",
+          match: ["/dashboard/recordatorios"],
+          modules: ["ventas_b2c"],
+          ediciones: ["dental", "vet"],
+        },
+        {
           id: "ventas",
           label: "Ventas",
           href: "/dashboard/ventas",
@@ -144,6 +192,7 @@ const CONSOLE: NavSpace = {
             { label: "Respuestas del agente", href: "/dashboard/ventas/respuestas" },
           ],
           modules: ["ventas_b2b", "ventas_b2c"],
+          ediciones: ["center"],
         },
         {
           id: "correo",
@@ -181,6 +230,7 @@ const CONSOLE: NavSpace = {
           description: "Registros dentro de tu alcance; gestión solo para ejecutivos",
           match: ["/dashboard/leads", "/dashboard/llamadas"],
           modules: ["leads"],
+          ediciones: ["center"],
         },
         {
           id: "conversaciones",
@@ -256,14 +306,14 @@ const CONSOLE: NavSpace = {
 const WORKSPACE_SECTIONS: Record<AppRole, { id: string; label?: string; itemIds: string[] }[]> = {
   admin: [
     { id: "control-home", itemIds: ["inicio"] },
-    { id: "control-operation", label: "Control diario", itemIds: ["operacion", "pacientes", "ventas", "correo", "registros"] },
+    { id: "control-operation", label: "Control diario", itemIds: ["operacion", "agenda-clinica", "pacientes", "caja", "recordatorios", "ventas", "correo", "registros"] },
     { id: "control-results", label: "Revisión", itemIds: ["conversaciones", "reportes", "calidad"] },
     { id: "admin-operation", label: "Configuración", itemIds: ["aranceles", "insumos", "campanas", "colas", "flujos", "estados-agente", "cargas"] },
     { id: "admin-platform", label: "Plataforma", itemIds: ["empresas", "usuarios", "extensiones", "integraciones"] },
   ],
   supervisor: [
     { id: "supervision-home", itemIds: ["inicio"] },
-    { id: "supervision-operation", label: "Supervisión", itemIds: ["operacion", "pacientes", "ventas", "correo", "equipo", "campanas-operativas", "registros"] },
+    { id: "supervision-operation", label: "Supervisión", itemIds: ["operacion", "agenda-clinica", "pacientes", "caja", "recordatorios", "ventas", "correo", "equipo", "campanas-operativas", "registros"] },
     { id: "supervision-review", label: "Revisión y resultados", itemIds: ["conversaciones", "calidad", "reportes"] },
   ],
   agente: [
@@ -440,12 +490,19 @@ function enLosModulos(item: NavItem, modules?: AppModule[]): boolean {
   return item.modules.some((modulo) => modules.includes(modulo));
 }
 
+/** Sin edición conocida el menú se comporta como Center, que es como era todo antes de esto. */
+function enLaEdicion(item: NavItem, edicion?: Edicion): boolean {
+  if (!item.ediciones) return true;
+  return item.ediciones.includes(edicion ?? "center");
+}
+
 /** Secciones visibles de un espacio para un rol, ya filtradas y sin secciones vacías. */
 export function visibleSections(
   spaceId: NavSpaceId,
   role: AppRole,
   modules?: AppModule[],
   duenio = false,
+  edicion?: Edicion,
 ): NavSection[] {
   const permitido = (item: NavItem) => item.roles.includes(role) || (duenio && item.duenio === true);
   if (role === "admin") {
@@ -460,7 +517,7 @@ export function visibleSections(
         label,
         items: itemIds.flatMap((itemId) => {
           const item = inventory.get(itemId);
-          return item && permitido(item) && enLosModulos(item, modules) ? [item] : [];
+          return item && permitido(item) && enLosModulos(item, modules) && enLaEdicion(item, edicion) ? [item] : [];
         }),
       }))
       .filter((section) => section.items.length > 0);
@@ -474,24 +531,24 @@ export function visibleSections(
       label,
       items: itemIds.flatMap((itemId) => {
         const item = inventory.get(itemId);
-        return item && permitido(item) && enLosModulos(item, modules) ? [item] : [];
+        return item && permitido(item) && enLosModulos(item, modules) && enLaEdicion(item, edicion) ? [item] : [];
       }),
     })).filter((section) => section.items.length > 0);
   }
   return space
     .sections.map((section) => ({
       ...section,
-      items: section.items.filter((item) => permitido(item) && enLosModulos(item, modules)),
+      items: section.items.filter((item) => permitido(item) && enLosModulos(item, modules) && enLaEdicion(item, edicion)),
     }))
     .filter((section) => section.items.length > 0);
 }
 
 /** Todos los ítems accesibles por un rol, en orden de menú (usado por la búsqueda global). */
-export function allItemsForRole(role: AppRole, modules?: AppModule[]): NavItem[] {
+export function allItemsForRole(role: AppRole, modules?: AppModule[], edicion?: Edicion): NavItem[] {
   const items = role === "admin"
-    ? visibleSections("console", role, modules).flatMap((section) => section.items)
+    ? visibleSections("console", role, modules, false, edicion).flatMap((section) => section.items)
     : NAV_SPACES.filter((space) => space.roles.includes(role)).flatMap((space) =>
-        visibleSections(space.id, role, modules).flatMap((section) => section.items)
+        visibleSections(space.id, role, modules, false, edicion).flatMap((section) => section.items)
       );
   return [...items, HELP_ITEM];
 }
@@ -513,8 +570,8 @@ export function getTabs(itemId: string, role?: AppRole): NavTab[] {
 }
 
 /** Pestañas del destino que contiene la ruta actual (para el PageHeader). */
-export function tabsForPath(pathname: string, role: AppRole, modules?: AppModule[]): NavTab[] {
-  const item = allItemsForRole(role, modules).find((candidate) => candidate.tabs && isItemActive(candidate, pathname));
+export function tabsForPath(pathname: string, role: AppRole, modules?: AppModule[], edicion?: Edicion): NavTab[] {
+  const item = allItemsForRole(role, modules, edicion).find((candidate) => candidate.tabs && isItemActive(candidate, pathname));
   return (item?.tabs ?? []).filter((tab) => !tab.roles || tab.roles.includes(role));
 }
 
@@ -534,9 +591,14 @@ export function destinoTrasCambiarEmpresa(pathname: string, modules: AppModule[]
   const ruta = corte === -1 ? pathname : "/" + segmentos.slice(0, corte).join("/");
 
   const items = [...NAV_SPACES.flatMap((space) => space.sections.flatMap((section) => section.items)), HELP_ITEM];
-  const exigen = items
-    .filter((item) => item.modules && isItemActive(item, ruta))
-    .map((item) => item.modules as AppModule[]);
+  // La ruta la gobierna el ítem cuyo href la contiene. `match` solo sirve para
+  // resaltar el menú: Caja se resalta en /ventas, pero /ventas sigue exigiendo
+  // los módulos de Ventas, no los de Caja. Cuando ningún href la cubre (una
+  // vista hija como /llamadas), vale el `match`.
+  const contiene = (item: NavItem) => ruta === item.href || ruta.startsWith(`${item.href}/`);
+  const porHref = items.filter((item) => item.modules && contiene(item));
+  const duenios = porHref.length > 0 ? porHref : items.filter((item) => item.modules && isItemActive(item, ruta));
+  const exigen = duenios.map((item) => item.modules as AppModule[]);
   const disponible = exigen.every((requeridos) => requeridos.some((modulo) => modules.includes(modulo)));
   return disponible ? ruta : "/dashboard";
 }

@@ -42,7 +42,7 @@ export function Header({
       <div className="flex items-center gap-3">
         <SelectorEmpresa empresas={empresas} actual={profile.viewing_organization_id ?? null} />
         {profile.is_demo && <DemoRoleSwitcher accounts={demoAccounts} currentId={profile.id} />}
-        <QuickSearch role={profile.role} userId={profile.id} modules={modules} />
+        <QuickSearch role={profile.role} userId={profile.id} modules={modules} edicion={edicion} />
         {profile.role === "agente" && <AgendaBell />}
         <ThemeToggle />
         <form action={signOut}>

@@ -3,6 +3,7 @@ import { CalendarClock, MessageCircle, Plus, UserPlus } from "lucide-react";
 
 import { Badge, EmptyState, MetricCard, PageHeader, SectionCard, buttonClasses } from "@/components/ui";
 import { PACIENTES_POR_EDICION, VENTAS_POR_EDICION, type Edicion } from "@/lib/ediciones";
+import { ETIQUETA_ESTADO, ocupaHorario, primero as primeroDe, type Cita } from "@/lib/citas";
 import { REPORT_TIME_ZONE } from "@/lib/report-range";
 import { createClient } from "@/lib/supabase/server";
 import type { Profile } from "@/lib/types";
@@ -87,12 +88,28 @@ export async function InicioClinica({
     .limit(1000);
   if (soloMios) negociosQuery = negociosQuery.eq("owner_id", profile.id);
 
-  const [{ data: negociosData, error }, { data: actividades }, { data: personas }, { data: conversaciones }] = await Promise.all([
+  const [{ data: negociosData, error }, { data: actividades }, { data: personas }, { data: conversaciones }, { data: citasData }, { data: porCobrarData }] = await Promise.all([
     negociosQuery,
     supabase.from("sales_activities").select("opportunity_id, occurred_at").not("opportunity_id", "is", null).order("occurred_at", { ascending: false }).limit(4000),
     supabase.from("profiles").select("id, full_name").eq("active", true),
     supabase.from("whatsapp_conversations").select("status, last_inbound_at, last_outbound_at").neq("status", "closed").limit(500),
+    // La agenda de hoy: es lo primero que mira una recepción.
+    supabase
+      .from("citas")
+      .select("id, cuenta_id, mascota_id, profesional_id, inicio, fin, motivo, estado, nota, sales_companies(name, phone), mascotas(nombre, especie), profesionales(nombre, color)")
+      .gte("inicio", hoy.toISOString())
+      .lt("inicio", finDeHoy.toISOString())
+      .order("inicio")
+      .limit(200),
+    supabase.from("atenciones").select("precio").eq("pagado", false).limit(3000),
   ]);
+
+  const citasHoy = (citasData ?? []) as unknown as (Cita & { profesionales: { nombre: string; color: string } | { nombre: string; color: string }[] | null })[];
+  const citasActivas = citasHoy.filter((cita) => ocupaHorario(cita.estado));
+  const citasSinConfirmar = citasActivas.filter((cita) => cita.estado === "reservada").length;
+  const citasEnSala = citasActivas.filter((cita) => cita.estado === "en_sala").length;
+  const proximaCita = citasActivas.find((cita) => new Date(cita.inicio) >= ahora && cita.estado !== "atendida");
+  const porCobrar = (porCobrarData ?? []).reduce((total, atencion) => total + Number(atencion.precio ?? 0), 0);
 
   const negocios = (negociosData ?? []) as Negocio[];
   const monto = (negocio: Negocio) => Number((mensual ? negocio.monthly_amount : negocio.one_time_amount) ?? 0);
@@ -179,8 +196,11 @@ export async function InicioClinica({
         description={`${empresa ?? "Tu clínica"} · ${fechaLarga.format(ahora)}${soloMios ? " · tus pacientes" : ""}`}
         actions={
           <div className="flex flex-wrap gap-2">
-            <Link href="/dashboard/ventas" className={buttonClasses()}>
-              <Plus size={16} aria-hidden="true" /> {voc.nuevo}
+            <Link href="/dashboard/citas" className={buttonClasses()}>
+              <Plus size={16} aria-hidden="true" /> Nueva cita
+            </Link>
+            <Link href="/dashboard/ventas" className={buttonClasses({ variant: "secondary" })}>
+              {voc.nuevo}
             </Link>
             {!soloMios && (
               <Link href="/dashboard/pacientes" className={buttonClasses({ variant: "secondary" })}>
@@ -228,6 +248,47 @@ export async function InicioClinica({
       </div>
 
       <div className="grid gap-4 xl:grid-cols-3">
+        <SectionCard
+          className="xl:col-span-3"
+          title={`Agenda de hoy · ${citasActivas.length}`}
+          description={`${citasSinConfirmar ? `${citasSinConfirmar} sin confirmar · ` : ""}${citasEnSala ? `${citasEnSala} en sala · ` : ""}${pesos.format(porCobrar)} por cobrar en total`}
+        >
+          {citasActivas.length === 0 ? (
+            <EmptyState title="Sin citas hoy" description="Agenda la primera desde la agenda." />
+          ) : (
+            <ul className="divide-y divide-border">
+              {citasActivas.slice(0, 8).map((cita) => {
+                const tutor = primeroDe(cita.sales_companies)?.name ?? "—";
+                const mascota = primeroDe(cita.mascotas);
+                const profesional = primeroDe(cita.profesionales);
+                const etiqueta = ETIQUETA_ESTADO[cita.estado];
+                return (
+                  <li key={cita.id} className={`flex items-center gap-3 px-4 py-2.5 ${proximaCita?.id === cita.id ? "bg-primary/5" : ""}`}>
+                    <span className="w-12 tabular-nums text-sm text-foreground">{hora.format(new Date(cita.inicio))}</span>
+                    <span className="h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: profesional?.color }} aria-hidden="true" />
+                    <div className="min-w-0 flex-1">
+                      <Link href={`/dashboard/pacientes/${cita.cuenta_id}`} className="block truncate text-sm font-medium text-foreground hover:text-primary hover:underline">
+                        {mascota ? `${mascota.nombre} · ${tutor}` : tutor}
+                      </Link>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {cita.motivo} · {profesional?.nombre ?? ""}
+                      </p>
+                    </div>
+                    <Badge tone={etiqueta.tone}>{etiqueta.label}</Badge>
+                  </li>
+                );
+              })}
+              {citasActivas.length > 8 && (
+                <li className="px-4 py-2 text-xs text-muted-foreground">
+                  <Link href="/dashboard/citas" className="text-primary hover:underline">
+                    Ver las {citasActivas.length} citas en la agenda
+                  </Link>
+                </li>
+              )}
+            </ul>
+          )}
+        </SectionCard>
+
         <SectionCard
           className="xl:col-span-2"
           title="Hay que llamar hoy"

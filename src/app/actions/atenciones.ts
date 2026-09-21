@@ -173,3 +173,16 @@ export async function crearProcedimiento(formData: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/admin/aranceles");
 }
+
+/** Caja: todo lo pendiente de una ficha queda pagado de una vez. */
+export async function cobrarCuenta(formData: FormData) {
+  await requireProfile(["admin", "supervisor"]);
+  const cuenta = texto(formData, "cuenta_id") ?? "";
+  if (!UUID.test(cuenta)) throw new Error("Ficha inválida.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("atenciones").update({ pagado: true }).eq("cuenta_id", cuenta).eq("pagado", false);
+  if (error) throw new Error(error.message);
+  revalidatePath("/dashboard/caja");
+  revalidatePath(`/dashboard/pacientes/${cuenta}`);
+}

@@ -177,10 +177,11 @@ export function NavTree({
 }) {
   const space = spaceForPath(pathname);
   const ventas = VENTAS_POR_EDICION[edicion];
-  const sections = visibleSections(space, profile.role, modules, duenio).map((section) => ({
+  const sections = visibleSections(space, profile.role, modules, duenio, edicion).map((section) => ({
     ...section,
     items: section.items.map((item) => {
       if (edicion === "center") return item;
+      if (item.id === "inicio") return { ...item, label: "Hoy", description: "La agenda de hoy, lo que hay que cobrar y a quién llamar" };
       if (item.id === "ventas") return { ...item, label: ventas.titulo, description: ventas.descripcion };
       if (item.id === "pacientes") {
         const pacientes = PACIENTES_POR_EDICION[edicion];
