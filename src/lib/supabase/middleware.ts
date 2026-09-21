@@ -23,6 +23,10 @@ const PUBLIC_PATHS = [
   // YCloud usa un secreto independiente y firma el cuerpo crudo con
   // `YCloud-Signature`; no depende de una sesión de Atlas.
   "/api/integrations/ycloud/whatsapp/webhook",
+  // La página de pago la abre el tutor o el paciente desde WhatsApp, sin
+  // cuenta; la pasarela vuelve por su propia ruta. El id del pago es la llave.
+  "/pagar",
+  "/api/pagos/webpay/",
 ];
 
 const MACHINE_ONLY_PATHS = new Set([
