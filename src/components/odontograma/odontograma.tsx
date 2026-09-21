@@ -4,7 +4,10 @@ import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
 import { Box, ChevronLeft, Maximize2, RotateCcw, ScanLine } from "lucide-react";
 
+import { marcarAtencionPagada } from "@/app/actions/atenciones";
 import { registrarEnOdontograma } from "@/app/actions/odontograma";
+import { AtencionForm } from "@/components/atencion-form";
+import { pesos, type Atencion, type Procedimiento } from "@/lib/arancel";
 import { ActionForm, ActionSubmit, Badge, Field, Input, Select } from "@/components/ui";
 import {
   AVANCES,
@@ -110,8 +113,12 @@ export function Odontograma({
   denticionSugerida,
   edad,
   profesionales,
+  arancel,
+  atenciones,
 }: {
   cuentaId: string;
+  arancel: Procedimiento[];
+  atenciones: Atencion[];
   registros: RegistroOdontograma[];
   denticionSugerida: Denticion;
   edad: string | null;
@@ -122,6 +129,8 @@ export function Odontograma({
   const [vista, setVista] = useState<{ nombre: Vista; clave: number }>({ nombre: "frontal", clave: 0 });
   const [estadoNuevo, setEstadoNuevo] = useState<EstadoPieza>("caries");
   const [rayosX, setRayosX] = useState(false);
+  const [modoPieza, setModoPieza] = useState<"atender" | "hallazgo">("atender");
+  const [modoPanel, setModoPanel] = useState<"plan" | "atenciones" | "general">("plan");
   const [superficiesNuevas, setSuperficiesNuevas] = useState<Set<Superficie>>(new Set());
 
   const piezas = useMemo(() => piezasDe(denticion), [denticion]);
@@ -150,6 +159,9 @@ export function Odontograma({
   const pieza = seleccionada ? piezaPorNumero(seleccionada) : null;
   const historia = pieza ? ordenarRegistros(registros.filter((registro) => registro.pieza === pieza.numero)) : [];
   const actual = pieza ? actuales.get(pieza.numero) : undefined;
+  const atencionesDePieza = pieza ? atenciones.filter((atencion) => atencion.pieza === pieza.numero) : [];
+  const cobrado = atenciones.filter((atencion) => atencion.pagado).reduce((total, atencion) => total + Number(atencion.precio), 0);
+  const porCobrar = atenciones.filter((atencion) => !atencion.pagado).reduce((total, atencion) => total + Number(atencion.precio), 0);
 
   const elegir = (numero: number) => {
     setSeleccionada(numero);
@@ -276,10 +288,27 @@ export function Odontograma({
         <div className="border-t border-border xl:border-l xl:border-t-0">
           {!pieza ? (
             <div className="flex h-full flex-col">
-              <div className="border-b border-border px-4 py-3">
-                <p className="text-sm font-semibold text-foreground">Plan de tratamiento</p>
-                <p className="text-xs text-muted-foreground">Lo diagnosticado y lo que está en curso. Toca una fila o una pieza.</p>
+              <div className="flex gap-1 border-b border-border px-3 pt-2">
+                {([
+                  ["plan", `Plan (${plan.length})`],
+                  ["atenciones", `Atenciones (${atenciones.length})`],
+                  ["general", "Atención general"],
+                ] as const).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setModoPanel(id)}
+                    className={`border-b-2 px-2.5 pb-2 text-sm transition-colors ${
+                      modoPanel === id ? "border-primary font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
+              {modoPanel === "plan" && (
+                <>
+                  <p className="px-4 pt-3 text-xs text-muted-foreground">Lo diagnosticado y lo que está en curso. Toca una fila o una pieza para atenderla.</p>
               {plan.length === 0 ? (
                 <p className="px-4 py-8 text-center text-sm text-muted-foreground">
                   Sin tratamientos pendientes. Toca una pieza en la boca para registrar un hallazgo.
@@ -307,6 +336,73 @@ export function Odontograma({
                     );
                   })}
                 </ul>
+              )}
+                </>
+              )}
+              {modoPanel === "atenciones" && (
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <div className="grid grid-cols-2 gap-px border-b border-border bg-border text-center">
+                    <div className="bg-surface px-3 py-2">
+                      <p className="text-base font-semibold tabular-nums text-foreground">{pesos.format(cobrado)}</p>
+                      <p className="text-[11px] text-muted-foreground">Cobrado</p>
+                    </div>
+                    <div className="bg-surface px-3 py-2">
+                      <p className={`text-base font-semibold tabular-nums ${porCobrar > 0 ? "text-warning" : "text-foreground"}`}>{pesos.format(porCobrar)}</p>
+                      <p className="text-[11px] text-muted-foreground">Por cobrar</p>
+                    </div>
+                  </div>
+                  {atenciones.length === 0 ? (
+                    <p className="px-4 py-8 text-center text-sm text-muted-foreground">Todavía no hay atenciones. Toca una pieza y elige Atender.</p>
+                  ) : (
+                    <ul className="max-h-[520px] divide-y divide-border overflow-y-auto">
+                      {atenciones.map((atencion) => (
+                        <li key={atencion.id} className="flex items-start gap-3 px-4 py-2.5">
+                          <button
+                            type="button"
+                            disabled={atencion.pieza === null}
+                            onClick={() => atencion.pieza !== null && elegir(atencion.pieza)}
+                            className="flex size-9 flex-shrink-0 items-center justify-center rounded-lg bg-surface-muted text-sm font-semibold tabular-nums text-foreground disabled:cursor-default"
+                          >
+                            {atencion.pieza ?? "—"}
+                          </button>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium text-foreground">
+                              {atencion.descripcion}
+                              {atencion.es_urgencia && <span className="ml-1.5 text-xs font-medium text-danger">urgencia</span>}
+                            </p>
+                            <p className="truncate text-xs text-muted-foreground">
+                              {fecha.format(new Date(`${atencion.fecha}T12:00:00Z`))}
+                              {atencion.profesional ? ` · ${atencion.profesional}` : ""}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-medium tabular-nums text-foreground">{pesos.format(Number(atencion.precio))}</p>
+                            <ActionForm action={marcarAtencionPagada} success={atencion.pagado ? "Marcada por cobrar" : "Marcada pagada"}>
+                              <input type="hidden" name="atencion_id" value={atencion.id} />
+                              <input type="hidden" name="cuenta_id" value={cuentaId} />
+                              <input type="hidden" name="pagado" value={atencion.pagado ? "no" : "si"} />
+                              <button type="submit" className={`text-[11px] font-medium hover:underline ${atencion.pagado ? "text-success" : "text-warning"}`}>
+                                {atencion.pagado ? "Pagado" : "Por cobrar · marcar pagado"}
+                              </button>
+                            </ActionForm>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+              {modoPanel === "general" && (
+                <div className="px-4 py-4">
+                  <AtencionForm
+                    cuentaId={cuentaId}
+                    arancel={arancel}
+                    aplica={["boca"]}
+                    profesionales={profesionales}
+                    titulo="Atención de toda la boca"
+                    onGuardada={() => setModoPanel("atenciones")}
+                  />
+                </div>
               )}
             </div>
           ) : (
@@ -365,6 +461,84 @@ export function Odontograma({
                 )}
               </div>
 
+              {atencionesDePieza.length > 0 && (
+                <div className="border-b border-border px-4 py-3">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Atenciones en esta pieza</p>
+                  <ul className="space-y-1.5">
+                    {atencionesDePieza.map((atencion) => (
+                      <li key={atencion.id} className="flex items-center justify-between gap-2 text-sm">
+                        <span className="min-w-0">
+                          <span className="block truncate text-foreground">{atencion.descripcion}</span>
+                          <span className="block text-xs text-muted-foreground">
+                            {fecha.format(new Date(`${atencion.fecha}T12:00:00Z`))}
+                            {atencion.profesional ? ` · ${atencion.profesional}` : ""}
+                          </span>
+                        </span>
+                        <span className="text-right">
+                          <span className="block tabular-nums text-foreground">{pesos.format(Number(atencion.precio))}</span>
+                          <span className={`block text-[11px] ${atencion.pagado ? "text-success" : "text-warning"}`}>{atencion.pagado ? "Pagado" : "Por cobrar"}</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="border-b border-border px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <Superficies
+                    pieza={pieza}
+                    pintadas={new Map()}
+                    elegidas={superficiesNuevas}
+                    onToggle={(superficie) =>
+                      setSuperficiesNuevas((previas) => {
+                        const siguientes = new Set(previas);
+                        if (siguientes.has(superficie)) siguientes.delete(superficie);
+                        else siguientes.add(superficie);
+                        return siguientes;
+                      })
+                    }
+                  />
+                  <div className="text-xs text-muted-foreground">
+                    <p className="font-medium text-foreground">Superficies</p>
+                    <p>Toca las caras que se tratan o que están afectadas.</p>
+                    <p className="mt-1">{SUPERFICIES.filter((superficie) => superficiesNuevas.has(superficie)).map((superficie) => nombreSuperficie(superficie, pieza)).join(", ") || "Ninguna todavía"}</p>
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-1 rounded-lg border border-border p-0.5 text-sm">
+                  {([
+                    ["atender", "Atender"],
+                    ["hallazgo", "Registrar hallazgo"],
+                  ] as const).map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setModoPieza(id)}
+                      className={`rounded-md px-2 py-1.5 font-medium transition-colors ${modoPieza === id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {modoPieza === "atender" && (
+                <div className="px-4 py-4">
+                  <AtencionForm
+                    key={`atender-${pieza.numero}`}
+                    cuentaId={cuentaId}
+                    arancel={arancel}
+                    aplica={["pieza", "superficie"]}
+                    pieza={pieza.numero}
+                    superficies={[...superficiesNuevas]}
+                    profesionales={profesionales}
+                    onGuardada={() => setSuperficiesNuevas(new Set())}
+                    titulo={`Atender la pieza ${pieza.numero}`}
+                  />
+                </div>
+              )}
+
+              {modoPieza === "hallazgo" && (
               <ActionForm
                 key={pieza.numero}
                 action={registrarEnOdontograma}
@@ -396,27 +570,8 @@ export function Odontograma({
                   ))}
                 </div>
 
-                {INFO_ESTADO[estadoNuevo].porSuperficie && (
-                  <div className="flex items-center gap-3">
-                    <Superficies
-                      pieza={pieza}
-                      pintadas={new Map()}
-                      elegidas={superficiesNuevas}
-                      onToggle={(superficie) =>
-                        setSuperficiesNuevas((previas) => {
-                          const siguientes = new Set(previas);
-                          if (siguientes.has(superficie)) siguientes.delete(superficie);
-                          else siguientes.add(superficie);
-                          return siguientes;
-                        })
-                      }
-                    />
-                    <div className="text-xs text-muted-foreground">
-                      <p className="font-medium text-foreground">Superficies</p>
-                      <p>Toca las caras afectadas.</p>
-                      <p className="mt-1">{SUPERFICIES.filter((superficie) => superficiesNuevas.has(superficie)).map((superficie) => nombreSuperficie(superficie, pieza)).join(", ") || "Ninguna todavía"}</p>
-                    </div>
-                  </div>
+                {INFO_ESTADO[estadoNuevo].porSuperficie && superficiesNuevas.size === 0 && (
+                  <p className="text-xs font-medium text-warning">Marca las superficies afectadas en la cruz de arriba.</p>
                 )}
 
                 <div className="grid grid-cols-2 gap-3">
@@ -460,6 +615,7 @@ export function Odontograma({
                 <datalist id="odontograma-diagnosticos">{DIAGNOSTICOS.map((valor) => <option key={valor} value={valor} />)}</datalist>
                 <datalist id="odontograma-tratamientos">{TRATAMIENTOS.map((valor) => <option key={valor} value={valor} />)}</datalist>
               </ActionForm>
+              )}
             </div>
           )}
         </div>

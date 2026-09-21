@@ -84,3 +84,16 @@ test("la base y la aplicación aceptan los mismos estados y superficies", () => 
   // Historia de salud: se agrega, no se edita ni se borra desde la aplicación.
   assert.doesNotMatch(migracion, /for (update|delete|all) to authenticated\s+using \(\(select public\.current_role_name/);
 });
+
+test("una atención se registra en una transacción que también actualiza el odontograma", () => {
+  const nombre = readdirSync(new URL("../supabase/migrations", import.meta.url)).find((archivo) => archivo.endsWith("_arancel_y_atenciones.sql"));
+  const migracion = readFileSync(new URL(`../supabase/migrations/${nombre}`, import.meta.url), "utf8");
+  const funcion = migracion.slice(migracion.indexOf("function public.registrar_atencion"));
+  assert.match(funcion, /security invoker/);
+  assert.match(funcion, /insert into public\.atenciones/);
+  assert.match(funcion, /if p_actualizar_odontograma and p_pieza is not null and v_producto\.resultado_odontograma is not null then/);
+  // Una clínica nueva nace con su arancel.
+  assert.match(migracion, /perform public\.aplicar_arancel_de_edicion\(new\.id, new\.edicion\)/);
+  // Reaplicar el arancel no pisa el precio que la clínica ya puso.
+  assert.match(migracion, /one_time_price = coalesce\(public\.sales_products\.one_time_price, excluded\.one_time_price\)/);
+});

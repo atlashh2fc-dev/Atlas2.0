@@ -31,6 +31,7 @@ import {
 import { PACIENTES_POR_EDICION, VENTAS_POR_EDICION } from "@/lib/ediciones";
 import { ETIQUETA_VACUNA, edad, estadoVacuna } from "@/lib/mascotas";
 import { denticionPorEdad, type RegistroOdontograma } from "@/lib/odontograma";
+import type { Atencion, Procedimiento } from "@/lib/arancel";
 import { Odontograma } from "@/components/odontograma/odontograma";
 import { contextoDeMiEmpresa, puedeLeerConversaciones } from "@/lib/modules.server";
 import { REPORT_TIME_ZONE } from "@/lib/report-range";
@@ -122,6 +123,7 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
     { data: llamadas },
     { data: conversaciones },
     { data: odontograma },
+    { data: atencionesData },
   ] =
     await Promise.all([
       supabase
@@ -132,7 +134,12 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
       esVet
         ? supabase.from("mascotas").select("*").eq("cuenta_id", id).order("created_at")
         : Promise.resolve({ data: [] as Record<string, unknown>[] }),
-      supabase.from("sales_products").select("code, name, one_time_price").eq("active", true).order("name"),
+      supabase
+        .from("sales_products")
+        .select("id, code, name, one_time_price, categoria, duracion_min, es_urgencia, aplica_a, resultado_odontograma, orden, active")
+        .eq("active", true)
+        .order("orden")
+        .order("name"),
       supabase.from("profiles").select("id, full_name"),
       leadIds.length > 0
         ? supabase.from("calls").select("id, status, reason, started_at, ended_at, agent_id").in("lead_id", leadIds).order("started_at", { ascending: false }).limit(30)
@@ -147,6 +154,12 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
             .eq("cuenta_id", id)
             .order("fecha", { ascending: false })
         : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+      supabase
+        .from("atenciones")
+        .select("id, descripcion, pieza, superficies, region, mascota_id, precio, pagado, es_urgencia, profesional, nota, fecha, created_at")
+        .eq("cuenta_id", id)
+        .order("fecha", { ascending: false })
+        .order("created_at", { ascending: false }),
     ]);
 
   const opportunityIds = (negocios ?? []).map((negocio) => negocio.id as string);
@@ -175,6 +188,8 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
   const telefono = (ficha.phone ?? "").replace(/\D/g, "");
   const abiertos = (negocios ?? []).filter((negocio) => negocio.status === "abierta");
   const registrosOdontograma = (odontograma ?? []) as unknown as RegistroOdontograma[];
+  const arancel = (productos ?? []) as unknown as Procedimiento[];
+  const atenciones = (atencionesData ?? []) as unknown as Atencion[];
   // Los profesionales que aparecen en la clínica: el tratante del paciente primero.
   const profesionales = [
     ...new Set([texto("profesional"), ...registrosOdontograma.map((registro) => registro.profesional)].filter((valor): valor is string => Boolean(valor))),
@@ -309,6 +324,8 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
           denticionSugerida={denticionPorEdad(texto("nacimiento"))}
           edad={edadPaciente}
           profesionales={profesionales}
+          arancel={arancel}
+          atenciones={atenciones}
         />
       )}
 

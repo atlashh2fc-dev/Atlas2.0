@@ -21,6 +21,7 @@ import {
   Workflow,
   type LucideIcon,
   HeartPulse,
+  Receipt,
 } from "lucide-react";
 import type { AppModule } from "./modules";
 import type { AppRole } from "./types";
@@ -256,7 +257,7 @@ const WORKSPACE_SECTIONS: Record<AppRole, { id: string; label?: string; itemIds:
     { id: "control-home", itemIds: ["inicio"] },
     { id: "control-operation", label: "Control diario", itemIds: ["operacion", "pacientes", "ventas", "correo", "registros"] },
     { id: "control-results", label: "Revisión", itemIds: ["conversaciones", "reportes", "calidad"] },
-    { id: "admin-operation", label: "Configuración", itemIds: ["campanas", "colas", "flujos", "estados-agente", "cargas"] },
+    { id: "admin-operation", label: "Configuración", itemIds: ["aranceles", "campanas", "colas", "flujos", "estados-agente", "cargas"] },
     { id: "admin-platform", label: "Plataforma", itemIds: ["empresas", "usuarios", "extensiones", "integraciones"] },
   ],
   supervisor: [
@@ -314,6 +315,15 @@ const ADMIN: NavSpace = {
           roles: ["admin"],
           description: "Catálogo de estados del discador",
           modules: ["contact_center"],
+        },
+        {
+          id: "aranceles",
+          label: "Procedimientos y precios",
+          href: "/dashboard/admin/aranceles",
+          icon: Receipt,
+          roles: ["admin"],
+          description: "Arancel de la clínica: procedimientos, urgencias, precios y duración",
+          modules: ["ventas_b2c"],
         },
         {
           id: "cargas",
