@@ -6,6 +6,8 @@ import { ChevronLeft, PawPrint, RotateCcw } from "lucide-react";
 
 import { cambiarRazaMascota, registrarEnMascota } from "@/app/actions/mascotas";
 import { AtencionForm } from "@/components/atencion-form";
+import { EstudiosPanel } from "@/components/estudios-panel";
+import type { Estudio } from "@/lib/estudios";
 import { ActionForm, ActionSubmit, Badge, Field, Input, Select } from "@/components/ui";
 import { pesos, type Atencion, type Procedimiento } from "@/lib/arancel";
 import {
@@ -78,7 +80,11 @@ export function FichaMascota3D({
   atenciones,
   arancel,
   profesionales,
+  estudios,
+  organizationId,
 }: {
+  estudios: Estudio[];
+  organizationId: string;
   cuentaId: string;
   mascotas: MascotaFicha[];
   registros: RegistroMascota[];
@@ -92,7 +98,7 @@ export function FichaMascota3D({
   const [encima, setEncima] = useState<Region | null>(null);
   const [vista, setVista] = useState<{ nombre: VistaAnimal; clave: number }>({ nombre: "derecha", clave: 0 });
   const [modo, setModo] = useState<"registrar" | "atender">("registrar");
-  const [panel, setPanel] = useState<"historia" | "atenciones" | "general">("historia");
+  const [panel, setPanel] = useState<"historia" | "atenciones" | "estudios" | "general">("historia");
   const [tipo, setTipo] = useState<TipoRegistro>("enfermedad");
 
   const mascota = mascotas.find((item) => item.id === mascotaId) ?? mascotas[0];
@@ -107,6 +113,7 @@ export function FichaMascota3D({
     [registros, mascota?.id],
   );
   const suyas = atenciones.filter((atencion) => atencion.mascota_id === mascota?.id);
+  const susEstudios = estudios.filter((estudio) => estudio.mascota_id === mascota?.id);
   const marcadores: Marcador[] = [
     ...historia.map((registro) => ({
       id: registro.id,
@@ -242,6 +249,7 @@ export function FichaMascota3D({
                 {([
                   ["historia", `Historia (${historia.length})`],
                   ["atenciones", `Atenciones (${suyas.length})`],
+                  ["estudios", `Estudios (${susEstudios.length})`],
                   ["general", "Atención general"],
                 ] as const).map(([id, label]) => (
                   <button
@@ -305,6 +313,18 @@ export function FichaMascota3D({
                     ))}
                   </ul>
                 ))}
+              {panel === "estudios" && (
+                <div className="px-4 py-4">
+                  <EstudiosPanel
+                    key={`estudios-${mascota.id}`}
+                    cuentaId={cuentaId}
+                    organizationId={organizationId}
+                    estudios={susEstudios}
+                    mascotaId={mascota.id}
+                    titulo={`Radiografías y estudios de ${mascota.nombre}`}
+                  />
+                </div>
+              )}
               {panel === "general" && (
                 <div className="px-4 py-4">
                   <AtencionForm
@@ -360,6 +380,18 @@ export function FichaMascota3D({
                     ))}
                   </ol>
                 )}
+              </div>
+
+              <div className="border-b border-border px-4 py-3">
+                <EstudiosPanel
+                  key={`estudios-${mascota.id}-${region}`}
+                  cuentaId={cuentaId}
+                  organizationId={organizationId}
+                  estudios={susEstudios.filter((estudio) => estudio.region === region)}
+                  mascotaId={mascota.id}
+                  region={region}
+                  titulo={`Estudios de ${NOMBRE_REGION[region].toLowerCase()}`}
+                />
               </div>
 
               <div className="border-b border-border px-4 py-3">

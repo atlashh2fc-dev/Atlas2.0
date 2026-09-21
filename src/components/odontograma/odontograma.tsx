@@ -7,6 +7,8 @@ import { Box, ChevronLeft, Maximize2, RotateCcw, ScanLine } from "lucide-react";
 import { marcarAtencionPagada } from "@/app/actions/atenciones";
 import { registrarEnOdontograma } from "@/app/actions/odontograma";
 import { AtencionForm } from "@/components/atencion-form";
+import { EstudiosPanel } from "@/components/estudios-panel";
+import type { Estudio } from "@/lib/estudios";
 import { pesos, type Atencion, type Procedimiento } from "@/lib/arancel";
 import { ActionForm, ActionSubmit, Badge, Field, Input, Select } from "@/components/ui";
 import {
@@ -115,7 +117,11 @@ export function Odontograma({
   profesionales,
   arancel,
   atenciones,
+  estudios,
+  organizationId,
 }: {
+  estudios: Estudio[];
+  organizationId: string;
   cuentaId: string;
   arancel: Procedimiento[];
   atenciones: Atencion[];
@@ -130,7 +136,7 @@ export function Odontograma({
   const [estadoNuevo, setEstadoNuevo] = useState<EstadoPieza>("caries");
   const [rayosX, setRayosX] = useState(false);
   const [modoPieza, setModoPieza] = useState<"atender" | "hallazgo">("atender");
-  const [modoPanel, setModoPanel] = useState<"plan" | "atenciones" | "general">("plan");
+  const [modoPanel, setModoPanel] = useState<"plan" | "atenciones" | "general" | "estudios">("plan");
   const [superficiesNuevas, setSuperficiesNuevas] = useState<Set<Superficie>>(new Set());
 
   const piezas = useMemo(() => piezasDe(denticion), [denticion]);
@@ -292,6 +298,7 @@ export function Odontograma({
                 {([
                   ["plan", `Plan (${plan.length})`],
                   ["atenciones", `Atenciones (${atenciones.length})`],
+                  ["estudios", `Estudios (${estudios.length})`],
                   ["general", "Atención general"],
                 ] as const).map(([id, label]) => (
                   <button
@@ -392,6 +399,11 @@ export function Odontograma({
                   )}
                 </div>
               )}
+              {modoPanel === "estudios" && (
+                <div className="px-4 py-4">
+                  <EstudiosPanel cuentaId={cuentaId} organizationId={organizationId} estudios={estudios} titulo="Radiografías y estudios del paciente" />
+                </div>
+              )}
               {modoPanel === "general" && (
                 <div className="px-4 py-4">
                   <AtencionForm
@@ -483,6 +495,17 @@ export function Odontograma({
                   </ul>
                 </div>
               )}
+
+              <div className="border-b border-border px-4 py-3">
+                <EstudiosPanel
+                  key={`estudios-${pieza.numero}`}
+                  cuentaId={cuentaId}
+                  organizationId={organizationId}
+                  estudios={estudios.filter((estudio) => estudio.pieza === pieza.numero)}
+                  pieza={pieza.numero}
+                  titulo={`Radiografías de la pieza ${pieza.numero}`}
+                />
+              </div>
 
               <div className="border-b border-border px-4 py-3">
                 <div className="flex items-center gap-3">

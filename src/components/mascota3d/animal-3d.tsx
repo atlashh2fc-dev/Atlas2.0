@@ -1,11 +1,11 @@
 "use client";
 
-import { Canvas, type ThreeEvent } from "@react-three/fiber";
+import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber";
 import { CameraControls, ContactShadows, Environment, Lightformer } from "@react-three/drei";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
-import { INFO_TIPO, type Raza, type Region, type TipoRegistro } from "@/lib/anatomia";
+import { INFO_TIPO, largoDePelo, type Raza, type Region, type TipoRegistro } from "@/lib/anatomia";
 
 import { construirCuerpo, geometriaCola, type Parte } from "./cuerpo";
 import { crearPiel, vaEnLaPiel } from "./piel";
@@ -39,6 +39,61 @@ function materialPelo(color: string, resaltado: number) {
       emissive="#38bdf8"
       emissiveIntensity={resaltado}
     />
+  );
+}
+
+const CAPAS = 16;
+
+/**
+ * Capa de pelo: la superficie desplazada hacia afuera por su normal, con hebras
+ * recortadas en el shader. Las hebras son más gruesas en la raíz y se afinan
+ * hacia la punta; caen un poco con la gravedad y son más oscuras abajo.
+ */
+function materialCapa(capa: number, largo: number, densidad: number) {
+  const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 });
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uCapa = { value: capa };
+    shader.uniforms.uLargo = { value: largo };
+    shader.uniforms.uDensidad = { value: densidad };
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nuniform float uCapa;\nuniform float uLargo;\nattribute float largo;\nvarying vec3 vPelo;")
+      .replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>
+        vPelo = position;
+        float estePelo = uLargo * largo;
+        transformed += normalize(objectNormal) * uCapa * estePelo;
+        transformed.y -= uCapa * uCapa * estePelo * 0.4;`,
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", "#include <common>\nuniform float uCapa;\nuniform float uDensidad;\nvarying vec3 vPelo;")
+      .replace(
+        "#include <color_fragment>",
+        `#include <color_fragment>
+        vec3 celda = floor(vPelo * uDensidad);
+        vec3 dentro = fract(vPelo * uDensidad) - 0.5;
+        float azar = fract(sin(dot(celda, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+        float grosor = (1.0 - uCapa) * 0.55 + 0.06;
+        if (azar < uCapa * 0.9 || length(dentro) > grosor) discard;
+        diffuseColor.rgb *= mix(0.55, 1.1, uCapa) * (0.9 + 0.2 * azar);`,
+      );
+  };
+  material.customProgramCacheKey = () => `pelo-${capa.toFixed(3)}`;
+  return material;
+}
+
+function Pelaje({ geometria, largo, densidad }: { geometria: THREE.BufferGeometry; largo: number; densidad: number }) {
+  const materiales = useMemo(
+    () => Array.from({ length: CAPAS }, (_, indice) => materialCapa((indice + 1) / CAPAS, largo, densidad)),
+    [largo, densidad],
+  );
+  useEffect(() => () => materiales.forEach((material) => material.dispose()), [materiales]);
+  return (
+    <>
+      {materiales.map((material, indice) => (
+        <mesh key={indice} geometry={geometria} material={material} raycast={() => null} renderOrder={indice + 1} />
+      ))}
+    </>
   );
 }
 
@@ -87,9 +142,27 @@ function ParteMesh({ parte, resaltado, onPointer }: { parte: Parte; resaltado: n
   }
   if (parte.forma === "cono") {
     return (
-      <mesh position={parte.centro} rotation={parte.rotacion} castShadow {...onPointer}>
-        <coneGeometry args={[parte.radio, parte.alto, 36, 1]} />
-        {materialPelo(parte.color, resaltado)}
+      <group position={parte.centro} rotation={parte.rotacion}>
+        <mesh scale={[parte.aplanado ?? 1, 1, 1]} castShadow {...onPointer}>
+          <coneGeometry args={[parte.radio, parte.alto, 40, 1]} />
+          {parte.material === "interior" ? (
+            <meshPhysicalMaterial color={parte.color} roughness={0.55} sheen={0.4} sheenColor="#ffd6d4" emissive="#38bdf8" emissiveIntensity={resaltado * 0.6} />
+          ) : (
+            materialPelo(parte.color, resaltado)
+          )}
+        </mesh>
+      </group>
+    );
+  }
+  if (parte.forma === "bigote") {
+    const desde = new THREE.Vector3(...parte.desde);
+    const hasta = new THREE.Vector3(...parte.hasta);
+    const medio = desde.clone().add(hasta).multiplyScalar(0.5);
+    const giro = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), hasta.clone().sub(desde).normalize());
+    return (
+      <mesh position={medio} quaternion={giro} raycast={() => null}>
+        <cylinderGeometry args={[0.0012, 0.0028, desde.distanceTo(hasta), 6]} />
+        <meshStandardMaterial color={parte.color} roughness={0.4} />
       </mesh>
     );
   }
@@ -106,6 +179,21 @@ function ParteMesh({ parte, resaltado, onPointer }: { parte: Parte; resaltado: n
       </group>
     );
   }
+  return null;
+}
+
+/**
+ * Pone la cámara en la vista pedida, alejándola en un visor angosto (celular)
+ * para que el animal entre completo.
+ */
+function Encuadre({ controles, vista }: { controles: React.RefObject<CameraControls | null>; vista: { nombre: VistaAnimal; clave: number } }) {
+  const ancho = useThree((estado) => estado.size.width);
+  const alto = useThree((estado) => estado.size.height);
+  const lejos = Math.max(1, 1.45 / Math.max(0.35, ancho / Math.max(1, alto)));
+  useEffect(() => {
+    const [x, y, z] = VISTAS[vista.nombre];
+    void controles.current?.setLookAt(x * lejos, y * lejos, z * lejos, 0, 0.1, 0, vista.clave > 0);
+  }, [controles, vista, lejos]);
   return null;
 }
 
@@ -129,11 +217,40 @@ export function Animal3D({
   const cuerpo = useMemo(() => construirCuerpo(raza, etapa), [raza, etapa]);
   // El cuerpo es una sola piel; ojos, nariz, orejas y cola van aparte.
   const piel = useMemo(() => crearPiel(cuerpo.partes, cuerpo.manto), [cuerpo]);
-  const sueltas = useMemo(() => cuerpo.partes.filter((parte) => !vaEnLaPiel(parte)), [cuerpo]);
+  // Ojos y pupilas se asientan sobre la piel ya fundida (si no, el pelo los tapa).
+  const sueltas = useMemo(() => {
+    const lista = cuerpo.partes.filter((parte) => !vaEnLaPiel(parte));
+    const resultado: Parte[] = [];
+    let corrimiento: [number, number, number] = [0, 0, 0];
+    for (const parte of lista) {
+      if (parte.forma === "elipsoide" && parte.material === "ojo") {
+        const nuevo = piel.asomar(parte.centro, parte.escala[0]);
+        corrimiento = [nuevo[0] - parte.centro[0], nuevo[1] - parte.centro[1], nuevo[2] - parte.centro[2]];
+        resultado.push({ ...parte, centro: nuevo });
+      } else if (parte.forma === "elipsoide" && parte.material === "pupila") {
+        const [dx, dy, dz] = corrimiento;
+        resultado.push({ ...parte, centro: [parte.centro[0] + dx, parte.centro[1] + dy, parte.centro[2] + dz] });
+      } else {
+        resultado.push(parte);
+      }
+    }
+    return resultado;
+  }, [cuerpo, piel]);
   useEffect(() => () => piel.dispose(), [piel]);
-  useEffect(() => {
+  // La zona elegida se tiñe en la piel y se copia la superficie para dibujarla con su pelo.
+  const superficie = useMemo(() => {
     piel.pintar(seleccionada);
+    return piel.instantanea();
   }, [piel, seleccionada]);
+  useEffect(() => () => superficie.dispose(), [superficie]);
+  const escalaPiel = piel.malla.scale.x;
+  const largoPelo = largoDePelo(raza) / escalaPiel;
+  const densidadPelo = escalaPiel / 0.0055;
+  const materialPiel = useMemo(
+    () => new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.9, sheen: 0.6, sheenColor: new THREE.Color("#9a9a9a"), sheenRoughness: 0.6 }),
+    [],
+  );
+  useEffect(() => () => materialPiel.dispose(), [materialPiel]);
   const raiz = useRef<THREE.Group>(null);
   const controles = useRef<CameraControls>(null);
   const [resaltada, setResaltada] = useState<Region | null>(null);
@@ -143,10 +260,6 @@ export function Animal3D({
   const escala = (2.4 / Math.max(cuerpo.largo, cuerpo.alto * 1.15)) * (0.84 + 0.16 * Math.min(1.2, raza.tamano));
   const centroY = (cuerpo.alto * escala) / 2;
 
-  useEffect(() => {
-    const [x, y, z] = VISTAS[vista.nombre];
-    void controles.current?.setLookAt(x, y, z, 0, 0.1, 0, vista.clave > 0);
-  }, [vista]);
 
   useEffect(() => {
     document.body.style.cursor = resaltada ? "pointer" : "";
@@ -193,8 +306,16 @@ export function Animal3D({
       </Environment>
 
       <group ref={raiz} scale={escala} position={[-0.1, -centroY, 0]}>
-        <primitive
-          object={piel.malla}
+        <group position={piel.malla.position} scale={escalaPiel}>
+          <Pelaje geometria={superficie} largo={largoPelo} densidad={densidadPelo} />
+        </group>
+        <mesh
+          geometry={superficie}
+          material={materialPiel}
+          position={piel.malla.position}
+          scale={escalaPiel}
+          castShadow
+          receiveShadow
           onClick={(event: ThreeEvent<MouseEvent>) => {
             event.stopPropagation();
             const local = raiz.current ? raiz.current.worldToLocal(event.point.clone()) : event.point.clone();
@@ -245,7 +366,8 @@ export function Animal3D({
 
       <ContactShadows position={[0, -centroY + 0.002, 0]} opacity={0.5} scale={8} blur={2.4} far={3} />
 
-      <CameraControls ref={controles} makeDefault minDistance={2.6} maxDistance={11} smoothTime={0.35} maxPolarAngle={Math.PI * 0.62} />
+      <Encuadre controles={controles} vista={vista} />
+      <CameraControls ref={controles} makeDefault minDistance={2.6} maxDistance={24} smoothTime={0.35} maxPolarAngle={Math.PI * 0.62} />
     </Canvas>
   );
 }

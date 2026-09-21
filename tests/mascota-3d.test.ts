@@ -37,3 +37,16 @@ test("la base y la aplicación aceptan las mismas zonas del cuerpo", () => {
   // Es historia clínica: se agrega, no se edita ni se borra desde la aplicación.
   assert.doesNotMatch(migracion, /policy mascota_registros_(update|delete|write)/);
 });
+
+test("los estudios quedan en un bucket privado, en la carpeta de su empresa", async () => {
+  const nombre = readdirSync(new URL("../supabase/migrations", import.meta.url)).find((archivo) => archivo.endsWith("_estudios_clinicos.sql"));
+  const migracion = readFileSync(new URL(`../supabase/migrations/${nombre}`, import.meta.url), "utf8");
+  assert.match(migracion, /'estudios-clinicos', 'estudios-clinicos', false/);
+  assert.match(migracion, /check \(split_part\(storage_path, '\/', 1\) = organization_id::text\)/);
+  assert.match(migracion, /\(storage\.foldername\(name\)\)\[1\] = any \(select unnest\(public\.current_org_ids\(\)\)::text\)/);
+
+  const { nombreSeguro, mimeDe } = await import("../src/lib/estudios.ts");
+  assert.equal(nombreSeguro("Radiografía rodilla (1).jpg"), "Radiografia-rodilla-1-.jpg");
+  assert.equal(mimeDe("placa.dcm", ""), "application/dicom");
+  assert.equal(mimeDe("placa.png", "image/png"), "image/png");
+});

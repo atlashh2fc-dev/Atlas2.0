@@ -112,7 +112,7 @@ export const RAZAS: Raza[] = [
   { ...PERRO, nombre: "Chihuahua", peso: "1,5–3 kg", tamano: 0.45, largo: 0.8, radio: 0.22, patas: { largo: 0.4, grosor: 0.045 }, cabeza: 0.3, hocico: { largo: 0.1, ancho: 0.08 }, orejas: { tipo: "erecta", tam: 0.27 }, cola: { tipo: "enroscada", largo: 0.4, grosor: 0.035 }, esponjoso: 1, pelaje: { cuerpo: "#d8b489", pecho: "#efdcc0" } },
   { ...GATO, nombre: "Mestizo", peso: "3,5–5 kg", tamano: 0.62, largo: 0.85, radio: 0.2, patas: { largo: 0.42, grosor: 0.048 }, cabeza: 0.2, hocico: { largo: 0.05, ancho: 0.075 }, orejas: { tipo: "felina", tam: 0.13 }, cola: { tipo: "larga", largo: 0.8, grosor: 0.035 }, esponjoso: 1.02, pelaje: { cuerpo: "#9d8166", lomo: "#7a624c", pecho: "#e9dccb", hocico: "#efe4d6", nariz: "#c47b7b" } },
   { ...GATO, nombre: "Siamés", peso: "3–5 kg", tamano: 0.62, largo: 0.88, radio: 0.19, patas: { largo: 0.46, grosor: 0.045 }, cabeza: 0.19, hocico: { largo: 0.07, ancho: 0.07 }, orejas: { tipo: "felina", tam: 0.16 }, cola: { tipo: "larga", largo: 0.85, grosor: 0.03 }, esponjoso: 1, ojos: "#3f7fd0", pelaje: { cuerpo: "#efe3cc", cara: "#4a3a30", hocico: "#3d2f27", orejas: "#3d2f27", patas: "#4a3a30", cola: "#3d2f27", nariz: "#2a211c" } },
-  { ...GATO, nombre: "Persa", peso: "3–6 kg", tamano: 0.66, largo: 0.8, radio: 0.22, patas: { largo: 0.34, grosor: 0.055 }, cabeza: 0.23, hocico: { largo: 0.015, ancho: 0.08 }, orejas: { tipo: "felina", tam: 0.09 }, cola: { tipo: "esponjosa", largo: 0.55, grosor: 0.07 }, esponjoso: 1.28, ojos: "#c77b1c", pelaje: { cuerpo: "#f3f1ec", nariz: "#d99a9a" } },
+  { ...GATO, nombre: "Persa", peso: "3–6 kg", tamano: 0.66, largo: 0.8, radio: 0.22, patas: { largo: 0.34, grosor: 0.055 }, cabeza: 0.23, hocico: { largo: 0.015, ancho: 0.08 }, orejas: { tipo: "felina", tam: 0.12 }, cola: { tipo: "esponjosa", largo: 0.55, grosor: 0.07 }, esponjoso: 1.28, ojos: "#c77b1c", pelaje: { cuerpo: "#f3f1ec", nariz: "#d99a9a" } },
   { ...GATO, nombre: "Maine Coon", peso: "6–9 kg", tamano: 0.82, largo: 1, radio: 0.24, patas: { largo: 0.46, grosor: 0.058 }, cabeza: 0.22, hocico: { largo: 0.07, ancho: 0.085 }, orejas: { tipo: "felina", tam: 0.17 }, cola: { tipo: "esponjosa", largo: 0.85, grosor: 0.075 }, esponjoso: 1.16, pelaje: { cuerpo: "#7a5b42", lomo: "#5a4230", pecho: "#eadfcf", hocico: "#eadfcf", cola: "#6d5039" } },
   { ...GATO, nombre: "Bengalí", peso: "4–7 kg", tamano: 0.66, largo: 0.92, radio: 0.2, patas: { largo: 0.46, grosor: 0.05 }, cabeza: 0.19, hocico: { largo: 0.06, ancho: 0.075 }, orejas: { tipo: "felina", tam: 0.12 }, cola: { tipo: "larga", largo: 0.75, grosor: 0.038 }, esponjoso: 1, ojos: "#6d9a2c", pelaje: { cuerpo: "#cf9550", lomo: "#9c6630", pecho: "#f0dcc0", hocico: "#f0dcc0", cola: "#8a5a2a" } },
 ];
@@ -140,4 +140,22 @@ export function etapaDe(especie: Especie, anios: number | null): "cachorro" | "a
   if (anios === null) return "adulto";
   if (anios < 1) return "cachorro";
   return anios >= (especie === "Gato" ? 11 : 8) ? "senior" : "adulto";
+}
+
+/** Largo del pelo, relativo al largo del cuerpo: define las capas de pelaje del modelo. */
+const PELO_LARGO: Record<string, number> = {
+  "Perro/Golden Retriever": 0.03,
+  "Perro/Border Collie": 0.03,
+  "Perro/Husky Siberiano": 0.028,
+  "Perro/Pastor Alemán": 0.022,
+  "Perro/Yorkshire": 0.034,
+  "Perro/Poodle": 0.026,
+  "Perro/Schnauzer": 0.02,
+  "Gato/Persa": 0.04,
+  "Gato/Maine Coon": 0.034,
+  "Gato/Mestizo": 0.018,
+};
+
+export function largoDePelo(raza: Raza): number {
+  return PELO_LARGO[`${raza.especie}/${raza.nombre}`] ?? 0.013;
 }

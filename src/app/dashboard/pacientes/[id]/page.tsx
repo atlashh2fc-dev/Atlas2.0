@@ -32,6 +32,7 @@ import { PACIENTES_POR_EDICION, VENTAS_POR_EDICION } from "@/lib/ediciones";
 import { ETIQUETA_VACUNA, edad, estadoVacuna } from "@/lib/mascotas";
 import { denticionPorEdad, type RegistroOdontograma } from "@/lib/odontograma";
 import type { Atencion, Procedimiento } from "@/lib/arancel";
+import type { Estudio } from "@/lib/estudios";
 import { Odontograma } from "@/components/odontograma/odontograma";
 import { FichaMascota3D, type MascotaFicha, type RegistroMascota } from "@/components/mascota3d/ficha-mascota-3d";
 import { contextoDeMiEmpresa, puedeLeerConversaciones } from "@/lib/modules.server";
@@ -107,7 +108,7 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
 
   const { data: ficha } = await supabase
     .from("sales_companies")
-    .select("id, name, rut, phone, email, commune, source, metadata, created_at, sales_contacts(lead_id, phone, email)")
+    .select("id, organization_id, name, rut, phone, email, commune, source, metadata, created_at, sales_contacts(lead_id, phone, email)")
     .eq("id", id)
     .maybeSingle();
   if (!ficha) notFound();
@@ -126,6 +127,7 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
     { data: odontograma },
     { data: atencionesData },
     { data: registrosMascota },
+    { data: estudiosData },
   ] =
     await Promise.all([
       supabase
@@ -169,7 +171,23 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
             .eq("cuenta_id", id)
             .order("fecha", { ascending: false })
         : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+      supabase
+        .from("estudios_clinicos")
+        .select("id, tipo, titulo, nota, pieza, region, mascota_id, mime, tamano, fecha, storage_path")
+        .eq("cuenta_id", id)
+        .order("fecha", { ascending: false }),
     ]);
+
+  // Los estudios se ven con enlaces firmados que expiran en una hora.
+  const rutas = ((estudiosData ?? []) as { storage_path: string }[]).map((estudio) => estudio.storage_path);
+  const { data: firmados } = rutas.length > 0
+    ? await supabase.storage.from("estudios-clinicos").createSignedUrls(rutas, 60 * 60)
+    : { data: [] as { path: string | null; signedUrl: string }[] };
+  const enlace = new Map((firmados ?? []).map((firmado) => [firmado.path, firmado.signedUrl]));
+  const estudios = ((estudiosData ?? []) as (Omit<Estudio, "url"> & { storage_path: string })[]).map(({ storage_path, ...estudio }) => ({
+    ...estudio,
+    url: enlace.get(storage_path) ?? null,
+  }));
 
   const opportunityIds = (negocios ?? []).map((negocio) => negocio.id as string);
   const conversacionIds = (conversaciones ?? []).map((conversacion) => conversacion.id as string);
@@ -340,6 +358,8 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
           atenciones={atenciones}
           arancel={arancel}
           profesionales={profesionales}
+          estudios={estudios}
+          organizationId={ficha.organization_id as string}
         />
       )}
 
@@ -352,6 +372,8 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
           profesionales={profesionales}
           arancel={arancel}
           atenciones={atenciones}
+          estudios={estudios}
+          organizationId={ficha.organization_id as string}
         />
       )}
 
