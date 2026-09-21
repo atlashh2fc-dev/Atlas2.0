@@ -169,6 +169,17 @@ const CONSOLE: NavSpace = {
           ediciones: ["dental", "vet"],
         },
         {
+          id: "campanas-clinica",
+          label: "Campañas",
+          href: "/dashboard/campanas-clinica",
+          icon: Megaphone,
+          roles: ["admin", "supervisor"],
+          description: "Segmentos de la clínica, un mensaje y una fecha; resultados en la misma cola",
+          match: ["/dashboard/campanas-clinica"],
+          modules: ["ventas_b2c"],
+          ediciones: ["dental", "vet"],
+        },
+        {
           id: "recordatorios",
           label: "Recordatorios",
           href: "/dashboard/recordatorios",
@@ -318,14 +329,14 @@ const CONSOLE: NavSpace = {
 const WORKSPACE_SECTIONS: Record<AppRole, { id: string; label?: string; itemIds: string[] }[]> = {
   admin: [
     { id: "control-home", itemIds: ["inicio"] },
-    { id: "control-operation", label: "Control diario", itemIds: ["operacion", "agenda-clinica", "pacientes", "caja", "recordatorios", "ventas", "correo", "registros"] },
+    { id: "control-operation", label: "Control diario", itemIds: ["operacion", "agenda-clinica", "pacientes", "caja", "recordatorios", "campanas-clinica", "ventas", "correo", "registros"] },
     { id: "control-results", label: "Revisión", itemIds: ["conversaciones", "conversaciones-clinica", "reportes", "calidad"] },
     { id: "admin-operation", label: "Configuración", itemIds: ["aranceles", "insumos", "correo-clinica", "campanas", "colas", "flujos", "estados-agente", "cargas"] },
     { id: "admin-platform", label: "Plataforma", itemIds: ["empresas", "usuarios", "extensiones", "integraciones"] },
   ],
   supervisor: [
     { id: "supervision-home", itemIds: ["inicio"] },
-    { id: "supervision-operation", label: "Supervisión", itemIds: ["operacion", "agenda-clinica", "pacientes", "caja", "recordatorios", "ventas", "correo", "equipo", "campanas-operativas", "registros"] },
+    { id: "supervision-operation", label: "Supervisión", itemIds: ["operacion", "agenda-clinica", "pacientes", "caja", "recordatorios", "campanas-clinica", "ventas", "correo", "equipo", "campanas-operativas", "registros"] },
     { id: "supervision-review", label: "Revisión y resultados", itemIds: ["conversaciones", "conversaciones-clinica", "calidad", "reportes"] },
   ],
   agente: [

@@ -61,6 +61,7 @@ export const ETIQUETA_REGLA: Record<string, string> = {
   control: "Control",
   enlace_pago: "Enlace de pago",
   manual: "Manual",
+  campana: "Campaña",
 };
 
 /** Rellena una plantilla con sus variables. Las que faltan quedan vacías, sin llaves sueltas. */
