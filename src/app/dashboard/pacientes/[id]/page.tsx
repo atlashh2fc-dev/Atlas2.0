@@ -30,6 +30,8 @@ import {
 } from "@/components/ui";
 import { PACIENTES_POR_EDICION, VENTAS_POR_EDICION } from "@/lib/ediciones";
 import { ETIQUETA_VACUNA, edad, estadoVacuna } from "@/lib/mascotas";
+import { denticionPorEdad, type RegistroOdontograma } from "@/lib/odontograma";
+import { Odontograma } from "@/components/odontograma/odontograma";
 import { contextoDeMiEmpresa, puedeLeerConversaciones } from "@/lib/modules.server";
 import { REPORT_TIME_ZONE } from "@/lib/report-range";
 import { requireProfile } from "@/lib/auth";
@@ -40,9 +42,9 @@ import { createClient } from "@/lib/supabase/server";
  *
  * Arriba quién es y qué se puede hacer con él: presupuestar, escribirle por
  * WhatsApp o por correo. Al centro, lo que importa para venderle: sus
- * presupuestos y, en Vet, sus mascotas con el semáforo de vacunas. Y una sola
- * línea de tiempo con todo lo que pasó: notas, llamadas, mensajes y cambios de
- * etapa. Lo clínico (odontograma, evoluciones) se queda en el software clínico.
+ * presupuestos y, en Vet, sus mascotas con el semáforo de vacunas; en Dental,
+ * el odontograma 3D con la historia de cada pieza. Y una sola línea de tiempo
+ * con todo lo que pasó: notas, llamadas, mensajes y cambios de etapa.
  */
 
 const pesos = new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 });
@@ -112,7 +114,15 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
     .map((contacto) => contacto.lead_id)
     .filter((valor): valor is string => Boolean(valor));
 
-  const [{ data: negocios }, { data: mascotas }, { data: productos }, { data: personas }, { data: llamadas }, { data: conversaciones }] =
+  const [
+    { data: negocios },
+    { data: mascotas },
+    { data: productos },
+    { data: personas },
+    { data: llamadas },
+    { data: conversaciones },
+    { data: odontograma },
+  ] =
     await Promise.all([
       supabase
         .from("sales_opportunities")
@@ -129,6 +139,13 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
         : Promise.resolve({ data: [] as Record<string, unknown>[] }),
       leadIds.length > 0
         ? supabase.from("whatsapp_conversations").select("id, status, last_message_at").in("lead_id", leadIds).order("last_message_at", { ascending: false })
+        : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+      !esVet
+        ? supabase
+            .from("odontograma_registros")
+            .select("id, pieza, superficies, estado, avance, sintoma, diagnostico, tratamiento, profesional, nota, fecha, created_at")
+            .eq("cuenta_id", id)
+            .order("fecha", { ascending: false })
         : Promise.resolve({ data: [] as Record<string, unknown>[] }),
     ]);
 
@@ -157,6 +174,11 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
   const edadPaciente = edad(texto("nacimiento"));
   const telefono = (ficha.phone ?? "").replace(/\D/g, "");
   const abiertos = (negocios ?? []).filter((negocio) => negocio.status === "abierta");
+  const registrosOdontograma = (odontograma ?? []) as unknown as RegistroOdontograma[];
+  // Los profesionales que aparecen en la clínica: el tratante del paciente primero.
+  const profesionales = [
+    ...new Set([texto("profesional"), ...registrosOdontograma.map((registro) => registro.profesional)].filter((valor): valor is string => Boolean(valor))),
+  ];
 
   const eventos: Evento[] = [
     ...(actividades ?? []).map((actividad) => ({
@@ -279,6 +301,16 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
       <Link href="/dashboard/pacientes" className="text-sm text-muted-foreground hover:text-foreground hover:underline">
         ← Volver a {voc.titulo.toLowerCase()}
       </Link>
+
+      {!esVet && (
+        <Odontograma
+          cuentaId={id}
+          registros={registrosOdontograma}
+          denticionSugerida={denticionPorEdad(texto("nacimiento"))}
+          edad={edadPaciente}
+          profesionales={profesionales}
+        />
+      )}
 
       <div className="grid gap-4 xl:grid-cols-3">
         <div className="space-y-4 xl:col-span-2">
@@ -444,7 +476,7 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
           <p className="px-1 text-xs text-muted-foreground">
             {esVet
               ? "La ficha clínica (anamnesis, exámenes, recetas) sigue en el software de la clínica. Atlas lleva la relación con el tutor."
-              : "La ficha clínica (odontograma, evoluciones, recetas) sigue en el software de la clínica. Atlas lleva la relación con el paciente."}
+              : "Las evoluciones, recetas e imágenes siguen en el software clínico. Atlas lleva el odontograma y la relación con el paciente."}
           </p>
         </div>
       </div>
