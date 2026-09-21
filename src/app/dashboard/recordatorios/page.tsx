@@ -208,13 +208,19 @@ export default async function RecordatoriosPage() {
         {[
           { label: "Programados", valor: programados, detalle: "Salen en el próximo despacho" },
           { label: "Entregados", valor: entregados, detalle: "Últimos 14 días" },
-          { label: "Respondieron", valor: respondidos, detalle: "Cayeron en Conversaciones" },
+          { label: "Respondieron", valor: respondidos, detalle: "Cayeron en Conversaciones", href: "/dashboard/mensajes" },
           { label: "Fallidos", valor: fallidos, detalle: "Revisa el número o el canal" },
-        ].map((metrica) => (
+        ].map((metrica: { label: string; valor: number; detalle: string; href?: string }) => (
           <div key={metrica.label} className="rounded-xl border border-border bg-surface px-4 py-3">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">{metrica.label}</p>
             <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{metrica.valor}</p>
-            <p className="text-xs text-muted-foreground">{metrica.detalle}</p>
+            {metrica.href ? (
+              <Link href={metrica.href} className="text-xs text-primary hover:underline">
+                {metrica.detalle}
+              </Link>
+            ) : (
+              <p className="text-xs text-muted-foreground">{metrica.detalle}</p>
+            )}
           </div>
         ))}
       </div>

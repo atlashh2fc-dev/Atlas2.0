@@ -245,6 +245,18 @@ const CONSOLE: NavSpace = {
           // que el ítem tiene que seguir activo en /voz, /whatsapp y /correo.
           match: ["/dashboard/conversaciones"],
           modules: ["contact_center", "whatsapp", "correo"],
+          ediciones: ["center"],
+        },
+        {
+          id: "conversaciones-clinica",
+          label: "Conversaciones",
+          href: "/dashboard/mensajes",
+          icon: MessageCircle,
+          roles: ["admin", "supervisor"],
+          description: "El WhatsApp de la clínica: lo que Atlas envió y lo que respondieron, en el mismo hilo",
+          match: ["/dashboard/mensajes"],
+          modules: ["whatsapp"],
+          ediciones: ["dental", "vet"],
         },
         {
           id: "agenda",
@@ -307,14 +319,14 @@ const WORKSPACE_SECTIONS: Record<AppRole, { id: string; label?: string; itemIds:
   admin: [
     { id: "control-home", itemIds: ["inicio"] },
     { id: "control-operation", label: "Control diario", itemIds: ["operacion", "agenda-clinica", "pacientes", "caja", "recordatorios", "ventas", "correo", "registros"] },
-    { id: "control-results", label: "Revisión", itemIds: ["conversaciones", "reportes", "calidad"] },
+    { id: "control-results", label: "Revisión", itemIds: ["conversaciones", "conversaciones-clinica", "reportes", "calidad"] },
     { id: "admin-operation", label: "Configuración", itemIds: ["aranceles", "insumos", "campanas", "colas", "flujos", "estados-agente", "cargas"] },
     { id: "admin-platform", label: "Plataforma", itemIds: ["empresas", "usuarios", "extensiones", "integraciones"] },
   ],
   supervisor: [
     { id: "supervision-home", itemIds: ["inicio"] },
     { id: "supervision-operation", label: "Supervisión", itemIds: ["operacion", "agenda-clinica", "pacientes", "caja", "recordatorios", "ventas", "correo", "equipo", "campanas-operativas", "registros"] },
-    { id: "supervision-review", label: "Revisión y resultados", itemIds: ["conversaciones", "calidad", "reportes"] },
+    { id: "supervision-review", label: "Revisión y resultados", itemIds: ["conversaciones", "conversaciones-clinica", "calidad", "reportes"] },
   ],
   agente: [
     { id: "attention-workspace", itemIds: ["inicio", "conversaciones", "registros", "agenda"] },

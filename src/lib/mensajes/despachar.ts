@@ -46,85 +46,113 @@ async function cerrar(
   if (error) console.error("[mensajes] no se pudo cerrar el mensaje", id, error.message);
 }
 
-async function despacharWhatsApp(admin: ReturnType<typeof createAdminClient>, mensaje: Mensaje, cuerpo: string, resultado: Resultado) {
+type Admin = ReturnType<typeof createAdminClient>;
+
+export type EnvioAConversacion =
+  | { estado: "enviado"; proveedor: string; proveedorId: string; conversationId: string; whatsappMessageId: string }
+  | { estado: "simulado"; proveedor: "simulado"; proveedorId: string; conversationId: string; whatsappMessageId: string }
+  | { estado: "fallido"; error: string; conversationId: string | null; whatsappMessageId: string | null };
+
+/**
+ * Manda un texto a una ficha por el WhatsApp de su empresa y lo deja en el
+ * hilo de la conversación. Lo usan el despacho de recordatorios y la bandeja
+ * de la clínica. Si la empresa es de demostración y su canal no está
+ * conectado, el envío se simula y queda marcado como tal.
+ */
+export async function enviarAFicha(admin: Admin, entrada: { organizationId: string; cuentaId: string; destinatario: string; cuerpo: string; sentBy?: string | null; origen?: Record<string, unknown> }): Promise<EnvioAConversacion> {
   const [{ data: canal }, { data: organizacion }] = await Promise.all([
-    admin.from("whatsapp_channels").select("id, phone_number_id, display_phone_number, status").eq("organization_id", mensaje.organization_id).order("created_at").limit(1).maybeSingle(),
-    admin.from("organizations").select("slug").eq("id", mensaje.organization_id).single(),
+    admin.from("whatsapp_channels").select("id, phone_number_id, display_phone_number, status").eq("organization_id", entrada.organizationId).order("created_at").limit(1).maybeSingle(),
+    admin.from("organizations").select("slug").eq("id", entrada.organizationId).single(),
   ]);
   const esDemo = typeof organizacion?.slug === "string" && organizacion.slug.startsWith("demo-");
-  const canalListo = canal?.status === "active" && isWhatsAppProviderConfigured();
-
-  if (!canalListo) {
-    if (esDemo) {
-      await cerrar(admin, mensaje.id, "entregado", { cuerpo, proveedor: "simulado", proveedorId: `simulado-${randomUUID()}` });
-      resultado.simulados += 1;
-      return;
-    }
-    await cerrar(admin, mensaje.id, "fallido", {
-      cuerpo,
-      error: canal ? "El canal de WhatsApp de la empresa no está conectado. Actívalo en Integraciones." : "La empresa no tiene un canal de WhatsApp. Configúralo en Integraciones.",
-    });
-    resultado.fallidos += 1;
-    return;
+  if (!canal) {
+    return { estado: "fallido", error: "La empresa no tiene un canal de WhatsApp. Configúralo en Integraciones.", conversationId: null, whatsappMessageId: null };
+  }
+  const canalListo = canal.status === "active" && isWhatsAppProviderConfigured();
+  if (!canalListo && !esDemo) {
+    return { estado: "fallido", error: "El canal de WhatsApp de la empresa no está conectado. Actívalo en Integraciones.", conversationId: null, whatsappMessageId: null };
   }
 
-  // Si ya hay conversación con este número, el mensaje queda en ella y la
-  // respuesta cae en Conversaciones. Si no, sale igual y la conversación
-  // nace cuando la persona contesta.
-  const waId = normalizeWhatsAppPhone(mensaje.destinatario).replace(/^\+/, "");
-  const { data: conversacion } = await admin
-    .from("whatsapp_conversations")
-    .select("id")
-    .eq("channel_id", canal.id)
-    .eq("contact_wa_id", waId)
-    .order("last_message_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const { data: conversationId, error: conversacionError } = await admin.rpc("abrir_conversacion_de_clinica", { p_channel_id: canal.id, p_cuenta: entrada.cuentaId });
+  if (conversacionError || typeof conversationId !== "string") {
+    return { estado: "fallido", error: conversacionError?.message ?? "No se pudo abrir la conversación.", conversationId: null, whatsappMessageId: null };
+  }
 
   const clientReference = randomUUID();
-  let whatsappMessageId: string | undefined;
-  if (conversacion) {
-    const { data: pendiente } = await admin
-      .from("whatsapp_messages")
-      .insert({
-        conversation_id: conversacion.id,
-        direction: "outbound",
-        message_type: "text",
-        text_body: cuerpo,
-        status: "pending",
-        provider_payload: { provider: whatsappProvider(), client_reference: clientReference, origen: "mensajes_salientes", mensaje_id: mensaje.id },
-      })
-      .select("id")
-      .single();
-    whatsappMessageId = pendiente?.id as string | undefined;
+  const ahora = new Date().toISOString();
+  const { data: pendiente, error: pendienteError } = await admin
+    .from("whatsapp_messages")
+    .insert({
+      conversation_id: conversationId,
+      direction: "outbound",
+      message_type: "text",
+      text_body: entrada.cuerpo,
+      status: "pending",
+      sent_by: entrada.sentBy ?? null,
+      provider_payload: { provider: canalListo ? whatsappProvider() : "simulado", client_reference: clientReference, ...(entrada.origen ?? {}) },
+    })
+    .select("id")
+    .single();
+  if (pendienteError || !pendiente) {
+    return { estado: "fallido", error: pendienteError?.message ?? "No se pudo preparar el mensaje.", conversationId, whatsappMessageId: null };
+  }
+  const whatsappMessageId = pendiente.id as string;
+
+  if (!canalListo) {
+    const proveedorId = `simulado-${clientReference}`;
+    await admin.from("whatsapp_messages").update({ provider_message_id: proveedorId, status: "delivered", provider_timestamp: ahora }).eq("id", whatsappMessageId);
+    await admin.from("whatsapp_conversations").update({ last_message_at: ahora, last_outbound_at: ahora, status: "open" }).eq("id", conversationId);
+    return { estado: "simulado", proveedor: "simulado", proveedorId, conversationId, whatsappMessageId };
   }
 
   try {
     const { provider, providerMessageId, payload } = await sendWhatsAppText({
       phoneNumberId: canal.phone_number_id,
       from: canal.display_phone_number,
-      to: normalizeWhatsAppPhone(mensaje.destinatario),
-      body: cuerpo,
+      to: normalizeWhatsAppPhone(entrada.destinatario),
+      body: entrada.cuerpo,
       clientReference,
     });
-    const ahora = new Date().toISOString();
-    if (whatsappMessageId) {
-      await admin
-        .from("whatsapp_messages")
-        .update({ provider_message_id: providerMessageId, status: "accepted", provider_timestamp: ahora, provider_payload: { provider, client_reference: clientReference, response: payload } })
-        .eq("id", whatsappMessageId);
-      await admin.from("whatsapp_conversations").update({ last_message_at: ahora, last_outbound_at: ahora }).eq("id", conversacion!.id);
-    }
-    await cerrar(admin, mensaje.id, "enviado", { cuerpo, proveedor: provider, proveedorId: providerMessageId, conversation: conversacion?.id, whatsappMessage: whatsappMessageId });
-    resultado.enviados += 1;
+    await admin
+      .from("whatsapp_messages")
+      .update({ provider_message_id: providerMessageId, status: "accepted", provider_timestamp: ahora, provider_payload: { provider, client_reference: clientReference, response: payload, ...(entrada.origen ?? {}) } })
+      .eq("id", whatsappMessageId);
+    await admin.from("whatsapp_conversations").update({ last_message_at: ahora, last_outbound_at: ahora, status: "open" }).eq("id", conversationId);
+    return { estado: "enviado", proveedor: provider, proveedorId: providerMessageId, conversationId, whatsappMessageId };
   } catch (error) {
     const detalle = error instanceof Error ? error.message : "El proveedor de WhatsApp no aceptó el mensaje.";
-    if (whatsappMessageId) {
-      await admin.from("whatsapp_messages").update({ status: "failed", error_message: detalle.slice(0, 800) }).eq("id", whatsappMessageId);
-    }
-    await cerrar(admin, mensaje.id, "fallido", { cuerpo, error: detalle, conversation: conversacion?.id, whatsappMessage: whatsappMessageId });
-    resultado.fallidos += 1;
+    await admin.from("whatsapp_messages").update({ status: "failed", error_message: detalle.slice(0, 800) }).eq("id", whatsappMessageId);
+    return { estado: "fallido", error: detalle, conversationId, whatsappMessageId };
   }
+}
+
+async function despacharWhatsApp(admin: Admin, mensaje: Mensaje, cuerpo: string, resultado: Resultado) {
+  if (!mensaje.cuenta_id) {
+    await cerrar(admin, mensaje.id, "fallido", { cuerpo, error: "El mensaje no tiene ficha de destino." });
+    resultado.fallidos += 1;
+    return;
+  }
+  const envio = await enviarAFicha(admin, {
+    organizationId: mensaje.organization_id,
+    cuentaId: mensaje.cuenta_id,
+    destinatario: mensaje.destinatario,
+    cuerpo,
+    origen: { origen: "mensajes_salientes", mensaje_id: mensaje.id },
+  });
+  if (envio.estado === "fallido") {
+    await cerrar(admin, mensaje.id, "fallido", { cuerpo, error: envio.error, conversation: envio.conversationId ?? undefined, whatsappMessage: envio.whatsappMessageId ?? undefined });
+    resultado.fallidos += 1;
+    return;
+  }
+  await cerrar(admin, mensaje.id, envio.estado === "simulado" ? "entregado" : "enviado", {
+    cuerpo,
+    proveedor: envio.proveedor,
+    proveedorId: envio.proveedorId,
+    conversation: envio.conversationId,
+    whatsappMessage: envio.whatsappMessageId,
+  });
+  if (envio.estado === "simulado") resultado.simulados += 1;
+  else resultado.enviados += 1;
 }
 
 /** Genera lo que toca hoy y despacha lo que está programado. */

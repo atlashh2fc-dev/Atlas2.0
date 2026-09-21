@@ -56,10 +56,17 @@ async function campaignForEvent(
   return (defaultRoute?.campaign_id as string | undefined) ?? null;
 }
 
+/** La empresa del canal, si es una clínica (Dental o Vet). */
+async function clinicaDelCanal(admin: AdminClient, organizationId: string | null): Promise<string | null> {
+  if (!organizationId) return null;
+  const { data } = await admin.from("organizations").select("id, edicion").eq("id", organizationId).maybeSingle();
+  return data && (data.edicion === "vet" || data.edicion === "dental") ? (data.id as string) : null;
+}
+
 async function channelForEvent(admin: AdminClient, event: ParsedWhatsAppEvent) {
   const { data: phoneIdChannel, error: phoneIdError } = await admin
     .from("whatsapp_channels")
-    .select("id, status")
+    .select("id, status, organization_id")
     .eq("phone_number_id", event.phoneNumberId)
     .maybeSingle();
   if (phoneIdError) throw phoneIdError;
@@ -68,7 +75,7 @@ async function channelForEvent(admin: AdminClient, event: ParsedWhatsAppEvent) {
   if (event.wabaId) {
     const { data: wabaChannel, error: wabaError } = await admin
       .from("whatsapp_channels")
-      .select("id, status")
+      .select("id, status, organization_id")
       .eq("waba_id", event.wabaId)
       .maybeSingle();
     if (wabaError) throw wabaError;
@@ -78,7 +85,7 @@ async function channelForEvent(admin: AdminClient, event: ParsedWhatsAppEvent) {
   if (event.businessPhone) {
     const { data: candidates, error } = await admin
       .from("whatsapp_channels")
-      .select("id, status, display_phone_number")
+      .select("id, status, organization_id, display_phone_number")
       .limit(50);
     if (error) throw error;
     const normalized = normalizeWhatsAppPhone(event.businessPhone);
@@ -181,8 +188,40 @@ export async function processWhatsAppEvents(
 
       const campaignId = await campaignForEvent(admin, channel.id, event);
       if (!campaignId) {
-        await markWebhookEvent(admin, storedEvent.id, "unmapped", "El canal no tiene una ruta de campaña activa.");
-        result.unmapped += 1;
+        // Sin campaña no hay call center: si la empresa es una clínica, el
+        // mensaje va a la ficha del tutor o paciente (o abre una nueva).
+        const clinica = await clinicaDelCanal(admin, channel.organization_id as string | null);
+        if (!clinica) {
+          await markWebhookEvent(admin, storedEvent.id, "unmapped", "El canal no tiene una ruta de campaña activa.");
+          result.unmapped += 1;
+          continue;
+        }
+        const { data: ingestado, error: ingestaError } = await admin.rpc("ingest_whatsapp_mensaje_de_clinica", {
+          p_channel_id: channel.id,
+          p_organization_id: clinica,
+          p_provider_message_id: event.providerMessageId,
+          p_direction: event.direction,
+          p_contact_wa_id: event.contactWaId,
+          p_contact_phone: event.contactPhone,
+          p_contact_name: event.contactName,
+          p_message_type: event.messageType,
+          p_text_body: event.textBody,
+          p_provider_timestamp: event.timestamp,
+          p_sender_wa_id: event.senderWaId,
+          p_context_provider_message_id: event.contextProviderMessageId,
+          p_payload: { ...event.payload, provider },
+        });
+        if (ingestaError) throw ingestaError;
+        const fila = typeof ingestado === "object" && ingestado !== null ? (ingestado as Record<string, unknown>) : {};
+        if (fila.duplicate !== true && typeof fila.message_id === "string" && (event.messageType === "image" || event.messageType === "audio")) {
+          result.mediaCandidates.push({ messageId: fila.message_id });
+        }
+        await admin
+          .from("whatsapp_channels")
+          .update({ status: "active", last_webhook_at: new Date().toISOString(), last_error: null })
+          .eq("id", channel.id);
+        await markWebhookEvent(admin, storedEvent.id, "processed");
+        result.processed += 1;
         continue;
       }
 
