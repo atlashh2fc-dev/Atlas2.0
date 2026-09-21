@@ -20,6 +20,7 @@ import {
   UsersRound,
   Workflow,
   type LucideIcon,
+  HeartPulse,
 } from "lucide-react";
 import type { AppModule } from "./modules";
 import type { AppRole } from "./types";
@@ -117,6 +118,16 @@ const CONSOLE: NavSpace = {
           badge: "live-agents",
           match: ["/dashboard/operacion", "/dashboard/supervision/monitor"],
           modules: ["contact_center"],
+        },
+        {
+          id: "pacientes",
+          label: "Pacientes",
+          href: "/dashboard/pacientes",
+          icon: HeartPulse,
+          roles: ["admin", "supervisor"],
+          description: "Fichas de pacientes o tutores: contacto, presupuestos, mascotas e historia",
+          match: ["/dashboard/pacientes"],
+          modules: ["ventas_b2c"],
         },
         {
           id: "ventas",
@@ -243,14 +254,14 @@ const CONSOLE: NavSpace = {
 const WORKSPACE_SECTIONS: Record<AppRole, { id: string; label?: string; itemIds: string[] }[]> = {
   admin: [
     { id: "control-home", itemIds: ["inicio"] },
-    { id: "control-operation", label: "Control diario", itemIds: ["operacion", "ventas", "correo", "registros"] },
+    { id: "control-operation", label: "Control diario", itemIds: ["operacion", "pacientes", "ventas", "correo", "registros"] },
     { id: "control-results", label: "Revisión", itemIds: ["conversaciones", "reportes", "calidad"] },
     { id: "admin-operation", label: "Configuración", itemIds: ["campanas", "colas", "flujos", "estados-agente", "cargas"] },
     { id: "admin-platform", label: "Plataforma", itemIds: ["empresas", "usuarios", "extensiones", "integraciones"] },
   ],
   supervisor: [
     { id: "supervision-home", itemIds: ["inicio"] },
-    { id: "supervision-operation", label: "Supervisión", itemIds: ["operacion", "ventas", "correo", "equipo", "campanas-operativas", "registros"] },
+    { id: "supervision-operation", label: "Supervisión", itemIds: ["operacion", "pacientes", "ventas", "correo", "equipo", "campanas-operativas", "registros"] },
     { id: "supervision-review", label: "Revisión y resultados", itemIds: ["conversaciones", "calidad", "reportes"] },
   ],
   agente: [

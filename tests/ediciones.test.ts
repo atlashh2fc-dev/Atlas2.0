@@ -115,3 +115,27 @@ test("una clínica tiene su propio inicio y no manda a Operación", () => {
   assert.match(INICIO, /if \(contexto\.edicion !== "center"\)/);
   assert.doesNotMatch(CLINICA, /\/dashboard\/operacion/);
 });
+
+test("una clínica tiene fichas de pacientes; en Vet, tutores con mascotas y semáforo de vacunas", async () => {
+  const { estadoVacuna, edad } = await import("../src/lib/mascotas.ts");
+  const hoy = new Date("2026-09-21T15:00:00Z");
+  assert.equal(estadoVacuna("2026-09-01", hoy), "vencida");
+  assert.equal(estadoVacuna("2026-10-10", hoy), "por_vencer");
+  assert.equal(estadoVacuna("2027-03-01", hoy), "al_dia");
+  assert.equal(estadoVacuna(null, hoy), "sin_dato");
+  assert.equal(edad("2020-09-01", hoy), "6 años");
+  assert.equal(edad("2026-01-15", hoy), "8 meses");
+
+  const NAV = leer("src/lib/nav.config.ts");
+  assert.match(NAV, /id: "pacientes",[\s\S]*?modules: \["ventas_b2c"\]/);
+  const LAYOUT = leer("src/app/dashboard/pacientes/layout.tsx");
+  assert.match(LAYOUT, /requireModule\("ventas_b2c"\)/);
+  const MIGRACION = leer(
+    `supabase/migrations/${readdirSync(new URL("../supabase/migrations", import.meta.url)).find((nombre) =>
+      nombre.endsWith("_pacientes_y_mascotas.sql"),
+    )}`,
+  );
+  // Las funciones corren con la sesión de quien llama: la seguridad por fila decide.
+  assert.match(MIGRACION, /function public\.crear_paciente[\s\S]*?security invoker/);
+  assert.match(MIGRACION, /mascotas_organization_isolation[\s\S]*?as restrictive/);
+});

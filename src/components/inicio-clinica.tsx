@@ -2,7 +2,7 @@ import Link from "next/link";
 import { CalendarClock, MessageCircle, Plus, UserPlus } from "lucide-react";
 
 import { Badge, EmptyState, MetricCard, PageHeader, SectionCard, buttonClasses } from "@/components/ui";
-import { VENTAS_POR_EDICION, type Edicion } from "@/lib/ediciones";
+import { PACIENTES_POR_EDICION, VENTAS_POR_EDICION, type Edicion } from "@/lib/ediciones";
 import { REPORT_TIME_ZONE } from "@/lib/report-range";
 import { createClient } from "@/lib/supabase/server";
 import type { Profile } from "@/lib/types";
@@ -183,8 +183,8 @@ export async function InicioClinica({
               <Plus size={16} aria-hidden="true" /> {voc.nuevo}
             </Link>
             {!soloMios && (
-              <Link href="/dashboard/leads/nuevo" className={buttonClasses({ variant: "secondary" })}>
-                <UserPlus size={16} aria-hidden="true" /> Nuevo {voc.cuenta.toLowerCase()}
+              <Link href="/dashboard/pacientes" className={buttonClasses({ variant: "secondary" })}>
+                <UserPlus size={16} aria-hidden="true" /> {PACIENTES_POR_EDICION[edicion].titulo}
               </Link>
             )}
           </div>

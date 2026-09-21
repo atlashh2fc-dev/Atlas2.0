@@ -31,6 +31,7 @@ test("Control is an overview, not a response inbox", () => {
   assert.deepEqual(labels("admin"), [
     "Resumen",
     "Operación",
+    "Pacientes",
     "Ventas",
     "Correo",
     "Registros",
@@ -47,6 +48,12 @@ test("Control is an overview, not a response inbox", () => {
     "Integraciones",
   ]);
   assert.ok(nav.allItemsForRole("admin").every((item) => !item.href.startsWith("/dashboard/conversaciones")));
+  // El dueño de la plataforma, aunque sea admin, sí ve Conversaciones (solo lectura).
+  assert.ok(
+    nav.visibleSections("console", "admin", undefined, true)
+      .flatMap((section) => section.items)
+      .some((item) => item.href === "/dashboard/conversaciones"),
+  );
   assert.ok(consoleItems("admin").some((item) => item.href.startsWith("/dashboard/calidad")));
   assert.equal(nav.workspaceLabel("admin"), "Administración");
   assert.deepEqual(
@@ -56,7 +63,7 @@ test("Control is an overview, not a response inbox", () => {
 });
 
 test("Supervisión groups control and review without assuming an agent role", () => {
-  assert.deepEqual(labels("supervisor"), ["Resumen", "Operación", "Ventas", "Correo", "Mi equipo", "Campañas", "Registros", "Historial", "Grabaciones y calidad", "Reportes"]);
+  assert.deepEqual(labels("supervisor"), ["Resumen", "Operación", "Pacientes", "Ventas", "Correo", "Mi equipo", "Campañas", "Registros", "Historial", "Grabaciones y calidad", "Reportes"]);
   assert.equal(nav.workspaceLabel("supervisor"), "Supervisión");
   assert.deepEqual(nav.visibleSections("admin", "supervisor"), []);
   assert.equal(nav.allItemsForRole("supervisor").some((item) => item.href.startsWith("/dashboard/admin")), false);

@@ -132,3 +132,27 @@ export const VENTAS_POR_EDICION: Record<Edicion, VocabularioVentas> = {
     origenes: ORIGENES_B2C,
   },
 };
+
+/**
+ * Cómo se llama la ficha de la persona en cada clínica. En Dental es el
+ * paciente; en Vet la ficha es del tutor, que tiene una o varias mascotas.
+ */
+export const PACIENTES_POR_EDICION: Record<Exclude<Edicion, "center">, {
+  titulo: string;
+  singular: string;
+  nuevo: string;
+  descripcion: string;
+}> = {
+  dental: {
+    titulo: "Pacientes",
+    singular: "Paciente",
+    nuevo: "Nuevo paciente",
+    descripcion: "La ficha de cada paciente: contacto, previsión, presupuestos y todo lo conversado.",
+  },
+  vet: {
+    titulo: "Tutores y mascotas",
+    singular: "Tutor",
+    nuevo: "Nuevo tutor",
+    descripcion: "Cada tutor con sus mascotas, sus vacunas y todo lo conversado.",
+  },
+};

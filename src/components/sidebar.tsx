@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { MarcaAtlas } from "@/components/marca-atlas";
-import { VENTAS_POR_EDICION, type Edicion } from "@/lib/ediciones";
+import { PACIENTES_POR_EDICION, VENTAS_POR_EDICION, type Edicion } from "@/lib/ediciones";
 import type { AppModule } from "@/lib/modules";
 import type { AppRole, Profile } from "@/lib/types";
 import {
@@ -179,11 +179,15 @@ export function NavTree({
   const ventas = VENTAS_POR_EDICION[edicion];
   const sections = visibleSections(space, profile.role, modules, duenio).map((section) => ({
     ...section,
-    items: section.items.map((item) =>
-      item.id === "ventas" && edicion !== "center"
-        ? { ...item, label: ventas.titulo, description: ventas.descripcion }
-        : item,
-    ),
+    items: section.items.map((item) => {
+      if (edicion === "center") return item;
+      if (item.id === "ventas") return { ...item, label: ventas.titulo, description: ventas.descripcion };
+      if (item.id === "pacientes") {
+        const pacientes = PACIENTES_POR_EDICION[edicion];
+        return { ...item, label: pacientes.titulo, description: pacientes.descripcion };
+      }
+      return item;
+    }),
   }));
 
   const [collapsed, toggleSection] = useCollapsedSections(profile.id, profile.role);
