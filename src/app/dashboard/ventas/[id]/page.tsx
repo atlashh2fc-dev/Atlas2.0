@@ -21,14 +21,31 @@ import {
   Tr,
 } from "@/components/ui";
 import { requireProfile } from "@/lib/auth";
+import { VENTAS_POR_EDICION } from "@/lib/ediciones";
+import { contextoDeMiEmpresa } from "@/lib/modules.server";
 import { createClient } from "@/lib/supabase/server";
 
 const pesos = new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 });
 
 /** Sin precio acordado todavía, decirlo vale más que un "$0" que parece un dato. */
-function montoMensual(valor: unknown): string {
-  const numero = Number(valor ?? 0);
-  return numero > 0 ? `${pesos.format(numero)} al mes` : "Monto por definir";
+function formatoMonto(numero: number, mensual: boolean): string {
+  return numero > 0 ? `${pesos.format(numero)}${mensual ? " al mes" : ""}` : "Monto por definir";
+}
+
+/** Lo que una clínica guarda de la persona además de sus datos: mascota, profesional. */
+function detallePersona(metadata: unknown): { etiqueta: string; valor: string }[] {
+  if (!metadata || typeof metadata !== "object") return [];
+  const datos = metadata as Record<string, unknown>;
+  const filas: { etiqueta: string; valor: string }[] = [];
+  const mascota = [datos.mascota, datos.especie, datos.raza].filter((valor) => typeof valor === "string" && valor);
+  if (mascota.length > 0) filas.push({ etiqueta: "Mascota", valor: mascota.join(" · ") });
+  if (typeof datos.profesional === "string" && datos.profesional) {
+    filas.push({ etiqueta: "Profesional", valor: datos.profesional });
+  }
+  if (typeof datos.prevision === "string" && datos.prevision) {
+    filas.push({ etiqueta: "Previsión", valor: datos.prevision });
+  }
+  return filas;
 }
 const cuando = new Intl.DateTimeFormat("es-CL", {
   day: "2-digit",
@@ -63,7 +80,7 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
   const { data: negocio } = await supabase
     .from("sales_opportunities")
     .select(
-      "id, name, status, monthly_amount, one_time_amount, expected_close_date, next_action_at, next_action_note, source, lost_reason, stage_id, sales_companies(id, name, rut, industry, commune, website), sales_contacts(id, full_name, role_title, email, phone), sales_stages(key, name)",
+      "id, name, status, monthly_amount, one_time_amount, expected_close_date, next_action_at, next_action_note, source, lost_reason, stage_id, sales_companies(id, name, rut, industry, commune, website, phone, email, metadata), sales_contacts(id, full_name, role_title, email, phone), sales_stages(key, name)",
     )
     .eq("id", id)
     .maybeSingle();
@@ -88,24 +105,28 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
   const contacto = primero(negocio.sales_contacts);
   const etapaActual = primero(negocio.sales_stages);
   const abierto = negocio.status === "abierta";
+  const voc = VENTAS_POR_EDICION[(await contextoDeMiEmpresa()).edicion];
+  const mensual = voc.monto === "mensual";
+  const monto = Number((mensual ? negocio.monthly_amount : negocio.one_time_amount) ?? 0);
+  const detalle = detallePersona(empresa?.metadata);
 
   return (
     <div className="space-y-5">
       <PageHeader
-        title={empresa?.name ?? "Negocio"}
-        description={`${negocio.name} · ${montoMensual(negocio.monthly_amount)}`}
+        title={empresa?.name ?? voc.negocio}
+        description={`${negocio.name} · ${formatoMonto(monto, mensual)}`}
         actions={
           <Link
             className="text-sm text-muted-foreground hover:text-foreground hover:underline"
             href="/dashboard/ventas"
           >
-            Volver al embudo
+            Volver a {voc.negocios.toLowerCase()}
           </Link>
         }
       />
 
       <div className="grid gap-3 lg:grid-cols-3">
-        <SectionCard title="Estado" description="En qué va el negocio.">
+        <SectionCard title="Estado" description={`En qué va ${mensual ? "el negocio" : `el ${voc.negocio.toLowerCase()}`}.`}>
           <div className="space-y-2 px-5 py-4 text-sm">
             <p>
               <Badge tone={negocio.status === "ganada" ? "success" : negocio.status === "perdida" ? "danger" : "neutral"}>
@@ -126,10 +147,12 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
           </div>
         </SectionCard>
 
-        <SectionCard title="Empresa" description="Con quién se está hablando.">
+        <SectionCard title={voc.cuenta} description="Con quién se está hablando.">
           <div className="space-y-1 px-5 py-4 text-sm text-muted-foreground">
             <p className="font-medium text-foreground">{empresa?.name}</p>
             {empresa?.rut && <p>RUT {empresa.rut}</p>}
+            {voc.personas && (contacto?.phone ?? empresa?.phone) && <p>{contacto?.phone ?? empresa?.phone}</p>}
+            {voc.personas && (contacto?.email ?? empresa?.email) && <p>{contacto?.email ?? empresa?.email}</p>}
             {empresa?.industry && <p>{empresa.industry}</p>}
             {empresa?.commune && <p>{empresa.commune}</p>}
             {empresa?.website && (
@@ -142,6 +165,22 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
           </div>
         </SectionCard>
 
+        {voc.personas ? (
+          <SectionCard title="Ficha" description="Lo que la clínica sabe de este caso.">
+            {detalle.length > 0 ? (
+              <dl className="space-y-1 px-5 py-4 text-sm">
+                {detalle.map((fila) => (
+                  <div key={fila.etiqueta} className="flex gap-2">
+                    <dt className="text-muted-foreground">{fila.etiqueta}:</dt>
+                    <dd className="font-medium text-foreground">{fila.valor}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : (
+              <p className="px-5 py-4 text-sm text-muted-foreground">Sin datos adicionales.</p>
+            )}
+          </SectionCard>
+        ) : (
         <SectionCard title="Contacto" description="Quién decide o responde.">
           {contacto ? (
             <div className="space-y-1 px-5 py-4 text-sm text-muted-foreground">
@@ -154,10 +193,11 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
             <p className="px-5 py-4 text-sm text-muted-foreground">Sin contacto registrado.</p>
           )}
         </SectionCard>
+        )}
       </div>
 
       {abierto && (
-        <SectionCard title="Mover el negocio" description="Cada movimiento queda registrado en la historia.">
+        <SectionCard title={mensual ? "Mover el negocio" : `Mover el ${voc.negocio.toLowerCase()}`} description="Cada movimiento queda registrado en la historia.">
           <ActionForm action={moverEtapa} success="Etapa actualizada">
             <input type="hidden" name="oportunidad_id" value={negocio.id} />
             <div className="flex flex-wrap items-end gap-3 px-5 py-4">
@@ -204,7 +244,7 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
         </ActionForm>
       </SectionCard>
 
-      <SectionCard title="Historia" description="Todo lo que pasó con este negocio.">
+      <SectionCard title="Historia" description={`Todo lo que pasó con ${mensual ? "este negocio" : `este ${voc.negocio.toLowerCase()}`}.`}>
         <Table>
           <Thead>
             <Th>Cuándo</Th>

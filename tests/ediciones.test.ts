@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import test from "node:test";
 
-import { EDICIONES, EDICION_INFO, parseEdicion } from "../src/lib/ediciones.ts";
+import { EDICIONES, EDICION_INFO, VENTAS_POR_EDICION, parseEdicion } from "../src/lib/ediciones.ts";
 
 const leer = (ruta: string) => readFileSync(new URL(`../${ruta}`, import.meta.url), "utf8");
 
@@ -69,4 +69,27 @@ test("el color sale del tema, no de preguntar la edición en cada pantalla", () 
 test("el panel pide el contexto de la empresa en una sola consulta", () => {
   assert.match(LAYOUT, /contextoDeMiEmpresa\(\)/);
   assert.doesNotMatch(LAYOUT, /from\("organizations"\)/);
+});
+
+test("las clínicas venden a personas un presupuesto de pago único; Center, a empresas por mes", () => {
+  assert.equal(VENTAS_POR_EDICION.center.monto, "mensual");
+  assert.equal(VENTAS_POR_EDICION.center.personas, false);
+  for (const edicion of ["dental", "vet"] as const) {
+    assert.equal(VENTAS_POR_EDICION[edicion].monto, "unico");
+    assert.equal(VENTAS_POR_EDICION[edicion].personas, true);
+  }
+  assert.equal(VENTAS_POR_EDICION.dental.cuenta, "Paciente");
+  assert.equal(VENTAS_POR_EDICION.vet.cuenta, "Tutor");
+});
+
+test("las demos no pueden escribirle a nadie ni dejar entrar a nadie", () => {
+  const SEMBRADO = leer("scripts/demo/sembrar-demos.sql");
+  // El equipo ficticio no tiene clave y su correo no entrega.
+  assert.match(SEMBRADO, /encrypted_password[^;]*''/s);
+  assert.doesNotMatch(SEMBRADO, /@(gmail|hotmail|outlook|yahoo)\./);
+  // WhatsApp en pausa, conversaciones sin IA y ninguna configuración de IA.
+  assert.match(SEMBRADO, /'paused', v_org\)/);
+  assert.doesNotMatch(SEMBRADO, /'auto'/);
+  assert.doesNotMatch(SEMBRADO, /insert into public\.whatsapp_ai_configs/);
+  assert.doesNotMatch(SEMBRADO, /insert into public\.lead_external_refs/);
 });

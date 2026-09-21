@@ -31,7 +31,7 @@ export async function crearOportunidad(formData: FormData) {
   const nombre = texto(formData, "nombre");
   const cierre = texto(formData, "cierre_estimado");
 
-  if (empresa.length < 2) throw new Error("Escribe el nombre de la empresa.");
+  if (empresa.length < 2) throw new Error("Escribe a quién se le vende.");
   if (nombre.length < 2) throw new Error("Escribe de qué se trata el negocio.");
 
   const supabase = await createClient();
@@ -39,7 +39,11 @@ export async function crearOportunidad(formData: FormData) {
     p_company_name: empresa,
     p_opportunity_name: nombre,
     p_rut: texto(formData, "rut") || null,
-    p_contact_name: texto(formData, "contacto") || null,
+    // En Dental y Vet no hay contacto aparte: la persona es su propio contacto,
+    // y así su teléfono y su correo quedan guardados igual que en una empresa.
+    p_contact_name:
+      texto(formData, "contacto") ||
+      (texto(formData, "contacto_email") || texto(formData, "contacto_telefono") ? empresa : null),
     p_contact_email: texto(formData, "contacto_email") || null,
     p_contact_phone: texto(formData, "contacto_telefono") || null,
     p_product_code: texto(formData, "producto") || null,

@@ -21,6 +21,8 @@ import {
   Tr,
 } from "@/components/ui";
 import { requireProfile } from "@/lib/auth";
+import { VENTAS_POR_EDICION } from "@/lib/ediciones";
+import { contextoDeMiEmpresa } from "@/lib/modules.server";
 import { createClient } from "@/lib/supabase/server";
 
 /** Supabase entrega las relaciones como arreglo; acá siempre es una sola fila. */
@@ -32,23 +34,26 @@ function primero<T>(valor: T | T[] | null | undefined): T | null {
 const pesos = new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 });
 
 /** Un negocio recién llegado de la web todavía no tiene precio: decirlo es más honesto que "$0". */
-function montoMensual(valor: unknown): string {
-  const numero = Number(valor ?? 0);
+function formatoMonto(numero: number): string {
   return numero > 0 ? pesos.format(numero) : "Por definir";
 }
 const fecha = new Intl.DateTimeFormat("es-CL", { day: "2-digit", month: "short" });
 
 /**
- * Embudo de ventas B2B.
+ * Embudo de ventas.
  *
- * Una oportunidad es una empresa que puede contratar: tiene monto, etapa y una
- * próxima acción con fecha. Lo que importa arriba es cuánto hay en juego y qué
- * toca hacer hoy; el detalle vive en la ficha.
+ * Un negocio tiene monto, etapa y una próxima acción con fecha. Lo que importa
+ * arriba es cuánto hay en juego y qué toca hacer hoy; el detalle vive en la
+ * ficha. En Center se le vende a empresas por mes; en Dental y Vet a personas,
+ * con un presupuesto de pago único: el vocabulario y el monto salen de la
+ * edición.
  */
 export default async function VentasPage() {
   noStore();
   await requireProfile(["admin", "supervisor"]);
   const supabase = await createClient();
+  const voc = VENTAS_POR_EDICION[(await contextoDeMiEmpresa()).edicion];
+  const mensual = voc.monto === "mensual";
 
   const [{ data: etapas }, { data: oportunidades }, { data: productos }] = await Promise.all([
     supabase
@@ -65,7 +70,7 @@ export default async function VentasPage() {
       .limit(300),
     supabase
       .from("sales_products")
-      .select("code, name, monthly_price")
+      .select("code, name, monthly_price, one_time_price")
       .eq("active", true)
       .order("name"),
   ]);
@@ -75,8 +80,10 @@ export default async function VentasPage() {
   const abiertas = listaOportunidades.filter((negocio) => negocio.status === "abierta");
   const ganadas = listaOportunidades.filter((negocio) => negocio.status === "ganada");
 
-  const mensualAbierto = abiertas.reduce((total, negocio) => total + Number(negocio.monthly_amount ?? 0), 0);
-  const mensualGanado = ganadas.reduce((total, negocio) => total + Number(negocio.monthly_amount ?? 0), 0);
+  const montoDe = (negocio: { monthly_amount: unknown; one_time_amount: unknown }) =>
+    Number((mensual ? negocio.monthly_amount : negocio.one_time_amount) ?? 0);
+  const mensualAbierto = abiertas.reduce((total, negocio) => total + montoDe(negocio), 0);
+  const mensualGanado = ganadas.reduce((total, negocio) => total + montoDe(negocio), 0);
 
   // El corte es el instante de la petición: el panel se lee sin caché.
   const ahora = new Date().toISOString();
@@ -90,7 +97,7 @@ export default async function VentasPage() {
     const casilla = porEtapa.get(negocio.stage_id);
     if (!casilla) continue;
     casilla.total += 1;
-    casilla.monto += Number(negocio.monthly_amount ?? 0);
+    casilla.monto += montoDe(negocio);
   }
 
   const nombreEmpresa = (negocio: (typeof listaOportunidades)[number]) =>
@@ -101,44 +108,58 @@ export default async function VentasPage() {
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Ventas"
-        description="Empresas que pueden contratar, con su monto, su etapa y lo que toca hacer."
+        title={voc.titulo}
+        description={voc.descripcion}
         actions={
           <CreatePanel
-            label="Nueva oportunidad"
-            title="Nueva oportunidad"
-            description="Si la empresa ya existe, se reutiliza. El precio sale del catálogo salvo que escribas otro."
+            label={voc.nuevo}
+            title={voc.nuevo}
+            description={`Si ${voc.cuenta.toLowerCase() === "empresa" ? "la empresa" : `el ${voc.cuenta.toLowerCase()}`} ya existe, se reutiliza. El precio sale del catálogo salvo que escribas otro.`}
             action={crearOportunidad}
-            submitLabel="Crear oportunidad"
-            successLabel="Oportunidad creada"
+            submitLabel={voc.nuevo.replace(/^Nuev[oa] /, "Crear ")}
+            successLabel={`${voc.negocio} creado`}
           >
-            <Field label="Empresa">
-              <Input name="empresa" required placeholder="Panadería La Espiga Ltda" data-autofocus />
+            <Field label={voc.cuenta}>
+              <Input name="empresa" required placeholder={voc.cuentaPlaceholder} data-autofocus />
             </Field>
             <Field label="RUT (opcional)">
               <Input name="rut" placeholder="76.123.456-7" />
             </Field>
-            <Field label="Negocio">
-              <Input name="nombre" required placeholder="Atlas Pulso Crecimiento" />
+            <Field label={voc.negocio}>
+              <Input name="nombre" required placeholder={voc.negocioPlaceholder} />
             </Field>
-            <Field label="Producto">
+            <Field label={voc.producto}>
               <Select name="producto" defaultValue="">
-                <option value="">Sin producto del catálogo</option>
+                <option value="">Sin {voc.producto.toLowerCase()} del catálogo</option>
                 {(productos ?? []).map((producto) => (
                   <option key={producto.code} value={producto.code}>
                     {producto.name}
-                    {producto.monthly_price ? ` · ${pesos.format(Number(producto.monthly_price))}/mes` : ""}
+                    {mensual
+                      ? producto.monthly_price
+                        ? ` · ${pesos.format(Number(producto.monthly_price))}/mes`
+                        : ""
+                      : producto.one_time_price
+                        ? ` · ${pesos.format(Number(producto.one_time_price))}`
+                        : ""}
                   </option>
                 ))}
               </Select>
             </Field>
-            <Field label="Monto mensual (deja vacío para usar el del catálogo)">
-              <Input name="monto_mensual" inputMode="numeric" placeholder="69990" />
-            </Field>
-            <Field label="Contacto">
-              <Input name="contacto" placeholder="María Soto" />
-            </Field>
-            <Field label="Correo del contacto">
+            {mensual ? (
+              <Field label="Monto mensual (deja vacío para usar el del catálogo)">
+                <Input name="monto_mensual" inputMode="numeric" placeholder="69990" />
+              </Field>
+            ) : (
+              <Field label="Monto del presupuesto">
+                <Input name="monto_unico" inputMode="numeric" placeholder="1850000" />
+              </Field>
+            )}
+            {!voc.personas && (
+              <Field label="Contacto">
+                <Input name="contacto" placeholder="María Soto" />
+              </Field>
+            )}
+            <Field label={voc.personas ? "Correo" : "Correo del contacto"}>
               <Input name="contacto_email" type="email" placeholder="maria@laespiga.cl" />
             </Field>
             <Field label="WhatsApp o teléfono">
@@ -150,11 +171,11 @@ export default async function VentasPage() {
             <Field label="Origen">
               <Select name="origen" defaultValue="">
                 <option value="">Sin origen</option>
-                <option value="campana_correo">Campaña de correo</option>
-                <option value="whatsapp">WhatsApp</option>
-                <option value="web">Sitio web</option>
-                <option value="referido">Referido</option>
-                <option value="prospeccion">Prospección</option>
+                {voc.origenes.map((origen) => (
+                  <option key={origen.value} value={origen.value}>
+                    {origen.label}
+                  </option>
+                ))}
               </Select>
             </Field>
           </CreatePanel>
@@ -166,22 +187,22 @@ export default async function VentasPage() {
         <MetricCard
           label="En juego"
           value={pesos.format(mensualAbierto)}
-          hint={`${abiertas.length} ${abiertas.length === 1 ? "negocio abierto" : "negocios abiertos"}`}
-          tooltip="Suma del monto mensual de los negocios que siguen abiertos."
+          hint={`${abiertas.length} ${abiertas.length === 1 ? `${voc.negocio.toLowerCase()} abierto` : `${voc.negocios.toLowerCase()} abiertos`}`}
+          tooltip={`Suma del monto ${mensual ? "mensual " : ""}de los ${voc.negocios.toLowerCase()} que siguen abiertos.`}
         />
         <MetricCard
-          label="Ganado"
+          label={mensual ? "Ganado" : "Aceptado"}
           value={pesos.format(mensualGanado)}
-          hint={`${ganadas.length} ${ganadas.length === 1 ? "negocio cerrado" : "negocios cerrados"}`}
+          hint={`${ganadas.length} ${ganadas.length === 1 ? `${voc.negocio.toLowerCase()} cerrado` : `${voc.negocios.toLowerCase()} cerrados`}`}
           tone={mensualGanado > 0 ? "good" : "default"}
-          tooltip="Monto mensual ya comprometido por los negocios ganados."
+          tooltip={`Monto ${mensual ? "mensual " : ""}ya comprometido por los ${voc.negocios.toLowerCase()} ganados.`}
         />
         <MetricCard
           label="Para hoy"
           value={vencidas.length}
           hint={`de ${abiertas.length} ${abiertas.length === 1 ? "abierto" : "abiertos"}`}
           tone={vencidas.length > 0 ? "warn" : "default"}
-          tooltip="Negocios cuya próxima acción ya venció."
+          tooltip={`${voc.negocios} cuya próxima acción ya venció.`}
         />
       </div>
 
@@ -198,7 +219,9 @@ export default async function VentasPage() {
                     {casilla?.total ?? 0}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {(casilla?.monto ?? 0) > 0 ? `${pesos.format(casilla?.monto ?? 0)}/mes` : "sin monto todavía"}
+                    {(casilla?.monto ?? 0) > 0
+                      ? `${pesos.format(casilla?.monto ?? 0)}${mensual ? "/mes" : ""}`
+                      : "sin monto todavía"}
                   </p>
                 </div>
               );
@@ -206,23 +229,25 @@ export default async function VentasPage() {
         </div>
       </SectionCard>
 
-      <SectionCard title="Negocios" description="Ordenados por la próxima acción: primero lo vencido.">
+      <SectionCard title={voc.negocios} description="Ordenados por la próxima acción: primero lo vencido.">
         {listaOportunidades.length === 0 ? (
           <EmptyState
-            title="Todavía no hay oportunidades"
+            title={`Todavía no hay ${voc.negocios.toLowerCase()}`}
             description="Crea la primera con el botón de arriba, o deja que llegue desde una campaña."
           />
         ) : (
           <Table>
             <Thead>
-              <Th>Empresa</Th>
-              <Th>Negocio</Th>
+              <Th>{voc.cuenta}</Th>
+              <Th>{voc.negocio}</Th>
               <Th>Etapa</Th>
-              <Th>Mensual</Th>
+              <Th>{mensual ? "Mensual" : "Monto"}</Th>
               <Th>Próxima acción</Th>
             </Thead>
             <Tbody>
-              {listaOportunidades.length === 0 && <TableEmpty colSpan={5}>Sin negocios.</TableEmpty>}
+              {listaOportunidades.length === 0 && (
+                <TableEmpty colSpan={5}>Sin {voc.negocios.toLowerCase()}.</TableEmpty>
+              )}
               {listaOportunidades.map((negocio) => {
                 const vencida =
                   negocio.status === "abierta" && negocio.next_action_at && negocio.next_action_at <= ahora;
@@ -247,8 +272,8 @@ export default async function VentasPage() {
                         {etapaDe(negocio)}
                       </Badge>
                     </Td>
-                    <Td className={Number(negocio.monthly_amount ?? 0) > 0 ? undefined : "text-muted-foreground"}>
-                      {montoMensual(negocio.monthly_amount)}
+                    <Td className={montoDe(negocio) > 0 ? undefined : "text-muted-foreground"}>
+                      {formatoMonto(montoDe(negocio))}
                     </Td>
                     <Td className={vencida ? "text-danger" : "text-muted-foreground"}>
                       {negocio.next_action_at

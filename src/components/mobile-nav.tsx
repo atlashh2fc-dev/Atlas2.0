@@ -117,6 +117,7 @@ export function MobileNav({
                 pathname={pathname}
                 badges={badges}
                 modules={modules}
+                edicion={edicion}
                 onNavigate={() => setOpen(false)}
               />
             </nav>

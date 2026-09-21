@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { MarcaAtlas } from "@/components/marca-atlas";
-import type { Edicion } from "@/lib/ediciones";
+import { VENTAS_POR_EDICION, type Edicion } from "@/lib/ediciones";
 import type { AppModule } from "@/lib/modules";
 import type { AppRole, Profile } from "@/lib/types";
 import {
@@ -159,6 +159,7 @@ export function NavTree({
   rail = false,
   badges,
   modules,
+  edicion = "center",
   onNavigate,
 }: {
   profile: Profile;
@@ -167,10 +168,20 @@ export function NavTree({
   badges?: NavBadgeCounts;
   /** Módulos contratados por la empresa activa; el menú se arma con esto. */
   modules?: AppModule[];
+  /** En Dental y Vet, "Ventas" se llama como lo que venden: presupuestos o planes. */
+  edicion?: Edicion;
   onNavigate?: () => void;
 }) {
   const space = spaceForPath(pathname);
-  const sections = visibleSections(space, profile.role, modules);
+  const ventas = VENTAS_POR_EDICION[edicion];
+  const sections = visibleSections(space, profile.role, modules).map((section) => ({
+    ...section,
+    items: section.items.map((item) =>
+      item.id === "ventas" && edicion !== "center"
+        ? { ...item, label: ventas.titulo, description: ventas.descripcion }
+        : item,
+    ),
+  }));
 
   const [collapsed, toggleSection] = useCollapsedSections(profile.id, profile.role);
 
@@ -335,7 +346,7 @@ export function Sidebar({
       )}
 
       <nav className="flex-1 overflow-y-auto p-2">
-        <NavTree profile={profile} pathname={pathname} rail={rail} badges={badges} modules={modules} />
+        <NavTree profile={profile} pathname={pathname} rail={rail} badges={badges} modules={modules} edicion={edicion} />
       </nav>
 
       <NavFooter profile={profile} pathname={pathname} rail={rail} />
