@@ -38,6 +38,7 @@ test("Control is an overview, not a response inbox", () => {
     "Reportes",
     "Grabaciones y calidad",
     "Procedimientos y precios",
+    "Materiales e insumos",
     "Campañas",
     "Colas y enrutamiento",
     "Flujos de gestión",

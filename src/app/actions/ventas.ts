@@ -35,6 +35,25 @@ export async function crearOportunidad(formData: FormData) {
   if (nombre.length < 2) throw new Error("Escribe de qué se trata el negocio.");
 
   const supabase = await createClient();
+  const producto = texto(formData, "producto") || null;
+  let montoUnico = numero(formData, "monto_unico");
+  // En las clínicas, sin monto escrito el presupuesto es el precio del arancel
+  // más los materiales que se cobran aparte según la receta.
+  if (!montoUnico && producto && formData.get("con_materiales") === "si") {
+    const { data } = await supabase
+      .from("sales_products")
+      .select("one_time_price, procedimiento_insumos(cantidad, insumos(precio_venta, cobrable))")
+      .eq("code", producto)
+      .maybeSingle();
+    if (data) {
+      const receta = (data.procedimiento_insumos ?? []) as unknown as { cantidad: number; insumos: { precio_venta: number | null; cobrable: boolean } | null }[];
+      const materiales = receta.reduce(
+        (total, linea) => total + (linea.insumos?.cobrable ? Number(linea.insumos.precio_venta ?? 0) * Number(linea.cantidad) : 0),
+        0,
+      );
+      montoUnico = Number(data.one_time_price ?? 0) + materiales;
+    }
+  }
   const { error } = await supabase.rpc("crear_oportunidad_b2b", {
     p_company_name: empresa,
     p_opportunity_name: nombre,
@@ -46,9 +65,9 @@ export async function crearOportunidad(formData: FormData) {
       (texto(formData, "contacto_email") || texto(formData, "contacto_telefono") ? empresa : null),
     p_contact_email: texto(formData, "contacto_email") || null,
     p_contact_phone: texto(formData, "contacto_telefono") || null,
-    p_product_code: texto(formData, "producto") || null,
+    p_product_code: producto,
     p_monthly_amount: numero(formData, "monto_mensual"),
-    p_one_time_amount: numero(formData, "monto_unico"),
+    p_one_time_amount: montoUnico,
     p_source: texto(formData, "origen") || null,
     p_expected_close_date: cierre === "" ? null : cierre,
   });

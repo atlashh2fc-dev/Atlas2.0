@@ -21,6 +21,7 @@ import {
   Workflow,
   type LucideIcon,
   HeartPulse,
+  Package,
   Receipt,
 } from "lucide-react";
 import type { AppModule } from "./modules";
@@ -257,7 +258,7 @@ const WORKSPACE_SECTIONS: Record<AppRole, { id: string; label?: string; itemIds:
     { id: "control-home", itemIds: ["inicio"] },
     { id: "control-operation", label: "Control diario", itemIds: ["operacion", "pacientes", "ventas", "correo", "registros"] },
     { id: "control-results", label: "Revisión", itemIds: ["conversaciones", "reportes", "calidad"] },
-    { id: "admin-operation", label: "Configuración", itemIds: ["aranceles", "campanas", "colas", "flujos", "estados-agente", "cargas"] },
+    { id: "admin-operation", label: "Configuración", itemIds: ["aranceles", "insumos", "campanas", "colas", "flujos", "estados-agente", "cargas"] },
     { id: "admin-platform", label: "Plataforma", itemIds: ["empresas", "usuarios", "extensiones", "integraciones"] },
   ],
   supervisor: [
@@ -323,6 +324,15 @@ const ADMIN: NavSpace = {
           icon: Receipt,
           roles: ["admin"],
           description: "Arancel de la clínica: procedimientos, urgencias, precios y duración",
+          modules: ["ventas_b2c"],
+        },
+        {
+          id: "insumos",
+          label: "Materiales e insumos",
+          href: "/dashboard/admin/insumos",
+          icon: Package,
+          roles: ["admin"],
+          description: "Materiales de la clínica: costo, precio, stock y consumo",
           modules: ["ventas_b2c"],
         },
         {

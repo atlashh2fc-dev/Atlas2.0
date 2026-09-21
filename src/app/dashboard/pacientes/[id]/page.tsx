@@ -31,7 +31,8 @@ import {
 import { PACIENTES_POR_EDICION, VENTAS_POR_EDICION } from "@/lib/ediciones";
 import { ETIQUETA_VACUNA, edad, estadoVacuna } from "@/lib/mascotas";
 import { denticionPorEdad, type RegistroOdontograma } from "@/lib/odontograma";
-import type { Atencion, Procedimiento } from "@/lib/arancel";
+import { costoDeReceta, porCategoria, type Atencion, type Insumo, type Procedimiento } from "@/lib/arancel";
+import { InsumosProvider } from "@/components/insumos-context";
 import type { Estudio } from "@/lib/estudios";
 import { Odontograma } from "@/components/odontograma/odontograma";
 import { FichaMascota3D, type MascotaFicha, type RegistroMascota } from "@/components/mascota3d/ficha-mascota-3d";
@@ -128,6 +129,7 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
     { data: atencionesData },
     { data: registrosMascota },
     { data: estudiosData },
+    { data: insumosData },
   ] =
     await Promise.all([
       supabase
@@ -140,7 +142,7 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
         : Promise.resolve({ data: [] as Record<string, unknown>[] }),
       supabase
         .from("sales_products")
-        .select("id, code, name, one_time_price, categoria, duracion_min, es_urgencia, aplica_a, resultado_odontograma, orden, active")
+        .select("id, code, name, one_time_price, categoria, duracion_min, es_urgencia, aplica_a, resultado_odontograma, orden, active, receta:procedimiento_insumos(insumo_id, cantidad)")
         .eq("active", true)
         .order("orden")
         .order("name"),
@@ -160,7 +162,9 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
         : Promise.resolve({ data: [] as Record<string, unknown>[] }),
       supabase
         .from("atenciones")
-        .select("id, descripcion, pieza, superficies, region, mascota_id, precio, pagado, es_urgencia, profesional, nota, fecha, created_at")
+        .select(
+          "id, descripcion, pieza, superficies, region, mascota_id, precio, pagado, es_urgencia, profesional, nota, fecha, created_at, costo_materiales, precio_materiales, atencion_insumos(nombre, unidad, cantidad, costo_unitario, precio_unitario, cobrado)",
+        )
         .eq("cuenta_id", id)
         .order("fecha", { ascending: false })
         .order("created_at", { ascending: false }),
@@ -176,6 +180,12 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
         .select("id, tipo, titulo, nota, pieza, region, mascota_id, mime, tamano, fecha, storage_path")
         .eq("cuenta_id", id)
         .order("fecha", { ascending: false }),
+      supabase
+        .from("insumos")
+        .select("id, codigo, nombre, categoria, unidad, costo, precio_venta, cobrable, stock, stock_minimo, activo")
+        .eq("activo", true)
+        .order("categoria")
+        .order("nombre"),
     ]);
 
   // Los estudios se ven con enlaces firmados que expiran en una hora.
@@ -217,6 +227,8 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
   const registrosOdontograma = (odontograma ?? []) as unknown as RegistroOdontograma[];
   const arancel = (productos ?? []) as unknown as Procedimiento[];
   const atenciones = (atencionesData ?? []) as unknown as Atencion[];
+  const insumos = (insumosData ?? []) as unknown as Insumo[];
+  const insumoPorId = new Map(insumos.map((insumo) => [insumo.id, insumo]));
   // Los profesionales que aparecen en la clínica: el tratante del paciente primero.
   const profesionales = [
     ...new Set(
@@ -296,12 +308,13 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
             <CreatePanel
               label={ventas.nuevo}
               title={`${ventas.nuevo} para ${ficha.name.split(" ")[0]}`}
-              description="El precio sale del catálogo salvo que escribas otro."
+              description="El monto sale del arancel más los materiales que se cobran aparte, salvo que escribas otro."
               action={crearOportunidad}
               submitLabel={ventas.nuevo.replace(/^Nuev[oa] /, "Crear ")}
               successLabel={`${ventas.negocio} creado`}
             >
               <input type="hidden" name="empresa" value={ficha.name} />
+              <input type="hidden" name="con_materiales" value="si" />
               {ficha.rut && <input type="hidden" name="rut" value={ficha.rut} />}
               <Field label={ventas.negocio}>
                 <Input name="nombre" required placeholder={ventas.negocioPlaceholder} data-autofocus />
@@ -309,15 +322,23 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
               <Field label={ventas.producto}>
                 <Select name="producto" defaultValue="">
                   <option value="">Sin {ventas.producto.toLowerCase()} del catálogo</option>
-                  {(productos ?? []).map((producto) => (
-                    <option key={producto.code} value={producto.code}>
-                      {producto.name}
-                      {producto.one_time_price ? ` · ${pesos.format(Number(producto.one_time_price))}` : ""}
-                    </option>
+                  {porCategoria(arancel).map(([categoria, items]) => (
+                    <optgroup key={categoria} label={categoria}>
+                      {items.map((producto) => {
+                        const { cobro } = costoDeReceta(producto, insumoPorId);
+                        return (
+                          <option key={producto.code} value={producto.code}>
+                            {producto.name}
+                            {producto.one_time_price ? ` · ${pesos.format(Number(producto.one_time_price) + cobro)}` : ""}
+                            {cobro > 0 ? " con materiales" : ""}
+                          </option>
+                        );
+                      })}
+                    </optgroup>
                   ))}
                 </Select>
               </Field>
-              <Field label="Monto del presupuesto (vacío = precio del catálogo)">
+              <Field label="Monto del presupuesto (vacío = arancel + materiales)">
                 <Input name="monto_unico" inputMode="numeric" placeholder="1350000" />
               </Field>
               <Field label="Cierre estimado">
@@ -350,6 +371,7 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
         ← Volver a {voc.titulo.toLowerCase()}
       </Link>
 
+      <InsumosProvider insumos={insumos}>
       {esVet && (
         <FichaMascota3D
           cuentaId={id}
@@ -376,6 +398,7 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
           organizationId={ficha.organization_id as string}
         />
       )}
+      </InsumosProvider>
 
       <div className="grid gap-4 xl:grid-cols-3">
         <div className="space-y-4 xl:col-span-2">

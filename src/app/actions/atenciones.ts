@@ -29,6 +29,27 @@ function monto(formData: FormData, campo: string): number | null {
   return bruto === "" ? null : Number(bruto);
 }
 
+/** Los materiales vienen como JSON desde el formulario; ausentes = la receta. */
+function materiales(formData: FormData) {
+  const bruto = formData.get("insumos");
+  if (bruto === null) return null;
+  let lista: unknown;
+  try {
+    lista = JSON.parse(String(bruto));
+  } catch {
+    throw new Error("Materiales inválidos.");
+  }
+  if (!Array.isArray(lista) || lista.length > 60) throw new Error("Materiales inválidos.");
+  return lista.map((item) => {
+    const { insumo_id, cantidad, cobrar } = (item ?? {}) as Record<string, unknown>;
+    const numero = Number(cantidad);
+    if (typeof insumo_id !== "string" || !UUID.test(insumo_id) || !Number.isFinite(numero) || numero <= 0 || numero > 10000) {
+      throw new Error("Revisa las cantidades de materiales.");
+    }
+    return { insumo_id, cantidad: Math.round(numero * 100) / 100, cobrar: cobrar !== false };
+  });
+}
+
 export async function registrarAtencion(formData: FormData) {
   await requireProfile(["admin", "supervisor"]);
   const cuenta = texto(formData, "cuenta_id") ?? "";
@@ -58,6 +79,7 @@ export async function registrarAtencion(formData: FormData) {
     p_fecha: fecha,
     p_actualizar_odontograma: formData.get("actualizar_odontograma") !== "no",
     p_pagado: formData.get("pagado") === "si",
+    p_insumos: materiales(formData),
   });
   if (error) throw new Error(error.message);
   revalidatePath(`/dashboard/pacientes/${cuenta}`);

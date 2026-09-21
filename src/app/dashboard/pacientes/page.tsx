@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { EspecieYRaza } from "@/components/especie-y-raza";
+import { razasDe } from "@/lib/anatomia";
 import { unstable_noStore as noStore } from "next/cache";
 import { Search } from "lucide-react";
 
@@ -143,16 +145,12 @@ export default async function PacientesPage({
                 <Field label="Nombre de la mascota">
                   <Input name="mascota" placeholder="Luna" />
                 </Field>
-                <Field label="Especie">
-                  <Select name="especie" defaultValue="Perro">
-                    <option>Perro</option>
-                    <option>Gato</option>
-                    <option>Otro</option>
-                  </Select>
-                </Field>
-                <Field label="Raza">
-                  <Input name="raza" placeholder="Mestizo" />
-                </Field>
+                <EspecieYRaza
+                  razas={{
+                    Perro: razasDe("Perro").map(({ nombre, peso }) => ({ nombre, peso })),
+                    Gato: razasDe("Gato").map(({ nombre, peso }) => ({ nombre, peso })),
+                  }}
+                />
                 <Field label="Sexo">
                   <Select name="sexo" defaultValue="">
                     <option value="">Sin dato</option>

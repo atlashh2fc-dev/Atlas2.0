@@ -3,7 +3,9 @@ import { unstable_noStore as noStore } from "next/cache";
 import { crearProcedimiento, guardarProcedimiento } from "@/app/actions/atenciones";
 import { CreatePanel } from "@/components/create-panel";
 import { ActionForm, ActionSubmit, Badge, Field, Input, PageHeader, SectionCard, Select } from "@/components/ui";
-import { CATEGORIAS, ETIQUETA_APLICA_A, porCategoria, type Procedimiento } from "@/lib/arancel";
+import { InsumosProvider } from "@/components/insumos-context";
+import { RecetaEditor } from "@/components/receta-editor";
+import { CATEGORIAS, ETIQUETA_APLICA_A, porCategoria, type Insumo, type Procedimiento } from "@/lib/arancel";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
 import { ESTADOS, INFO_ESTADO } from "@/lib/odontograma";
 import { createClient } from "@/lib/supabase/server";
@@ -13,24 +15,33 @@ import { createClient } from "@/lib/supabase/server";
  *
  * Es la lista de la que salen los presupuestos y las atenciones: cambiar un
  * precio acá cambia lo que se propone la próxima vez, no lo ya cobrado. En
- * Dental cada procedimiento dice además qué deja en el odontograma.
+ * Dental cada procedimiento dice además qué deja en el odontograma. Bajo cada
+ * uno, su receta de materiales con el costo y el margen que deja.
  */
 export default async function ArancelesPage() {
   noStore();
   const { edicion } = await contextoDeMiEmpresa();
   const clinica = edicion === "vet" ? "vet" : "dental";
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("sales_products")
-    .select("id, code, name, one_time_price, categoria, duracion_min, es_urgencia, aplica_a, resultado_odontograma, orden, active")
-    .order("orden")
-    .order("name");
+  const [{ data, error }, { data: insumosData }] = await Promise.all([
+    supabase
+      .from("sales_products")
+      .select("id, code, name, one_time_price, categoria, duracion_min, es_urgencia, aplica_a, resultado_odontograma, orden, active, receta:procedimiento_insumos(insumo_id, cantidad)")
+      .order("orden")
+      .order("name"),
+    supabase
+      .from("insumos")
+      .select("id, codigo, nombre, categoria, unidad, costo, precio_venta, cobrable, stock, stock_minimo, activo")
+      .order("categoria")
+      .order("nombre"),
+  ]);
 
   const procedimientos = (data ?? []) as Procedimiento[];
   const grupos = porCategoria(procedimientos);
   const aplicables = clinica === "vet" ? (["mascota", "region"] as const) : (["boca", "pieza", "superficie"] as const);
 
   return (
+    <InsumosProvider insumos={(insumosData ?? []) as unknown as Insumo[]}>
     <div className="space-y-5">
       <PageHeader
         title="Procedimientos y precios"
@@ -96,11 +107,11 @@ export default async function ArancelesPage() {
         <SectionCard key={categoria} title={categoria} description={`${items.length} ${items.length === 1 ? "procedimiento" : "procedimientos"}`}>
           <div className="divide-y divide-border">
             {items.map((procedimiento) => (
+              <div key={procedimiento.id}>
               <ActionForm
-                key={procedimiento.id}
                 action={guardarProcedimiento}
                 success={`${procedimiento.name} guardado`}
-                className={`grid items-center gap-3 px-4 py-2.5 sm:grid-cols-[minmax(0,1fr)_130px_90px_auto_auto] ${procedimiento.active ? "" : "opacity-60"}`}
+                className={`grid items-center gap-3 px-4 pb-1 pt-2.5 sm:grid-cols-[minmax(0,1fr)_130px_90px_auto_auto] ${procedimiento.active ? "" : "opacity-60"}`}
               >
                 <input type="hidden" name="id" value={procedimiento.id} />
                 <div className="min-w-0">
@@ -158,10 +169,13 @@ export default async function ArancelesPage() {
                   Guardar
                 </ActionSubmit>
               </ActionForm>
+              <RecetaEditor productoId={procedimiento.id} receta={procedimiento.receta ?? []} precio={procedimiento.one_time_price} />
+              </div>
             ))}
           </div>
         </SectionCard>
       ))}
     </div>
+    </InsumosProvider>
   );
 }

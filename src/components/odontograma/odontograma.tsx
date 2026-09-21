@@ -9,7 +9,7 @@ import { registrarEnOdontograma } from "@/app/actions/odontograma";
 import { AtencionForm } from "@/components/atencion-form";
 import { EstudiosPanel } from "@/components/estudios-panel";
 import type { Estudio } from "@/lib/estudios";
-import { pesos, type Atencion, type Procedimiento } from "@/lib/arancel";
+import { pesos, type Atencion, type Procedimiento, resumenMateriales, totalAtencion } from "@/lib/arancel";
 import { ActionForm, ActionSubmit, Badge, Field, Input, Select } from "@/components/ui";
 import {
   AVANCES,
@@ -166,8 +166,8 @@ export function Odontograma({
   const historia = pieza ? ordenarRegistros(registros.filter((registro) => registro.pieza === pieza.numero)) : [];
   const actual = pieza ? actuales.get(pieza.numero) : undefined;
   const atencionesDePieza = pieza ? atenciones.filter((atencion) => atencion.pieza === pieza.numero) : [];
-  const cobrado = atenciones.filter((atencion) => atencion.pagado).reduce((total, atencion) => total + Number(atencion.precio), 0);
-  const porCobrar = atenciones.filter((atencion) => !atencion.pagado).reduce((total, atencion) => total + Number(atencion.precio), 0);
+  const cobrado = atenciones.filter((atencion) => atencion.pagado).reduce((total, atencion) => total + totalAtencion(atencion), 0);
+  const porCobrar = atenciones.filter((atencion) => !atencion.pagado).reduce((total, atencion) => total + totalAtencion(atencion), 0);
 
   const elegir = (numero: number) => {
     setSeleccionada(numero);
@@ -381,9 +381,14 @@ export function Odontograma({
                               {fecha.format(new Date(`${atencion.fecha}T12:00:00Z`))}
                               {atencion.profesional ? ` · ${atencion.profesional}` : ""}
                             </p>
+                            {(atencion.atencion_insumos?.length ?? 0) > 0 && (
+                              <p className="truncate text-[11px] text-muted-foreground/80" title={resumenMateriales(atencion.atencion_insumos)}>
+                                {resumenMateriales(atencion.atencion_insumos)}
+                              </p>
+                            )}
                           </div>
                           <div className="text-right">
-                            <p className="text-sm font-medium tabular-nums text-foreground">{pesos.format(Number(atencion.precio))}</p>
+                            <p className="text-sm font-medium tabular-nums text-foreground">{pesos.format(totalAtencion(atencion))}</p>
                             <ActionForm action={marcarAtencionPagada} success={atencion.pagado ? "Marcada por cobrar" : "Marcada pagada"}>
                               <input type="hidden" name="atencion_id" value={atencion.id} />
                               <input type="hidden" name="cuenta_id" value={cuentaId} />
@@ -485,9 +490,14 @@ export function Odontograma({
                             {fecha.format(new Date(`${atencion.fecha}T12:00:00Z`))}
                             {atencion.profesional ? ` · ${atencion.profesional}` : ""}
                           </span>
+                          {(atencion.atencion_insumos?.length ?? 0) > 0 && (
+                            <span className="block truncate text-[11px] text-muted-foreground/80" title={resumenMateriales(atencion.atencion_insumos)}>
+                              {resumenMateriales(atencion.atencion_insumos)}
+                            </span>
+                          )}
                         </span>
                         <span className="text-right">
-                          <span className="block tabular-nums text-foreground">{pesos.format(Number(atencion.precio))}</span>
+                          <span className="block tabular-nums text-foreground">{pesos.format(totalAtencion(atencion))}</span>
                           <span className={`block text-[11px] ${atencion.pagado ? "text-success" : "text-warning"}`}>{atencion.pagado ? "Pagado" : "Por cobrar"}</span>
                         </span>
                       </li>

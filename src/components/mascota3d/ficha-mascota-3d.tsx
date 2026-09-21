@@ -9,7 +9,7 @@ import { AtencionForm } from "@/components/atencion-form";
 import { EstudiosPanel } from "@/components/estudios-panel";
 import type { Estudio } from "@/lib/estudios";
 import { ActionForm, ActionSubmit, Badge, Field, Input, Select } from "@/components/ui";
-import { pesos, type Atencion, type Procedimiento } from "@/lib/arancel";
+import { pesos, type Atencion, type Procedimiento, resumenMateriales, totalAtencion } from "@/lib/arancel";
 import {
   INFO_TIPO,
   NOMBRE_REGION,
@@ -304,9 +304,14 @@ export function FichaMascota3D({
                             {atencion.region ? ` · ${NOMBRE_REGION[atencion.region as Region] ?? atencion.region}` : ""}
                             {atencion.profesional ? ` · ${atencion.profesional}` : ""}
                           </span>
+                          {(atencion.atencion_insumos?.length ?? 0) > 0 && (
+                            <span className="block truncate text-[11px] text-muted-foreground/80" title={resumenMateriales(atencion.atencion_insumos)}>
+                              {resumenMateriales(atencion.atencion_insumos)}
+                            </span>
+                          )}
                         </span>
                         <span className="text-right">
-                          <span className="block text-sm tabular-nums text-foreground">{pesos.format(Number(atencion.precio))}</span>
+                          <span className="block text-sm tabular-nums text-foreground">{pesos.format(totalAtencion(atencion))}</span>
                           <span className={`block text-[11px] ${atencion.pagado ? "text-success" : "text-warning"}`}>{atencion.pagado ? "Pagado" : "Por cobrar"}</span>
                         </span>
                       </li>
