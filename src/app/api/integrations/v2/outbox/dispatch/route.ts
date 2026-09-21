@@ -52,6 +52,14 @@ async function nackOutbox(
   if (result.error) throw result.error;
 }
 
+function describeDispatchError(error: unknown): string | null {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === "object" && "message" in error && typeof error.message === "string") {
+    return error.message;
+  }
+  return null;
+}
+
 async function handle(request: NextRequest, requestedLimit: number) {
   if (!verifyIntegrationV2WorkerAuthorization(request.headers.get("authorization"), process.env.INTEGRATION_WORKER_SECRET, process.env.CRON_SECRET)) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
@@ -106,6 +114,10 @@ async function handle(request: NextRequest, requestedLimit: number) {
       const rawBody = integrationV2OutboundBody(items);
       const timestamp = Math.floor(Date.now() / 1000).toString();
       const idempotencyKey = `atlas2-${integrationV2ContentSha256(Buffer.from(items.map((item) => item.event_id).sort().join("\n"))).slice(0, 48)}`;
+      // Una falla al registrar el acuse no es un destino caído: la entrega ya
+      // ocurrió. Se distingue para no mandar a buscar un problema de red donde
+      // no lo hay.
+      let stage: "request" | "ack" = "request";
       try {
         const response = await fetch(destination.url, {
           method: "POST",
@@ -131,6 +143,7 @@ async function handle(request: NextRequest, requestedLimit: number) {
           const confirmed = items.filter((item) => confirmedIds.has(item.event_id));
           const missing = items.filter((item) => !confirmedIds.has(item.event_id));
           if (confirmed.length) {
+            stage = "ack";
             const ack = await admin.rpc("ack_integration_outbox_v2", {
               p_worker_id: workerId, p_event_ids: confirmed.map((item) => item.outbox_id),
               p_provider_ack: response.headers.get("x-ack-id"), p_http_status: response.status,
@@ -168,12 +181,14 @@ async function handle(request: NextRequest, requestedLimit: number) {
         }
       } catch (error) {
         await nackOutbox(admin, {
-          workerId, ids, code: "destination_unreachable", retryable: true,
+          workerId, ids, code: stage === "ack" ? "ack_failed" : "destination_unreachable", retryable: true,
           retryAfter: integrationV2RetryDelaySeconds(
             Math.max(...items.map((item) => item.attempts)),
             items.map((item) => item.event_id).join("\n"),
           ),
-          httpStatus: null, detail: error instanceof Error ? error.message : null,
+          // Los errores de Supabase son objetos con message, no instancias de
+          // Error: antes se guardaban como null y el motivo se perdía.
+          httpStatus: null, detail: describeDispatchError(error),
         });
         retried += ids.length;
       }
