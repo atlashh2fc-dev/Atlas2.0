@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 
-import { renderizarPlantilla } from "@/lib/mensajes/plantillas";
+import { buzonDeEmpresa } from "@/lib/correo/buzon";
+import { enviarCorreo } from "@/lib/correo/smtp";
+import { PLANTILLAS, renderizarPlantilla, type ClavePlantilla } from "@/lib/mensajes/plantillas";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { normalizeWhatsAppPhone } from "@/lib/whatsapp";
 import { isWhatsAppProviderConfigured, sendWhatsAppText, whatsappProvider } from "@/lib/whatsapp-provider";
@@ -21,8 +23,11 @@ type Mensaje = {
   canal: string;
   cuenta_id: string | null;
   destinatario: string;
+  nombre_destinatario: string | null;
   plantilla: string;
   variables: Record<string, unknown>;
+  asunto: string | null;
+  in_reply_to: string | null;
 };
 
 type Resultado = { enviados: number; simulados: number; fallidos: number };
@@ -126,6 +131,47 @@ export async function enviarAFicha(admin: Admin, entrada: { organizationId: stri
   }
 }
 
+
+export type EnvioDeCorreo =
+  | { estado: "enviado"; proveedor: "smtp"; proveedorId: string }
+  | { estado: "simulado"; proveedor: "simulado"; proveedorId: string }
+  | { estado: "fallido"; error: string };
+
+/**
+ * Manda un correo por el buzón de la empresa. Si la empresa es de
+ * demostración y no tiene buzón, el envío se simula y queda marcado así.
+ */
+export async function enviarCorreoAFicha(admin: Admin, entrada: { organizationId: string; para: string; nombre?: string | null; asunto: string; texto: string; inReplyTo?: string | null }): Promise<EnvioDeCorreo> {
+  const [buzon, { data: organizacion }] = await Promise.all([
+    buzonDeEmpresa(entrada.organizationId),
+    admin.from("organizations").select("slug").eq("id", entrada.organizationId).single(),
+  ]);
+  const esDemo = typeof organizacion?.slug === "string" && organizacion.slug.startsWith("demo-");
+  if (!buzon) {
+    if (esDemo) return { estado: "simulado", proveedor: "simulado", proveedorId: `simulado-${randomUUID()}` };
+    return { estado: "fallido", error: "La empresa no tiene buzón de correo configurado. Configúralo en Correo de la clínica." };
+  }
+  try {
+    const { messageId } = await enviarCorreo(buzon, { para: entrada.para, nombre: entrada.nombre, asunto: entrada.asunto, texto: entrada.texto, inReplyTo: entrada.inReplyTo });
+    return { estado: "enviado", proveedor: "smtp", proveedorId: messageId };
+  } catch (error) {
+    return { estado: "fallido", error: error instanceof Error ? error.message : "El servidor de correo no aceptó el mensaje." };
+  }
+}
+
+async function despacharCorreo(admin: Admin, mensaje: Mensaje, cuerpo: string, resultado: Resultado) {
+  const asunto = mensaje.asunto ?? (PLANTILLAS[mensaje.plantilla as ClavePlantilla]?.nombre ?? "Mensaje de la clínica");
+  const envio = await enviarCorreoAFicha(admin, { organizationId: mensaje.organization_id, para: mensaje.destinatario, nombre: mensaje.nombre_destinatario, asunto, texto: cuerpo, inReplyTo: mensaje.in_reply_to });
+  if (envio.estado === "fallido") {
+    await cerrar(admin, mensaje.id, "fallido", { cuerpo, error: envio.error });
+    resultado.fallidos += 1;
+    return;
+  }
+  await cerrar(admin, mensaje.id, envio.estado === "simulado" ? "entregado" : "enviado", { cuerpo, proveedor: envio.proveedor, proveedorId: envio.proveedorId });
+  if (envio.estado === "simulado") resultado.simulados += 1;
+  else resultado.enviados += 1;
+}
+
 async function despacharWhatsApp(admin: Admin, mensaje: Mensaje, cuerpo: string, resultado: Resultado) {
   if (!mensaje.cuenta_id) {
     await cerrar(admin, mensaje.id, "fallido", { cuerpo, error: "El mensaje no tiene ficha de destino." });
@@ -171,6 +217,10 @@ export async function despacharMensajes(opciones: { generar?: boolean; limite?: 
 
   for (const fila of (reclamados ?? []) as Mensaje[]) {
     const cuerpo = renderizarPlantilla(fila.plantilla, fila.variables ?? {});
+    if (fila.canal === "correo") {
+      await despacharCorreo(admin, fila, cuerpo, resultado);
+      continue;
+    }
     if (fila.canal !== "whatsapp") {
       await cerrar(admin, fila.id, "fallido", { cuerpo, error: `El canal ${fila.canal} todavía no está conectado a Atlas.` });
       resultado.fallidos += 1;

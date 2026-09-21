@@ -37,6 +37,7 @@ type Mensaje = {
   cuenta_id: string | null;
   nombre_destinatario: string | null;
   destinatario: string;
+  canal: string;
   regla: string;
   origen_ref: string | null;
   plantilla: string;
@@ -62,6 +63,7 @@ function Enviar({
   origen,
   variables,
   ultimo,
+  telefono,
 }: {
   cuenta: string;
   plantilla: ClavePlantilla;
@@ -69,7 +71,10 @@ function Enviar({
   origen: string;
   variables: Record<string, unknown>;
   ultimo?: Mensaje;
+  /** Sin celular, el mensaje sale por correo. */
+  telefono?: string | null;
 }) {
+  const canal = telefono && telefono.trim() ? "whatsapp" : "correo";
   const etiqueta = ultimo ? ETIQUETA_ESTADO_MENSAJE[ultimo.estado] : null;
   const yaSalio = ultimo && !["fallido", "cancelado"].includes(ultimo.estado);
   return (
@@ -87,8 +92,9 @@ function Enviar({
         <input type="hidden" name="regla" value={regla} />
         <input type="hidden" name="origen_ref" value={origen} />
         <input type="hidden" name="variables" value={JSON.stringify(variables)} />
+        <input type="hidden" name="canal" value={canal} />
         <SubmitButton size="sm" variant={yaSalio ? "ghost" : "secondary"} pendingLabel="Enviando…">
-          <Send size={14} aria-hidden="true" /> {yaSalio ? "Reenviar" : "Enviar por Atlas"}
+          <Send size={14} aria-hidden="true" /> {yaSalio ? "Reenviar" : canal === "correo" ? "Enviar correo" : "Enviar por Atlas"}
         </SubmitButton>
       </form>
     </div>
@@ -143,7 +149,7 @@ export default async function RecordatoriosPage() {
       .limit(600),
     supabase
       .from("mensajes_salientes")
-      .select("id, cuenta_id, nombre_destinatario, destinatario, regla, origen_ref, plantilla, variables, cuerpo, estado, proveedor, error, programado_para, enviado_at, created_at")
+      .select("id, cuenta_id, nombre_destinatario, destinatario, canal, regla, origen_ref, plantilla, variables, cuerpo, estado, proveedor, error, programado_para, enviado_at, created_at")
       .gte("created_at", new Date(ahora.getTime() - 14 * DIA).toISOString())
       .order("created_at", { ascending: false })
       .limit(400),
@@ -248,7 +254,7 @@ export default async function RecordatoriosPage() {
                       {cita.motivo} · {profesional} · {cita.estado === "reservada" ? "sin confirmar" : "confirmada"}
                     </p>
                   </div>
-                  <Enviar cuenta={cita.cuenta_id} plantilla={plantilla} regla="cita_manana" origen={cita.id} variables={variables} ultimo={ultimo("cita_manana", cita.id)} />
+                  <Enviar cuenta={cita.cuenta_id} plantilla={plantilla} regla="cita_manana" origen={cita.id} variables={variables} ultimo={ultimo("cita_manana", cita.id)} telefono={tutor?.phone} />
                   {cita.estado === "reservada" && (
                     <form action={cambiarEstadoCita}>
                       <input type="hidden" name="cita_id" value={cita.id} />
@@ -286,7 +292,7 @@ export default async function RecordatoriosPage() {
                         {mascota.especie} · vacuna {mascota.proxima_vacuna ? fecha.format(new Date(`${mascota.proxima_vacuna}T12:00:00`)) : "—"}
                       </p>
                     </div>
-                    {tutor && <Enviar cuenta={tutor.id} plantilla="vacuna" regla="vacuna" origen={mascota.id} variables={variables} ultimo={ultimo("vacuna", mascota.id)} />}
+                    {tutor && <Enviar cuenta={tutor.id} plantilla="vacuna" regla="vacuna" origen={mascota.id} variables={variables} ultimo={ultimo("vacuna", mascota.id)} telefono={tutor.phone} />}
                     <Link href="/dashboard/citas" className={buttonClasses({ size: "sm" })}>
                       Agendar
                     </Link>
@@ -317,7 +323,7 @@ export default async function RecordatoriosPage() {
                       {cuentaDe?.name ?? "—"} · {pesos.format(Number(presupuesto.one_time_amount ?? 0))}
                     </p>
                   </div>
-                  <Enviar cuenta={presupuesto.company_id} plantilla="presupuesto" regla="presupuesto" origen={presupuesto.id} variables={variables} ultimo={ultimo("presupuesto", presupuesto.id)} />
+                  <Enviar cuenta={presupuesto.company_id} plantilla="presupuesto" regla="presupuesto" origen={presupuesto.id} variables={variables} ultimo={ultimo("presupuesto", presupuesto.id)} telefono={cuentaDe?.phone} />
                 </li>
               );
             })}
@@ -340,7 +346,7 @@ export default async function RecordatoriosPage() {
                       {ficha.name}
                     </Link>
                   </div>
-                  <Enviar cuenta={ficha.id} plantilla="control" regla="control" origen={ficha.id} variables={variables} ultimo={ultimo("control", ficha.id)} />
+                  <Enviar cuenta={ficha.id} plantilla="control" regla="control" origen={ficha.id} variables={variables} ultimo={ultimo("control", ficha.id)} telefono={ficha.phone} />
                 </li>
               );
             })}
@@ -381,7 +387,10 @@ export default async function RecordatoriosPage() {
                         )}
                         <p className="text-xs text-muted-foreground">{mensaje.destinatario}</p>
                       </td>
-                      <td className="px-3 py-2.5 text-muted-foreground">{ETIQUETA_REGLA[mensaje.regla] ?? PLANTILLAS[mensaje.plantilla as ClavePlantilla]?.nombre ?? mensaje.regla}</td>
+                      <td className="px-3 py-2.5 text-muted-foreground">
+                        {ETIQUETA_REGLA[mensaje.regla] ?? PLANTILLAS[mensaje.plantilla as ClavePlantilla]?.nombre ?? mensaje.regla}
+                        <p className="text-xs">{mensaje.canal === "correo" ? "correo" : "WhatsApp"}</p>
+                      </td>
                       <td className="max-w-md px-3 py-2.5 text-muted-foreground">
                         <p className="line-clamp-2" title={cuerpo}>
                           {cuerpo}

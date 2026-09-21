@@ -52,17 +52,23 @@ export async function enviarMensaje(formData: FormData) {
     variables = { texto: cuerpo };
   }
 
+  const canal = texto(formData, "canal", 20) === "correo" ? "correo" : "whatsapp";
   const supabase = await createClient();
-  const { error } = await supabase.rpc("programar_mensaje", {
+  const { data: mensajeId, error } = await supabase.rpc("programar_mensaje", {
     p_cuenta: cuenta,
     p_plantilla: plantilla,
     p_variables: variables,
     p_regla: regla,
     p_origen_ref: origen || null,
     p_programado_para: null,
-    p_canal: "whatsapp",
+    p_canal: canal,
   });
   if (error) throw new Error(error.message);
+  const asunto = texto(formData, "asunto", 300);
+  const inReplyTo = texto(formData, "in_reply_to", 300);
+  if (canal === "correo" && typeof mensajeId === "string" && (asunto || inReplyTo)) {
+    await supabase.from("mensajes_salientes").update({ asunto: asunto || null, in_reply_to: inReplyTo || null }).eq("id", mensajeId);
+  }
 
   // Sale ahora mismo, no en el próximo cron.
   await despacharMensajes({ generar: false, limite: 20 });

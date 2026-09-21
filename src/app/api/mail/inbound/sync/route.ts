@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { syncAbogadoLegalInbox } from "@/lib/inbound-mail";
+import { syncAllMailboxes } from "@/lib/inbound-mail";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -12,8 +12,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const result = await syncAbogadoLegalInbox();
-    return NextResponse.json(result);
+    const result = await syncAllMailboxes();
+    return NextResponse.json(result, { status: result.errores.length && !result.resultados.length ? 500 : 200 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "No se pudo sincronizar la casilla.";
     return NextResponse.json({ error: message }, { status: 500 });

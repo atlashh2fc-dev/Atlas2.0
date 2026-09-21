@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { requireProfile } from "@/lib/auth";
-import { enviarAFicha } from "@/lib/mensajes/despachar";
+import { despacharMensajes, enviarAFicha } from "@/lib/mensajes/despachar";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -52,4 +52,33 @@ export async function marcarConversacionLeida(formData: FormData) {
   if (!conversacion?.company_id) throw new Error("No tienes acceso a esta conversación.");
   await createAdminClient().from("whatsapp_conversations").update({ unread_count: 0 }).eq("id", conversationId);
   revalidatePath("/dashboard/mensajes");
+}
+
+/** Responder un correo: sale por el buzón de la clínica y queda en la cola con su estado. */
+export async function responderCorreo(formData: FormData) {
+  await requireProfile(["admin", "supervisor"]);
+  const cuenta = String(formData.get("cuenta_id") ?? "").trim();
+  const texto = String(formData.get("texto") ?? "").trim().slice(0, 5000);
+  const asunto = String(formData.get("asunto") ?? "").trim().slice(0, 300) || "Mensaje de la clínica";
+  const inReplyTo = String(formData.get("in_reply_to") ?? "").trim().slice(0, 300);
+  if (!UUID.test(cuenta)) throw new Error("Ficha inválida.");
+  if (texto.length < 1) throw new Error("Escribe la respuesta.");
+
+  const supabase = await createClient();
+  const { data: mensajeId, error } = await supabase.rpc("programar_mensaje", {
+    p_cuenta: cuenta,
+    p_plantilla: "libre",
+    p_variables: { texto },
+    p_regla: "manual",
+    p_origen_ref: null,
+    p_programado_para: null,
+    p_canal: "correo",
+  });
+  if (error) throw new Error(error.message);
+  if (typeof mensajeId === "string") {
+    await supabase.from("mensajes_salientes").update({ asunto, in_reply_to: inReplyTo || null }).eq("id", mensajeId);
+  }
+  await despacharMensajes({ generar: false, limite: 10 });
+  revalidatePath("/dashboard/mensajes");
+  revalidatePath("/dashboard/recordatorios");
 }

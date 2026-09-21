@@ -1,4 +1,6 @@
 import { ImapFlow } from "imapflow";
+
+import { buzonesActivos, type Buzon } from "@/lib/correo/buzon";
 import PostalMime from "postal-mime";
 
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -66,20 +68,16 @@ export function detectChileanPhone(value: string): string | null {
   return null;
 }
 
-export async function syncAbogadoLegalInbox(): Promise<InboundSyncResult> {
-  const { user, client } = createInboundClient();
+/**
+ * Sincroniza un buzón: trae lo nuevo del INBOX y lo guarda. Si el buzón es de
+ * una clínica (sin campaña), cada correo se liga a la ficha por la dirección
+ * o abre una ficha nueva.
+ */
+export async function syncMailbox(buzon: Buzon): Promise<InboundSyncResult> {
   const admin = createAdminClient();
-
-  const { data: mailbox, error: mailboxError } = await admin
-    .from("inbound_mailboxes")
-    .select("id,address,last_uid")
-    .eq("address", user.toLowerCase())
-    .eq("active", true)
-    .single();
-
-  if (mailboxError || !mailbox) {
-    throw new Error(mailboxError?.message || "La casilla no está registrada en Atlas.");
-  }
+  const client = new ImapFlow({ host: buzon.imap_host, port: buzon.imap_port, secure: true, auth: { user: buzon.usuario, pass: buzon.clave }, logger: false });
+  const mailbox = { id: buzon.id, address: buzon.address, last_uid: buzon.last_uid };
+  const deClinica = buzon.campaign_id === null;
 
   let imported = 0;
   let skipped = 0;
@@ -121,11 +119,13 @@ export async function syncAbogadoLegalInbox(): Promise<InboundSyncResult> {
             ? new Date(message.internalDate).toISOString()
             : syncedAt;
           const receivedAt = parsed.date || internalDate;
-          const { error } = await admin.from("inbound_emails").upsert(
+          const { data: guardado, error } = await admin.from("inbound_emails").upsert(
             {
               mailbox_id: mailbox.id,
+              organization_id: buzon.organization_id,
               imap_uid: Number(message.uid),
               message_id: parsed.messageId || message.envelope?.messageId || null,
+              in_reply_to: parsed.inReplyTo?.trim() || null,
               from_name: parsed.from?.name?.trim() || null,
               from_address: fromAddress,
               reply_to_address: replyTo,
@@ -136,9 +136,13 @@ export async function syncAbogadoLegalInbox(): Promise<InboundSyncResult> {
               received_at: new Date(receivedAt).toISOString(),
             },
             { onConflict: "mailbox_id,imap_uid", ignoreDuplicates: true }
-          );
+          ).select("id").maybeSingle();
 
           if (error) throw error;
+          if (deClinica && guardado?.id) {
+            const { error: ligaError } = await admin.rpc("ligar_correo_a_ficha", { p_email: guardado.id });
+            if (ligaError) console.error("[correo] no se pudo ligar el correo a la ficha", ligaError.message);
+          }
           imported += 1;
         }
       }
@@ -163,6 +167,28 @@ export async function syncAbogadoLegalInbox(): Promise<InboundSyncResult> {
   }
 
   return { imported, skipped, mailbox: mailbox.address, syncedAt };
+}
+
+/** Todos los buzones activos, uno tras otro; un buzón caído no detiene a los demás. */
+export async function syncAllMailboxes(): Promise<{ resultados: InboundSyncResult[]; errores: string[] }> {
+  const resultados: InboundSyncResult[] = [];
+  const errores: string[] = [];
+  for (const buzon of await buzonesActivos()) {
+    try {
+      resultados.push(await syncMailbox(buzon));
+    } catch (error) {
+      errores.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+  return { resultados, errores };
+}
+
+/** La casilla histórica del call center, con sus secretos de entorno. */
+export async function syncAbogadoLegalInbox(): Promise<InboundSyncResult> {
+  const { user } = createInboundClient();
+  const buzon = (await buzonesActivos()).find((candidato) => candidato.address.toLowerCase() === user.toLowerCase());
+  if (!buzon) throw new Error("La casilla no está registrada en Atlas.");
+  return syncMailbox(buzon);
 }
 
 /**

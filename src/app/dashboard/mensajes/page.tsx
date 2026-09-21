@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { unstable_noStore as noStore } from "next/cache";
-import { Send } from "lucide-react";
+import { Mail, MessageCircle, Send } from "lucide-react";
 
-import { marcarConversacionLeida, responderConversacion } from "@/app/actions/conversaciones-clinica";
+import { marcarConversacionLeida, responderConversacion, responderCorreo } from "@/app/actions/conversaciones-clinica";
 import { WhatsAppAutoRefresh } from "@/components/whatsapp-auto-refresh";
 import { Badge, Callout, EmptyState, PageHeader, SectionCard, SubmitButton, buttonClasses } from "@/components/ui";
 import { ZONA_CLINICA } from "@/lib/citas";
@@ -37,6 +37,8 @@ type Conversacion = {
   last_inbound_at: string | null;
   sales_companies: { id: string; name: string; phone: string | null; email: string | null } | { id: string; name: string; phone: string | null; email: string | null }[] | null;
 };
+type Correo = { id: string; company_id: string | null; from_name: string | null; from_address: string; subject: string; body_text: string; preview: string; received_at: string; message_id: string | null; status: string; sales_companies: { id: string; name: string; phone: string | null; email: string | null } | { id: string; name: string; phone: string | null; email: string | null }[] | null };
+type CorreoSaliente = { id: string; cuenta_id: string | null; destinatario: string; nombre_destinatario: string | null; asunto: string | null; cuerpo: string | null; estado: string; proveedor: string | null; enviado_at: string | null; created_at: string; in_reply_to: string | null };
 type Mensaje = { id: string; conversation_id: string; direction: "inbound" | "outbound"; text_body: string | null; message_type: string; status: string; provider_timestamp: string | null; created_at: string; provider_payload: Record<string, unknown> | null };
 
 function primero<T>(valor: T | T[] | null | undefined): T | null {
@@ -46,16 +48,17 @@ function primero<T>(valor: T | T[] | null | undefined): T | null {
 
 const ESTADO_MENSAJE: Record<string, string> = { pending: "enviando", accepted: "enviado", sent: "enviado", delivered: "entregado", read: "leído", failed: "falló", received: "" };
 
-export default async function MensajesPage({ searchParams }: { searchParams: Promise<{ c?: string }> }) {
+export default async function MensajesPage({ searchParams }: { searchParams: Promise<{ c?: string; e?: string }> }) {
   noStore();
   const { edicion, empresa } = await contextoDeMiEmpresa();
   const esVet = edicion === "vet";
   const voc = PACIENTES_POR_EDICION[esVet ? "vet" : "dental"];
-  const { c } = await searchParams;
+  const { c, e } = await searchParams;
   const seleccionada = c && UUID.test(c) ? c : null;
+  const fichaCorreo = e && UUID.test(e) ? e : null;
 
   const supabase = await createClient();
-  const [{ data: conversacionesData, error }, { data: canal }] = await Promise.all([
+  const [{ data: conversacionesData, error }, { data: canal }, { data: correosData }, { data: salientesData }, { data: buzon }] = await Promise.all([
     supabase
       .from("whatsapp_conversations")
       .select("id, company_id, contact_name, contact_phone, status, unread_count, last_message_at, last_inbound_at, sales_companies(id, name, phone, email)")
@@ -63,8 +66,48 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
       .order("last_message_at", { ascending: false })
       .limit(80),
     supabase.from("whatsapp_channels").select("status, display_phone_number").order("created_at").limit(1).maybeSingle(),
+    supabase
+      .from("inbound_emails")
+      .select("id, company_id, from_name, from_address, subject, body_text, preview, received_at, message_id, status, sales_companies(id, name, phone, email)")
+      .not("company_id", "is", null)
+      .order("received_at", { ascending: false })
+      .limit(200),
+    supabase
+      .from("mensajes_salientes")
+      .select("id, cuenta_id, destinatario, nombre_destinatario, asunto, cuerpo, estado, proveedor, enviado_at, created_at, in_reply_to")
+      .eq("canal", "correo")
+      .not("cuenta_id", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(200),
+    supabase.from("inbound_mailboxes").select("address, label, last_synced_at, last_sync_error").is("campaign_id", null).limit(1).maybeSingle(),
   ]);
   const conversaciones = (conversacionesData ?? []) as unknown as Conversacion[];
+
+  // Hilos de correo: uno por ficha, con lo recibido y lo que Atlas mandó.
+  type HiloCorreo = { company_id: string; nombre: string; direccion: string; ultimo: string; asunto: string; entrantes: Correo[]; salientes: CorreoSaliente[]; sinLeer: number };
+  const hilos = new Map<string, HiloCorreo>();
+  for (const correo of (correosData ?? []) as unknown as Correo[]) {
+    if (!correo.company_id) continue;
+    const hilo = hilos.get(correo.company_id) ?? { company_id: correo.company_id, nombre: primero(correo.sales_companies)?.name ?? correo.from_name ?? correo.from_address, direccion: correo.from_address, ultimo: correo.received_at, asunto: correo.subject, entrantes: [], salientes: [], sinLeer: 0 };
+    hilo.entrantes.push(correo);
+    if (correo.status === "new") hilo.sinLeer += 1;
+    if (correo.received_at > hilo.ultimo) { hilo.ultimo = correo.received_at; hilo.asunto = correo.subject; }
+    hilos.set(correo.company_id, hilo);
+  }
+  for (const saliente of (salientesData ?? []) as unknown as CorreoSaliente[]) {
+    if (!saliente.cuenta_id) continue;
+    const hilo = hilos.get(saliente.cuenta_id) ?? { company_id: saliente.cuenta_id, nombre: saliente.nombre_destinatario ?? saliente.destinatario, direccion: saliente.destinatario, ultimo: saliente.enviado_at ?? saliente.created_at, asunto: saliente.asunto ?? "", entrantes: [], salientes: [], sinLeer: 0 };
+    hilo.salientes.push(saliente);
+    const cuando = saliente.enviado_at ?? saliente.created_at;
+    if (cuando > hilo.ultimo) { hilo.ultimo = cuando; hilo.asunto = saliente.asunto ?? hilo.asunto; }
+    hilos.set(saliente.cuenta_id, hilo);
+  }
+  const hilosCorreo = [...hilos.values()].sort((a, b) => b.ultimo.localeCompare(a.ultimo));
+  const hiloActual = fichaCorreo ? hilos.get(fichaCorreo) ?? null : null;
+  const correoSinLeer = hilosCorreo.reduce((total, hilo) => total + hilo.sinLeer, 0);
+  if (hiloActual && hiloActual.sinLeer > 0) {
+    await createAdminClient().from("inbound_emails").update({ status: "converted", converted_at: new Date().toISOString() }).eq("company_id", hiloActual.company_id).eq("status", "new");
+  }
   const ids = conversaciones.map((conversacion) => conversacion.id);
 
   const { data: ultimosData } = ids.length
@@ -117,8 +160,28 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
       {error && <p className="rounded-lg border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger">No se pudieron leer las conversaciones. Vuelve a cargar para reintentar.</p>}
 
       <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
-        <SectionCard title={`Conversaciones · ${conversaciones.length}`} description="Las más recientes primero.">
-          {conversaciones.length === 0 ? (
+        <SectionCard title={`Conversaciones · ${conversaciones.length + hilosCorreo.length}`} description={`WhatsApp y correo, las más recientes primero.${correoSinLeer ? ` ${correoSinLeer} correos sin leer.` : ""}`}>
+          {hilosCorreo.length > 0 && (
+            <ul className="divide-y divide-border border-b border-border">
+              {hilosCorreo.map((hilo) => (
+                <li key={`correo-${hilo.company_id}`}>
+                  <Link href={`/dashboard/mensajes?e=${hilo.company_id}`} className={`block px-4 py-3 transition-colors hover:bg-surface-muted/60 ${hiloActual?.company_id === hilo.company_id ? "bg-primary/5" : ""}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={`flex min-w-0 items-center gap-1.5 truncate text-sm ${hilo.sinLeer > 0 ? "font-semibold" : "font-medium"} text-foreground`}>
+                        <Mail size={13} className="flex-shrink-0 text-muted-foreground" aria-hidden="true" /> {hilo.nombre}
+                      </span>
+                      <span className="flex-shrink-0 text-xs text-muted-foreground">{horaCorta.format(new Date(hilo.ultimo))}</span>
+                    </div>
+                    <div className="mt-0.5 flex items-center justify-between gap-2">
+                      <p className="truncate text-xs text-muted-foreground">{hilo.asunto || hilo.direccion}</p>
+                      {hilo.sinLeer > 0 && <span className="rounded-full bg-primary px-1.5 py-0.5 text-[11px] font-semibold text-primary-foreground">{hilo.sinLeer}</span>}
+                    </div>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+          {conversaciones.length === 0 && hilosCorreo.length === 0 ? (
             <EmptyState title="Todavía nadie escribe" description="Cuando Atlas mande un recordatorio o alguien escriba al WhatsApp de la clínica, aparece acá." />
           ) : (
             <ul className="divide-y divide-border">
@@ -129,7 +192,9 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
                   <li key={conversacion.id}>
                     <Link href={`/dashboard/mensajes?c=${conversacion.id}`} className={`block px-4 py-3 transition-colors hover:bg-surface-muted/60 ${activa ? "bg-primary/5" : ""}`}>
                       <div className="flex items-center justify-between gap-2">
-                        <span className={`truncate text-sm ${conversacion.unread_count > 0 ? "font-semibold text-foreground" : "font-medium text-foreground"}`}>{nombreDe(conversacion)}</span>
+                        <span className={`flex min-w-0 items-center gap-1.5 truncate text-sm ${conversacion.unread_count > 0 ? "font-semibold text-foreground" : "font-medium text-foreground"}`}>
+                          <MessageCircle size={13} className="flex-shrink-0 text-muted-foreground" aria-hidden="true" /> {nombreDe(conversacion)}
+                        </span>
                         <span className="flex-shrink-0 text-xs text-muted-foreground">{horaCorta.format(new Date(conversacion.last_message_at))}</span>
                       </div>
                       <div className="mt-0.5 flex items-center justify-between gap-2">
@@ -146,7 +211,44 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
           )}
         </SectionCard>
 
-        {actual ? (
+        {hiloActual ? (
+          <SectionCard title={hiloActual.nombre} description={`${hiloActual.direccion} · correo${buzon ? ` · desde ${buzon.address}` : " · la clínica todavía no tiene buzón: los envíos se simulan en la demostración"}`}>
+            <div className="flex max-h-[60vh] flex-col gap-3 overflow-y-auto px-4 py-3">
+              {[...hiloActual.entrantes.map((correo) => ({ id: correo.id, saliente: false, cuando: correo.received_at, asunto: correo.subject, texto: correo.body_text, estado: "", messageId: correo.message_id })),
+                ...hiloActual.salientes.map((correo) => ({ id: correo.id, saliente: true, cuando: correo.enviado_at ?? correo.created_at, asunto: correo.asunto ?? "", texto: correo.cuerpo ?? "", estado: correo.proveedor === "simulado" ? "simulado" : correo.estado, messageId: null }))]
+                .sort((a, b) => a.cuando.localeCompare(b.cuando))
+                .map((correo) => (
+                  <div key={correo.id} className={`flex ${correo.saliente ? "justify-end" : "justify-start"}`}>
+                    <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${correo.saliente ? "bg-primary text-primary-foreground" : "bg-surface-muted text-foreground"}`}>
+                      {correo.asunto && <p className="font-medium">{correo.asunto}</p>}
+                      <p className="whitespace-pre-wrap">{correo.texto.length > 1500 ? `${correo.texto.slice(0, 1500)}…` : correo.texto}</p>
+                      <p className={`mt-1 text-[11px] ${correo.saliente ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
+                        {cuando.format(new Date(correo.cuando))}
+                        {correo.estado ? ` · ${correo.estado}` : ""}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+            </div>
+            <form action={responderCorreo} className="space-y-2 border-t border-border px-4 py-3">
+              <input type="hidden" name="cuenta_id" value={hiloActual.company_id} />
+              <input type="hidden" name="in_reply_to" value={hiloActual.entrantes[0]?.message_id ?? ""} />
+              <input
+                name="asunto"
+                defaultValue={hiloActual.asunto ? (hiloActual.asunto.toLowerCase().startsWith("re:") ? hiloActual.asunto : `Re: ${hiloActual.asunto}`) : ""}
+                placeholder="Asunto"
+                maxLength={300}
+                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+              />
+              <div className="flex items-end gap-2">
+                <textarea name="texto" required rows={3} maxLength={5000} placeholder={`Responder a ${hiloActual.nombre.split(" ")[0]}…`} className="min-h-[60px] flex-1 resize-y rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-primary" />
+                <SubmitButton pendingLabel="Enviando…">
+                  <Send size={16} aria-hidden="true" /> Enviar
+                </SubmitButton>
+              </div>
+            </form>
+          </SectionCard>
+        ) : actual ? (
           <div className="grid gap-4 lg:grid-cols-[1fr_260px]">
             <SectionCard title={nombreDe(actual)} description={`${actual.contact_phone}${actual.last_inbound_at ? ` · última respuesta ${cuando.format(new Date(actual.last_inbound_at))}` : " · todavía no responde"}`}>
               <div className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto px-4 py-3">

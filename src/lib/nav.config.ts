@@ -320,7 +320,7 @@ const WORKSPACE_SECTIONS: Record<AppRole, { id: string; label?: string; itemIds:
     { id: "control-home", itemIds: ["inicio"] },
     { id: "control-operation", label: "Control diario", itemIds: ["operacion", "agenda-clinica", "pacientes", "caja", "recordatorios", "ventas", "correo", "registros"] },
     { id: "control-results", label: "Revisión", itemIds: ["conversaciones", "conversaciones-clinica", "reportes", "calidad"] },
-    { id: "admin-operation", label: "Configuración", itemIds: ["aranceles", "insumos", "campanas", "colas", "flujos", "estados-agente", "cargas"] },
+    { id: "admin-operation", label: "Configuración", itemIds: ["aranceles", "insumos", "correo-clinica", "campanas", "colas", "flujos", "estados-agente", "cargas"] },
     { id: "admin-platform", label: "Plataforma", itemIds: ["empresas", "usuarios", "extensiones", "integraciones"] },
   ],
   supervisor: [
@@ -387,6 +387,17 @@ const ADMIN: NavSpace = {
           roles: ["admin"],
           description: "Arancel de la clínica: procedimientos, urgencias, precios y duración",
           modules: ["ventas_b2c"],
+        },
+        {
+          id: "correo-clinica",
+          label: "Correo de la clínica",
+          href: "/dashboard/admin/correo",
+          icon: Mail,
+          roles: ["admin"],
+          description: "El buzón desde el que la clínica lee y responde correos",
+          match: ["/dashboard/admin/correo"],
+          modules: ["ventas_b2c"],
+          ediciones: ["dental", "vet"],
         },
         {
           id: "insumos",
