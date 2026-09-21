@@ -10,8 +10,8 @@ import { createClient } from "@/lib/supabase/server";
 /*
  * Atenciones y arancel.
  *
- * Registrar una atención pasa por `registrar_atencion`, que en una transacción
- * guarda la atención, actualiza el odontograma si el procedimiento lo cambia y
+ * Una visita pasa por `registrar_atenciones`, que en una transacción guarda
+ * cada procedimiento con sus materiales, actualiza el odontograma si el procedimiento lo cambia y
  * deja la línea en la historia de la ficha. El arancel se edita con la sesión
  * de quien administra: la seguridad por fila decide la empresa.
  */
@@ -29,16 +29,9 @@ function monto(formData: FormData, campo: string): number | null {
   return bruto === "" ? null : Number(bruto);
 }
 
-/** Los materiales vienen como JSON desde el formulario; ausentes = la receta. */
-function materiales(formData: FormData) {
-  const bruto = formData.get("insumos");
-  if (bruto === null) return null;
-  let lista: unknown;
-  try {
-    lista = JSON.parse(String(bruto));
-  } catch {
-    throw new Error("Materiales inválidos.");
-  }
+/** Valida la lista de materiales usados; ausente = la receta del procedimiento. */
+function validarMateriales(lista: unknown) {
+  if (lista === undefined || lista === null) return null;
   if (!Array.isArray(lista) || lista.length > 60) throw new Error("Materiales inválidos.");
   return lista.map((item) => {
     const { insumo_id, cantidad, cobrar } = (item ?? {}) as Record<string, unknown>;
@@ -50,28 +43,50 @@ function materiales(formData: FormData) {
   });
 }
 
-export async function registrarAtencion(formData: FormData) {
+/**
+ * Una visita con varios procedimientos: cada línea con su pieza, superficies,
+ * precio y materiales. Se registran juntas en una transacción.
+ */
+export async function registrarAtenciones(formData: FormData) {
   await requireProfile(["admin", "supervisor"]);
   const cuenta = texto(formData, "cuenta_id") ?? "";
-  const producto = texto(formData, "producto_id") ?? "";
   const mascota = texto(formData, "mascota_id");
   const fecha = texto(formData, "fecha");
-  const piezaTexto = texto(formData, "pieza");
-  const pieza = piezaTexto ? piezaPorNumero(Number(piezaTexto)) : null;
-
   if (!UUID.test(cuenta)) throw new Error("Ficha inválida.");
-  if (!UUID.test(producto)) throw new Error("Elige el procedimiento.");
   if (mascota && !UUID.test(mascota)) throw new Error("Mascota inválida.");
-  if (piezaTexto && !pieza) throw new Error("Pieza inválida.");
   if (fecha && !FECHA.test(fecha)) throw new Error("Fecha inválida.");
 
+  let lineas: unknown;
+  try {
+    lineas = JSON.parse(String(formData.get("lineas") ?? "[]"));
+  } catch {
+    throw new Error("Procedimientos inválidos.");
+  }
+  if (!Array.isArray(lineas) || lineas.length === 0) throw new Error("Agrega al menos un procedimiento.");
+  if (lineas.length > 40) throw new Error("Demasiados procedimientos en una sola atención.");
+
+  const items = lineas.map((linea) => {
+    const { producto_id, precio, pieza, superficies, insumos } = (linea ?? {}) as Record<string, unknown>;
+    if (typeof producto_id !== "string" || !UUID.test(producto_id)) throw new Error("Procedimiento inválido.");
+    const numeroPieza = pieza === null || pieza === undefined || pieza === "" ? null : Number(pieza);
+    if (numeroPieza !== null && !piezaPorNumero(numeroPieza)) throw new Error(`La pieza ${String(pieza)} no existe.`);
+    const monto = precio === null || precio === undefined || precio === "" ? null : Number(precio);
+    if (monto !== null && (!Number.isFinite(monto) || monto < 0 || monto > 1_000_000_000)) throw new Error("Revisa los precios.");
+    return {
+      producto_id,
+      precio: monto === null ? null : Math.round(monto),
+      pieza: numeroPieza,
+      superficies: Array.isArray(superficies)
+        ? superficies.map(String).filter((valor) => (SUPERFICIES as readonly string[]).includes(valor))
+        : [],
+      insumos: validarMateriales(insumos),
+    };
+  });
+
   const supabase = await createClient();
-  const { error } = await supabase.rpc("registrar_atencion", {
+  const { error } = await supabase.rpc("registrar_atenciones", {
     p_cuenta: cuenta,
-    p_producto: producto,
-    p_precio: monto(formData, "precio"),
-    p_pieza: pieza?.numero ?? null,
-    p_superficies: formData.getAll("superficies").map(String).filter((valor) => (SUPERFICIES as readonly string[]).includes(valor)),
+    p_items: items,
     p_mascota: mascota,
     p_region: texto(formData, "region", 80),
     p_profesional: texto(formData, "profesional", 120),
@@ -79,7 +94,6 @@ export async function registrarAtencion(formData: FormData) {
     p_fecha: fecha,
     p_actualizar_odontograma: formData.get("actualizar_odontograma") !== "no",
     p_pagado: formData.get("pagado") === "si",
-    p_insumos: materiales(formData),
   });
   if (error) throw new Error(error.message);
   revalidatePath(`/dashboard/pacientes/${cuenta}`);
