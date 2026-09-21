@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { unstable_noStore as noStore } from "next/cache";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Check, CheckCheck, ChevronLeft, ChevronRight, Clock, XCircle } from "lucide-react";
 
 import { agendarCita, cambiarEstadoCita } from "@/app/actions/citas";
 import { CreatePanel } from "@/components/create-panel";
@@ -33,7 +33,9 @@ import { createClient } from "@/lib/supabase/server";
 
 const HORA_APERTURA = 8;
 const HORA_CIERRE = 20;
-const ALTO_MEDIA_HORA = 44;
+const ALTO_MEDIA_HORA = 36;
+const ANCHO_COLUMNA = 240;
+const ANCHO_HORAS = 56;
 const DURACIONES = [15, 20, 30, 45, 60, 90];
 
 const fechaLarga = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, weekday: "long", day: "numeric", month: "long" });
@@ -217,36 +219,51 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       {profesionales.length === 0 ? (
         <EmptyState title="Todavía no hay profesionales" description="La agenda se arma por profesional. Registra la primera atención y aparecerá acá, o pídenos que los carguemos." />
       ) : (
-        <SectionCard title="Por profesional" description="Cada columna es una agenda. Lo cancelado y quien no vino quedan en gris y liberan la hora.">
-          <div className="overflow-x-auto">
-            <div className="min-w-[640px]">
-              <div className="grid" style={{ gridTemplateColumns: `56px repeat(${profesionales.length}, minmax(180px, 1fr))` }}>
-                <div />
-                {profesionales.map((profesional) => (
-                  <div key={profesional.id} className="flex items-center gap-2 border-b border-border px-3 py-2 text-sm font-medium text-foreground">
-                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: profesional.color }} aria-hidden="true" />
-                    {profesional.nombre}
-                    <span className="ml-auto text-xs font-normal text-muted-foreground">
-                      {activas.filter((cita) => cita.profesional_id === profesional.id).length}
-                    </span>
-                  </div>
-                ))}
+        <SectionCard
+          title="Por profesional"
+          description={`${profesionales.length} ${profesionales.length === 1 ? "agenda" : "agendas"} · ${HORA_APERTURA}:00 a ${HORA_CIERRE}:00. Lo cancelado y quien no vino quedan en gris y liberan la hora.`}
+        >
+          <div className="relative max-h-[70vh] overflow-auto">
+            <div className="w-max min-w-full">
+              {/* Cabecera fija: una columna por profesional. */}
+              <div className="sticky top-0 z-20 flex border-b border-border bg-surface" style={{ paddingLeft: ANCHO_HORAS }}>
+                {profesionales.map((profesional) => {
+                  const propias = activas.filter((cita) => cita.profesional_id === profesional.id);
+                  const iniciales = profesional.nombre.replace(/^Dra?\.\s*/i, "").split(" ").slice(0, 2).map((parte) => parte[0]).join("").toUpperCase();
+                  return (
+                    <div key={profesional.id} className="flex items-center gap-2 border-l border-border px-3 py-2" style={{ width: ANCHO_COLUMNA }}>
+                      <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-white" style={{ backgroundColor: profesional.color }} aria-hidden="true">
+                        {iniciales}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-foreground">{profesional.nombre}</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {propias.length} {propias.length === 1 ? "cita" : "citas"}
+                          {propias.filter((cita) => cita.estado === "reservada").length ? ` · ${propias.filter((cita) => cita.estado === "reservada").length} sin confirmar` : ""}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-              <div className="relative grid" style={{ gridTemplateColumns: `56px repeat(${profesionales.length}, minmax(180px, 1fr))`, height: altoGrilla }}>
-                <div className="relative">
+
+              <div className="relative flex" style={{ height: altoGrilla }}>
+                {/* Horas, fijas a la izquierda. */}
+                <div className="sticky left-0 z-10 flex-shrink-0 bg-surface" style={{ width: ANCHO_HORAS }}>
                   {Array.from({ length: filas }).map((_, fila) => (
                     <div key={fila} className="absolute right-2 text-[11px] tabular-nums text-muted-foreground" style={{ top: fila * ALTO_MEDIA_HORA - 7 }}>
                       {fila % 2 === 0 ? `${String(HORA_APERTURA + fila / 2).padStart(2, "0")}:00` : ""}
                     </div>
                   ))}
                 </div>
+
                 {profesionales.map((profesional) => (
-                  <div key={profesional.id} className="relative border-l border-border">
+                  <div key={profesional.id} className="relative flex-shrink-0 border-l border-border" style={{ width: ANCHO_COLUMNA }}>
                     {Array.from({ length: filas }).map((_, fila) => (
                       <div
                         key={fila}
-                        className={`absolute inset-x-0 border-t ${fila % 2 === 0 ? "border-border" : "border-border/40"}`}
-                        style={{ top: fila * ALTO_MEDIA_HORA }}
+                        className={`absolute inset-x-0 border-t ${fila % 2 === 0 ? "border-border" : "border-border/40"} ${fila % 2 === 0 ? "" : "bg-surface-muted/20"}`}
+                        style={{ top: fila * ALTO_MEDIA_HORA, height: ALTO_MEDIA_HORA }}
                         aria-hidden="true"
                       />
                     ))}
@@ -254,33 +271,50 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
                       .filter((cita) => cita.profesional_id === profesional.id)
                       .map((cita) => {
                         const top = posicion(cita.inicio);
-                        const alto = Math.max(ALTO_MEDIA_HORA * 0.9, posicion(cita.fin) - top);
+                        const alto = Math.max(ALTO_MEDIA_HORA - 2, posicion(cita.fin) - top);
                         const activa = ocupaHorario(cita.estado);
                         const etiqueta = ETIQUETA_ESTADO[cita.estado];
+                        const Icono = cita.estado === "atendida" ? CheckCheck : cita.estado === "confirmada" ? Check : cita.estado === "en_sala" ? Clock : !activa ? XCircle : null;
+                        const compacta = alto < ALTO_MEDIA_HORA * 1.4;
                         return (
                           <Link
                             key={cita.id}
                             href={`/dashboard/pacientes/${cita.cuenta_id}`}
-                            title={`${hora.format(new Date(cita.inicio))} · ${quien(cita)} · ${cita.motivo} · ${etiqueta.label}`}
-                            className={`absolute inset-x-1 overflow-hidden rounded-md border-l-4 px-2 py-1 text-xs leading-tight transition-shadow hover:shadow-md ${
-                              activa ? "text-foreground" : "text-muted-foreground line-through opacity-60"
-                            } ${cita.estado === "en_sala" ? "ring-2 ring-warning" : ""}`}
-                            style={{ top: top + 2, height: alto - 4, borderLeftColor: profesional.color, backgroundColor: `${profesional.color}${activa ? "22" : "0d"}` }}
+                            title={`${hora.format(new Date(cita.inicio))}–${hora.format(new Date(cita.fin))} · ${quien(cita)} · ${cita.motivo} · ${etiqueta.label}`}
+                            className={`absolute left-1 right-1 overflow-hidden rounded-md border text-xs leading-tight shadow-sm transition-shadow hover:shadow-md ${
+                              activa ? "border-transparent text-foreground" : "border-dashed border-border bg-surface text-muted-foreground line-through opacity-70"
+                            } ${cita.estado === "en_sala" ? "ring-2 ring-warning ring-offset-1" : ""}`}
+                            style={{ top: top + 1, height: alto - 2, backgroundColor: activa ? `${profesional.color}1f` : undefined, borderLeft: `3px solid ${activa ? profesional.color : "var(--border)"}` }}
                           >
-                            <span className="font-medium tabular-nums">{hora.format(new Date(cita.inicio))}</span> {quien(cita)}
-                            <span className="block truncate text-muted-foreground">{cita.motivo}</span>
+                            <div className={`flex items-start gap-1 px-2 ${compacta ? "py-0.5" : "py-1"}`}>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate">
+                                  <span className="font-semibold tabular-nums">{hora.format(new Date(cita.inicio))}</span> <span className="font-medium">{quien(cita)}</span>
+                                </p>
+                                {!compacta && <p className="truncate text-muted-foreground">{cita.motivo}</p>}
+                              </div>
+                              {Icono && <Icono size={12} className={`mt-0.5 flex-shrink-0 ${cita.estado === "atendida" ? "text-success" : cita.estado === "en_sala" ? "text-warning" : "text-muted-foreground"}`} aria-hidden="true" />}
+                            </div>
                           </Link>
                         );
                       })}
                   </div>
                 ))}
+
                 {lineaAhora !== null && (
-                  <div className="pointer-events-none absolute inset-x-0 z-10 border-t-2 border-danger" style={{ top: lineaAhora }} aria-hidden="true">
-                    <span className="absolute -top-2 left-1 h-3 w-3 rounded-full bg-danger" />
+                  <div className="pointer-events-none absolute z-10 border-t-2 border-danger" style={{ top: lineaAhora, left: ANCHO_HORAS, right: 0 }} aria-hidden="true">
+                    <span className="absolute -left-1.5 -top-[5px] h-2 w-2 rounded-full bg-danger" />
                   </div>
                 )}
               </div>
             </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border px-4 py-2 text-[11px] text-muted-foreground">
+            <span className="inline-flex items-center gap-1"><Check size={12} aria-hidden="true" /> confirmada</span>
+            <span className="inline-flex items-center gap-1"><Clock size={12} className="text-warning" aria-hidden="true" /> en sala</span>
+            <span className="inline-flex items-center gap-1"><CheckCheck size={12} className="text-success" aria-hidden="true" /> atendida</span>
+            <span className="inline-flex items-center gap-1"><XCircle size={12} aria-hidden="true" /> no vino o cancelada</span>
+            <span>Sin icono: reservada, falta confirmar</span>
           </div>
         </SectionCard>
       )}
