@@ -3,9 +3,10 @@ import { unstable_noStore as noStore } from "next/cache";
 import { headers } from "next/headers";
 import { Copy, MessageCircle } from "lucide-react";
 
+import { enviarMensaje } from "@/app/actions/mensajes";
 import { cobrarEnLinea, registrarPago } from "@/app/actions/pagos";
 import { Badge, Callout, EmptyState, Input, NavTabs, PageHeader, SectionCard, Select, SubmitButton, buttonClasses } from "@/components/ui";
-import { ZONA_CLINICA, enlaceWhatsApp, fechaEnChile } from "@/lib/citas";
+import { ZONA_CLINICA, fechaEnChile } from "@/lib/citas";
 import { PACIENTES_POR_EDICION, VENTAS_POR_EDICION } from "@/lib/ediciones";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
 import { ETIQUETA_ESTADO_PAGO, ETIQUETA_MEDIO, MEDIOS_EN_CAJA, type EstadoPago, type MedioDePago } from "@/lib/pagos/medios";
@@ -96,9 +97,9 @@ export default async function CajaPage({ searchParams }: { searchParams: Promise
 
   const pagoCompartir = (pagoEnlace as unknown as Pago | null) ?? null;
   const urlEnlace = pagoCompartir ? `${origen}/pagar/${pagoCompartir.id}` : null;
-  const mensajeEnlace = pagoCompartir
-    ? `Hola ${primerNombre(primero(pagoCompartir.sales_companies)?.name ?? "")}, te dejamos el enlace para pagar ${pesos.format(Number(pagoCompartir.monto))} en ${empresa ?? "la clínica"}: ${urlEnlace}`
-    : "";
+  const variablesEnlace = pagoCompartir
+    ? { nombre: primerNombre(primero(pagoCompartir.sales_companies)?.name ?? ""), monto: pesos.format(Number(pagoCompartir.monto)), clinica: empresa ?? "la clínica", url: urlEnlace }
+    : null;
 
   return (
     <div className="space-y-5">
@@ -115,9 +116,18 @@ export default async function CajaPage({ searchParams }: { searchParams: Promise
           <p className="mb-2 font-medium">{pagoCompartir.estado === "pagado" ? "Este enlace ya fue pagado" : "Enlace de pago listo para enviar"}</p>
           <div className="flex flex-wrap items-center gap-2">
             <code className="rounded bg-surface-muted px-2 py-1 text-xs">{urlEnlace}</code>
-            <a href={enlaceWhatsApp(primero(pagoCompartir.sales_companies)?.phone, mensajeEnlace) ?? "#"} target="_blank" rel="noreferrer" className={buttonClasses({ size: "sm" })}>
-              <MessageCircle size={14} aria-hidden="true" /> Enviar por WhatsApp
-            </a>
+            {variablesEnlace && pagoCompartir.estado === "pendiente" && (
+              <form action={enviarMensaje}>
+                <input type="hidden" name="cuenta_id" value={pagoCompartir.cuenta_id} />
+                <input type="hidden" name="plantilla" value="enlace_pago" />
+                <input type="hidden" name="regla" value="enlace_pago" />
+                <input type="hidden" name="origen_ref" value={pagoCompartir.id} />
+                <input type="hidden" name="variables" value={JSON.stringify(variablesEnlace)} />
+                <SubmitButton size="sm" pendingLabel="Enviando…">
+                  <MessageCircle size={14} aria-hidden="true" /> Enviar por WhatsApp desde Atlas
+                </SubmitButton>
+              </form>
+            )}
             <Link href={urlEnlace} target="_blank" className={buttonClasses({ variant: "secondary", size: "sm" })}>
               <Copy size={14} aria-hidden="true" /> Abrir
             </Link>

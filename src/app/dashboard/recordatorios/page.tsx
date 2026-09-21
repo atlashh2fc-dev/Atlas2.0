@@ -1,46 +1,99 @@
 import Link from "next/link";
 import { unstable_noStore as noStore } from "next/cache";
-import { MessageCircle } from "lucide-react";
+import { Send } from "lucide-react";
 
 import { cambiarEstadoCita } from "@/app/actions/citas";
-import { Badge, EmptyState, PageHeader, SectionCard, SubmitButton, buttonClasses } from "@/components/ui";
-import { ZONA_CLINICA, enlaceWhatsApp, fechaEnChile, instanteEnChile, primero, sumarDias, type Cita } from "@/lib/citas";
+import { cancelarMensaje, despacharAhora, enviarMensaje, reintentarMensaje } from "@/app/actions/mensajes";
+import { Badge, Callout, EmptyState, PageHeader, SectionCard, SubmitButton, buttonClasses } from "@/components/ui";
+import { ZONA_CLINICA, fechaEnChile, instanteEnChile, primero, sumarDias, type Cita } from "@/lib/citas";
 import { PACIENTES_POR_EDICION, VENTAS_POR_EDICION } from "@/lib/ediciones";
 import { estadoVacuna } from "@/lib/mascotas";
+import { ETIQUETA_ESTADO_MENSAJE, ETIQUETA_REGLA, PLANTILLAS, renderizarPlantilla, type ClavePlantilla, type EstadoMensaje } from "@/lib/mensajes/plantillas";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
 import { createClient } from "@/lib/supabase/server";
 
 /**
- * A quién hay que contactar hoy.
+ * Recordatorios: a quién le escribe Atlas hoy, y qué pasó con lo que escribió.
  *
- * No es un embudo: es la bandeja de la recepción. Cada bloque nace de los
- * datos que ya existen (citas, vacunas, presupuestos, atenciones) y cada fila
- * trae el mensaje listo para WhatsApp. Cuando la clínica active el envío
- * automático, estas mismas listas son las que saldrán solas.
+ * No es un embudo ni una lista para llamar: es la cola de mensajes de la
+ * clínica. Las reglas (cita de mañana, vacuna, presupuesto sin respuesta,
+ * control pendiente) programan los mensajes solas cada día; acá se ve lo
+ * que salió, si llegó y si respondieron, y se puede adelantar cualquiera
+ * con un clic. Todo sale por el WhatsApp de la clínica, desde Atlas.
  */
 
 const DIA = 24 * 60 * 60 * 1000;
 const hora = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 const fecha = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, day: "2-digit", month: "short" });
+const fechaHora = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 const pesos = new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 });
 
 function primerNombre(nombre: string): string {
   return nombre.split(" ")[0] ?? nombre;
 }
 
-function WhatsApp({ telefono, mensaje }: { telefono: string | null | undefined; mensaje: string }) {
-  const enlace = enlaceWhatsApp(telefono, mensaje);
-  if (!enlace) return <span className="text-xs text-muted-foreground">Sin celular</span>;
-  return (
-    <a href={enlace} target="_blank" rel="noreferrer" className={buttonClasses({ variant: "secondary", size: "sm" })}>
-      <MessageCircle size={14} aria-hidden="true" /> WhatsApp
-    </a>
-  );
-}
+type Mensaje = {
+  id: string;
+  cuenta_id: string | null;
+  nombre_destinatario: string | null;
+  destinatario: string;
+  regla: string;
+  origen_ref: string | null;
+  plantilla: string;
+  variables: Record<string, unknown>;
+  cuerpo: string | null;
+  estado: EstadoMensaje;
+  proveedor: string | null;
+  error: string | null;
+  programado_para: string;
+  enviado_at: string | null;
+  created_at: string;
+};
 
 type Vacuna = { id: string; nombre: string; especie: string; proxima_vacuna: string | null; sales_companies: { id: string; name: string; phone: string | null } | { id: string; name: string; phone: string | null }[] | null };
 type Presupuesto = { id: string; name: string; next_action_at: string | null; one_time_amount: number | null; company_id: string; sales_companies: { name: string; phone: string | null } | { name: string; phone: string | null }[] | null };
 type Cuenta = { id: string; name: string; phone: string | null; atenciones: { fecha: string }[] | null };
+
+/** El botón "Enviar por Atlas": programa el mensaje y lo despacha al tiro. */
+function Enviar({
+  cuenta,
+  plantilla,
+  regla,
+  origen,
+  variables,
+  ultimo,
+}: {
+  cuenta: string;
+  plantilla: ClavePlantilla;
+  regla: string;
+  origen: string;
+  variables: Record<string, unknown>;
+  ultimo?: Mensaje;
+}) {
+  const etiqueta = ultimo ? ETIQUETA_ESTADO_MENSAJE[ultimo.estado] : null;
+  const yaSalio = ultimo && !["fallido", "cancelado"].includes(ultimo.estado);
+  return (
+    <div className="flex items-center gap-2">
+      {etiqueta && ultimo && (
+        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" title={ultimo.cuerpo ?? ""}>
+          <Badge tone={etiqueta.tone}>{etiqueta.label}</Badge>
+          {ultimo.enviado_at ? fechaHora.format(new Date(ultimo.enviado_at)) : ""}
+          {ultimo.proveedor === "simulado" && " · simulado"}
+        </span>
+      )}
+      <form action={enviarMensaje} title={renderizarPlantilla(plantilla, variables)}>
+        <input type="hidden" name="cuenta_id" value={cuenta} />
+        <input type="hidden" name="plantilla" value={plantilla} />
+        <input type="hidden" name="regla" value={regla} />
+        <input type="hidden" name="origen_ref" value={origen} />
+        <input type="hidden" name="variables" value={JSON.stringify(variables)} />
+        <SubmitButton size="sm" variant={yaSalio ? "ghost" : "secondary"} pendingLabel="Enviando…">
+          <Send size={14} aria-hidden="true" /> {yaSalio ? "Reenviar" : "Enviar por Atlas"}
+        </SubmitButton>
+      </form>
+    </div>
+  );
+}
 
 export default async function RecordatoriosPage() {
   noStore();
@@ -56,11 +109,11 @@ export default async function RecordatoriosPage() {
   const corteInactivos = sumarDias(hoy, -30 * mesesSinVenir);
 
   const supabase = await createClient();
-  const [{ data: citasData }, { data: vacunasData }, { data: presupuestosData }, { data: cuentasData }] = await Promise.all([
+  const [{ data: citasData }, { data: vacunasData }, { data: presupuestosData }, { data: cuentasData }, { data: mensajesData }, { data: canal }] = await Promise.all([
     supabase
       .from("citas")
       .select("id, cuenta_id, mascota_id, profesional_id, inicio, fin, motivo, estado, nota, sales_companies(name, phone), mascotas(nombre, especie), profesionales(nombre)")
-      .eq("estado", "reservada")
+      .in("estado", ["reservada", "confirmada"])
       .gte("inicio", instanteEnChile(manana, "00:00").toISOString())
       .lt("inicio", instanteEnChile(sumarDias(manana, 1), "00:00").toISOString())
       .order("inicio"),
@@ -88,6 +141,13 @@ export default async function RecordatoriosPage() {
       .limit(1, { referencedTable: "atenciones" })
       .order("name")
       .limit(600),
+    supabase
+      .from("mensajes_salientes")
+      .select("id, cuenta_id, nombre_destinatario, destinatario, regla, origen_ref, plantilla, variables, cuerpo, estado, proveedor, error, programado_para, enviado_at, created_at")
+      .gte("created_at", new Date(ahora.getTime() - 14 * DIA).toISOString())
+      .order("created_at", { ascending: false })
+      .limit(400),
+    supabase.from("whatsapp_channels").select("status, display_phone_number").order("created_at").limit(1).maybeSingle(),
   ]);
 
   const citas = (citasData ?? []) as unknown as (Cita & { profesionales: { nombre: string } | { nombre: string }[] | null })[];
@@ -101,31 +161,76 @@ export default async function RecordatoriosPage() {
     .filter((cuenta) => cuenta.ultima !== null && cuenta.ultima < corteInactivos)
     .sort((a, b) => (a.ultima ?? "").localeCompare(b.ultima ?? ""))
     .slice(0, 40);
+  const mensajes = (mensajesData ?? []) as unknown as Mensaje[];
 
+  // El último mensaje por lo que lo motivó: la cita, la mascota, el presupuesto o la ficha.
+  const ultimoPor = new Map<string, Mensaje>();
+  for (const mensaje of mensajes) {
+    const clave = `${mensaje.regla}:${mensaje.origen_ref ?? ""}`;
+    if (!ultimoPor.has(clave)) ultimoPor.set(clave, mensaje);
+  }
+  const ultimo = (regla: string, origen: string) => ultimoPor.get(`${regla}:${origen}`);
+
+  const cuenta = (estado: EstadoMensaje) => mensajes.filter((mensaje) => mensaje.estado === estado).length;
+  const programados = cuenta("programado") + cuenta("enviando");
+  const entregados = cuenta("entregado") + cuenta("leido") + cuenta("respondido");
+  const fallidos = cuenta("fallido");
+  const respondidos = cuenta("respondido");
   const total = citas.length + vacunas.length + presupuestos.length + inactivos.length;
   const dias = (desde: string) => Math.floor((ahora.getTime() - new Date(desde).getTime()) / DIA);
+  const canalActivo = canal?.status === "active";
 
   return (
     <div className="space-y-5">
       <PageHeader
         title="Recordatorios"
-        description={`${total} ${total === 1 ? "contacto pendiente" : "contactos pendientes"}. Cada fila trae el mensaje listo; lo que confirmes o agendes desaparece de acá.`}
+        description={`${total} ${total === 1 ? "contacto pendiente" : "contactos pendientes"}. Las reglas programan los mensajes solas cada día; acá ves si llegaron y puedes adelantar cualquiera.`}
+        actions={
+          <form action={despacharAhora}>
+            <SubmitButton variant="secondary" pendingLabel="Enviando…">
+              <Send size={16} aria-hidden="true" /> Enviar pendientes{programados ? ` (${programados})` : ""}
+            </SubmitButton>
+          </form>
+        }
       />
 
-      <SectionCard
-        title={`Citas de mañana sin confirmar · ${citas.length}`}
-        description="Confirmar hoy evita la hora perdida de mañana. El mensaje pregunta si la persona viene."
-      >
+      {!canalActivo && (
+        <Callout tone="warning">
+          <p className="font-medium">El WhatsApp de {clinica} todavía no está conectado</p>
+          <p>
+            Los mensajes salen igual por la cola y quedan marcados como simulados en la demostración. Cuando conectes el canal en
+            Integraciones, saldrán de verdad por el número de la clínica y las respuestas caerán en Conversaciones.
+          </p>
+        </Callout>
+      )}
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: "Programados", valor: programados, detalle: "Salen en el próximo despacho" },
+          { label: "Entregados", valor: entregados, detalle: "Últimos 14 días" },
+          { label: "Respondieron", valor: respondidos, detalle: "Cayeron en Conversaciones" },
+          { label: "Fallidos", valor: fallidos, detalle: "Revisa el número o el canal" },
+        ].map((metrica) => (
+          <div key={metrica.label} className="rounded-xl border border-border bg-surface px-4 py-3">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">{metrica.label}</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{metrica.valor}</p>
+            <p className="text-xs text-muted-foreground">{metrica.detalle}</p>
+          </div>
+        ))}
+      </div>
+
+      <SectionCard title={`Citas de mañana · ${citas.length}`} description="A las sin confirmar se les pide confirmación; a las confirmadas, se les recuerda. El mensaje sale solo en la mañana; puedes adelantarlo.">
         {citas.length === 0 ? (
-          <EmptyState title="Todo confirmado para mañana" description="Las citas de mañana ya están confirmadas o no hay ninguna." />
+          <EmptyState title="Sin citas mañana" description="No hay citas reservadas ni confirmadas para mañana." />
         ) : (
           <ul className="divide-y divide-border">
             {citas.map((cita) => {
-              const cuenta = primero(cita.sales_companies);
+              const tutor = primero(cita.sales_companies);
               const mascota = primero(cita.mascotas);
               const profesional = primero(cita.profesionales)?.nombre ?? "";
-              const nombre = cuenta?.name ?? "—";
-              const mensaje = `Hola ${primerNombre(nombre)}, te recordamos ${mascota ? `la hora de ${mascota.nombre}` : "tu hora"} mañana a las ${hora.format(new Date(cita.inicio))} con ${profesional} en ${clinica} (${cita.motivo}). ¿Nos confirmas que vienes?`;
+              const nombre = tutor?.name ?? "—";
+              const plantilla: ClavePlantilla = cita.estado === "reservada" ? "cita_confirmar" : "cita_recordatorio";
+              const variables = { nombre: primerNombre(nombre), hora: hora.format(new Date(cita.inicio)), profesional, motivo: cita.motivo, mascota: mascota?.nombre ?? "", clinica };
               return (
                 <li key={cita.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                   <span className="w-14 tabular-nums text-foreground">{hora.format(new Date(cita.inicio))}</span>
@@ -134,17 +239,19 @@ export default async function RecordatoriosPage() {
                       {mascota ? `${mascota.nombre} · ${nombre}` : nombre}
                     </Link>
                     <p className="text-xs text-muted-foreground">
-                      {cita.motivo} · {profesional}
+                      {cita.motivo} · {profesional} · {cita.estado === "reservada" ? "sin confirmar" : "confirmada"}
                     </p>
                   </div>
-                  <WhatsApp telefono={cuenta?.phone} mensaje={mensaje} />
-                  <form action={cambiarEstadoCita}>
-                    <input type="hidden" name="cita_id" value={cita.id} />
-                    <input type="hidden" name="cuenta_id" value={cita.cuenta_id} />
-                    <input type="hidden" name="estado" value="confirmada" />
-                    <input type="hidden" name="volver" value="/dashboard/recordatorios" />
-                    <SubmitButton size="sm" pendingLabel="…">Confirmada</SubmitButton>
-                  </form>
+                  <Enviar cuenta={cita.cuenta_id} plantilla={plantilla} regla="cita_manana" origen={cita.id} variables={variables} ultimo={ultimo("cita_manana", cita.id)} />
+                  {cita.estado === "reservada" && (
+                    <form action={cambiarEstadoCita}>
+                      <input type="hidden" name="cita_id" value={cita.id} />
+                      <input type="hidden" name="cuenta_id" value={cita.cuenta_id} />
+                      <input type="hidden" name="estado" value="confirmada" />
+                      <input type="hidden" name="volver" value="/dashboard/recordatorios" />
+                      <SubmitButton size="sm" pendingLabel="…">Confirmada</SubmitButton>
+                    </form>
+                  )}
                 </li>
               );
             })}
@@ -153,10 +260,7 @@ export default async function RecordatoriosPage() {
       </SectionCard>
 
       {esVet && (
-        <SectionCard
-          title={`Vacunas vencidas o por vencer · ${vacunas.length}`}
-          description="Las de los próximos 30 días y las que ya vencieron. Agendar desde acá deja la hora tomada."
-        >
+        <SectionCard title={`Vacunas vencidas o por vencer · ${vacunas.length}`} description="Las de los próximos 30 días y las que ya vencieron. Una vez al mes por mascota, o cuando lo adelantes.">
           {vacunas.length === 0 ? (
             <EmptyState title="Vacunas al día" description="Ninguna mascota tiene la vacuna vencida ni por vencer en 30 días." />
           ) : (
@@ -164,7 +268,7 @@ export default async function RecordatoriosPage() {
               {vacunas.map((mascota) => {
                 const tutor = primero(mascota.sales_companies);
                 const estado = estadoVacuna(mascota.proxima_vacuna, ahora);
-                const mensaje = `Hola ${primerNombre(tutor?.name ?? "")}, la vacuna de ${mascota.nombre} ${estado === "vencida" ? "venció" : "vence"} el ${fecha.format(new Date(`${mascota.proxima_vacuna}T12:00:00`))}. ¿Agendamos una hora en ${clinica}?`;
+                const variables = { nombre: primerNombre(tutor?.name ?? ""), mascota: mascota.nombre, fecha: mascota.proxima_vacuna ? fecha.format(new Date(`${mascota.proxima_vacuna}T12:00:00`)) : "", vencida: estado === "vencida", clinica };
                 return (
                   <li key={mascota.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                     <Badge tone={estado === "vencida" ? "danger" : "warning"}>{estado === "vencida" ? "Vencida" : "Por vencer"}</Badge>
@@ -176,7 +280,7 @@ export default async function RecordatoriosPage() {
                         {mascota.especie} · vacuna {mascota.proxima_vacuna ? fecha.format(new Date(`${mascota.proxima_vacuna}T12:00:00`)) : "—"}
                       </p>
                     </div>
-                    <WhatsApp telefono={tutor?.phone} mensaje={mensaje} />
+                    {tutor && <Enviar cuenta={tutor.id} plantilla="vacuna" regla="vacuna" origen={mascota.id} variables={variables} ultimo={ultimo("vacuna", mascota.id)} />}
                     <Link href="/dashboard/citas" className={buttonClasses({ size: "sm" })}>
                       Agendar
                     </Link>
@@ -188,17 +292,14 @@ export default async function RecordatoriosPage() {
         </SectionCard>
       )}
 
-      <SectionCard
-        title={`${ventas.negocios} sin respuesta hace más de 7 días · ${presupuestos.length}`}
-        description={`${ventas.negocios} abiertos cuya próxima acción ya venció. Un mensaje corto suele destrabarlos.`}
-      >
+      <SectionCard title={`${ventas.negocios} sin respuesta hace más de 7 días · ${presupuestos.length}`} description={`${ventas.negocios} abiertos cuya próxima acción ya venció. Un mensaje a la semana hasta que respondan.`}>
         {presupuestos.length === 0 ? (
           <EmptyState title="Nada vencido" description={`Todos los ${ventas.negocios.toLowerCase()} abiertos tienen su próxima acción al día.`} />
         ) : (
           <ul className="divide-y divide-border">
             {presupuestos.map((presupuesto) => {
-              const cuenta = primero(presupuesto.sales_companies);
-              const mensaje = `Hola ${primerNombre(cuenta?.name ?? "")}, te escribimos de ${clinica} por el ${ventas.negocio.toLowerCase()} "${presupuesto.name}". ¿Te quedó alguna duda o quieres que agendemos?`;
+              const cuentaDe = primero(presupuesto.sales_companies);
+              const variables = { nombre: primerNombre(cuentaDe?.name ?? ""), presupuesto: presupuesto.name, monto: pesos.format(Number(presupuesto.one_time_amount ?? 0)), clinica };
               return (
                 <li key={presupuesto.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                   <Badge tone="warning">{dias(presupuesto.next_action_at as string)} días</Badge>
@@ -207,13 +308,10 @@ export default async function RecordatoriosPage() {
                       {presupuesto.name}
                     </Link>
                     <p className="text-xs text-muted-foreground">
-                      {cuenta?.name ?? "—"} · {pesos.format(Number(presupuesto.one_time_amount ?? 0))}
+                      {cuentaDe?.name ?? "—"} · {pesos.format(Number(presupuesto.one_time_amount ?? 0))}
                     </p>
                   </div>
-                  <WhatsApp telefono={cuenta?.phone} mensaje={mensaje} />
-                  <Link href={`/dashboard/pacientes/${presupuesto.company_id}`} className={buttonClasses({ variant: "secondary", size: "sm" })}>
-                    Ficha
-                  </Link>
+                  <Enviar cuenta={presupuesto.company_id} plantilla="presupuesto" regla="presupuesto" origen={presupuesto.id} variables={variables} ultimo={ultimo("presupuesto", presupuesto.id)} />
                 </li>
               );
             })}
@@ -221,32 +319,95 @@ export default async function RecordatoriosPage() {
         )}
       </SectionCard>
 
-      <SectionCard
-        title={`${voc.titulo} que no vuelven hace más de ${mesesSinVenir} meses · ${inactivos.length}`}
-        description={esVet ? "Un control anual es la visita que más se olvida y la que más recompra trae." : "El control semestral: la visita que mantiene la boca sana y la agenda llena."}
-      >
+      <SectionCard title={`${voc.titulo} que no vuelven hace más de ${mesesSinVenir} meses · ${inactivos.length}`} description={esVet ? "Un control anual es la visita que más se olvida y la que más recompra trae. Una vez al mes." : "El control semestral: la visita que mantiene la boca sana y la agenda llena. Una vez al mes."}>
         {inactivos.length === 0 ? (
           <EmptyState title="Nadie fuera de plazo" description="Todas las fichas con atenciones han vuelto dentro del plazo." />
         ) : (
           <ul className="divide-y divide-border">
-            {inactivos.map((cuenta) => {
-              const mensaje = `Hola ${primerNombre(cuenta.name)}, en ${clinica} notamos que ${esVet ? "hace un año no vemos a tu mascota" : "hace más de seis meses no vienes a control"}. ¿Agendamos una hora?`;
+            {inactivos.map((ficha) => {
+              const variables = { nombre: primerNombre(ficha.name), meses: mesesSinVenir, clinica };
               return (
-                <li key={cuenta.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                  <span className="w-24 text-xs text-muted-foreground">Última {cuenta.ultima ? fecha.format(new Date(`${cuenta.ultima}T12:00:00`)) : "—"}</span>
+                <li key={ficha.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                  <span className="w-24 text-xs text-muted-foreground">Última {ficha.ultima ? fecha.format(new Date(`${ficha.ultima}T12:00:00`)) : "—"}</span>
                   <div className="min-w-0 flex-1">
-                    <Link href={`/dashboard/pacientes/${cuenta.id}`} className="font-medium text-foreground hover:text-primary hover:underline">
-                      {cuenta.name}
+                    <Link href={`/dashboard/pacientes/${ficha.id}`} className="font-medium text-foreground hover:text-primary hover:underline">
+                      {ficha.name}
                     </Link>
                   </div>
-                  <WhatsApp telefono={cuenta.phone} mensaje={mensaje} />
-                  <Link href="/dashboard/citas" className={buttonClasses({ size: "sm" })}>
-                    Agendar
-                  </Link>
+                  <Enviar cuenta={ficha.id} plantilla="control" regla="control" origen={ficha.id} variables={variables} ultimo={ultimo("control", ficha.id)} />
                 </li>
               );
             })}
           </ul>
+        )}
+      </SectionCard>
+
+      <SectionCard title="Lo que Atlas escribió" description="Los últimos 14 días, del más reciente al más antiguo. Lo fallido se puede reintentar; lo programado, cancelar.">
+        {mensajes.length === 0 ? (
+          <EmptyState title="Todavía no sale nada" description="Los mensajes aparecen acá en cuanto una regla los programa o alguien los envía." />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+                  <th className="px-4 py-2 font-medium">Cuándo</th>
+                  <th className="px-3 py-2 font-medium">Para</th>
+                  <th className="px-3 py-2 font-medium">Motivo</th>
+                  <th className="px-3 py-2 font-medium">Mensaje</th>
+                  <th className="px-3 py-2 font-medium">Estado</th>
+                  <th className="px-4 py-2 font-medium text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {mensajes.slice(0, 80).map((mensaje) => {
+                  const etiqueta = ETIQUETA_ESTADO_MENSAJE[mensaje.estado];
+                  const cuerpo = mensaje.cuerpo ?? renderizarPlantilla(mensaje.plantilla, mensaje.variables ?? {});
+                  return (
+                    <tr key={mensaje.id} className="align-top">
+                      <td className="px-4 py-2.5 text-muted-foreground">{fechaHora.format(new Date(mensaje.enviado_at ?? mensaje.programado_para))}</td>
+                      <td className="px-3 py-2.5">
+                        {mensaje.cuenta_id ? (
+                          <Link href={`/dashboard/pacientes/${mensaje.cuenta_id}`} className="font-medium text-foreground hover:text-primary hover:underline">
+                            {mensaje.nombre_destinatario ?? mensaje.destinatario}
+                          </Link>
+                        ) : (
+                          mensaje.nombre_destinatario ?? mensaje.destinatario
+                        )}
+                        <p className="text-xs text-muted-foreground">{mensaje.destinatario}</p>
+                      </td>
+                      <td className="px-3 py-2.5 text-muted-foreground">{ETIQUETA_REGLA[mensaje.regla] ?? PLANTILLAS[mensaje.plantilla as ClavePlantilla]?.nombre ?? mensaje.regla}</td>
+                      <td className="max-w-md px-3 py-2.5 text-muted-foreground">
+                        <p className="line-clamp-2" title={cuerpo}>
+                          {cuerpo}
+                        </p>
+                        {mensaje.error && <p className="text-xs text-danger">{mensaje.error}</p>}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <Badge tone={etiqueta.tone}>{etiqueta.label}</Badge>
+                        {mensaje.proveedor === "simulado" && <p className="text-xs text-muted-foreground">simulado</p>}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex justify-end gap-1.5">
+                          {mensaje.estado === "fallido" && (
+                            <form action={reintentarMensaje}>
+                              <input type="hidden" name="mensaje_id" value={mensaje.id} />
+                              <SubmitButton size="sm" variant="secondary" pendingLabel="…">Reintentar</SubmitButton>
+                            </form>
+                          )}
+                          {(mensaje.estado === "programado" || mensaje.estado === "fallido") && (
+                            <form action={cancelarMensaje}>
+                              <input type="hidden" name="mensaje_id" value={mensaje.id} />
+                              <SubmitButton size="sm" variant="ghost" pendingLabel="…">Cancelar</SubmitButton>
+                            </form>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </SectionCard>
     </div>

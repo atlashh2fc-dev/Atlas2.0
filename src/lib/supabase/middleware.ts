@@ -40,6 +40,8 @@ const MACHINE_ONLY_PATHS = new Set([
   "/api/agentes/calificador",
   "/api/agentes/vigilante",
   "/api/agentes/vendedor",
+  // El despacho de mensajes lo despierta el cron con el mismo secreto.
+  "/api/mensajes/despachar",
 ]);
 
 /**
