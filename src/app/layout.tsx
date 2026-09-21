@@ -19,7 +19,7 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 
 export const metadata: Metadata = {
   title: "Atlas | CRM",
-  description: "Atlas — CRM para call center",
+  description: "Atlas — la suite CRM: leads, ventas, scoring, correo, contact center y WhatsApp en un solo lugar",
 };
 
 export default function RootLayout({

@@ -1,16 +1,25 @@
 import Image from "next/image";
 import type { ReactNode } from "react";
-import { Headset, ShieldCheck, PhoneCall } from "lucide-react";
+import { BarChart3, Mail, MessageCircle, PhoneCall, ShieldCheck, Sparkles, Target } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ServiceStatus } from "./service-status";
 
 const VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? "";
 const ENVIRONMENT = process.env.NEXT_PUBLIC_APP_ENV ?? "";
 
+/**
+ * Lo que la suite hace por la empresa, en el orden en que se vende: primero
+ * conseguir clientes, después atenderlos, al final medir. Cada punto es un
+ * módulo real del catálogo (`@/lib/modules`), no una promesa.
+ */
 const HIGHLIGHTS = [
-  { icon: PhoneCall, text: "Discador, agenda y ficha del cliente en una sola pantalla." },
-  { icon: Headset, text: "Cada llamada queda tipificada y trazada." },
-  { icon: ShieldCheck, text: "Acceso por rol: ves solo lo que te corresponde." },
+  { icon: Target, text: "Leads y ventas: cada registro repartido, seguido y cerrado en un solo embudo." },
+  { icon: Sparkles, text: "Scoring: completamos la base por RUT y la ordenamos por quién va a comprar." },
+  { icon: Mail, text: "Campañas de correo con audiencias, envíos, respuestas y rebotes bajo control." },
+  { icon: PhoneCall, text: "Contact center con discador, colas, grabaciones y calidad evaluada con IA." },
+  { icon: MessageCircle, text: "WhatsApp conversacional, con o sin agente de IA, en la misma ficha del cliente." },
+  { icon: BarChart3, text: "Tableros compartidos entre ventas, atención, soporte y finanzas." },
+  { icon: ShieldCheck, text: "Acceso por rol y por empresa: cada persona ve solo lo que le corresponde." },
 ];
 
 /**
@@ -48,7 +57,9 @@ export function AuthShell({
           {/* La barra azul es lo que ancla la marca: el panel es oscuro por
               contraste, pero el color corporativo sigue presente. */}
           <div className="mt-8 border-l-2 border-primary pl-4 lg:mt-12">
-            <p className="text-lg leading-snug lg:text-2xl">La consola de tu contact center</p>
+            <p className="text-lg leading-snug lg:text-2xl">
+              Un solo CRM para conseguir clientes, atenderlos y cobrarles
+            </p>
           </div>
 
           <ul className="mt-6 hidden space-y-3 lg:block">
