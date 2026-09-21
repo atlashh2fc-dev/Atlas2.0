@@ -183,6 +183,8 @@ test("direct media URL returns 403 for admin before querying messages or signing
   const route = loadModule("../src/app/api/conversaciones/whatsapp/mensajes/[id]/media/route.ts", {
     ...h.dependencies,
     "next/server": { NextResponse: { json: (body: unknown, init: unknown) => ({ body, ...init as object }) } },
+    // Un admin que no es el dueño de la plataforma no lee mensajes.
+    "@/lib/modules.server": { puedeLeerConversaciones: async (role: string) => role !== "admin" },
   });
   const response = await route.GET({} as never, { params: Promise.resolve({ id: conversationId }) } as never) as { status: number };
   assert.equal(response.status, 403);

@@ -10,6 +10,7 @@ import {
   Field,
   Input,
   PageHeader,
+  buttonClasses,
   SectionCard,
   Select,
   Table,
@@ -109,6 +110,11 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
   const mensual = voc.monto === "mensual";
   const monto = Number((mensual ? negocio.monthly_amount : negocio.one_time_amount) ?? 0);
   const detalle = detallePersona(empresa?.metadata);
+  // Escribir desde la ficha abre el correo o el WhatsApp de quien atiende; lo
+  // que se conversó se registra abajo, en "Registrar gestión".
+  const correo = contacto?.email ?? empresa?.email ?? null;
+  const telefono = (contacto?.phone ?? empresa?.phone ?? "").replace(/\D/g, "");
+  const whatsapp = telefono.length >= 11 ? telefono : null;
 
   return (
     <div className="space-y-5">
@@ -116,12 +122,32 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
         title={empresa?.name ?? voc.negocio}
         description={`${negocio.name} · ${formatoMonto(monto, mensual)}`}
         actions={
-          <Link
-            className="text-sm text-muted-foreground hover:text-foreground hover:underline"
-            href="/dashboard/ventas"
-          >
-            Volver a {voc.negocios.toLowerCase()}
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            {correo && (
+              <a
+                className={buttonClasses({ variant: "secondary", size: "sm" })}
+                href={`mailto:${correo}?subject=${encodeURIComponent(`${negocio.name}`)}`}
+              >
+                Escribir correo
+              </a>
+            )}
+            {whatsapp && (
+              <a
+                className={buttonClasses({ variant: "secondary", size: "sm" })}
+                href={`https://wa.me/${whatsapp}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                WhatsApp
+              </a>
+            )}
+            <Link
+              className="text-sm text-muted-foreground hover:text-foreground hover:underline"
+              href="/dashboard/ventas"
+            >
+              Volver a {voc.negocios.toLowerCase()}
+            </Link>
+          </div>
         }
       />
 

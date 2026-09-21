@@ -45,11 +45,11 @@ test("una ruta sin módulo responde 404, no 403", () => {
 
 test("el menú filtra por los módulos de la empresa activa", () => {
   assert.match(NAV, /function enLosModulos\(item: NavItem, modules\?: AppModule\[\]\)/);
-  assert.match(NAV, /visibleSections\(spaceId: NavSpaceId, role: AppRole, modules\?: AppModule\[\]\)/);
+  assert.match(NAV, /visibleSections\(\s*spaceId: NavSpaceId,\s*role: AppRole,\s*modules\?: AppModule\[\],/);
   // Sin respuesta todavía se muestra todo: el servidor igual cierra la página.
   assert.match(NAV, /if \(!modules \|\| !item\.modules\) return true;/);
-  assert.match(LAYOUT, /modulos: modules, empresas \} = await contextoDeMiEmpresa\(\);/);
-  assert.match(LAYOUT, /<Sidebar profile=\{profile\} badges=\{badges\} modules=\{modules\} edicion=\{edicion\} \/>/);
+  assert.match(LAYOUT, /modulos: modules, empresas, duenio \} = await contextoDeMiEmpresa\(\);/);
+  assert.match(LAYOUT, /<Sidebar profile=\{profile\} badges=\{badges\} modules=\{modules\} edicion=\{edicion\} duenio=\{duenio\} \/>/);
 });
 
 test("lo que es del call center queda marcado como tal", () => {

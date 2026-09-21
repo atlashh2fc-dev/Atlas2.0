@@ -136,7 +136,7 @@ test("administración redirige antes de consultar conversaciones y no hay selecc
   // antes que cualquier consulta de conversaciones de sus hijos.
   assert.match(
     attentionLayout,
-    /if \(!permissions\.canReadConversationContent\) redirect\("\/dashboard\/operacion"\)/,
+    /if \(!\(await puedeLeerConversaciones\(profile\.role\)\)\) redirect\("\/dashboard\/operacion"\)/,
   );
   assert.doesNotMatch(attentionLayout, /whatsapp_conversations/);
   assert.doesNotMatch(inbox, /conversations\[0\]/);

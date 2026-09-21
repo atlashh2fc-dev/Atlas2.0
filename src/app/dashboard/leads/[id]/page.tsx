@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
+import { puedeLeerConversaciones } from "@/lib/modules.server";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, CalendarClock, PencilLine, RefreshCw } from "lucide-react";
@@ -160,6 +161,7 @@ export default async function LeadDetailPage({
 }) {
   const profile = await requireProfile();
   const permissions = getWorkspacePermissions(profile.role);
+  const leeConversaciones = await puedeLeerConversaciones(profile.role);
   const { id } = await params;
   const { corregir, orquestado } = await searchParams;
   const correctionRequested = corregir === "1";
@@ -234,19 +236,19 @@ export default async function LeadDetailPage({
       .eq("lead_id", id)
       .order("occurred_at", { ascending: false, nullsFirst: false })
       .limit(30),
-    permissions.canReadConversationContent ? supabase
+    leeConversaciones ? supabase
       .from("whatsapp_messages")
       .select("id, direction, text_body, message_type, provider_timestamp, created_at, profiles(full_name), whatsapp_conversations!inner(lead_id)")
       .eq("whatsapp_conversations.lead_id", id)
       .order("provider_timestamp", { ascending: false, nullsFirst: false })
       .limit(30) : Promise.resolve({ data: [] }),
-    permissions.canReadConversationContent ? supabase
+    leeConversaciones ? supabase
       .from("lead_mail_messages")
       .select("id, direction, from_email, to_email, subject, body_text, occurred_at")
       .eq("lead_id", id)
       .order("occurred_at", { ascending: true })
       .limit(50) : Promise.resolve({ data: [] }),
-    permissions.canReadConversationContent ? supabase
+    leeConversaciones ? supabase
       .from("mail_reply_commands")
       .select("id, subject, body_text, status, last_error, created_at")
       .eq("lead_id", id)
@@ -388,7 +390,7 @@ export default async function LeadDetailPage({
       {!permissions.canAttendCustomers && (
         <Callout tone="info">
           Vista de consulta y control. La atención y la tipificación pertenecen al ejecutivo responsable.
-          {!permissions.canReadConversationContent && " El contenido de las conversaciones WhatsApp no se consulta desde Administración."}
+          {!leeConversaciones && " El contenido de las conversaciones WhatsApp no se consulta desde Administración."}
         </Callout>
       )}
 

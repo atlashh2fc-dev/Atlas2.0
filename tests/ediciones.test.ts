@@ -93,3 +93,25 @@ test("las demos no pueden escribirle a nadie ni dejar entrar a nadie", () => {
   assert.doesNotMatch(SEMBRADO, /insert into public\.whatsapp_ai_configs/);
   assert.doesNotMatch(SEMBRADO, /insert into public\.lead_external_refs/);
 });
+
+test("el dueño de la plataforma lee conversaciones; un admin cualquiera no", () => {
+  const NAV = leer("src/lib/nav.config.ts");
+  const SERVIDOR = leer("src/lib/modules.server.ts");
+  const POLITICA = leer(
+    `supabase/migrations/${readdirSync(new URL("../supabase/migrations", import.meta.url)).find((nombre) =>
+      nombre.endsWith("_el_duenio_lee_las_conversaciones.sql"),
+    )}`,
+  );
+  assert.match(NAV, /roles: \["agente", "supervisor"\],\s*\/\/[^\n]*\n\s*duenio: true,/);
+  assert.match(SERVIDOR, /canReadConversationContent\) return true;\s*return \(await contextoDeMiEmpresa\(\)\)\.duenio;/);
+  // Solo se abre la lectura: la migración no crea políticas de escritura.
+  assert.match(POLITICA, /\(select public\.is_platform_owner\(\)\)/);
+  assert.doesNotMatch(POLITICA, /for (insert|update|delete|all)/);
+});
+
+test("una clínica tiene su propio inicio y no manda a Operación", () => {
+  const INICIO = leer("src/app/dashboard/page.tsx");
+  const CLINICA = leer("src/components/inicio-clinica.tsx");
+  assert.match(INICIO, /if \(contexto\.edicion !== "center"\)/);
+  assert.doesNotMatch(CLINICA, /\/dashboard\/operacion/);
+});

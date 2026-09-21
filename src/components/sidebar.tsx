@@ -160,6 +160,7 @@ export function NavTree({
   badges,
   modules,
   edicion = "center",
+  duenio = false,
   onNavigate,
 }: {
   profile: Profile;
@@ -170,11 +171,13 @@ export function NavTree({
   modules?: AppModule[];
   /** En Dental y Vet, "Ventas" se llama como lo que venden: presupuestos o planes. */
   edicion?: Edicion;
+  /** El dueño de la plataforma ve además lo marcado `duenio` (Conversaciones). */
+  duenio?: boolean;
   onNavigate?: () => void;
 }) {
   const space = spaceForPath(pathname);
   const ventas = VENTAS_POR_EDICION[edicion];
-  const sections = visibleSections(space, profile.role, modules).map((section) => ({
+  const sections = visibleSections(space, profile.role, modules, duenio).map((section) => ({
     ...section,
     items: section.items.map((item) =>
       item.id === "ventas" && edicion !== "center"
@@ -289,11 +292,13 @@ export function Sidebar({
   badges,
   modules,
   edicion = "center",
+  duenio = false,
 }: {
   profile: Profile;
   badges?: NavBadgeCounts;
   modules?: AppModule[];
   edicion?: Edicion;
+  duenio?: boolean;
 }) {
   const pathname = usePathname();
   const [rail, setRail] = useState(false);
@@ -346,7 +351,7 @@ export function Sidebar({
       )}
 
       <nav className="flex-1 overflow-y-auto p-2">
-        <NavTree profile={profile} pathname={pathname} rail={rail} badges={badges} modules={modules} edicion={edicion} />
+        <NavTree profile={profile} pathname={pathname} rail={rail} badges={badges} modules={modules} edicion={edicion} duenio={duenio} />
       </nav>
 
       <NavFooter profile={profile} pathname={pathname} rail={rail} />

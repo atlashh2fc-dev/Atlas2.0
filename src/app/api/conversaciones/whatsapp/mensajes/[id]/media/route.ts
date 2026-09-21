@@ -4,7 +4,7 @@ import { captureWhatsAppMessageMedia } from "@/lib/whatsapp-media";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/auth";
-import { getWorkspacePermissions } from "@/lib/workspace-permissions";
+import { puedeLeerConversaciones } from "@/lib/modules.server";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -24,7 +24,7 @@ export async function GET(
 ) {
   const profile = await getCurrentProfile();
   if (!profile?.active) return error("Sesión no disponible.", 401);
-  if (!getWorkspacePermissions(profile.role).canReadConversationContent) {
+  if (!(await puedeLeerConversaciones(profile.role))) {
     return error("Tu perfil no permite consultar el contenido de conversaciones.", 403);
   }
 

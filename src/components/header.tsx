@@ -19,6 +19,7 @@ export function Header({
   empresas = [],
   modules,
   edicion = "center",
+  duenio = false,
 }: {
   profile: Profile;
   badges?: NavBadgeCounts;
@@ -29,11 +30,12 @@ export function Header({
   /** Empresas a las que llega la persona. Con una sola, el selector no aparece. */
   empresas?: EmpresaDisponible[];
   edicion?: Edicion;
+  duenio?: boolean;
 }) {
   return (
     <header className="flex h-16 flex-shrink-0 items-center justify-between border-b border-border bg-surface px-6">
       <div className="flex min-w-0 items-center gap-3">
-        <MobileNav profile={profile} badges={badges} modules={modules} edicion={edicion} />
+        <MobileNav profile={profile} badges={badges} modules={modules} edicion={edicion} duenio={duenio} />
         <WorkspaceContext role={profile.role} />
       </div>
 

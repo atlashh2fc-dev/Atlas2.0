@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { requireProfile } from "@/lib/auth";
-import { requireModule } from "@/lib/modules.server";
+import { puedeLeerConversaciones, requireModule } from "@/lib/modules.server";
 import { createClient } from "@/lib/supabase/server";
 import { Callout, NavTabs, PageHeader } from "@/components/ui";
 import { getWorkspacePermissions } from "@/lib/workspace-permissions";
@@ -20,7 +20,9 @@ export default async function AttentionLayout({ children }: { children: React.Re
   const profile = await requireProfile();
   const permissions = getWorkspacePermissions(profile.role);
   // Administración vigila metadatos; nunca abre la conversación de un cliente.
-  if (!permissions.canReadConversationContent) redirect("/dashboard/operacion");
+  // La excepción es el dueño de la plataforma, que lee sin poder responder.
+  if (!(await puedeLeerConversaciones(profile.role))) redirect("/dashboard/operacion");
+  const soloLectura = !permissions.canAttendCustomers && !permissions.canReadConversationContent;
 
   const supabase = await createClient();
   const enabled = await getEnabledChannels(supabase, profile);
@@ -37,11 +39,13 @@ export default async function AttentionLayout({ children }: { children: React.Re
   return (
     <div className="space-y-5">
       <PageHeader
-        title={permissions.canAttendCustomers ? "Mi atención" : "Historial de atención"}
+        title={permissions.canAttendCustomers ? "Mi atención" : soloLectura ? "Conversaciones" : "Historial de atención"}
         description={
           permissions.canAttendCustomers
             ? "Los canales que ves son los habilitados en tus campañas."
-            : "Consulta autorizada del historial de tus equipos, por los canales que operan."
+            : soloLectura
+              ? "Lectura de las conversaciones de la empresa que estás mirando. Responde el ejecutivo asignado."
+              : "Consulta autorizada del historial de tus equipos, por los canales que operan."
         }
         className="border-b-0 pb-0"
       />

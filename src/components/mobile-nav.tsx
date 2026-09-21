@@ -24,11 +24,13 @@ export function MobileNav({
   badges,
   modules,
   edicion = "center",
+  duenio = false,
 }: {
   profile: Profile;
   badges?: NavBadgeCounts;
   modules?: AppModule[];
   edicion?: Edicion;
+  duenio?: boolean;
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -118,6 +120,7 @@ export function MobileNav({
                 badges={badges}
                 modules={modules}
                 edicion={edicion}
+                duenio={duenio}
                 onNavigate={() => setOpen(false)}
               />
             </nav>

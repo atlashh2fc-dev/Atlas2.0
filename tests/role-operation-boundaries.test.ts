@@ -116,5 +116,5 @@ test("the application shell does not mount operator services in management works
   const agenda = readFileSync(new URL("../src/app/dashboard/agenda/page.tsx", import.meta.url), "utf8");
   assert.match(agenda, /requireProfile\(\["agente"\]\)/);
   const detail = readFileSync(new URL("../src/app/dashboard/leads/[id]/page.tsx", import.meta.url), "utf8");
-  assert.match(detail, /permissions.canReadConversationContent \? supabase\s*\.from\("whatsapp_messages"\)/);
+  assert.match(detail, /leeConversaciones \? supabase\s*\.from\("whatsapp_messages"\)/);
 });

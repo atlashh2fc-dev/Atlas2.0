@@ -41,7 +41,7 @@ export default async function DashboardLayout({
   // Edición, aplicaciones contratadas y empresas a las que llega la persona, en
   // una sola consulta. El menú se arma con los módulos (una empresa sin call
   // center no ve campañas ni grabaciones) y el color con la edición.
-  const { edicion, modulos: modules, empresas } = await contextoDeMiEmpresa();
+  const { edicion, modulos: modules, empresas, duenio } = await contextoDeMiEmpresa();
 
   return (
     // `data-edicion` cambia las variables de color de todo lo que cuelga de acá:
@@ -51,7 +51,7 @@ export default async function DashboardLayout({
       <div className="flex h-screen w-full overflow-hidden bg-background">
         {profile.role === "agente" && <ForceLogoutGuard userId={profile.id} />}
         {canAttendCustomers && <DialerListener userId={profile.id} />}
-        <Sidebar profile={profile} badges={badges} modules={modules} edicion={edicion} />
+        <Sidebar profile={profile} badges={badges} modules={modules} edicion={edicion} duenio={duenio} />
         <div className="flex flex-1 flex-col overflow-hidden">
           {showAgendaReminder ? (
             <AgendaProvider userId={profile.id}>
@@ -62,11 +62,12 @@ export default async function DashboardLayout({
                 empresas={empresas}
                 modules={modules}
                 edicion={edicion}
+                duenio={duenio}
               />
               <AgendaBanner />
             </AgendaProvider>
           ) : (
-            <Header profile={profile} demoAccounts={demoAccounts} empresas={empresas} modules={modules} edicion={edicion} />
+            <Header profile={profile} demoAccounts={demoAccounts} empresas={empresas} modules={modules} edicion={edicion} duenio={duenio} />
           )}
           <main className="flex-1 overflow-y-auto p-5">{children}</main>
         </div>

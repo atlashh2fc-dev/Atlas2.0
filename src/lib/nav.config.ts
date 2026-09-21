@@ -62,6 +62,8 @@ export type NavItem = {
   match?: string[];
   /** Pestañas del destino: se pintan en la página, nunca en el sidebar. */
   tabs?: NavTab[];
+  /** También lo ve el dueño de la plataforma, aunque su rol no esté en `roles`. */
+  duenio?: boolean;
 };
 
 export type NavSection = { id: string; label?: string; items: NavItem[] };
@@ -169,10 +171,12 @@ const CONSOLE: NavSpace = {
         },
         {
           id: "conversaciones",
-          label: { default: "Historial", agente: "Mi atención" },
+          label: { default: "Historial", agente: "Mi atención", admin: "Conversaciones" },
           href: "/dashboard/conversaciones",
           icon: MessageCircle,
           roles: ["agente", "supervisor"],
+          // Administración no lee mensajes; el dueño de la plataforma sí, sin responder.
+          duenio: true,
           description: "Atención asignada para ejecutivos; consulta de historial para supervisión",
           // El índice redirige al primer canal habilitado en la campaña, así
           // que el ítem tiene que seguir activo en /voz, /whatsapp y /correo.
@@ -240,7 +244,7 @@ const WORKSPACE_SECTIONS: Record<AppRole, { id: string; label?: string; itemIds:
   admin: [
     { id: "control-home", itemIds: ["inicio"] },
     { id: "control-operation", label: "Control diario", itemIds: ["operacion", "ventas", "correo", "registros"] },
-    { id: "control-results", label: "Revisión", itemIds: ["reportes", "calidad"] },
+    { id: "control-results", label: "Revisión", itemIds: ["conversaciones", "reportes", "calidad"] },
     { id: "admin-operation", label: "Configuración", itemIds: ["campanas", "colas", "flujos", "estados-agente", "cargas"] },
     { id: "admin-platform", label: "Plataforma", itemIds: ["empresas", "usuarios", "extensiones", "integraciones"] },
   ],
@@ -406,7 +410,13 @@ function enLosModulos(item: NavItem, modules?: AppModule[]): boolean {
 }
 
 /** Secciones visibles de un espacio para un rol, ya filtradas y sin secciones vacías. */
-export function visibleSections(spaceId: NavSpaceId, role: AppRole, modules?: AppModule[]): NavSection[] {
+export function visibleSections(
+  spaceId: NavSpaceId,
+  role: AppRole,
+  modules?: AppModule[],
+  duenio = false,
+): NavSection[] {
+  const permitido = (item: NavItem) => item.roles.includes(role) || (duenio && item.duenio === true);
   if (role === "admin") {
     const inventory = new Map(
       [...CONSOLE.sections, ...ADMIN.sections]
@@ -419,7 +429,7 @@ export function visibleSections(spaceId: NavSpaceId, role: AppRole, modules?: Ap
         label,
         items: itemIds.flatMap((itemId) => {
           const item = inventory.get(itemId);
-          return item?.roles.includes(role) && enLosModulos(item, modules) ? [item] : [];
+          return item && permitido(item) && enLosModulos(item, modules) ? [item] : [];
         }),
       }))
       .filter((section) => section.items.length > 0);
@@ -433,14 +443,14 @@ export function visibleSections(spaceId: NavSpaceId, role: AppRole, modules?: Ap
       label,
       items: itemIds.flatMap((itemId) => {
         const item = inventory.get(itemId);
-        return item?.roles.includes(role) && enLosModulos(item, modules) ? [item] : [];
+        return item && permitido(item) && enLosModulos(item, modules) ? [item] : [];
       }),
     })).filter((section) => section.items.length > 0);
   }
   return space
     .sections.map((section) => ({
       ...section,
-      items: section.items.filter((item) => item.roles.includes(role) && enLosModulos(item, modules)),
+      items: section.items.filter((item) => permitido(item) && enLosModulos(item, modules)),
     }))
     .filter((section) => section.items.length > 0);
 }

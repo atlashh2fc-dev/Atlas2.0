@@ -7,6 +7,8 @@ import type { AgentPerformance, HomeDashboardSummary, Profile } from "@/lib/type
 import { endOfDay, REPORT_TIME_ZONE, startOfDay } from "@/lib/report-range";
 import { Activity, ArrowUpRight, BarChart3, Settings2 } from "lucide-react";
 import { getSupervisedTeamIds } from "@/lib/supervisor-scope";
+import { InicioClinica } from "@/components/inicio-clinica";
+import { contextoDeMiEmpresa, puedeLeerConversaciones } from "@/lib/modules.server";
 
 function countValue(result: { count: number | null; error?: unknown }): string {
   return result.error || result.count === null ? "Sin datos" : result.count.toLocaleString("es-CL");
@@ -28,6 +30,21 @@ function firstName(profile: Profile): string {
 
 export default async function DashboardPage() {
   const profile = await requireProfile();
+
+  // Una clínica no tiene colas ni discador: su inicio es de presupuestos y
+  // pacientes. El de contact center queda para la edición Center.
+  const contexto = await contextoDeMiEmpresa();
+  if (contexto.edicion !== "center") {
+    return (
+      <InicioClinica
+        profile={profile}
+        edicion={contexto.edicion}
+        empresa={contexto.empresa}
+        leeConversaciones={await puedeLeerConversaciones(profile.role)}
+      />
+    );
+  }
+
   const supabase = await createClient();
   const loadedAt = new Date();
 

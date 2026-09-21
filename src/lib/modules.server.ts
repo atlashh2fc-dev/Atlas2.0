@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import type { EmpresaDisponible } from "@/components/selector-empresa";
 import { parseEdicion, type Edicion } from "@/lib/ediciones";
 import { APP_MODULES, type AppModule } from "@/lib/modules";
+import type { AppRole } from "@/lib/types";
+import { getWorkspacePermissions } from "@/lib/workspace-permissions";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -22,6 +24,10 @@ export type ContextoDeEmpresa = {
   edicion: Edicion;
   modulos: AppModule[];
   empresas: EmpresaDisponible[];
+  /** Nombre de la empresa que se está mirando. */
+  empresa: string | null;
+  /** Quien mira es el dueño de la plataforma. */
+  duenio: boolean;
 };
 
 /**
@@ -35,15 +41,34 @@ export const contextoDeMiEmpresa = cache(async (): Promise<ContextoDeEmpresa> =>
   const { data, error } = await supabase.rpc("contexto_de_mi_empresa");
   if (error || !data || typeof data !== "object") {
     console.error("[empresa] no se pudo leer el contexto de la empresa", error?.message);
-    return { edicion: "center", modulos: [], empresas: [] };
+    return { edicion: "center", modulos: [], empresas: [], empresa: null, duenio: false };
   }
-  const contexto = data as { edicion?: unknown; modulos?: unknown; empresas?: unknown };
+  const contexto = data as {
+    edicion?: unknown;
+    modulos?: unknown;
+    empresas?: unknown;
+    empresa?: unknown;
+    duenio?: unknown;
+  };
   return {
     edicion: parseEdicion(contexto.edicion),
     modulos: soloModulos(contexto.modulos),
     empresas: Array.isArray(contexto.empresas) ? (contexto.empresas as EmpresaDisponible[]) : [],
+    empresa: typeof contexto.empresa === "string" ? contexto.empresa : null,
+    duenio: contexto.duenio === true,
   };
 });
+
+/**
+ * Puede leer el contenido de las conversaciones: ejecutivos y supervisión por
+ * su rol, y el dueño de la plataforma aunque sea admin. Administración no lee
+ * mensajes; el dueño sí, para mostrar y auditar el producto. Leer no es
+ * atender: responder sigue siendo del ejecutivo asignado.
+ */
+export async function puedeLeerConversaciones(role: AppRole): Promise<boolean> {
+  if (getWorkspacePermissions(role).canReadConversationContent) return true;
+  return (await contextoDeMiEmpresa()).duenio;
+}
 
 /** Módulos de la empresa que se está mirando. */
 export async function modulosActivos(): Promise<AppModule[]> {

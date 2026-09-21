@@ -34,6 +34,7 @@ import {
   buttonClasses,
 } from "@/components/ui";
 import { requireProfile } from "@/lib/auth";
+import { puedeLeerConversaciones } from "@/lib/modules.server";
 import { attentionChannelHref } from "@/lib/campaign-channels";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
@@ -267,8 +268,9 @@ export default async function WhatsAppInboxPage({
 }) {
   const profile = await requireProfile();
   const permissions = getWorkspacePermissions(profile.role);
-  // Administration monitors metadata; it never opens a customer transcript.
-  if (!permissions.canReadConversationContent) redirect("/dashboard/operacion");
+  // Administration monitors metadata; it never opens a customer transcript,
+  // except the platform owner, who reads without being able to reply.
+  if (!(await puedeLeerConversaciones(profile.role))) redirect("/dashboard/operacion");
   const params = await searchParams;
   const status = (["open", "pending", "closed", "all"] as const).includes(
     params.status as ConversationStatus | "all",
