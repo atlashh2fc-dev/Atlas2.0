@@ -33,6 +33,7 @@ import { ETIQUETA_VACUNA, edad, estadoVacuna } from "@/lib/mascotas";
 import { denticionPorEdad, type RegistroOdontograma } from "@/lib/odontograma";
 import type { Atencion, Procedimiento } from "@/lib/arancel";
 import { Odontograma } from "@/components/odontograma/odontograma";
+import { FichaMascota3D, type MascotaFicha, type RegistroMascota } from "@/components/mascota3d/ficha-mascota-3d";
 import { contextoDeMiEmpresa, puedeLeerConversaciones } from "@/lib/modules.server";
 import { REPORT_TIME_ZONE } from "@/lib/report-range";
 import { requireProfile } from "@/lib/auth";
@@ -124,6 +125,7 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
     { data: conversaciones },
     { data: odontograma },
     { data: atencionesData },
+    { data: registrosMascota },
   ] =
     await Promise.all([
       supabase
@@ -160,6 +162,13 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
         .eq("cuenta_id", id)
         .order("fecha", { ascending: false })
         .order("created_at", { ascending: false }),
+      esVet
+        ? supabase
+            .from("mascota_registros")
+            .select("id, mascota_id, region, punto, tipo, titulo, detalle, avance, profesional, fecha, created_at")
+            .eq("cuenta_id", id)
+            .order("fecha", { ascending: false })
+        : Promise.resolve({ data: [] as Record<string, unknown>[] }),
     ]);
 
   const opportunityIds = (negocios ?? []).map((negocio) => negocio.id as string);
@@ -192,7 +201,13 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
   const atenciones = (atencionesData ?? []) as unknown as Atencion[];
   // Los profesionales que aparecen en la clínica: el tratante del paciente primero.
   const profesionales = [
-    ...new Set([texto("profesional"), ...registrosOdontograma.map((registro) => registro.profesional)].filter((valor): valor is string => Boolean(valor))),
+    ...new Set(
+      [
+        texto("profesional"),
+        ...registrosOdontograma.map((registro) => registro.profesional),
+        ...((registrosMascota ?? []) as { profesional: string | null }[]).map((registro) => registro.profesional),
+      ].filter((valor): valor is string => Boolean(valor)),
+    ),
   ];
 
   const eventos: Evento[] = [
@@ -316,6 +331,17 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
       <Link href="/dashboard/pacientes" className="text-sm text-muted-foreground hover:text-foreground hover:underline">
         ← Volver a {voc.titulo.toLowerCase()}
       </Link>
+
+      {esVet && (
+        <FichaMascota3D
+          cuentaId={id}
+          mascotas={(mascotas ?? []) as unknown as MascotaFicha[]}
+          registros={(registrosMascota ?? []) as unknown as RegistroMascota[]}
+          atenciones={atenciones}
+          arancel={arancel}
+          profesionales={profesionales}
+        />
+      )}
 
       {!esVet && (
         <Odontograma
