@@ -1,9 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect, RedirectType } from "next/navigation";
 
 import { requireProfile } from "@/lib/auth";
 import { esModulo } from "@/lib/modules";
+import { modulosActivos } from "@/lib/modules.server";
+import { destinoTrasCambiarEmpresa } from "@/lib/nav.config";
 import { createClient } from "@/lib/supabase/server";
 
 /*
@@ -73,10 +76,17 @@ export async function moverPersonaDeEmpresa(formData: FormData) {
   revalidarEmpresas();
 }
 
-/** Cambia la empresa que la persona está mirando. Vacío = todas las suyas. */
+/**
+ * Cambia la empresa que la persona está mirando. Vacío = todas las suyas.
+ *
+ * La pantalla actual puede no existir en la empresa nueva (Ventas en una empresa
+ * que no lo contrató, o la ficha de un registro ajeno): en ese caso se redirige
+ * desde acá, en la misma respuesta, para que el 404 no alcance a pintarse.
+ */
 export async function elegirEmpresaActiva(formData: FormData) {
   await requireProfile();
   const empresaId = String(formData.get("empresa_id") ?? "").trim();
+  const desde = String(formData.get("desde") ?? "/dashboard");
   if (empresaId && !UUID.test(empresaId)) throw new Error("Empresa inválida.");
 
   const supabase = await createClient();
@@ -86,6 +96,9 @@ export async function elegirEmpresaActiva(formData: FormData) {
   if (error) throw new Error(error.message);
   // La empresa elegida cambia lo que ve cada consulta: se revalida todo el panel.
   revalidatePath("/dashboard", "layout");
+  const ruta = desde.startsWith("/dashboard") ? desde : "/dashboard";
+  const destino = destinoTrasCambiarEmpresa(ruta, await modulosActivos());
+  if (destino !== ruta) redirect(destino, RedirectType.replace);
 }
 
 /**

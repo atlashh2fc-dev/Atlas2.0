@@ -476,3 +476,26 @@ export function tabsForPath(pathname: string, role: AppRole, modules?: AppModule
   const item = allItemsForRole(role, modules).find((candidate) => candidate.tabs && isItemActive(candidate, pathname));
   return (item?.tabs ?? []).filter((tab) => !tab.roles || tab.roles.includes(role));
 }
+
+const ID_EN_RUTA = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * ¿Dónde dejar a la persona después de cambiar de empresa?
+ *
+ * La misma URL no siempre sigue existiendo: si la nueva empresa no contrató la
+ * aplicación, su layout responde 404 (a propósito, ver `requireModule`). Y una
+ * ficha (/ventas/<id>) es de la empresa anterior, así que en la nueva tampoco
+ * está. Se queda en la misma aplicación cuando se puede; si no, vuelve al inicio.
+ */
+export function destinoTrasCambiarEmpresa(pathname: string, modules: AppModule[]): string {
+  const segmentos = pathname.split("/").filter(Boolean);
+  const corte = segmentos.findIndex((segmento) => ID_EN_RUTA.test(segmento));
+  const ruta = corte === -1 ? pathname : "/" + segmentos.slice(0, corte).join("/");
+
+  const items = [...NAV_SPACES.flatMap((space) => space.sections.flatMap((section) => section.items)), HELP_ITEM];
+  const exigen = items
+    .filter((item) => item.modules && isItemActive(item, ruta))
+    .map((item) => item.modules as AppModule[]);
+  const disponible = exigen.every((requeridos) => requeridos.some((modulo) => modules.includes(modulo)));
+  return disponible ? ruta : "/dashboard";
+}

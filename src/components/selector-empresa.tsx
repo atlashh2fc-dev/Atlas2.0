@@ -1,10 +1,16 @@
 "use client";
 
 import { useTransition } from "react";
+import { usePathname } from "next/navigation";
 import { Building2 } from "lucide-react";
 
 import { elegirEmpresaActiva } from "@/app/actions/organizaciones";
 import { useToast } from "@/components/ui";
+
+function esRedireccion(error: unknown): boolean {
+  const digest = (error as { digest?: unknown } | null)?.digest;
+  return typeof digest === "string" && digest.startsWith("NEXT_REDIRECT");
+}
 
 export type EmpresaDisponible = { id: string; name: string };
 
@@ -24,6 +30,7 @@ export function SelectorEmpresa({
 }) {
   const [pendiente, startTransition] = useTransition();
   const { toast } = useToast();
+  const pathname = usePathname();
 
   if (empresas.length < 2) return null;
 
@@ -38,9 +45,13 @@ export function SelectorEmpresa({
         onChange={(event) => {
           const datos = new FormData();
           datos.set("empresa_id", event.target.value);
+          datos.set("desde", pathname);
           startTransition(async () => {
             try {
-              await elegirEmpresaActiva(datos);
+              await elegirEmpresaActiva(datos).catch((error: unknown) => {
+                // Cambiar de pantalla porque esta no existe en la otra empresa es un éxito, no un error.
+                if (!esRedireccion(error)) throw error;
+              });
               toast({
                 tone: "success",
                 message: event.target.value
