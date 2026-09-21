@@ -134,22 +134,39 @@ export async function enviarAFicha(admin: Admin, entrada: { organizationId: stri
 
 export type EnvioDeCorreo =
   | { estado: "enviado"; proveedor: "smtp"; proveedorId: string }
+  | { estado: "encolado"; proveedor: "atlas_lead"; proveedorId: string }
   | { estado: "simulado"; proveedor: "simulado"; proveedorId: string }
   | { estado: "fallido"; error: string };
 
+/** Atlas Lead está conectado como destino del puente y activo. */
+async function atlasLeadDisponible(admin: Admin): Promise<boolean> {
+  const { data } = await admin.from("integration_sources").select("id").eq("code", "atlas_lead").eq("is_active", true).maybeSingle();
+  return Boolean(data) && (process.env.INTEGRATION_OUTBOX_DESTINATIONS_JSON ?? "").includes("atlas_lead");
+}
+
 /**
- * Manda un correo por el buzón de la empresa. Si la empresa es de
- * demostración y no tiene buzón, el envío se simula y queda marcado así.
+ * Manda un correo de una clínica. Primero por el puente con Atlas Lead, que
+ * ya sabe enviar por SES a pedido del CRM; si el puente no está, por el
+ * buzón propio de la clínica; en una empresa de demostración sin ninguno
+ * de los dos, se simula y queda marcado así.
  */
-export async function enviarCorreoAFicha(admin: Admin, entrada: { organizationId: string; para: string; nombre?: string | null; asunto: string; texto: string; inReplyTo?: string | null }): Promise<EnvioDeCorreo> {
-  const [buzon, { data: organizacion }] = await Promise.all([
-    buzonDeEmpresa(entrada.organizationId),
+export async function enviarCorreoAFicha(admin: Admin, entrada: { organizationId: string; para: string; nombre?: string | null; asunto: string; texto: string; inReplyTo?: string | null; mensajeId?: string }): Promise<EnvioDeCorreo> {
+  const [{ data: organizacion }, puente] = await Promise.all([
     admin.from("organizations").select("slug").eq("id", entrada.organizationId).single(),
+    atlasLeadDisponible(admin),
   ]);
   const esDemo = typeof organizacion?.slug === "string" && organizacion.slug.startsWith("demo-");
+
+  if (puente && entrada.mensajeId && !esDemo) {
+    const { data, error } = await admin.rpc("encolar_correo_en_atlas_lead", { p_mensaje: entrada.mensajeId });
+    if (!error && typeof data === "string") return { estado: "encolado", proveedor: "atlas_lead", proveedorId: data };
+    console.error("[correo] no se pudo encolar en Atlas Lead, se intenta el buzón propio", error?.message);
+  }
+
+  const buzon = await buzonDeEmpresa(entrada.organizationId);
   if (!buzon) {
     if (esDemo) return { estado: "simulado", proveedor: "simulado", proveedorId: `simulado-${randomUUID()}` };
-    return { estado: "fallido", error: "La empresa no tiene buzón de correo configurado. Configúralo en Correo de la clínica." };
+    return { estado: "fallido", error: "No hay por dónde mandar el correo: conecta el puente con Atlas Lead o el buzón de la clínica." };
   }
   try {
     const { messageId } = await enviarCorreo(buzon, { para: entrada.para, nombre: entrada.nombre, asunto: entrada.asunto, texto: entrada.texto, inReplyTo: entrada.inReplyTo });
@@ -161,10 +178,17 @@ export async function enviarCorreoAFicha(admin: Admin, entrada: { organizationId
 
 async function despacharCorreo(admin: Admin, mensaje: Mensaje, cuerpo: string, resultado: Resultado) {
   const asunto = mensaje.asunto ?? (PLANTILLAS[mensaje.plantilla as ClavePlantilla]?.nombre ?? "Mensaje de la clínica");
-  const envio = await enviarCorreoAFicha(admin, { organizationId: mensaje.organization_id, para: mensaje.destinatario, nombre: mensaje.nombre_destinatario, asunto, texto: cuerpo, inReplyTo: mensaje.in_reply_to });
+  // El cuerpo y el asunto quedan escritos antes de encolar: el puente los lee de la fila.
+  await admin.from("mensajes_salientes").update({ cuerpo, asunto, updated_at: new Date().toISOString() }).eq("id", mensaje.id);
+  const envio = await enviarCorreoAFicha(admin, { organizationId: mensaje.organization_id, para: mensaje.destinatario, nombre: mensaje.nombre_destinatario, asunto, texto: cuerpo, inReplyTo: mensaje.in_reply_to, mensajeId: mensaje.id });
   if (envio.estado === "fallido") {
     await cerrar(admin, mensaje.id, "fallido", { cuerpo, error: envio.error });
     resultado.fallidos += 1;
+    return;
+  }
+  if (envio.estado === "encolado") {
+    // Queda "enviando" hasta que el puente acuse; el trigger lo cierra.
+    resultado.enviados += 1;
     return;
   }
   await cerrar(admin, mensaje.id, envio.estado === "simulado" ? "entregado" : "enviado", { cuerpo, proveedor: envio.proveedor, proveedorId: envio.proveedorId });
