@@ -38,6 +38,18 @@ const MACHINE_ONLY_PATHS = new Set([
   "/api/agentes/vendedor",
 ]);
 
+/**
+ * El proxy corre en el borde más cercano a la persona (São Paulo para Chile),
+ * lejos de la base (Virginia). Cada viaje a Supabase desde acá cuesta más de
+ * 100 ms, y el proxy corre por cada petición, incluidas las precargas de los
+ * enlaces del menú. Por eso acá no se pregunta nada a la red: el token se
+ * verifica con la clave pública de Supabase, que queda en memoria, y solo se
+ * refresca cuando venció.
+ *
+ * Que la sesión siga abierta (no cerrada a distancia por un administrador) lo
+ * comprueban las páginas con `requireProfile` y la base en cada política por
+ * fila; el proxy solo decide si hay alguien identificado o no.
+ */
 export async function updateSession(request: NextRequest) {
   // Machine-only endpoint: the handler checks a dedicated Bearer/cron secret.
   // Match exactly; adjacent routes must keep the normal session requirement.
@@ -67,41 +79,20 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  const { data: { user } } = await supabase.auth.getUser();
-
-  let currentUser = user;
-  let forcedLogout = false;
-  if (currentUser) {
-    const { data: sessionValid, error: sessionError } = await supabase.rpc(
-      "is_current_app_session_valid"
-    );
-    if (!sessionError && !sessionValid) {
-      forcedLogout = true;
-      // La orden está ligada al session_id actual. Cerrar globalmente también
-      // eliminaría un relogin legítimo abierto después de la orden.
-      await supabase.auth.signOut({ scope: "local" });
-      currentUser = null;
-    }
-  }
+  const { data } = await supabase.auth.getClaims();
+  const identified = Boolean(data?.claims?.sub);
 
   const path = request.nextUrl.pathname;
   const isPublic = PUBLIC_PATHS.some((p) => path.startsWith(p));
 
-  if (!currentUser && !isPublic) {
+  if (!identified && !isPublic) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    if (forcedLogout) url.searchParams.set("reason", "forced_logout");
     const redirectResponse = NextResponse.redirect(url);
     for (const cookie of supabaseResponse.cookies.getAll()) {
       redirectResponse.cookies.set(cookie);
     }
     return redirectResponse;
-  }
-
-  if (currentUser && path === "/login") {
-    const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
-    return NextResponse.redirect(url);
   }
 
   return supabaseResponse;

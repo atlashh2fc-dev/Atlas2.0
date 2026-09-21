@@ -6,7 +6,7 @@ import { parseEdicion, type Edicion } from "@/lib/ediciones";
 import { APP_MODULES, type AppModule } from "@/lib/modules";
 import type { AppRole } from "@/lib/types";
 import { getWorkspacePermissions } from "@/lib/workspace-permissions";
-import { createClient } from "@/lib/supabase/server";
+import { sesionActual } from "@/lib/sesion.server";
 
 /**
  * Lectura de módulos contra la base. Vive aparte de `modules.ts` porque el menú
@@ -32,15 +32,16 @@ export type ContextoDeEmpresa = {
 
 /**
  * Lo que el panel necesita saber de la empresa que se está mirando —edición,
- * aplicaciones y a qué empresas llega la persona— en un solo viaje a la base.
- * Se cachea por petición: el layout, el menú y la página lo piden por separado
- * y es la misma respuesta.
+ * aplicaciones y a qué empresas llega la persona—. Viaja junto con el perfil
+ * en la misma RPC de `sesionActual`, así que pedirlo no cuesta ningún viaje
+ * adicional: el layout, el menú y la página lo piden por separado y es la
+ * misma respuesta.
  */
 export const contextoDeMiEmpresa = cache(async (): Promise<ContextoDeEmpresa> => {
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc("contexto_de_mi_empresa");
-  if (error || !data || typeof data !== "object") {
-    console.error("[empresa] no se pudo leer el contexto de la empresa", error?.message);
+  const sesion = await sesionActual();
+  const data = sesion.estado === "activa" ? sesion.contexto : null;
+  if (!data || typeof data !== "object") {
+    if (sesion.estado === "activa") console.error("[empresa] no se pudo leer el contexto de la empresa");
     return { edicion: "center", modulos: [], empresas: [], empresa: null, duenio: false };
   }
   const contexto = data as {

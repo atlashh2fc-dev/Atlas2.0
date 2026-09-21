@@ -158,7 +158,7 @@ test("worker HTTP: no session required, but missing/wrong Bearer cannot reach th
 test("middleware exempts exactly the machine endpoints, never adjacent routes", async () => {
   let authCalls = 0;
   const dependencies = {
-    "@supabase/ssr": { createServerClient: () => ({ auth: { getUser: async () => { authCalls++; return { data: { user: null } }; } } }) },
+    "@supabase/ssr": { createServerClient: () => ({ auth: { getClaims: async () => { authCalls++; return { data: null, error: null }; } } }) },
     "next/server": { NextResponse: { next: () => ({ cookies: { getAll: () => [] }, kind: "next" }), redirect: () => ({ cookies: { set() {} }, kind: "redirect" }) } },
   };
   const update = load("../src/lib/supabase/middleware.ts", dependencies).updateSession as (request: unknown) => Promise<{ kind: string }>;

@@ -21,27 +21,28 @@ export default async function DashboardLayout({
   const showAgendaReminder = canAttendCustomers;
   const supabase = await createClient();
 
-  // Contador del menú: las agendas vencidas del ejecutivo. Es una cuenta con
-  // `head: true`, no trae filas.
-  const { count: overdueCount } =
+  // Las dos lecturas del armazón salen juntas, no una tras otra: el contador
+  // del menú (una cuenta con `head: true`, no trae filas) y las cuentas de
+  // demostración (solo consultan algo para esas cuentas).
+  const [{ count: overdueCount }, demoAccounts] = await Promise.all([
     profile.role === "agente"
-      ? await supabase
+      ? supabase
           .from("leads")
           .select("id", { count: "exact", head: true })
           .eq("managed_by", profile.id)
           .not("next_action_at", "is", null)
           .lte("next_action_at", new Date().toISOString())
-      : { count: null };
+      : Promise.resolve({ count: null }),
+    listDemoViewAccounts(profile),
+  ]);
+
+  // Edición, aplicaciones contratadas y empresas a las que llega la persona.
+  // Llegó junto con el perfil en la misma RPC, así que no cuesta otro viaje.
+  // El menú se arma con los módulos (una empresa sin call center no ve
+  // campañas ni grabaciones) y el color con la edición.
+  const { edicion, modulos: modules, empresas, duenio } = await contextoDeMiEmpresa();
 
   const badges = { "overdue-agenda": overdueCount ?? 0 };
-  // Solo las cuentas de demostración alternan de vista; para el resto esto no
-  // consulta nada.
-  const demoAccounts = await listDemoViewAccounts(profile);
-
-  // Edición, aplicaciones contratadas y empresas a las que llega la persona, en
-  // una sola consulta. El menú se arma con los módulos (una empresa sin call
-  // center no ve campañas ni grabaciones) y el color con la edición.
-  const { edicion, modulos: modules, empresas, duenio } = await contextoDeMiEmpresa();
 
   return (
     // `data-edicion` cambia las variables de color de todo lo que cuelga de acá:

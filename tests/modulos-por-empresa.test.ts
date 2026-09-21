@@ -15,6 +15,8 @@ const CATALOGO = leer("src/lib/modules.ts");
 const SERVIDOR = leer("src/lib/modules.server.ts");
 const NAV = leer("src/lib/nav.config.ts");
 const LAYOUT = leer("src/app/dashboard/layout.tsx");
+const SESION = leer("src/lib/sesion.server.ts");
+const MIGRACION_SESION = leer("supabase/migrations/20260921204500_sesion_en_un_viaje.sql");
 const EMPRESAS = leer("src/app/dashboard/admin/empresas/page.tsx");
 
 // Los productos que vende altiusignite.com tienen que existir en la suite.
@@ -32,8 +34,12 @@ test("el catálogo cubre lo que ofrecemos en el sitio", () => {
 test("el catálogo es puro: el menú es cliente y no puede arrastrar el servidor", () => {
   assert.doesNotMatch(CATALOGO, /supabase\/server/);
   assert.doesNotMatch(CATALOGO, /next\/navigation/);
-  assert.match(SERVIDOR, /supabase\/server/);
-  assert.match(SERVIDOR, /contexto_de_mi_empresa/);
+  // El contexto viaja junto con el perfil en la RPC `sesion_actual`; la base
+  // es la única que llama a `contexto_de_mi_empresa`.
+  assert.match(SERVIDOR, /sesion\.server/);
+  assert.match(SESION, /supabase\/server/);
+  assert.match(SESION, /rpc\("sesion_actual"\)/);
+  assert.match(MIGRACION_SESION, /public\.contexto_de_mi_empresa\(\)/);
 });
 
 test("una ruta sin módulo responde 404, no 403", () => {
