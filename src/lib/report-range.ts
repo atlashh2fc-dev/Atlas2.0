@@ -18,6 +18,12 @@ export const REPORT_PRESETS = [
   "mes_pasado",
   "7d",
   "30d",
+  "trimestre",
+  "trimestre_pasado",
+  "90d",
+  "anio",
+  "anio_pasado",
+  "12m",
   "custom",
 ] as const;
 
@@ -32,8 +38,27 @@ export const REPORT_PRESET_LABELS: Record<ReportPreset, string> = {
   mes_pasado: "Mes pasado",
   "7d": "Últimos 7 días",
   "30d": "Últimos 30 días",
+  trimestre: "Este trimestre",
+  trimestre_pasado: "Trimestre pasado",
+  "90d": "Últimos 90 días",
+  anio: "Este año",
+  anio_pasado: "Año pasado",
+  "12m": "Últimos 12 meses",
   custom: "Personalizado",
 };
+
+/**
+ * Los atajos que ofrece cada selector. Los reportes de contact center recorren
+ * llamadas y eventos: se quedan en ventanas cortas. Una clínica mira meses y
+ * años (temporada de vacunas, el mismo mes del año anterior).
+ */
+export const CONTACT_CENTER_PRESETS: readonly ReportPreset[] = [
+  "hoy", "ayer", "semana", "semana_pasada", "mes", "mes_pasado", "7d", "30d", "custom",
+];
+
+export const CLINIC_PRESETS: readonly ReportPreset[] = [
+  "hoy", "semana", "mes", "mes_pasado", "30d", "90d", "trimestre", "trimestre_pasado", "anio", "anio_pasado", "12m", "custom",
+];
 
 export const DEFAULT_REPORT_PRESET: ReportPreset = "30d";
 
@@ -219,6 +244,21 @@ function startOfMonth(date: Date): Date {
   return instantFromZoned({ year, month, day: 1 }, { hour: 0, minute: 0, second: 0, ms: 0 });
 }
 
+function startOfQuarter(date: Date): Date {
+  const { year, month } = partsOf(date);
+  const first = month - ((month - 1) % 3);
+  return instantFromZoned({ year, month: first, day: 1 }, { hour: 0, minute: 0, second: 0, ms: 0 });
+}
+
+function monthStart(year: number, month: number): Date {
+  // month puede salir de 1..12: se normaliza con el calendario de UTC.
+  const normal = new Date(Date.UTC(year, month - 1, 1));
+  return instantFromZoned(
+    { year: normal.getUTCFullYear(), month: normal.getUTCMonth() + 1, day: 1 },
+    { hour: 0, minute: 0, second: 0, ms: 0 }
+  );
+}
+
 function presetBounds(preset: ReportPreset, today: Date): { from: Date; to: Date } {
   switch (preset) {
     case "hoy":
@@ -249,6 +289,25 @@ function presetBounds(preset: ReportPreset, today: Date): { from: Date; to: Date
     }
     case "7d":
       return { from: startOfDay(addDays(today, -6)), to: endOfDay(today) };
+    case "trimestre":
+      return { from: startOfQuarter(today), to: endOfDay(today) };
+    case "trimestre_pasado": {
+      const thisQuarter = startOfQuarter(today);
+      const { year, month } = partsOf(thisQuarter);
+      return { from: monthStart(year, month - 3), to: endOfDay(addDays(thisQuarter, -1)) };
+    }
+    case "90d":
+      return { from: startOfDay(addDays(today, -89)), to: endOfDay(today) };
+    case "anio": {
+      const { year } = partsOf(today);
+      return { from: monthStart(year, 1), to: endOfDay(today) };
+    }
+    case "anio_pasado": {
+      const { year } = partsOf(today);
+      return { from: monthStart(year - 1, 1), to: endOfDay(addDays(monthStart(year, 1), -1)) };
+    }
+    case "12m":
+      return { from: startOfDay(addDays(today, -364)), to: endOfDay(today) };
     case "30d":
     default:
       return { from: startOfDay(addDays(today, -29)), to: endOfDay(today) };

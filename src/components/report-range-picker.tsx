@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { CalendarRange } from "lucide-react";
 import { Button, Input, Select } from "@/components/ui";
 import {
-  REPORT_PRESETS,
+  CONTACT_CENTER_PRESETS,
   REPORT_PRESET_LABELS,
   reportRangeSearchParams,
   resolveReportRange,
@@ -22,7 +22,7 @@ import {
  * puede compartir el enlace y los server components lo leen sin prop drilling.
  * Conserva el resto de la query —la campaña seleccionada, sobre todo—.
  */
-export function ReportRangePicker() {
+export function ReportRangePicker({ presets = CONTACT_CENTER_PRESETS }: { presets?: readonly ReportPreset[] } = {}) {
   const searchParams = useSearchParams();
 
   const range = resolveReportRange({
@@ -38,11 +38,12 @@ export function ReportRangePicker() {
     <RangeControls
       key={`${range.preset}:${toDateInput(range.from)}:${toDateInput(range.to)}`}
       range={range}
+      presets={presets}
     />
   );
 }
 
-function RangeControls({ range }: { range: ReportRange }) {
+function RangeControls({ range, presets }: { range: ReportRange; presets: readonly ReportPreset[] }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -62,7 +63,7 @@ function RangeControls({ range }: { range: ReportRange }) {
   };
 
   const onPresetChange = (value: string) => {
-    const nextPreset = (REPORT_PRESETS as readonly string[]).includes(value)
+    const nextPreset = (presets as readonly string[]).includes(value)
       ? (value as ReportPreset)
       : "30d";
     setPreset(nextPreset);
@@ -85,7 +86,7 @@ function RangeControls({ range }: { range: ReportRange }) {
         aria-label="Período analizado"
         className="w-auto"
       >
-        {REPORT_PRESETS.map((option) => (
+        {(presets.includes(preset) ? presets : [preset, ...presets]).map((option) => (
           <option key={option} value={option}>
             {REPORT_PRESET_LABELS[option]}
           </option>
