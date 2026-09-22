@@ -125,7 +125,7 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
   }
   const [{ data: hiloData }, { data: comandosData }, { data: senalesData }] = leadId
     ? await Promise.all([
-        supabase.from("lead_mail_messages").select("id, direction, from_email, to_email, subject, body_text, occurred_at").eq("lead_id", leadId).order("occurred_at", { ascending: true }).limit(50),
+        supabase.from("lead_mail_messages").select("id, direction, from_email, to_email, subject, body_text, occurred_at, external_message_id").eq("lead_id", leadId).order("occurred_at", { ascending: true }).limit(50),
         supabase.from("mail_reply_commands").select("id, subject, body_text, status, last_error, created_at").eq("lead_id", leadId).order("created_at", { ascending: false }).limit(20),
         supabase.from("external_lead_events").select("id, event_type, occurred_at, created_at, integration_sources(name)").eq("lead_id", leadId).order("occurred_at", { ascending: false, nullsFirst: false }).limit(20),
       ])

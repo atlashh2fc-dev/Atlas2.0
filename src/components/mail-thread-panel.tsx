@@ -5,6 +5,8 @@ import { ActionForm, ActionSubmit, Badge, Card } from "@/components/ui";
 import { parseMailMessageBody } from "@/lib/mail-message-body";
 
 export type LeadMailMessage = {
+  /** Id del correo en Atlas Lead: con él se reconstruye el original. */
+  external_message_id?: string | null;
   id: string;
   direction: "inbound" | "outbound";
   from_email: string | null;
@@ -78,6 +80,22 @@ export function MailThreadPanel({
                   {message.from_email ?? "—"} → {message.to_email ?? "—"}
                 </p>
               </div>
+              {message.direction === "outbound" && message.external_message_id && !bodySegments.some((segment) => segment.kind === "image") ? (
+                <div className="border-t border-border/70 bg-white">
+                  <iframe
+                    src={`/api/correo-campana/${message.id}`}
+                    title={`Correo original: ${message.subject}`}
+                    loading="lazy"
+                    sandbox="allow-popups allow-popups-to-escape-sandbox"
+                    className="block h-[760px] w-full border-0"
+                  />
+                  <p className="border-t border-border/70 px-4 py-2 text-right">
+                    <a href={`/api/correo-campana/${message.id}`} target="_blank" rel="noreferrer" className="text-xs font-medium text-primary hover:underline">
+                      Abrir el correo en una pestaña
+                    </a>
+                  </p>
+                </div>
+              ) : (
               <div className="space-y-3 border-t border-border/70 bg-surface p-4">
                 {bodySegments.map((segment, index) =>
                   segment.kind === "text" ? (
@@ -108,6 +126,7 @@ export function MailThreadPanel({
                   ),
                 )}
               </div>
+              )}
             </article>
           );
         })}

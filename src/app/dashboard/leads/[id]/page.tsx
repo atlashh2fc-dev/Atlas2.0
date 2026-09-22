@@ -244,7 +244,7 @@ export default async function LeadDetailPage({
       .limit(30) : Promise.resolve({ data: [] }),
     leeConversaciones ? supabase
       .from("lead_mail_messages")
-      .select("id, direction, from_email, to_email, subject, body_text, occurred_at")
+      .select("id, direction, from_email, to_email, subject, body_text, occurred_at, external_message_id")
       .eq("lead_id", id)
       .order("occurred_at", { ascending: true })
       .limit(50) : Promise.resolve({ data: [] }),
