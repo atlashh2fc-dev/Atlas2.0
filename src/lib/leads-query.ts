@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AppRole } from "./types";
+import { CHANNEL_SEGMENT_CHANNELS, type ChannelSegment } from "./channel-segment.ts";
 
 /**
  * Consulta única de la cola de registros, con las vistas operativas resueltas
@@ -128,6 +129,20 @@ export type LeadsPage<T> = {
   error: string | null;
 };
 
+function emptyPage<T>(pageSize: number, search: LeadsPage<T>["search"], error: string | null): LeadsPage<T> {
+  return {
+    rows: [],
+    total: 0,
+    page: 1,
+    pageSize,
+    pageCount: 1,
+    counts: emptyCounts(),
+    statuses: [],
+    search,
+    error,
+  };
+}
+
 type ViewCounts = Record<LeadView, number> & { estados: string[] };
 
 export async function fetchLeadsPage<T>(
@@ -138,6 +153,8 @@ export async function fetchLeadsPage<T>(
     view: LeadView;
     page: number;
     pageSize: number;
+    /** Celda del embudo por canal: acota la lista a los leads que esa celda cuenta. */
+    segment?: ChannelSegment | null;
   }
 ): Promise<LeadsPage<T>> {
   const { filters, view } = options;
@@ -146,34 +163,30 @@ export async function fetchLeadsPage<T>(
   // La búsqueda por texto sigue pasando por la RPC, que aplica las reglas de
   // coincidencia por RUT/teléfono/nombre; sus ids acotan la consulta.
   let ids: string[] | null = null;
+  const search = filters.q ? { term: filters.q, matches: 0 } : null;
   if (filters.q) {
     const { data, error } = await supabase.rpc("search_leads_quick", { p_term: filters.q });
-    if (error) {
-      return {
-        rows: [],
-        total: 0,
-        page: 1,
-        pageSize,
-        pageCount: 1,
-        counts: emptyCounts(),
-        statuses: [],
-        search: { term: filters.q, matches: 0 },
-        error: error.message,
-      };
-    }
+    if (error) return emptyPage(pageSize, search, error.message);
     ids = ((data ?? []) as { id: string }[]).map((row) => row.id);
+    if (ids.length === 0) return emptyPage(pageSize, search, null);
+  }
+
+  // El segmento puede traer miles de ids: la lista va por `leads_by_ids`
+  // (POST) porque un filtro `in` de ese tamaño no cabe en la URL.
+  const segment = options.role === "agente" ? null : options.segment ?? null;
+  if (segment) {
+    const { data, error } = await supabase.rpc("get_secretaria_virtual_channel_lead_ids", {
+      p_from: segment.from,
+      p_to: segment.to,
+      p_channel: segment.channel ? CHANNEL_SEGMENT_CHANNELS[segment.channel] : null,
+      p_stage: segment.stage,
+    });
+    if (error) return emptyPage(pageSize, search, error.message);
+    const segmentIds = (data ?? []) as string[];
+    const searchIds = ids ? new Set(ids) : null;
+    ids = searchIds ? segmentIds.filter((id) => searchIds.has(id)) : segmentIds;
     if (ids.length === 0) {
-      return {
-        rows: [],
-        total: 0,
-        page: 1,
-        pageSize,
-        pageCount: 1,
-        counts: emptyCounts(),
-        statuses: [],
-        search: { term: filters.q, matches: 0 },
-        error: null,
-      };
+      return emptyPage(pageSize, search && { ...search, matches: searchIds?.size ?? 0 }, null);
     }
   }
 
@@ -191,20 +204,29 @@ export async function fetchLeadsPage<T>(
       // managed_by/managed_at: esos campos también cambian en intentos sin
       // conversación y fueron la causa de registros ajenos en esta pantalla.
       const relation = leadRelationForRole(options.role);
-      const base = applyFilters(
-        // Una cuenta exacta recorría decenas de miles de filas bajo RLS antes
-        // de devolver las primeras 50. Para paginación basta el plan del
-        // optimizador; los contadores operativos siguen siendo exactos en la
-        // RPC dedicada que corre en paralelo.
-        supabase.from(relation).select(LEAD_SELECT, { count: "planned" }),
-        filters,
-        ids,
-        options.role
-      );
-      // Buscar manda sobre la cola: si el usuario escribió un RUT quiere ese
-      // registro, no "ese registro siempre que además esté en la vista
-      // Prioridad y tenga teléfono".
-      const scoped = filters.q ? base : applyView(base, view);
+      const base = segment
+        ? applyFilters(
+            // Un segmento son a lo más unos miles de filas: la cuenta exacta
+            // es barata y el número tiene que calzar con la celda del reporte.
+            supabase.rpc("leads_by_ids", { p_ids: ids }, { count: "exact" }).select(LEAD_SELECT) as unknown as Query,
+            filters,
+            null,
+            options.role
+          )
+        : applyFilters(
+            // Una cuenta exacta recorría decenas de miles de filas bajo RLS antes
+            // de devolver las primeras 50. Para paginación basta el plan del
+            // optimizador; los contadores operativos siguen siendo exactos en la
+            // RPC dedicada que corre en paralelo.
+            supabase.from(relation).select(LEAD_SELECT, { count: "planned" }),
+            filters,
+            ids,
+            options.role
+          );
+      // Buscar o abrir una celda del reporte manda sobre la cola: se quiere
+      // exactamente ese conjunto, no "ese conjunto siempre que además esté en
+      // la vista Prioridad y tenga teléfono".
+      const scoped = filters.q || segment ? base : applyView(base, view);
       const page = Math.max(1, options.page);
       const from = (page - 1) * pageSize;
       const { data, count, error } = await scoped

@@ -15,6 +15,7 @@ import {
   parseLeadView,
   type LeadFilters,
 } from "@/lib/leads-query";
+import { channelSegmentLabel, parseChannelSegment } from "@/lib/channel-segment";
 import { LeadsQueue, type LeadQueueRow } from "@/components/leads-queue";
 import { Callout, Field, FilterBar, Input, PageHeader, Select, buttonClasses } from "@/components/ui";
 
@@ -64,10 +65,15 @@ export default async function LeadsPage({
     campaign?: string;
     status?: string;
     page?: string;
+    canal?: string;
+    etapa?: string;
+    desde?: string;
+    hasta?: string;
   }>;
 }) {
   const profile = await requireProfile();
-  const { q, view: viewParam, agent, campaign, status, page: pageParam } = await searchParams;
+  const params = await searchParams;
+  const { q, view: viewParam, agent, campaign, status, page: pageParam } = params;
   const campaignScope = resolveCampaignScope(campaign);
   const view = parseLeadView(viewParam);
   const supabase = await createClient();
@@ -75,6 +81,8 @@ export default async function LeadsPage({
   const vertical = await fetchCampaignVertical(supabase, campaignScope || null);
   const copy = roleCopy(profile.role, vertical);
   const canManage = profile.role === "supervisor" || profile.role === "admin";
+  // Llega desde una celda de "Resultado por canal de origen" en Reportes.
+  const segment = canManage ? parseChannelSegment(params) : null;
 
   const filters: LeadFilters = {
     q: q?.trim() || "",
@@ -98,6 +106,7 @@ export default async function LeadsPage({
     view,
     page: Number(pageParam) || 1,
     pageSize: PAGE_SIZE_DEFAULT,
+    segment,
   });
 
   // Estados presentes en la base + el que esté filtrado, con etiqueta legible
@@ -202,7 +211,28 @@ export default async function LeadsPage({
         )}
 
         <input type="hidden" name="view" value={view} />
+        {segment && (
+          <>
+            <input type="hidden" name="canal" value={params.canal} />
+            <input type="hidden" name="etapa" value={params.etapa} />
+            <input type="hidden" name="desde" value={params.desde} />
+            <input type="hidden" name="hasta" value={params.hasta} />
+          </>
+        )}
       </FilterBar>
+
+      {segment && (
+        <Callout tone="info">
+          <p>
+            <span className="font-medium">Desde Reportes:</span> {channelSegmentLabel(segment)}.{" "}
+            {`${result.total.toLocaleString("es-CL")} ${result.total === 1 ? "registro" : "registros"}`}
+            {activeFilters.length > 0 && `, con ${activeFilters.join(", ")}`}.
+          </p>
+          <Link href="/dashboard/leads" className="mt-2 inline-block font-medium underline underline-offset-2">
+            Ver todos los registros
+          </Link>
+        </Callout>
+      )}
 
       {hiddenBySearchFilters && (
         <Callout tone="warning">

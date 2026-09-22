@@ -17,7 +17,14 @@ import type {
   SecretariaVirtualChannelFunnelRow,
 } from "@/lib/types";
 import { CALL_REASONS } from "@/lib/call-typification";
+import Link from "next/link";
 import { REPORT_TIME_ZONE } from "@/lib/report-range";
+import {
+  channelSegmentHref,
+  channelSlug,
+  type ChannelSlug,
+  type ChannelStage,
+} from "@/lib/channel-segment";
 import { TipificationBreakdown } from "@/components/tipification-breakdown";
 import {
   groupTipificationsByResult,
@@ -296,7 +303,44 @@ function ratio(current: number, total: number): number {
   return total > 0 ? current / total : 0;
 }
 
-function ChannelFunnelTable({ rows }: { rows: SecretariaVirtualChannelFunnelRow[] }) {
+/**
+ * Cada número abre Registros con exactamente los leads que cuenta. Un cero no
+ * lleva a ninguna parte: sería abrir una lista vacía.
+ */
+function ChannelFunnelCell({
+  value,
+  channel,
+  stage,
+  range,
+  className,
+}: {
+  value: number;
+  channel: ChannelSlug | null;
+  stage: ChannelStage;
+  range: { from: string; to: string };
+  className: string;
+}) {
+  if (value <= 0) return <td className={className}>{fmtInt(value)}</td>;
+  return (
+    <td className={className}>
+      <Link
+        href={channelSegmentHref({ channel, stage, from: range.from, to: range.to })}
+        className="rounded underline-offset-2 hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+        title="Ver estos registros"
+      >
+        {fmtInt(value)}
+      </Link>
+    </td>
+  );
+}
+
+function ChannelFunnelTable({
+  rows,
+  range,
+}: {
+  rows: SecretariaVirtualChannelFunnelRow[];
+  range: { from: string; to: string };
+}) {
   const totals = rows.reduce(
     (sum, row) => ({
       base: sum.base + row.base,
@@ -306,12 +350,15 @@ function ChannelFunnelTable({ rows }: { rows: SecretariaVirtualChannelFunnelRow[
     }),
     { base: 0, contacted: 0, interested: 0, sales: 0 }
   );
+  const rowCell = "py-2.5 text-right tabular-nums text-muted-foreground";
+  const totalCell = "pt-2.5 text-right tabular-nums";
 
   return (
     <section className="rounded-xl border border-border bg-surface p-5">
       <h3 className="text-sm font-semibold text-foreground">Resultado por canal de origen</h3>
       <p className="mb-4 mt-1 text-xs text-muted-foreground">
         Atribuye cada lead a su canal de entrada original; una conversación posterior por WhatsApp no cambia su origen.
+        Toca un número para ver esos registros.
       </p>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[560px] text-left text-sm">
@@ -325,23 +372,32 @@ function ChannelFunnelTable({ rows }: { rows: SecretariaVirtualChannelFunnelRow[
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {rows.map((row) => (
-              <tr key={row.channel}>
-                <td className="py-2.5 font-medium text-foreground">{row.channel}</td>
-                <td className="py-2.5 text-right tabular-nums text-muted-foreground">{fmtInt(row.base)}</td>
-                <td className="py-2.5 text-right tabular-nums text-muted-foreground">{fmtInt(row.contacted)}</td>
-                <td className="py-2.5 text-right tabular-nums text-muted-foreground">{fmtInt(row.interested)}</td>
-                <td className="py-2.5 text-right font-semibold tabular-nums text-foreground">{fmtInt(row.sales)}</td>
-              </tr>
-            ))}
+            {rows.map((row) => {
+              const channel = channelSlug(row.channel);
+              return (
+                <tr key={row.channel}>
+                  <td className="py-2.5 font-medium text-foreground">{row.channel}</td>
+                  <ChannelFunnelCell value={row.base} channel={channel} stage="base" range={range} className={rowCell} />
+                  <ChannelFunnelCell value={row.contacted} channel={channel} stage="contactados" range={range} className={rowCell} />
+                  <ChannelFunnelCell value={row.interested} channel={channel} stage="interesados" range={range} className={rowCell} />
+                  <ChannelFunnelCell
+                    value={row.sales}
+                    channel={channel}
+                    stage="ventas"
+                    range={range}
+                    className="py-2.5 text-right font-semibold tabular-nums text-foreground"
+                  />
+                </tr>
+              );
+            })}
           </tbody>
           <tfoot className="border-t border-border font-semibold text-foreground">
             <tr>
               <td className="pt-2.5">Total</td>
-              <td className="pt-2.5 text-right tabular-nums">{fmtInt(totals.base)}</td>
-              <td className="pt-2.5 text-right tabular-nums">{fmtInt(totals.contacted)}</td>
-              <td className="pt-2.5 text-right tabular-nums">{fmtInt(totals.interested)}</td>
-              <td className="pt-2.5 text-right tabular-nums">{fmtInt(totals.sales)}</td>
+              <ChannelFunnelCell value={totals.base} channel={null} stage="base" range={range} className={totalCell} />
+              <ChannelFunnelCell value={totals.contacted} channel={null} stage="contactados" range={range} className={totalCell} />
+              <ChannelFunnelCell value={totals.interested} channel={null} stage="interesados" range={range} className={totalCell} />
+              <ChannelFunnelCell value={totals.sales} channel={null} stage="ventas" range={range} className={totalCell} />
             </tr>
           </tfoot>
         </table>
@@ -408,7 +464,7 @@ export function CampaignDashboardSummary({
         <KpiCard label={vocabulary.kpi.monto} value={`${Number(kpis.uf_total.current).toFixed(1)} UF`} metric={kpis.uf_total} />
       </div>
 
-      {channelFunnel && channelFunnel.length > 0 && <ChannelFunnelTable rows={channelFunnel} />}
+      {channelFunnel && channelFunnel.length > 0 && <ChannelFunnelTable rows={channelFunnel} range={summary.range} />}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-xl border border-border bg-surface p-5">
