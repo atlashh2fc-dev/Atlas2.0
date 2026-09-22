@@ -5,6 +5,7 @@ import { unstable_noStore as noStore } from "next/cache";
 import { moverEtapa, registrarGestion } from "@/app/actions/ventas";
 import { cerrarNegocio, escribirAlNegocio, fijarProximaAccion } from "@/app/actions/pipeline";
 import { ETIQUETA_ESTADO_MENSAJE, type EstadoMensaje } from "@/lib/mensajes/plantillas";
+import { MailThreadPanel, type LeadMailMessage, type LeadMailReplyCommand } from "@/components/mail-thread-panel";
 import {
   ActionForm,
   ActionSubmit,
@@ -84,7 +85,7 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
   const { data: negocio } = await supabase
     .from("sales_opportunities")
     .select(
-      "id, name, status, monthly_amount, one_time_amount, expected_close_date, next_action_at, next_action_note, source, lost_reason, stage_id, sales_companies(id, name, rut, industry, commune, website, phone, email, metadata), sales_contacts(id, full_name, role_title, email, phone), sales_stages(key, name)",
+      "id, name, status, monthly_amount, one_time_amount, expected_close_date, next_action_at, next_action_note, source, lost_reason, stage_id, lead_id, sales_companies(id, name, rut, industry, commune, website, phone, email, metadata), sales_contacts(id, full_name, role_title, email, phone), sales_stages(key, name)",
     )
     .eq("id", id)
     .maybeSingle();
@@ -114,6 +115,24 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
     .order("created_at", { ascending: false })
     .limit(10);
   const mensajesEnviados = (mensajesData ?? []) as { id: string; canal: string; asunto: string | null; cuerpo: string | null; estado: string; error: string | null; created_at: string }[];
+
+  // El registro del que viene el negocio: por enlace directo o por el correo del contacto.
+  let leadId = (negocio as { lead_id?: string | null }).lead_id ?? null;
+  const correoContacto = (contacto?.email ?? empresa?.email ?? "").trim().toLowerCase();
+  if (!leadId && correoContacto) {
+    const { data: registro } = await supabase.from("leads").select("id").ilike("email", correoContacto).order("updated_at", { ascending: false }).limit(1).maybeSingle();
+    leadId = (registro?.id as string | undefined) ?? null;
+  }
+  const [{ data: hiloData }, { data: comandosData }, { data: senalesData }] = leadId
+    ? await Promise.all([
+        supabase.from("lead_mail_messages").select("id, direction, from_email, to_email, subject, body_text, occurred_at").eq("lead_id", leadId).order("occurred_at", { ascending: true }).limit(50),
+        supabase.from("mail_reply_commands").select("id, subject, body_text, status, last_error, created_at").eq("lead_id", leadId).order("created_at", { ascending: false }).limit(20),
+        supabase.from("external_lead_events").select("id, event_type, occurred_at, created_at, integration_sources(name)").eq("lead_id", leadId).order("occurred_at", { ascending: false, nullsFirst: false }).limit(20),
+      ])
+    : [{ data: [] }, { data: [] }, { data: [] }];
+  const hiloCampana = (hiloData ?? []) as LeadMailMessage[];
+  const comandosCampana = (comandosData ?? []) as LeadMailReplyCommand[];
+  const senales = (senalesData ?? []) as { id: string; event_type: string; occurred_at: string | null; created_at: string; integration_sources: { name: string } | { name: string }[] | null }[];
   const etapaActual = primero(negocio.sales_stages);
   const abierto = negocio.status === "abierta";
   const voc = VENTAS_POR_EDICION[(await contextoDeMiEmpresa()).edicion];
@@ -133,23 +152,15 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
         description={`${negocio.name} · ${formatoMonto(monto, mensual)}`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            {correo && (
-              <a
-                className={buttonClasses({ variant: "secondary", size: "sm" })}
-                href={`mailto:${correo}?subject=${encodeURIComponent(`${negocio.name}`)}`}
-              >
-                Escribir correo
+            {(correo || whatsapp) && (
+              <a className={buttonClasses({ variant: "secondary", size: "sm" })} href="#escribir">
+                Escribir desde Atlas
               </a>
             )}
-            {whatsapp && (
-              <a
-                className={buttonClasses({ variant: "secondary", size: "sm" })}
-                href={`https://wa.me/${whatsapp}`}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                WhatsApp
-              </a>
+            {leadId && (
+              <Link className={buttonClasses({ variant: "ghost", size: "sm" })} href={`/dashboard/leads/${leadId}`}>
+                Ver registro
+              </Link>
             )}
             <Link
               className="text-sm text-muted-foreground hover:text-foreground hover:underline"
@@ -280,6 +291,7 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
         </ActionForm>
       </SectionCard>
 
+      <div id="escribir" />
       <SectionCard title="Escribir desde Atlas" description="Correo al contacto del negocio por el puente con Atlas Lead; WhatsApp si la empresa tiene el canal. Queda en la historia y con su estado.">
         <div className="grid gap-4 px-4 py-4 lg:grid-cols-[1fr_320px]">
           <form action={escribirAlNegocio} className="space-y-2">
@@ -335,6 +347,25 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
           </ul>
         )}
       </SectionCard>
+
+      {leadId && (hiloCampana.length > 0 || senales.length > 0) && (
+        <SectionCard title="Correo de campaña" description="Lo que Atlas Lead le mandó a esta persona y lo que respondió, más las señales que llegaron (aperturas, clics, respuestas).">
+          <div className="space-y-4 px-4 py-4">
+            {senales.length > 0 && (
+              <ul className="flex flex-wrap gap-1.5">
+                {senales.slice(0, 12).map((senal) => (
+                  <li key={senal.id}>
+                    <Badge tone="neutral">
+                      {senal.event_type.replace(/_/g, " ")} · {new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(senal.occurred_at ?? senal.created_at))}
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {hiloCampana.length > 0 && <MailThreadPanel leadId={leadId} messages={hiloCampana} commands={comandosCampana} canReply={false} />}
+          </div>
+        </SectionCard>
+      )}
 
       <SectionCard title="Historia" description={`Todo lo que pasó con ${mensual ? "este negocio" : `este ${voc.negocio.toLowerCase()}`}.`}>
         <Table>
