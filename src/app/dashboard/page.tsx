@@ -8,6 +8,7 @@ import { endOfDay, REPORT_TIME_ZONE, startOfDay } from "@/lib/report-range";
 import { Activity, ArrowUpRight, BarChart3, Settings2 } from "lucide-react";
 import { getSupervisedTeamIds } from "@/lib/supervisor-scope";
 import { InicioClinica } from "@/components/inicio-clinica";
+import { InicioComercial } from "@/components/inicio-comercial";
 import { contextoDeMiEmpresa, puedeLeerConversaciones } from "@/lib/modules.server";
 
 function countValue(result: { count: number | null; error?: unknown }): string {
@@ -43,6 +44,12 @@ export default async function DashboardPage() {
         leeConversaciones={await puedeLeerConversaciones(profile.role)}
       />
     );
+  }
+
+  // Una empresa que vende B2B sin call center (Altius) no tiene colas ni
+  // discador: su inicio es el puesto de trabajo comercial.
+  if (!contexto.modulos.includes("contact_center") && contexto.modulos.includes("ventas_b2b") && profile.role !== "agente") {
+    return <InicioComercial profile={profile} edicion={contexto.edicion} empresa={contexto.empresa} />;
   }
 
   const supabase = await createClient();

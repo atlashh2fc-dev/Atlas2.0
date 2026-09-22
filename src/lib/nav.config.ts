@@ -193,13 +193,14 @@ const CONSOLE: NavSpace = {
         {
           id: "ventas",
           label: "Ventas",
-          href: "/dashboard/ventas",
+          href: "/dashboard/pipeline",
           icon: Handshake,
           roles: ["admin", "supervisor"],
-          description: "Embudo B2B: empresas, montos, etapa y próxima acción",
-          match: ["/dashboard/ventas"],
+          description: "Pipeline B2B: negocios por etapa, responsable, origen y próxima acción",
+          match: ["/dashboard/pipeline", "/dashboard/ventas"],
           tabs: [
-            { label: "Embudo", href: "/dashboard/ventas" },
+            { label: "Pipeline", href: "/dashboard/pipeline" },
+            { label: "Lista", href: "/dashboard/ventas" },
             { label: "Respuestas del agente", href: "/dashboard/ventas/respuestas" },
           ],
           modules: ["ventas_b2b", "ventas_b2c"],
@@ -629,10 +630,13 @@ export function destinoTrasCambiarEmpresa(pathname: string, modules: AppModule[]
   // resaltar el menú: Caja se resalta en /ventas, pero /ventas sigue exigiendo
   // los módulos de Ventas, no los de Caja. Cuando ningún href la cubre (una
   // vista hija como /llamadas), vale el `match`.
-  const contiene = (item: NavItem) => ruta === item.href || ruta.startsWith(`${item.href}/`);
+  const cubre = (href: string) => ruta === href || ruta.startsWith(`${href}/`);
+  const contiene = (item: NavItem) => cubre(item.href) || (item.tabs ?? []).some((tab) => cubre(tab.href));
   const porHref = items.filter((item) => item.modules && contiene(item));
   const duenios = porHref.length > 0 ? porHref : items.filter((item) => item.modules && isItemActive(item, ruta));
   const exigen = duenios.map((item) => item.modules as AppModule[]);
-  const disponible = exigen.every((requeridos) => requeridos.some((modulo) => modules.includes(modulo)));
+  // Basta con que uno de los ítems que llevan a la ruta esté disponible: la
+  // misma pantalla puede ser pestaña de Ventas en Center y de Caja en una clínica.
+  const disponible = exigen.length === 0 || exigen.some((requeridos) => requeridos.some((modulo) => modules.includes(modulo)));
   return disponible ? ruta : "/dashboard";
 }
