@@ -233,6 +233,9 @@ export async function despacharMensajes(opciones: { generar?: boolean; limite?: 
     const { data, error } = await admin.rpc("generar_recordatorios");
     if (error) console.error("[mensajes] no se pudieron generar los recordatorios", error.message);
     else generados = (data as Record<string, number>) ?? {};
+    const { data: seguimientos, error: seguimientosError } = await admin.rpc("generar_seguimientos_b2b");
+    if (seguimientosError) console.error("[mensajes] no se pudieron generar los seguimientos", seguimientosError.message);
+    else generados = { ...generados, seguimientos: Number(seguimientos ?? 0) };
   }
 
   const { data: reclamados, error } = await admin.rpc("reclamar_mensajes_salientes", { p_limite: opciones.limite ?? 50 });

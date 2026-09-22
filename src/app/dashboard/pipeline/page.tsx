@@ -149,7 +149,7 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
           <Link href="/dashboard/ventas" className={buttonClasses()}>{voc.nuevo}</Link>
         }
       />
-      <NavTabs tabs={[{ label: "Pipeline", href: "/dashboard/pipeline" }, { label: "Lista", href: "/dashboard/ventas" }, { label: "Respuestas del agente", href: "/dashboard/ventas/respuestas" }]} />
+      <NavTabs tabs={[{ label: "Pipeline", href: "/dashboard/pipeline" }, { label: "Lista", href: "/dashboard/ventas" }, { label: "Resultados", href: "/dashboard/ventas/resultados" }, { label: "Respuestas del agente", href: "/dashboard/ventas/respuestas" }]} />
 
       <form action="/dashboard/pipeline" className="flex flex-wrap items-end gap-2">
         <div className="relative w-64">

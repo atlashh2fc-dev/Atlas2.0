@@ -3,16 +3,19 @@ import { notFound } from "next/navigation";
 import { unstable_noStore as noStore } from "next/cache";
 
 import { moverEtapa, registrarGestion } from "@/app/actions/ventas";
+import { cerrarNegocio, escribirAlNegocio, fijarProximaAccion } from "@/app/actions/pipeline";
+import { ETIQUETA_ESTADO_MENSAJE, type EstadoMensaje } from "@/lib/mensajes/plantillas";
 import {
   ActionForm,
   ActionSubmit,
   Badge,
+  buttonClasses,
   Field,
   Input,
   PageHeader,
-  buttonClasses,
   SectionCard,
   Select,
+  SubmitButton,
   Table,
   TableEmpty,
   Tbody,
@@ -104,6 +107,13 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
 
   const empresa = primero(negocio.sales_companies);
   const contacto = primero(negocio.sales_contacts);
+  const { data: mensajesData } = await supabase
+    .from("mensajes_salientes")
+    .select("id, canal, asunto, cuerpo, estado, error, created_at")
+    .eq("origen_ref", negocio.id)
+    .order("created_at", { ascending: false })
+    .limit(10);
+  const mensajesEnviados = (mensajesData ?? []) as { id: string; canal: string; asunto: string | null; cuerpo: string | null; estado: string; error: string | null; created_at: string }[];
   const etapaActual = primero(negocio.sales_stages);
   const abierto = negocio.status === "abierta";
   const voc = VENTAS_POR_EDICION[(await contextoDeMiEmpresa()).edicion];
@@ -268,6 +278,62 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
             <ActionSubmit>Registrar</ActionSubmit>
           </div>
         </ActionForm>
+      </SectionCard>
+
+      <SectionCard title="Escribir desde Atlas" description="Correo al contacto del negocio por el puente con Atlas Lead; WhatsApp si la empresa tiene el canal. Queda en la historia y con su estado.">
+        <div className="grid gap-4 px-4 py-4 lg:grid-cols-[1fr_320px]">
+          <form action={escribirAlNegocio} className="space-y-2">
+            <input type="hidden" name="oportunidad_id" value={negocio.id} />
+            <input type="hidden" name="cuenta_id" value={empresa?.id ?? ""} />
+            <div className="flex flex-wrap gap-2">
+              <Select name="canal" defaultValue="correo" aria-label="Canal" className="w-40">
+                <option value="correo">Correo{(empresa?.email ?? contacto?.email) ? ` · ${empresa?.email ?? contacto?.email}` : " · sin correo"}</option>
+                <option value="whatsapp">WhatsApp{(empresa?.phone ?? contacto?.phone) ? ` · ${empresa?.phone ?? contacto?.phone}` : " · sin celular"}</option>
+              </Select>
+              <Input name="asunto" placeholder="Asunto (correo)" className="flex-1" defaultValue={`Sobre ${negocio.name}`} />
+            </div>
+            <textarea name="texto" required rows={4} maxLength={5000} placeholder={`Hola ${contacto?.full_name?.split(" ")[0] ?? ""}, …`} className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-primary" />
+            <SubmitButton pendingLabel="Enviando…">Enviar</SubmitButton>
+          </form>
+          <div className="space-y-3">
+            <form action={fijarProximaAccion} className="space-y-2 rounded-lg border border-border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Próxima acción</p>
+              <input type="hidden" name="oportunidad_id" value={negocio.id} />
+              <div className="flex gap-2">
+                <Input type="date" name="fecha" required className="flex-1" />
+                <Input type="time" name="hora" defaultValue="09:00" className="w-28" />
+              </div>
+              <Input name="nota" placeholder="Qué toca hacer" defaultValue={negocio.next_action_note ?? ""} />
+              <SubmitButton size="sm" variant="secondary" pendingLabel="…">Fijar</SubmitButton>
+            </form>
+            {negocio.status === "abierta" && (
+              <form action={cerrarNegocio} className="space-y-2 rounded-lg border border-border p-3">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Cerrar</p>
+                <input type="hidden" name="oportunidad_id" value={negocio.id} />
+                <Input name="motivo" placeholder="Motivo si se pierde" />
+                <div className="flex gap-2">
+                  <button type="submit" name="resultado" value="ganado" className={buttonClasses({ size: "sm" })}>Ganado</button>
+                  <button type="submit" name="resultado" value="perdido" className={buttonClasses({ variant: "danger", size: "sm" })}>Perdido</button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+        {mensajesEnviados.length > 0 && (
+          <ul className="divide-y divide-border border-t border-border">
+            {mensajesEnviados.map((mensaje) => {
+              const etiqueta = ETIQUETA_ESTADO_MENSAJE[mensaje.estado as EstadoMensaje] ?? ETIQUETA_ESTADO_MENSAJE.programado;
+              return (
+                <li key={mensaje.id} className="flex items-center gap-3 px-4 py-2 text-sm">
+                  <span className="w-20 text-xs text-muted-foreground">{mensaje.canal === "correo" ? "Correo" : "WhatsApp"}</span>
+                  <span className="min-w-0 flex-1 truncate text-foreground">{mensaje.asunto ?? mensaje.cuerpo ?? ""}</span>
+                  <Badge tone={etiqueta.tone}>{etiqueta.label}</Badge>
+                  {mensaje.error && <span className="text-xs text-danger">{mensaje.error}</span>}
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </SectionCard>
 
       <SectionCard title="Historia" description={`Todo lo que pasó con ${mensual ? "este negocio" : `este ${voc.negocio.toLowerCase()}`}.`}>

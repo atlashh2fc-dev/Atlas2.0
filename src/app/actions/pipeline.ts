@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { requireProfile } from "@/lib/auth";
+import { despacharMensajes } from "@/lib/mensajes/despachar";
 import { createClient } from "@/lib/supabase/server";
 
 /*
@@ -87,4 +88,68 @@ export async function convertirLeadEnNegocio(formData: FormData) {
   if (negocioError || !negocio) throw new Error(negocioError?.message ?? "No se pudo crear el negocio.");
   revalidar(negocio.id);
   redirect(`/dashboard/ventas/${negocio.id}`);
+}
+
+/** Escribirle al contacto del negocio desde Atlas, por correo o WhatsApp; queda en la historia. */
+export async function escribirAlNegocio(formData: FormData) {
+  const profile = await requireProfile(["admin", "supervisor"]);
+  const oportunidad = texto(formData, "oportunidad_id");
+  const cuenta = texto(formData, "cuenta_id");
+  const canal = texto(formData, "canal", 20) === "whatsapp" ? "whatsapp" : "correo";
+  const asunto = texto(formData, "asunto", 300);
+  const cuerpo = texto(formData, "texto", 5000);
+  if (!UUID.test(oportunidad) || !UUID.test(cuenta)) throw new Error("Negocio inválido.");
+  if (cuerpo.length < 2) throw new Error("Escribe el mensaje.");
+
+  const supabase = await createClient();
+  const { data: mensajeId, error } = await supabase.rpc("programar_mensaje", {
+    p_cuenta: cuenta,
+    p_plantilla: "libre",
+    p_variables: { texto: cuerpo },
+    p_regla: "manual",
+    p_origen_ref: oportunidad,
+    p_programado_para: null,
+    p_canal: canal,
+  });
+  if (error) throw new Error(error.message);
+  if (canal === "correo" && typeof mensajeId === "string") {
+    await supabase.from("mensajes_salientes").update({ asunto: asunto || "Mensaje de " + (profile.full_name ?? "Atlas") }).eq("id", mensajeId);
+  }
+  await supabase.from("sales_activities").insert({
+    company_id: cuenta,
+    opportunity_id: oportunidad,
+    kind: canal === "correo" ? "correo" : "whatsapp",
+    subject: canal === "correo" ? (asunto || "Correo enviado desde Atlas") : "WhatsApp enviado desde Atlas",
+    body: cuerpo.slice(0, 2000),
+    occurred_at: new Date().toISOString(),
+    done: true,
+    owner_id: profile.id,
+  });
+  await despacharMensajes({ generar: false, limite: 10 });
+  revalidar(oportunidad);
+}
+
+/** Cerrar el negocio como ganado o perdido, con motivo cuando se pierde. */
+export async function cerrarNegocio(formData: FormData) {
+  await requireProfile(["admin", "supervisor"]);
+  const oportunidad = texto(formData, "oportunidad_id");
+  const resultado = texto(formData, "resultado", 10);
+  const motivo = texto(formData, "motivo", 400);
+  if (!UUID.test(oportunidad)) throw new Error("Negocio inválido.");
+  if (resultado !== "ganado" && resultado !== "perdido") throw new Error("Elige ganado o perdido.");
+  const supabase = await createClient();
+  const { data: etapa } = await supabase.from("sales_stages").select("key").eq("active", true).eq(resultado === "ganado" ? "is_won" : "is_lost", true).limit(1).maybeSingle();
+  if (!etapa) throw new Error("No hay una etapa de cierre configurada.");
+  const { error } = await supabase.rpc("mover_oportunidad_de_etapa", { p_opportunity_id: oportunidad, p_stage_key: etapa.key, p_note: motivo || null });
+  if (error) throw new Error(error.message);
+  revalidar(oportunidad);
+}
+
+export async function alternarSeguimientoAutomatico(formData: FormData) {
+  await requireProfile(["admin"]);
+  const activo = String(formData.get("activo") ?? "") === "si";
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("alternar_seguimiento_automatico", { p_activo: activo });
+  if (error) throw new Error(error.message);
+  revalidatePath("/dashboard/ventas/resultados");
 }

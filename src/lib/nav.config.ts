@@ -201,6 +201,7 @@ const CONSOLE: NavSpace = {
           tabs: [
             { label: "Pipeline", href: "/dashboard/pipeline" },
             { label: "Lista", href: "/dashboard/ventas" },
+            { label: "Resultados", href: "/dashboard/ventas/resultados" },
             { label: "Respuestas del agente", href: "/dashboard/ventas/respuestas" },
           ],
           modules: ["ventas_b2b", "ventas_b2c"],

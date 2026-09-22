@@ -10,7 +10,7 @@ import type { BadgeTone } from "@/components/ui";
  * de la plantilla registrada allá y las variables van en el mismo orden.
  */
 
-export type ClavePlantilla = "cita_confirmar" | "cita_recordatorio" | "vacuna" | "presupuesto" | "control" | "enlace_pago" | "libre";
+export type ClavePlantilla = "cita_confirmar" | "cita_recordatorio" | "vacuna" | "presupuesto" | "control" | "enlace_pago" | "seguimiento_propuesta" | "libre";
 
 export const PLANTILLAS: Record<ClavePlantilla, { nombre: string; cuerpo: string }> = {
   cita_confirmar: {
@@ -38,6 +38,10 @@ export const PLANTILLAS: Record<ClavePlantilla, { nombre: string; cuerpo: string
     nombre: "Enlace de pago",
     cuerpo: "Hola {{nombre}}, te dejamos el enlace para pagar {{monto}} en {{clinica}}: {{url}} . Puedes pagar con débito o crédito. Cualquier duda, por acá.",
   },
+  seguimiento_propuesta: {
+    nombre: "Seguimiento de propuesta",
+    cuerpo: "Hola {{nombre}}, te escribo de {{remitente}} por la propuesta que le enviamos a {{empresa}} ({{negocio}}). ¿Te quedó alguna duda o quieres que agendemos una llamada corta para revisarla? Quedo atento.",
+  },
   libre: { nombre: "Mensaje libre", cuerpo: "{{texto}}" },
 };
 
@@ -62,6 +66,7 @@ export const ETIQUETA_REGLA: Record<string, string> = {
   enlace_pago: "Enlace de pago",
   manual: "Manual",
   campana: "Campaña",
+  seguimiento: "Seguimiento",
 };
 
 /** Rellena una plantilla con sus variables. Las que faltan quedan vacías, sin llaves sueltas. */
