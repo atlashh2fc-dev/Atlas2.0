@@ -117,7 +117,7 @@ export const CALL_REASONS: CallReasonConfig[] = ([
     reasonOrderIndex: 10,
     status: "connected",
     outcome: "interested",
-    agenda: "none",
+    agenda: "optional",
   },
   {
     value: "VOLVER A LLAMAR",
@@ -579,10 +579,17 @@ function inferAgenda(reason: string, requiresEquifaxData: boolean): AgendaRequir
     return "required";
   }
   // Fuera del contrato Equifax una cotizacion admite seguimiento pero no lo
-  // exige: el cierre pasa con o sin fecha. La regla espejo vive en
-  // public.management_agenda_requirement (migracion 20260910190000) y es la
-  // unica que valida la base, para que UI y persistencia no puedan divergir.
-  if (normalized.includes("COTIZACION")) {
+  // exige: el cierre pasa con o sin fecha. Enviar informacion es lo mismo: el
+  // cliente pide el material y hay que volver a llamarlo para saber si lo leyo;
+  // sin fecha el registro se cerraba y desaparecia de la agenda del ejecutivo.
+  // La regla espejo vive en public.management_agenda_requirement (migraciones
+  // 20260910190000 y 20260923170000) y es la unica que valida la base, para
+  // que UI y persistencia no puedan divergir.
+  if (
+    normalized.includes("COTIZACION") ||
+    normalized.includes("ENVIAR INFORMACION") ||
+    normalized.includes("ENVIA INFORMACION")
+  ) {
     return "optional";
   }
   return "none";

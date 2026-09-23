@@ -56,6 +56,10 @@ test("la regla SQL de agenda es espejo del catálogo TypeScript", () => {
     assert.match(requirement, new RegExp(`${fragment}[\\s\\S]*?'required'`));
   }
   assert.match(requirement, /COTIZACION[\s\S]*?'required'[\s\S]*?'optional'/);
+  // Enviar informacion admite seguimiento: sin fecha el registro se cerraba y
+  // la ejecutiva no podia volver a llamar al cliente que pidio el material.
+  assert.match(requirement, /ENVIAR INFORMACION%' then 'optional'/);
+  assert.match(requirement, /ENVIA INFORMACION%' then 'optional'/);
 
   const step = (input: Partial<WorkflowStep> & { id: string; name: string }): WorkflowStep =>
     ({
@@ -76,13 +80,21 @@ test("la regla SQL de agenda es espejo del catálogo TypeScript", () => {
   const secretariaVirtual = buildCallReasonCatalogFromWorkflow(
     [
       step({ id: "start", name: "Estado", is_start: true, options: ["Conecta"] }),
-      step({ id: "result", name: "Resultado", options: ["Cotización Enviada", "Volver a Llamar"] }),
+      step({
+        id: "result",
+        name: "Resultado",
+        options: ["Enviar Información", "Cotización Enviada", "Volver a Llamar"],
+      }),
     ],
     [branch({ from_step_id: "start", from_option: "Conecta", to_step_id: "result" })]
   );
 
   assert.equal(
     secretariaVirtual.find((reason) => reason.value === "COTIZACION ENVIADA")?.agenda,
+    "optional"
+  );
+  assert.equal(
+    secretariaVirtual.find((reason) => reason.value === "ENVIAR INFORMACION")?.agenda,
     "optional"
   );
   assert.equal(
