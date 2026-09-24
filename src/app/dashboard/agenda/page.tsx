@@ -75,10 +75,11 @@ export default async function MyAgendaPage({
       />
 
       <Callout tone="info">
-        Las llamadas agendadas te entran solas a la hora acordada si estás Disponible: primero suena tu teléfono y,
-        al contestar, se marca al cliente. Llegan de a una y en orden. Si ya hablaste con el cliente no se vuelve a
-        marcar, y si no contesta se reintenta como máximo una vez más. Con «Llamar ahora» la tomas tú en cualquier
-        momento y el sistema deja de marcarla. Los seguimientos por WhatsApp abren el chat para que los gestiones tú.
+        A la hora acordada, si estás Disponible, el sistema marca automáticamente tus compromisos telefónicos: primero
+        suena tu teléfono y, al contestar, se llama al cliente. Se marcan de a uno y en orden. Si ya hablaste con el
+        cliente no se vuelve a marcar, y si no contesta se reintenta como máximo una vez más. Con «Llamar ahora» lo
+        llamas tú en cualquier momento y el sistema deja de marcarlo. Los seguimientos por WhatsApp abren el chat para
+        que los gestiones tú.
       </Callout>
       {error ? (
         <p className="rounded-lg border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger">

@@ -57,3 +57,59 @@ export async function forceAgentLogout(
   revalidatePath("/dashboard/supervision/monitor");
   return { commandId: data };
 }
+
+export type LiveWallboard = {
+  generado: string;
+  estado: {
+    total: number;
+    conectados: number;
+    disponibles: number;
+    hablando: number;
+    timbrando: number;
+    wrap_up: number;
+    en_pausa: number;
+    desconectados: number;
+    pausa_por_motivo: { motivo: string; ejecutivos: number }[];
+  };
+  hoy: {
+    gestiones: number;
+    contactos: number;
+    contactabilidad: number | null;
+    tmo_segundos: number | null;
+    tmo_contacto_segundos: number | null;
+    ventas: number;
+    cotizaciones: number;
+    agendas: number;
+    discador_intentos: number;
+    discador_conectadas: number;
+    discador_abandonadas: number;
+    abandono: number | null;
+    fallas_tecnicas: number | null;
+    tmc_segundos: number | null;
+    en_curso: number;
+  };
+  por_hora: { hora: number; gestiones: number; contactos: number; intentos: number }[];
+  por_ejecutivo: {
+    profile_id: string;
+    gestiones: number;
+    contactos: number;
+    ventas: number;
+    tmo_segundos: number | null;
+    pausa_segundos: number;
+    pausa_por_motivo: { motivo: string; segundos: number }[];
+  }[];
+  pausa_equipo: { motivo: string; segundos: number }[];
+};
+
+/**
+ * Tablero del día (hora Chile) sobre los mismos ejecutivos que ve el monitor:
+ * TMO, contactabilidad, abandono, producción, curva por hora y pausa por
+ * motivo. get_live_wallboard acota por supervisor y empresa.
+ */
+export async function getLiveWallboard(campaignId?: string | null): Promise<LiveWallboard> {
+  await requireProfile(["admin", "supervisor"]);
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("get_live_wallboard", { p_campaign_id: campaignId || null });
+  if (error) throw new Error(error.message);
+  return data as LiveWallboard;
+}
