@@ -73,8 +73,10 @@ export default async function MyAgendaPage({
       />
 
       <Callout tone="info">
-        Cada compromiso indica su canal y responsable. Las llamadas telefónicas pueden entrar automáticamente si
-        tienes una extensión y estás Disponible; los seguimientos por WhatsApp abren el chat para que los gestiones tú.
+        Las llamadas agendadas te entran solas a la hora acordada si estás Disponible: primero suena tu teléfono y,
+        al contestar, se marca al cliente. Llegan de a una y en orden. Si ya hablaste con el cliente no se vuelve a
+        marcar, y si no contesta se reintenta como máximo una vez más. Con «Llamar ahora» la tomas tú en cualquier
+        momento y el sistema deja de marcarla. Los seguimientos por WhatsApp abren el chat para que los gestiones tú.
       </Callout>
       {error ? (
         <p className="rounded-lg border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger">

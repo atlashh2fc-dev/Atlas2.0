@@ -398,9 +398,29 @@ export async function countAvailableAgents(campaignId: string): Promise<number> 
     .gte("started_at", openCallsSince);
   if (openCallsError) throw new Error(`calls (open by agent): ${openCallsError.message}`);
 
-  const agentsWithOpenCalls = new Set((openCalls ?? []).map((call) => call.agent_id));
+  // Un ejecutivo al que le está sonando (o ya habla) su agenda personal sigue
+  // figurando 'available' hasta que conecta. Si contara, el pool originaría
+  // para él y el cliente del pool quedaría esperando en la cola sin nadie.
+  const { data: callbackAttempts, error: callbackAttemptsError } = await supabase
+    .from("dial_attempts")
+    .select("agent_id")
+    .eq("attempt_kind", "personal_callback")
+    .in("status", ["queued", "originating", "ringing", "answered", "bridged"])
+    .in(
+      "agent_id",
+      availableSessions.map((session) => session.profile_id)
+    )
+    .gte("created_at", openCallsSince);
+  if (callbackAttemptsError) {
+    throw new Error(`dial_attempts (agendas en vuelo): ${callbackAttemptsError.message}`);
+  }
+
+  const busyAgents = new Set([
+    ...(openCalls ?? []).map((call) => call.agent_id),
+    ...(callbackAttempts ?? []).map((attempt) => attempt.agent_id),
+  ]);
   return availableSessions.filter(
-    (session) => !agentsWithOpenCalls.has(session.profile_id)
+    (session) => !busyAgents.has(session.profile_id)
   ).length;
 }
 

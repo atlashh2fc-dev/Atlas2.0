@@ -3,6 +3,7 @@ import { logger } from "../logger";
 import { computeDialCapacity, computeEffectiveRatio } from "./pacing";
 import { originateCall } from "../ami/originate";
 import { originatePersonalCallback } from "../ami/originatePersonalCallback";
+import { forgetPersonalCallback, trackPersonalCallback } from "../ami/personalCallbacks";
 import { ensureQueue, syncQueueMembers } from "../asterisk/configSync";
 import { syncAgentPauseStates } from "./agentPause";
 import {
@@ -134,41 +135,22 @@ export async function runCampaignTick(
         );
       }
 
-      const [available, inFlight] = await Promise.all([
-        countAvailableAgents(cfg.campaign_id),
-        countInFlightAttempts(cfg.campaign_id),
-      ]);
-
-      // Solo en modo predictivo esto hace algo distinto de usar
-      // max_dial_ratio tal cual — ver computeEffectiveRatio en pacing.ts.
-      let effectiveRatio = cfg.max_dial_ratio;
-      if (cfg.dial_mode === "predictive") {
-        let measuredAbandonmentRate: number | null = null;
-        try {
-          measuredAbandonmentRate = await getRecentAbandonmentRate(cfg.campaign_id, ABANDONMENT_WINDOW_MINUTES);
-        } catch (err) {
-          logger.error({ err, campaignId: cfg.campaign_id }, "No se pudo medir abandono reciente; se usa el ratio anterior");
-        }
-        effectiveRatio = computeEffectiveRatio({
-          campaignId: cfg.campaign_id,
-          dialMode: cfg.dial_mode,
-          baseRatio: cfg.max_dial_ratio,
-          targetAbandonmentRate: cfg.target_abandonment_rate,
-          measuredAbandonmentRate,
-        });
-        logger.info(
-          { campaignId: cfg.campaign_id, measuredAbandonmentRate, effectiveRatio, targetAbandonmentRate: cfg.target_abandonment_rate },
-          "Ratio predictivo ajustado"
-        );
-      }
-
-      // Los compromisos agendados van PRIMERO y no consumen la capacidad del
-      // pool: un cliente al que se le prometió una llamada a las 15:00 no
-      // puede quedar detrás de la marcación masiva.
+      // Los compromisos agendados van PRIMERO: un cliente al que se le prometió
+      // una llamada a las 15:00 no puede quedar detrás de la marcación masiva.
+      // claim_due_personal_callbacks entrega una sola agenda por ejecutivo y
+      // solo si está libre; la capacidad del pool se mide DESPUÉS, para que el
+      // ejecutivo que recibe su agenda no cuente también como disponible.
       if (cfg.personal_callback_enabled !== false) {
         try {
           const callbacks = await claimDuePersonalCallbacks(cfg.campaign_id, MAX_CALLBACKS_PER_TICK);
           for (const callback of callbacks) {
+            // Antes del Originate: los eventos AMI de esta llamada necesitan
+            // saber que es una agenda para registrar la conexión al contestar.
+            trackPersonalCallback(callback.dial_attempt_id, {
+              agentId: callback.agent_id,
+              extension: callback.agent_extension,
+              campaignId: cfg.campaign_id,
+            });
             try {
               await originatePersonalCallback({
                 ami,
@@ -177,6 +159,7 @@ export async function runCampaignTick(
                 trunkContext: cfg.trunk_context,
               });
             } catch (err) {
+              forgetPersonalCallback(callback.dial_attempt_id);
               logger.error({ err, callback }, "No se pudo entregar un compromiso agendado");
               await registerDialEvent({
                 dialAttemptId: callback.dial_attempt_id,
@@ -208,6 +191,34 @@ export async function runCampaignTick(
       // becoming an outbound pool. Its explicit commitments are processed
       // above; ordinary WhatsApp leads must never be auto-dialed here.
       if (cfg.campaign_type === "inbound") continue;
+
+      const [available, inFlight] = await Promise.all([
+        countAvailableAgents(cfg.campaign_id),
+        countInFlightAttempts(cfg.campaign_id),
+      ]);
+
+      // Solo en modo predictivo esto hace algo distinto de usar
+      // max_dial_ratio tal cual — ver computeEffectiveRatio en pacing.ts.
+      let effectiveRatio = cfg.max_dial_ratio;
+      if (cfg.dial_mode === "predictive") {
+        let measuredAbandonmentRate: number | null = null;
+        try {
+          measuredAbandonmentRate = await getRecentAbandonmentRate(cfg.campaign_id, ABANDONMENT_WINDOW_MINUTES);
+        } catch (err) {
+          logger.error({ err, campaignId: cfg.campaign_id }, "No se pudo medir abandono reciente; se usa el ratio anterior");
+        }
+        effectiveRatio = computeEffectiveRatio({
+          campaignId: cfg.campaign_id,
+          dialMode: cfg.dial_mode,
+          baseRatio: cfg.max_dial_ratio,
+          targetAbandonmentRate: cfg.target_abandonment_rate,
+          measuredAbandonmentRate,
+        });
+        logger.info(
+          { campaignId: cfg.campaign_id, measuredAbandonmentRate, effectiveRatio, targetAbandonmentRate: cfg.target_abandonment_rate },
+          "Ratio predictivo ajustado"
+        );
+      }
 
       const capacity = computeDialCapacity({
         availableAgents: available,

@@ -325,6 +325,12 @@ export default async function LeadDetailPage({
 
   const statusLabel = LEAD_STATUSES.find((status) => status.value === lead.status)?.label ?? lead.status;
   const overdue = lead.next_action_at ? new Date(lead.next_action_at).getTime() <= new Date().getTime() : false;
+  // Mismo dueño que usan el discador y begin_agent_agenda_callback. Las 447
+  // agendas migradas de Equifax tienen managed_by pero assigned_to vacío, así
+  // que exigir la asignación dejaba al ejecutivo sin botón en su propia ficha.
+  const ownsAgenda = Boolean(lead.next_action_at)
+    && profile.role === "agente"
+    && (lead.managed_by ?? lead.assigned_to) === profile.id;
 
   return (
     <div className="space-y-5">
@@ -354,13 +360,15 @@ export default async function LeadDetailPage({
             {/* Sin gestión abierta, un compromiso propio se puede marcar desde
                 aquí aunque la campaña sea automática: el discador solo entrega
                 el callback dentro de su ventana y después queda incallable. */}
-            {canManageCall && !call && canOperateAssigned && lead.phone && (
+            {canManageCall && !call && (canOperateAssigned || ownsAgenda) && lead.phone && (
               <AgendaCallButton
                 leadId={lead.id}
                 fullName={lead.full_name}
                 variant="secondary"
                 label={lead.next_action_at && overdue ? "Llamar compromiso vencido" : "Llamar ahora"}
-                source="assigned_lead"
+                // Con agenda propia se abre como agenda: queda tomada y el
+                // discador ya no la marca en paralelo ni después.
+                source={ownsAgenda ? "agenda" : "assigned_lead"}
               />
             )}
             {revisableCall && !correctionRequested && (

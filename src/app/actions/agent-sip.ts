@@ -602,11 +602,18 @@ export async function getMyIncomingDialContext(): Promise<IncomingDialContext | 
   const admin = createAdminClient();
   const recentCutoff = new Date(Date.now() - 2 * 60_000).toISOString();
 
+  // Una agenda personal suena primero en el teléfono del ejecutivo, cuando el
+  // intento todavía está 'queued'/'originating' (recién al contestar se marca
+  // al cliente). Ese intento nace con agent_id = dueño, así que ya es suyo:
+  // mostrar la ficha desde el primer timbre es justo lo que pide una agenda.
+  // Los del pool solo tienen agent_id desde AgentConnect.
   const { data: attempt, error: attemptError } = await admin
     .from("dial_attempts")
     .select("id, lead_id, campaign_id, phone")
     .eq("agent_id", profile.id)
-    .in("status", ["ringing", "answered", "bridged"])
+    .or(
+      "status.in.(ringing,answered,bridged),and(attempt_kind.eq.personal_callback,status.in.(queued,originating))"
+    )
     .gte("updated_at", recentCutoff)
     .order("updated_at", { ascending: false })
     .limit(1)

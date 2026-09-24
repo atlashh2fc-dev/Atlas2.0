@@ -70,3 +70,35 @@ export function queueMemberDialerStatus(
       return null;
   }
 }
+
+export type PersonalCallbackTerminalEvent = "completed" | "no_answer" | "busy" | "failed";
+
+/**
+ * Estado final de una agenda personal. En estas llamadas la pata que Atlas
+ * origina es la del ejecutivo, así que la causa SIP del Hangup casi siempre es
+ * 16 (el ejecutivo "colgó normal") aunque el cliente jamás haya contestado:
+ * 79 intentos de Secretaria Virtual quedaron 'completed' en 7 s promedio sin
+ * conversación. La verdad sobre el cliente está en DialEnd.DialStatus.
+ *
+ * - Con conversación: completed (el ejecutivo pasa a tipificar).
+ * - NOANSWER o CANCEL (el ejecutivo desistió mientras sonaba): no_answer; al
+ *   cliente sí le sonó, y eso cuenta para la cortesía de reintentos.
+ * - BUSY: busy.
+ * - Cualquier otra cosa, o si el Dial ni alcanzó a partir: failed.
+ */
+export function personalCallbackHangupEvent(params: {
+  bridged: boolean;
+  customerDialStatus: string | null | undefined;
+}): PersonalCallbackTerminalEvent {
+  if (params.bridged) return "completed";
+  const status = String(params.customerDialStatus ?? "").trim().toUpperCase();
+  if (status === "NOANSWER" || status === "CANCEL") return "no_answer";
+  if (status === "BUSY") return "busy";
+  return "failed";
+}
+
+/** Segundos de conversación desde que el cliente contestó, o null si no hubo. */
+export function secondsSince(startMs: number | undefined, nowMs: number): number | null {
+  if (startMs === undefined || !Number.isFinite(startMs) || nowMs < startMs) return null;
+  return Math.round((nowMs - startMs) / 1000);
+}

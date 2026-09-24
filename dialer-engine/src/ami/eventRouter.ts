@@ -13,10 +13,13 @@ import {
   normalizeAmiUniqueId,
   normalizeCallDisconnectParty,
   normalizeQueueTalkSeconds,
+  personalCallbackHangupEvent,
   queueMemberDialerStatus,
+  secondsSince,
 } from "./eventSemantics";
 import type { RecordingCoordinator } from "../recording/types";
 import { AttemptEventLifecycle } from "./eventLifecycle";
+import { forgetPersonalCallback, getPersonalCallback } from "./personalCallbacks";
 
 // uniqueid del canal saliente (la pata que originamos) -> dial_attempt_id.
 // Se puebla en OriginateResponse (ActionID = dial_attempt_id) y se limpia en Hangup.
@@ -61,6 +64,7 @@ function cleanupAttemptCorrelation(dialAttemptId: string): void {
   }
   answerStateByAttemptId.delete(dialAttemptId);
   voicemailAttemptIds.delete(dialAttemptId);
+  forgetPersonalCallback(dialAttemptId);
   attemptLifecycle.clear(dialAttemptId);
   const timer = correlationCleanupTimers.get(dialAttemptId);
   if (timer) clearTimeout(timer);
@@ -133,6 +137,70 @@ export function registerEventRouter(
   campaignIdByQueue: Map<string, string>,
   recording?: RecordingCoordinator
 ) {
+  /**
+   * La conexión autoritativa ejecutivo-cliente. El pool llega aquí desde
+   * AgentConnect y las agendas personales desde DialEnd ANSWER; en ambos casos
+   * se confirma al ejecutivo, se crea la `calls` que se va a tipificar, se
+   * graba y se abre la ficha. Antes las agendas no pasaban por aquí y quedaban
+   * sin nada de eso.
+   */
+  async function connectAgentToAttempt(params: {
+    dialAttemptId: string;
+    profileId: string;
+    extension: string;
+    campaignId: string | undefined;
+    channel: string;
+    payload: Record<string, unknown>;
+  }): Promise<void> {
+    const { dialAttemptId, profileId, extension, campaignId, channel } = params;
+    const confirmed = await confirmDialAttemptAgent(dialAttemptId, profileId);
+    if (!confirmed) {
+      logger.warn({ dialAttemptId, profileId, extension }, "La conexión llegó para un intento no activo");
+      return;
+    }
+
+    const callId = await registerDialEvent({
+      dialAttemptId,
+      eventType: "bridged",
+      agentId: profileId,
+      payload: params.payload,
+    });
+
+    const effects: Promise<unknown>[] = [emitIncomingDialEvent(dialAttemptId, profileId)];
+    if (recording && callId && channel) {
+      effects.push(
+        recording.start({
+          dialAttemptId,
+          callId,
+          agentId: profileId,
+          campaignId,
+          channel,
+        })
+      );
+    } else if (recording && (!callId || !channel)) {
+      logger.error(
+        { dialAttemptId, callId, channel },
+        "No se inició grabación: conexión sin call_id/canal"
+      );
+    }
+    if (campaignId) {
+      effects.push(
+        updateAgentDialerStatus({
+          profileId,
+          campaignId,
+          extension,
+          status: "on_call",
+        })
+      );
+    }
+    const results = await Promise.allSettled(effects);
+    for (const result of results) {
+      if (result.status === "rejected") {
+        logger.error({ err: result.reason, dialAttemptId }, "efecto de la conexión falló");
+      }
+    }
+  }
+
   ami.on("managerevent", (evt) => {
     const event = String(evt.event ?? "").toLowerCase();
 
@@ -144,6 +212,9 @@ export function registerEventRouter(
         if (uniqueId) attemptByUniqueId.set(uniqueId, actionId);
 
         const success = String(evt.response ?? "").toLowerCase() === "success";
+        // Una agenda cuyo ejecutivo no contestó no genera Hangup correlacionable:
+        // se suelta aquí para no acumularla en memoria.
+        if (!success) forgetPersonalCallback(actionId);
         enqueueAttemptTask(actionId, "register_dial_event (originate)", () =>
           registerDialEvent({
             dialAttemptId: actionId,
@@ -173,14 +244,43 @@ export function registerEventRouter(
         const dialAttemptId = attemptByUniqueId.get(uniqueId);
         if (!dialAttemptId) return;
         const status = String(evt.dialstatus ?? "").toUpperCase();
+        const callback = getPersonalCallback(dialAttemptId);
         if (status === "ANSWER") {
           const state = answerStateByAttemptId.get(dialAttemptId) ?? { answered: false, bridged: false };
           state.answered = true;
+          if (callback) {
+            // En una agenda personal el ejecutivo ya está en la línea cuando se
+            // marca al cliente: que el cliente conteste ES la conexión. Sin
+            // esto el Hangup la contaba como abandono.
+            state.bridged = true;
+            callback.answeredAtMs = Date.now();
+            attemptByAgentExtension.set(callback.extension, dialAttemptId);
+            for (const value of [evt.destuniqueid, evt.destlinkedid, evt.linkedid]) {
+              const id = String(value ?? "");
+              if (id) attemptByUniqueId.set(id, dialAttemptId);
+            }
+          }
           answerStateByAttemptId.set(dialAttemptId, state);
 
           enqueueAttemptTask(dialAttemptId, "register_dial_event (answered)", () =>
             registerDialEvent({ dialAttemptId, eventType: "answered" })
           );
+          if (callback) {
+            // DialEnd.Channel es la pata del ejecutivo (quien ejecuta Dial):
+            // MixMonitor sobre ella graba la conversación completa.
+            enqueueAttemptTask(dialAttemptId, "conexión de agenda personal", () =>
+              connectAgentToAttempt({
+                dialAttemptId,
+                profileId: callback.agentId,
+                extension: callback.extension,
+                campaignId: callback.campaignId,
+                channel: String(evt.channel ?? ""),
+                payload: { kind: "personal_callback", extension: callback.extension },
+              })
+            );
+          }
+        } else if (callback) {
+          callback.customerDialStatus = status;
         }
         return;
       }
@@ -212,55 +312,16 @@ export function registerEventRouter(
 
         const campaignId = campaignIdByQueue.get(String(evt.queue ?? ""));
         if (extension && profileId) {
-          enqueueAttemptTask(dialAttemptId, "confirmación de AgentConnect", async () => {
-            const confirmed = await confirmDialAttemptAgent(dialAttemptId, profileId);
-            if (!confirmed) {
-              logger.warn({ dialAttemptId, profileId, extension }, "AgentConnect llegó para un intento no activo");
-              return;
-            }
-
-            const callId = await registerDialEvent({
+          enqueueAttemptTask(dialAttemptId, "confirmación de AgentConnect", () =>
+            connectAgentToAttempt({
               dialAttemptId,
-              eventType: "bridged",
-              agentId: profileId,
+              profileId,
+              extension,
+              campaignId,
+              channel: String(evt.channel ?? ""),
               payload: { queue: evt.queue ?? null, extension },
-            });
-
-            const effects: Promise<unknown>[] = [emitIncomingDialEvent(dialAttemptId, profileId)];
-            const channel = String(evt.channel ?? "");
-            if (recording && callId && channel) {
-              effects.push(
-                recording.start({
-                  dialAttemptId,
-                  callId,
-                  agentId: profileId,
-                  campaignId,
-                  channel,
-                })
-              );
-            } else if (recording && (!callId || !channel)) {
-              logger.error(
-                { dialAttemptId, callId, channel },
-                "No se inició grabación: AgentConnect sin call_id/canal"
-              );
-            }
-            if (campaignId) {
-              effects.push(
-                updateAgentDialerStatus({
-                  profileId,
-                  campaignId,
-                  extension,
-                  status: "on_call",
-                })
-              );
-            }
-            const results = await Promise.allSettled(effects);
-            for (const result of results) {
-              if (result.status === "rejected") {
-                logger.error({ err: result.reason, evt }, "efecto de AgentConnect falló");
-              }
-            }
-          });
+            })
+          );
         }
         return;
       }
@@ -355,27 +416,54 @@ export function registerEventRouter(
         answerStateByAttemptId.delete(dialAttemptId);
 
         const wasVoicemail = voicemailAttemptIds.delete(dialAttemptId);
+        const callback = getPersonalCallback(dialAttemptId);
 
         // Prioridad: AMD ya determinó que era contestador/voicemail (no es
         // ni abandono ni un no_answer/busy/failed real — es que el propio
-        // motor cortó tras detectar la máquina). Si no, el cliente contestó
+        // motor cortó tras detectar la máquina). Una agenda personal se
+        // resuelve con lo que pasó con el cliente (ver
+        // personalCallbackHangupEvent). Si no, el cliente contestó
         // pero nunca llegó a bridgearse con un agente: abandono real del
         // discador, independiente de la causa SIP. Si no, la causa SIP
         // manda como siempre.
         const eventType = wasVoicemail
           ? "voicemail"
-          : state?.answered && !state.bridged
-            ? "abandoned"
-            : hangupCauseToStatus(evt.cause);
+          : callback
+            ? personalCallbackHangupEvent({
+                bridged: state?.bridged === true,
+                customerDialStatus: callback.customerDialStatus,
+              })
+            : state?.answered && !state.bridged
+              ? "abandoned"
+              : hangupCauseToStatus(evt.cause);
 
         enqueueAttemptTask(dialAttemptId, "register_dial_event (hangup)", () =>
           registerDialEvent({
             dialAttemptId,
             eventType,
             hangupCause: String(evt.cause ?? "") || null,
-            payload: { cause_txt: evt["cause-txt"] ?? null },
+            payload: {
+              cause_txt: evt["cause-txt"] ?? null,
+              ...(callback ? { kind: "personal_callback", customer_dial_status: callback.customerDialStatus ?? null } : {}),
+            },
           })
         );
+
+        if (callback && state?.bridged) {
+          // Sin Queue no hay AgentComplete: el cierre de la grabación y la
+          // pausa de tipificación se hacen aquí. register_dial_event ya dejó la
+          // sesión en wrap_up; QueuePause evita que la cola de la campaña le
+          // pase otra llamada al ejecutivo mientras tipifica la agenda.
+          const talkSeconds = secondsSince(callback.answeredAtMs, Date.now());
+          if (recording) {
+            enqueueAttemptTask(dialAttemptId, "cierre de grabación de agenda personal", () =>
+              recording.stop(dialAttemptId, { disconnectParty: null, queueTalkSeconds: talkSeconds })
+            );
+          }
+          pauseAgentForWrapUp(ami, callback.extension).catch((err) =>
+            logger.error({ err, dialAttemptId }, "QueuePause tras la agenda personal falló")
+          );
+        }
         if (lifecycle.cleanup) {
           cleanupAttemptCorrelation(dialAttemptId);
         } else {
