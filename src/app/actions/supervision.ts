@@ -36,12 +36,14 @@ export async function getQueueHealth(): Promise<QueueHealth[]> {
  * Cierra las sesiones actuales de un ejecutivo sin desactivar su cuenta ni
  * alterar campañas, cartera o extensión. La RPC deja la orden durable para
  * navegador y motor PBX; el monitor muestra sus confirmaciones por separado.
+ * El supervisor solo puede cerrar a ejecutivos de los equipos que supervisa;
+ * esa frontera la aplica force_agent_logout.
  */
 export async function forceAgentLogout(
   profileId: string,
   reason?: string
 ): Promise<{ commandId: string }> {
-  await requireProfile(["admin"]);
+  await requireProfile(["admin", "supervisor"]);
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(profileId)) {
     throw new Error("Ejecutivo inválido.");
   }

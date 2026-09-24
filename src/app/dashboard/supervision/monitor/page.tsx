@@ -3,7 +3,7 @@ import { LiveMonitor } from "@/components/live-monitor";
 import { NavTabs, PageHeader } from "@/components/ui";
 
 export default async function MonitorEnVivoPage() {
-  const profile = await requireProfile(["admin", "supervisor"]);
+  await requireProfile(["admin", "supervisor"]);
 
   return (
     <div className="space-y-6">
@@ -18,7 +18,7 @@ export default async function MonitorEnVivoPage() {
           { label: "Monitor en vivo", href: "/dashboard/supervision/monitor" },
         ]}
       />
-      <LiveMonitor canForceLogout={profile.role === "admin"} />
+      <LiveMonitor canForceLogout />
     </div>
   );
 }

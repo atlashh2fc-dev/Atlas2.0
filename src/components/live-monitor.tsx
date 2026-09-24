@@ -660,7 +660,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
         onClose={() => setLogoutTarget(null)}
       >
         <div className="border-b border-border px-5 py-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-danger">Cierre administrativo</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-danger">Cierre de sesión forzado</p>
           <h2 className="mt-1 text-lg font-semibold">Cerrar sesión de {logoutTarget?.full_name}</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Se cortará una llamada activa, el teléfono WebRTC y las sesiones actuales. La cuenta, extensión,
