@@ -40,12 +40,8 @@ function text(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
-export async function listSaleValidations(status: SaleValidationStatus): Promise<SaleValidationRow[]> {
-  await requireProfile(["supervisor", "admin"]);
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc("list_sale_validations", { p_status: status, p_limit: 500 });
-  if (error) throw new Error(error.message);
-  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+function toRow(row: Record<string, unknown>): SaleValidationRow {
+  return {
     id: String(row.id),
     status: row.status as SaleValidationStatus,
     soldAt: String(row.sold_at),
@@ -66,7 +62,71 @@ export async function listSaleValidations(status: SaleValidationStatus): Promise
     decidedByName: text(row.decided_by_name),
     decisionNote: text(row.decision_note),
     decisionSource: (text(row.decision_source) as SaleValidationRow["decisionSource"]) ?? null,
-  }));
+  };
+}
+
+export async function listSaleValidations(status: SaleValidationStatus): Promise<SaleValidationRow[]> {
+  await requireProfile(["supervisor", "admin"]);
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("list_sale_validations", { p_status: status, p_limit: 1000 });
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as Record<string, unknown>[]).map(toRow);
+}
+
+export type SaleValidationFilters = {
+  status: SaleValidationStatus;
+  query?: string | null;
+  /** Fechas YYYY-MM-DD en hora Chile: de la decisión, o de la venta si está pendiente. */
+  from?: string | null;
+  to?: string | null;
+  agent?: string | null;
+  product?: string | null;
+};
+
+/** Buscador del universo de ventas (search_sale_validations). */
+export async function searchSaleValidations(filters: SaleValidationFilters): Promise<SaleValidationRow[]> {
+  await requireProfile(["supervisor", "admin"]);
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("search_sale_validations", {
+    p_status: filters.status,
+    p_query: filters.query || null,
+    p_from: filters.from || null,
+    p_to: filters.to || null,
+    p_agent: filters.agent || null,
+    p_product: filters.product || null,
+    p_limit: 5000,
+  });
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as Record<string, unknown>[]).map(toRow);
+}
+
+/**
+ * Aprueba o rechaza varias ventas de una vez. Todo o nada: si una no se puede
+ * decidir, no se decide ninguna y el error dice por qué.
+ */
+export async function resolveSales(input: {
+  ids: string[];
+  decision: "aprobada" | "rechazada";
+  note: string | null;
+}): Promise<{ ok: true; count: number } | { ok: false; error: string }> {
+  try {
+    await requireProfile(["supervisor", "admin"]);
+    const note = input.note?.trim() || null;
+    if (input.ids.length === 0) throw new Error("Selecciona al menos una venta.");
+    if (input.decision === "rechazada" && !note) throw new Error("Indica por qué se rechaza.");
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("resolve_sale_validations", {
+      p_validation_ids: input.ids,
+      p_decision: input.decision,
+      p_note: note,
+    });
+    if (error) throw new Error(error.message);
+    revalidatePath("/dashboard/validacion-ventas");
+    revalidatePath("/dashboard/validacion-ventas/validadas");
+    return { ok: true, count: Number(data ?? 0) };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "No se pudo guardar la decisión." };
+  }
 }
 
 export async function countSaleValidations(): Promise<Record<SaleValidationStatus, number>> {
@@ -79,30 +139,4 @@ export async function countSaleValidations(): Promise<Record<SaleValidationStatu
     counts[row.status] = Number(row.total);
   }
   return counts;
-}
-
-async function resolve(formData: FormData, decision: "aprobada" | "rechazada") {
-  await requireProfile(["supervisor", "admin"]);
-  const id = String(formData.get("id") ?? "");
-  const note = String(formData.get("note") ?? "").trim();
-  if (!id) throw new Error("No se identificó la venta.");
-  if (decision === "rechazada" && !note) throw new Error("Indica por qué se rechaza la venta.");
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc("resolve_sale_validation", {
-    p_validation_id: id,
-    p_decision: decision,
-    p_note: note || null,
-  });
-  if (error) throw new Error(error.message);
-  revalidatePath("/dashboard/validacion-ventas");
-  const leadId = (data as { lead_id?: string } | null)?.lead_id;
-  if (leadId) revalidatePath(`/dashboard/leads/${leadId}`);
-}
-
-export async function approveSale(formData: FormData) {
-  await resolve(formData, "aprobada");
-}
-
-export async function rejectSale(formData: FormData) {
-  await resolve(formData, "rechazada");
 }
