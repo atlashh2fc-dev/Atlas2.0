@@ -52,3 +52,12 @@ test("nadie cambia de cola con una llamada o tipificación en curso, y cada camb
   assert.match(cuerpo, /insert into public\.agent_campaign_switches/);
   assert.match(sql, /revoke all on function public\.apply_agent_active_campaign\(uuid, uuid, text, boolean, uuid\) from public, anon, authenticated/);
 });
+
+test("la prioridad no se salta los horarios ni toca a quien tiene una sola campaña", () => {
+  const correccion = readFileSync(
+    new URL("../supabase/migrations/20260924152541_prioridad_respeta_horarios.sql", import.meta.url),
+    "utf8"
+  ).replace(/--[^\n]*/g, "");
+  assert.match(correccion, /v_eligible < 2 or v_scheduled > 0/);
+  assert.match(correccion, /public\.campaign_agent_schedules schedule where schedule\.campaign_agent_id = eligible\.id/);
+});
