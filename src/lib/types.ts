@@ -411,6 +411,12 @@ export interface AgentActivityReportRow {
   paused_seconds: number | null;
   disconnected_seconds: number | null;
   adherence_rate: number | null;
+  /** Colación + descanso del turno en el período (no cuentan contra la adherencia). */
+  planned_break_seconds?: number | null;
+  /** Almuerzo y Descanso usados dentro del cupo del turno. */
+  break_used_seconds?: number | null;
+  /** Almuerzo y Descanso por sobre el cupo del turno. */
+  excess_break_seconds?: number | null;
 }
 
 export interface CampaignPerformance {

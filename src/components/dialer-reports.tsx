@@ -237,7 +237,7 @@ export function DialerReports() {
         align: "right",
         value: (row) => row.scheduled_seconds,
         cell: (row) => formatSeconds(row.scheduled_seconds),
-        tooltip: "Suma únicamente horarios laborales configurados. Sin horario explícito se muestra vacío.",
+        tooltip: "Suma únicamente horarios laborales configurados. Sin horario explícito se muestra vacío. La adherencia descuenta la colación y el descanso del turno.",
       },
       {
         id: "disponible",
@@ -252,6 +252,30 @@ export function DialerReports() {
         align: "right",
         value: (row) => row.paused_seconds,
         cell: (row) => formatSeconds(row.paused_seconds),
+      },
+      {
+        id: "pausa-planificada",
+        header: "Colación y descanso",
+        align: "right",
+        value: (row) => row.break_used_seconds ?? null,
+        cell: (row) =>
+          row.planned_break_seconds
+            ? `${formatSeconds(row.break_used_seconds ?? 0)} de ${formatSeconds(row.planned_break_seconds)}`
+            : "—",
+        tooltip: "Almuerzo y Descanso usados dentro del cupo del turno. No cuentan contra la adherencia.",
+      },
+      {
+        id: "exceso-pausa",
+        header: "Exceso de pausa",
+        align: "right",
+        value: (row) => row.excess_break_seconds ?? null,
+        cell: (row) =>
+          row.excess_break_seconds ? (
+            <span className="font-medium text-danger">{formatSeconds(row.excess_break_seconds)}</span>
+          ) : (
+            "—"
+          ),
+        tooltip: "Almuerzo y Descanso por sobre el cupo del turno (1 h de almuerzo y 30 min de descanso en Equifax).",
       },
       {
         id: "desconectado",
