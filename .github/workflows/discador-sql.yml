@@ -1,0 +1,42 @@
+name: Discador SQL
+
+# Corre los escenarios del discador (esperas, horario, no llamar, claim) contra
+# un Postgres desechable cada vez que cambian sus migraciones o sus pruebas.
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/20260924181*"
+      - "tests/sql/discador/**"
+      - "scripts/probar-discador-sql.sh"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/20260924181*"
+      - "tests/sql/discador/**"
+      - "scripts/probar-discador-sql.sh"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  escenarios:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/probar-discador-sql.sh
+        env:
+          DISCADOR_PG_URL: postgresql://postgres:postgres@localhost:5432/postgres

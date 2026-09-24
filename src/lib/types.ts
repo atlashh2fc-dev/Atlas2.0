@@ -58,6 +58,11 @@ export interface Lead {
   mail_priority_rank?: number | null;
   mail_priority_reason?: string | null;
   mail_last_event_at?: string | null;
+  /** Desde cuándo el discador puede volver a marcarlo; "infinity" = fuera de la cola. */
+  dialer_retry_at?: string | null;
+  /** Por qué está fuera de la cola del discador. */
+  dialer_hold_reason?: "no_llamar" | "tope_sin_contacto" | "tope_fallas_tecnicas" | null;
+  dialer_cycle_started_at?: string | null;
 }
 
 export interface Interaction {
@@ -265,6 +270,14 @@ export interface DialerCampaignConfig {
   redial_backoff_minutes?: number[];
   /** Intentos sin contacto tras los que el lead sale de la cola. null = sin tope. */
   max_uncontacted_attempts?: number | null;
+  /** No discar en los feriados de dialer_holidays. */
+  skip_holidays?: boolean;
+  /** Espera tras un intento que no alcanzó a sonar; se duplica con cada falla seguida. */
+  technical_retry_minutes?: number;
+  /** Fallas técnicas seguidas tras las que el lead sale de la cola. null = sin tope. */
+  max_technical_failures?: number | null;
+  /** Fracción de fallas técnicas (20+ intentos en 10 min) que detiene el claim. null = apagado. */
+  technical_breaker_ratio?: number | null;
   created_at: string;
   updated_at: string;
 }

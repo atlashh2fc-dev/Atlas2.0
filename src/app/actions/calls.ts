@@ -13,6 +13,7 @@ import {
   type CallOutcome,
 } from "@/lib/call-typification";
 import { LEGAL_INTERCALL_BREAK_MS } from "@/lib/intercall-break";
+import { dialerSuppressionMessage } from "@/lib/dialer-suppression";
 import type { Call, WorkflowStep, WorkflowStepBranch } from "@/lib/types";
 import { requireProfile } from "@/lib/auth";
 import { fetchCampaignAgendaPolicy } from "@/lib/campaign-agenda-policy";
@@ -58,6 +59,32 @@ async function restoreAgentFromHybridManualMode(
 ) {
   const { error } = await supabase.rpc("exit_agent_hybrid_manual_mode");
   if (error) throw new Error(error.message);
+}
+
+/**
+ * Una llamada manual tampoco sale hacia la lista de no llamar: el discador ya
+ * la respeta y un clic en la ficha no debería saltársela. La base responde
+ * solo el motivo y solo dentro de la empresa del usuario.
+ */
+async function assertNotOnDoNotCallList(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  target: { leadId: string } | { campaignId: string; phone: string }
+) {
+  const { data, error } =
+    "leadId" in target
+      ? await supabase.rpc("dialer_lead_block_reason", { p_lead_id: target.leadId })
+      : await supabase.rpc("dialer_phone_block_reason", {
+          p_campaign_id: target.campaignId,
+          p_phone: target.phone,
+        });
+  if (error) {
+    // La web puede quedar publicada antes que la migración 20260924181100: sin
+    // la función todavía no hay lista que consultar, y no se bloquea el marcado.
+    if (error.code === "PGRST202" || error.code === "42883") return;
+    throw new Error(error.message);
+  }
+  const message = dialerSuppressionMessage(typeof data === "string" ? data : null);
+  if (message) throw new Error(message);
 }
 
 async function getLeadCampaignId(
@@ -240,6 +267,7 @@ export async function beginAgendaCallback(
 ): Promise<CallActionResult<AgendaCallbackManagement>> {
   try {
     const { supabase } = await requireAgent();
+    await assertNotOnDoNotCallList(supabase, { leadId });
     const { data, error } = await supabase.rpc("begin_agent_agenda_callback", {
       p_lead_id: leadId,
     });
@@ -284,6 +312,7 @@ export async function beginAssignedLeadCall(
 ): Promise<CallActionResult<AgendaCallbackManagement>> {
   try {
     const { supabase } = await requireAgent();
+    await assertNotOnDoNotCallList(supabase, { leadId });
     const { data, error } = await supabase.rpc("begin_agent_assigned_lead_call", {
       p_lead_id: leadId,
     });
@@ -344,6 +373,11 @@ export async function beginManualCallManagement(input: {
 }): Promise<CallActionResult<ManualCallManagement>> {
   try {
     const { supabase } = await requireAgent();
+    // Registrar una llamada que ya ocurrió ("after_call") no se bloquea: se
+    // perdería el registro. Lo que no se permite es marcar.
+    if (input.entryMode === "before_dial") {
+      await assertNotOnDoNotCallList(supabase, { campaignId: input.campaignId, phone: input.phone });
+    }
     const { data, error } = await supabase.rpc("begin_agent_manual_call_management_api", {
       p_campaign_id: input.campaignId,
       p_phone: input.phone,

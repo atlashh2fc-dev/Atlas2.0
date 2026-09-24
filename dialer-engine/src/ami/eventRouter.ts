@@ -1,4 +1,5 @@
 import type AmiClient from "asterisk-manager";
+import { originateFailureEvent } from "./originateOutcome";
 import { logger } from "../logger";
 import {
   confirmDialAttemptAgent,
@@ -146,7 +147,9 @@ export function registerEventRouter(
         enqueueAttemptTask(actionId, "register_dial_event (originate)", () =>
           registerDialEvent({
             dialAttemptId: actionId,
-            eventType: success ? "originating" : "failed",
+            // Un fallo no siempre es técnico: Reason 3 es que sonó y nadie
+            // contestó, y eso sí es un intento sobre el cliente.
+            eventType: success ? "originating" : originateFailureEvent(evt.reason),
             amiUniqueId: uniqueId,
             amiChannel: String(evt.channel ?? "") || null,
             payload: { raw_response: evt.response ?? null, reason: evt.reason ?? null },
