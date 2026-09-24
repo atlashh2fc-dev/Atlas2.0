@@ -257,6 +257,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
           active_campaign_id: null,
           hybrid_manual_status: null,
           campaigns: [],
+          assignment: null,
           session: null,
         }
   );
@@ -1699,6 +1700,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
   const manualRecoveryCampaign = operatingMode?.campaigns.find(
     (campaign) => campaign.id === manualRecoveryCampaignId
   );
+  const campaignLocked = operatingMode?.assignment?.locked === true;
   const activeAutomaticCampaign = operatingMode?.campaigns.find(
     (campaign) => campaign.id === operatingMode.active_campaign_id
   );
@@ -2222,7 +2224,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
                           <select
                             value={operatingMode.active_campaign_id ?? ""}
                             onChange={(event) => void handleActiveCampaignChange(event.target.value)}
-                            disabled={switchingCampaign || activeCall || inAutomaticWrapUp}
+                            disabled={switchingCampaign || activeCall || inAutomaticWrapUp || campaignLocked}
                             className="w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs font-semibold text-white outline-none disabled:cursor-not-allowed disabled:opacity-60"
                             aria-label="Campaña activa para recibir llamadas"
                           >
@@ -2238,8 +2240,12 @@ export function CtiBar({ profile }: { profile: Profile }) {
                           <span className="mt-1.5 block text-[10px] text-white/55">
                             {switchingCampaign
                               ? "Cambiando de cola…"
+                              : campaignLocked && activeAutomaticCampaign
+                                ? `${operatingMode.assignment?.assigned_by_name ?? "Tu supervisor"} te asignó a ${activeAutomaticCampaign.name}. Solo quien la asignó puede cambiarla.`
                               : activeAutomaticCampaign
-                                ? `Recibirás llamadas de ${activeAutomaticCampaign.name}.`
+                                ? `Recibirás llamadas de ${activeAutomaticCampaign.name}${
+                                    operatingMode.assignment?.source === "prioridad" ? ", la prioridad que definió tu supervisor" : ""
+                                  }.`
                                 : "No recibirás llamadas hasta elegir una campaña."}
                           </span>
                           {campaignSwitchError && (

@@ -22,6 +22,8 @@ import {
   Tr,
 } from "@/components/ui";
 import { CallbacksPanel, type CallbackRow } from "@/components/callbacks-panel";
+import { TeamCampaignControl } from "@/components/team-campaign-control";
+import { listAgentCampaignBoard, type AgentCampaignBoardRow } from "@/app/actions/campaign-control";
 import { REPORT_TIME_ZONE, toDateTimeInput } from "@/lib/report-range";
 import {
   TeamAgentsTable,
@@ -188,10 +190,17 @@ export default async function TeamPage({
 }: {
   searchParams: Promise<{ agent?: string; campaign?: string; status?: string }>;
 }) {
-  await requireProfile(["supervisor"]);
+  const viewer = await requireProfile(["supervisor"]);
   const { agent, campaign, status } = await searchParams;
   const campaignScope = resolveCampaignScope(campaign);
   const supabase = await createClient();
+  let campaignBoard: AgentCampaignBoardRow[] = [];
+  let campaignBoardError: string | null = null;
+  try {
+    campaignBoard = await listAgentCampaignBoard();
+  } catch (error) {
+    campaignBoardError = error instanceof Error ? error.message : "Error desconocido";
+  }
   const filters = {
     agent: agent || "",
     campaign: campaignScope || "",
@@ -407,6 +416,20 @@ export default async function TeamPage({
             <p className="text-sm text-danger">No se pudo calcular la carga del equipo: {loadError.message}</p>
           ) : (
             <TeamAgentsTable rows={agentRows} />
+          )}
+        </div>
+      </SectionCard>
+
+      <div id="campanas" />
+      <SectionCard
+        title="Campaña de cada ejecutivo"
+        description="Ordena qué campaña se le disca primero a cada uno, o asígnale una y déjala fija: solo tú (o un admin) podrás cambiarla."
+      >
+        <div className="p-4">
+          {campaignBoardError ? (
+            <p className="text-sm text-danger">No se pudo leer la asignación de campañas: {campaignBoardError}</p>
+          ) : (
+            <TeamCampaignControl rows={campaignBoard} viewerId={viewer.id} isAdmin={false} />
           )}
         </div>
       </SectionCard>

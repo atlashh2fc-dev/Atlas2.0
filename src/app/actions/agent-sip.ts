@@ -60,6 +60,12 @@ export type AgentDialerOperatingMode = {
     manual_dial_enabled: boolean;
     wrapup_seconds: number;
   }>;
+  /** Quién decidió la campaña activa. Si está fijada, el ejecutivo no puede cambiarla. */
+  assignment: {
+    locked: boolean;
+    source: "agente" | "supervisor" | "prioridad";
+    assigned_by_name: string | null;
+  } | null;
   session: {
     campaign_id: string;
     status: AgentDialerSessionStatus;
@@ -412,9 +418,15 @@ export async function getMyDialerOperatingMode(): Promise<AgentDialerOperatingMo
   const profile = await requireProfile(["agente"]);
   const admin = createAdminClient();
 
+  // Si el ejecutivo no eligió campaña, entra a la que su supervisor priorizó.
+  // Corre con su sesión: la RPC solo puede tocar la cola del propio ejecutivo.
+  const supabase = await createClient();
+  const { error: ensureError } = await supabase.rpc("ensure_my_active_campaign");
+  if (ensureError) throw new Error(ensureError.message);
+
   const { data: memberships, error: membershipsError } = await admin
     .from("campaign_agents")
-    .select("campaign_id, manual_dial_enabled")
+    .select("campaign_id, manual_dial_enabled, priority")
     .eq("profile_id", profile.id);
 
   if (membershipsError) throw new Error(membershipsError.message);
@@ -429,6 +441,7 @@ export async function getMyDialerOperatingMode(): Promise<AgentDialerOperatingMo
       active_campaign_id: null,
       hybrid_manual_status: null,
       campaigns: [],
+      assignment: null,
       session: null,
     };
   }
@@ -461,8 +474,14 @@ export async function getMyDialerOperatingMode(): Promise<AgentDialerOperatingMo
   if (hybridRequestError) throw new Error(hybridRequestError.message);
 
   const activeCampaignNames = new Map((campaigns ?? []).map((row) => [row.id, row.name]));
+  const priorities = new Map((memberships ?? []).map((row) => [row.campaign_id, row.priority ?? 100]));
   const activeConfigs = (configs ?? [])
     .filter((config) => activeCampaignNames.has(config.campaign_id))
+    .sort(
+      (a, b) =>
+        (priorities.get(a.campaign_id) ?? 100) - (priorities.get(b.campaign_id) ?? 100) ||
+        (activeCampaignNames.get(a.campaign_id) ?? "").localeCompare(activeCampaignNames.get(b.campaign_id) ?? "")
+    )
     .map((config) => ({
       id: config.campaign_id,
       name: activeCampaignNames.get(config.campaign_id) ?? "Campaña",
@@ -478,10 +497,11 @@ export async function getMyDialerOperatingMode(): Promise<AgentDialerOperatingMo
 
   const { data: selection, error: selectionError } = await admin
     .from("agent_active_campaigns")
-    .select("campaign_id")
+    .select("campaign_id, locked, source, assigned_by:profiles!agent_active_campaigns_assigned_by_fkey(full_name)")
     .eq("profile_id", profile.id)
     .maybeSingle();
   if (selectionError) throw new Error(selectionError.message);
+  const assignedBy = Array.isArray(selection?.assigned_by) ? selection?.assigned_by[0] : selection?.assigned_by;
 
   const selectedAutomaticCampaignId = automaticCampaignIds.includes(selection?.campaign_id ?? "")
     ? selection?.campaign_id ?? null
@@ -516,6 +536,13 @@ export async function getMyDialerOperatingMode(): Promise<AgentDialerOperatingMo
         ? hybridRequest.status
         : null,
     campaigns: activeConfigs,
+    assignment: selection
+      ? {
+          locked: selection.locked === true,
+          source: (selection.source ?? "agente") as "agente" | "supervisor" | "prioridad",
+          assigned_by_name: assignedBy?.full_name ?? null,
+        }
+      : null,
     session: session
       ? {
           campaign_id: session.campaign_id,
