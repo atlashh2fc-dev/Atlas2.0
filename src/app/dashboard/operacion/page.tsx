@@ -212,22 +212,6 @@ export default async function OperationsPage({
   );
   const queues = (queuesResult.data ?? []) as Queue[];
   const sources = (sourcesResult.data ?? []) as Source[];
-  // Con una campaña elegida solo se muestran los canales que esa campaña
-  // tiene configurados: Equifax es solo voz, y paneles de WhatsApp o correo
-  // "No disponible" no aportan nada. Sin canales configurados se muestra todo,
-  // para no dejar la pantalla vacía.
-  const campaignChannels = filters.campaign
-    ? new Set(
-        sources
-          .filter((source) => source.is_active && source.campaign_id === filters.campaign)
-          .map((source) => source.channel_type),
-      )
-    : null;
-  const channelShown = (channel: string) =>
-    !campaignChannels || campaignChannels.size === 0 || campaignChannels.has(channel);
-  const viewVoice = showVoice && channelShown("voice");
-  const viewWhatsApp = showWhatsApp && channelShown("whatsapp");
-  const viewMail = showMail && channelShown("email");
   const members = membersUnavailable
     ? []
     : ((membersResult.data ?? []) as Member[]);
@@ -266,6 +250,25 @@ export default async function OperationsPage({
   });
   const allStock = stockResult.data;
   const matchingQueueIds = new Set(matchingQueues.map((queue) => queue.id));
+  // Con una campaña o cola elegida solo se muestran los canales que tiene su
+  // unidad operativa: Equifax es solo voz, y paneles de WhatsApp o correo
+  // "No disponible" no aportan. Se mira la unidad y no solo la campaña porque
+  // una unidad como Secretaría Virtual reparte voz, WhatsApp y correo entre
+  // campañas internas. Sin canales configurados se muestra todo.
+  const scopedView = Boolean(filters.campaign || filters.queue);
+  const unitChannels = new Set(
+    sources
+      .filter((source) => source.is_active && matchingQueueIds.has(source.queue_id))
+      .map((source) => source.channel_type),
+  );
+  const channelShown = (channel: string) =>
+    !scopedView || unitChannels.size === 0 || unitChannels.has(channel);
+  const viewVoice = showVoice && channelShown("voice");
+  const viewWhatsApp = showWhatsApp && channelShown("whatsapp");
+  const viewMail = showMail && channelShown("email");
+  // La automatización general no depende del filtro de canal, pero no se
+  // muestra en una unidad que no tiene WhatsApp.
+  const showAutomation = channelShown("whatsapp");
   // La campaña selecciona su unidad operativa; no elimina los canales hermanos
   // que usan otra campaña interna dentro de la misma unidad.
   const filteredStock =
@@ -512,7 +515,7 @@ export default async function OperationsPage({
         <Callout tone="warning">{stockResult.error}</Callout>
       )}
 
-      {viewWhatsApp && (
+      {showAutomation && (
         <SectionCard
           title={
             <span className="flex items-center gap-2">
