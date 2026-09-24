@@ -34,8 +34,22 @@ export function originateFailureEvent(reason: unknown, hangupCause?: unknown): O
   return "failed";
 }
 
-/** El DIAL_ATTEMPT_ID que el AMI adjunta a cada evento (manager.conf channelvars). */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * El DIAL_ATTEMPT_ID que el AMI adjunta a cada evento (manager.conf
+ * channelvars). La librería asterisk-manager convierte las líneas
+ * "ChanVariable: NOMBRE=valor" en un objeto { NOMBRE: valor }; se acepta
+ * también el texto crudo por si cambia la librería.
+ */
 export function dialAttemptIdFromChanVariable(raw: unknown): string | undefined {
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    for (const [name, value] of Object.entries(raw as Record<string, unknown>)) {
+      const candidate = String(value ?? "").trim();
+      if (name.toUpperCase() === "DIAL_ATTEMPT_ID" && UUID.test(candidate)) return candidate.toLowerCase();
+    }
+    return undefined;
+  }
   const values = Array.isArray(raw) ? raw : [raw];
   for (const value of values) {
     const match = /^DIAL_ATTEMPT_ID=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(

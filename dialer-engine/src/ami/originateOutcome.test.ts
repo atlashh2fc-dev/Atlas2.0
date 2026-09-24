@@ -43,3 +43,12 @@ test("lee el DIAL_ATTEMPT_ID del channelvar del AMI", () => {
   assert.equal(dialAttemptIdFromChanVariable(undefined), undefined);
   assert.equal(dialAttemptIdFromChanVariable("DIAL_ATTEMPT_ID=no-es-uuid"), undefined);
 });
+
+test("acepta el objeto en que asterisk-manager convierte ChanVariable", () => {
+  // Así llega en producción: la librería parte "NOMBRE=valor" en un objeto.
+  const id = "6e100b5e-1234-4abc-8def-0123456789ab";
+  assert.equal(dialAttemptIdFromChanVariable({ DIAL_ATTEMPT_ID: id }), id);
+  assert.equal(dialAttemptIdFromChanVariable({ dial_attempt_id: id.toUpperCase() }), id);
+  assert.equal(dialAttemptIdFromChanVariable({ OTRA: "1" }), undefined);
+  assert.equal(dialAttemptIdFromChanVariable({ DIAL_ATTEMPT_ID: "" }), undefined);
+});
