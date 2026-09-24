@@ -162,6 +162,8 @@ export interface Call {
   id: string;
   lead_id: string;
   agent_id: string;
+  /** Canal de una gestión sin llamada (whatsapp, correo, presencial, otro); null = llamada. */
+  management_channel?: string | null;
   status: string | null;
   outcome: string | null;
   reason: string | null;

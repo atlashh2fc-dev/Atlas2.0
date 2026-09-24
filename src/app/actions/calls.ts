@@ -1081,3 +1081,31 @@ export async function discardCallTechnicalError(input: { callId: string; leadId:
   revalidatePath(`/dashboard/leads/${leadId}`);
   revalidatePath("/dashboard/leads");
 }
+
+export type OfflineManagementChannel = "whatsapp" | "correo" | "presencial" | "otro";
+
+/**
+ * Abre una gestión sin llamada: el ejecutivo contactó al cliente por otro
+ * canal (WhatsApp propio, correo, presencial) y la tipifica con el mismo
+ * formulario, sin volver a llamar. La base valida que el registro sea suyo y
+ * que no tenga otra gestión abierta.
+ */
+export async function beginOfflineManagement(
+  leadId: string,
+  channel: OfflineManagementChannel
+): Promise<CallActionResult<{ callId: string }>> {
+  try {
+    const { supabase } = await requireAgent();
+    const { data, error } = await supabase.rpc("begin_agent_offline_management", {
+      p_lead_id: leadId,
+      p_channel: channel,
+    });
+    if (error) throw new Error(error.message);
+    const value = data && typeof data === "object" ? (data as Record<string, unknown>) : null;
+    if (typeof value?.call_id !== "string") throw new Error("La gestión no se pudo abrir.");
+    revalidatePath(`/dashboard/leads/${leadId}`);
+    return { ok: true, data: { callId: value.call_id } };
+  } catch (error) {
+    return callActionError("beginOfflineManagement", error, { leadId, channel });
+  }
+}

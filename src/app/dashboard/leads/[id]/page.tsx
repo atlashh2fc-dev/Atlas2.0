@@ -9,6 +9,7 @@ import { getOpenCall, getRevisableCall } from "@/app/actions/calls";
 import { fetchCampaignAgendaPolicy } from "@/lib/campaign-agenda-policy";
 import { AgendaCallButton } from "@/components/agenda-call-button";
 import { LeadPhonesPanel } from "@/components/lead-phones-panel";
+import { OfflineManagementButton } from "@/components/offline-management-button";
 import { CallTypificationForm } from "@/components/call-typification-form";
 import { CallTimer } from "@/components/call-timer";
 import { LeadTimeline, type TimelineEntry } from "@/components/lead-timeline";
@@ -34,6 +35,13 @@ import {
   type LeadMailReplyCommand,
 } from "@/components/mail-thread-panel";
 import { canOperateAssignedConversation } from "@/lib/workspace-permissions";
+
+const OFFLINE_CHANNEL_LABEL: Record<string, string> = {
+  whatsapp: "WhatsApp",
+  correo: "Correo",
+  presencial: "Presencial",
+  otro: "Otro canal",
+};
 
 /** Fila etiqueta/valor de la columna de identidad. */
 function InfoRow({ label, children }: { label: ReactNode; children: ReactNode }) {
@@ -372,6 +380,12 @@ export default async function LeadDetailPage({
                 source={ownsAgenda ? "agenda" : "assigned_lead"}
               />
             )}
+            {/* Contacto por otro canal (WhatsApp propio, correo, presencial):
+                se tipifica sin volver a llamar. */}
+            {profile.role === "agente" && canManageCall && !call &&
+              (lead.managed_by === profile.id || lead.assigned_to === profile.id) && (
+              <OfflineManagementButton leadId={lead.id} />
+            )}
             {revisableCall && !correctionRequested && (
               <Link
                 href={`/dashboard/leads/${lead.id}?corregir=1`}
@@ -435,6 +449,11 @@ export default async function LeadDetailPage({
           id="gestion-en-curso"
           className="scroll-mt-4 rounded-2xl border-2 border-primary/20 bg-primary/[0.025] p-3 sm:p-5"
         >
+          {call.management_channel && (
+            <p className="mb-3 inline-flex items-center gap-2 rounded-full bg-surface px-3 py-1 text-xs font-medium text-foreground">
+              Gestión sin llamada · {OFFLINE_CHANNEL_LABEL[call.management_channel] ?? "Otro canal"}
+            </p>
+          )}
           <CallTypificationForm
             key={call.id}
             lead={lead}

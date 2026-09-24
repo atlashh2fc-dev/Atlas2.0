@@ -72,7 +72,7 @@ const COLUMNS: Column<AgendaRow>[] = [
     cell: (row) =>
       row.auto ? (
         <span className="inline-flex flex-col gap-0.5">
-          <Badge tone="info">Te entra sola</Badge>
+          <Badge tone="info">Marcado automático</Badge>
           {row.attempts > 0 && (
             <span className="text-xs text-muted-foreground">
               {row.attempts} {row.attempts === 1 ? "intento" : "intentos"} de entrega
