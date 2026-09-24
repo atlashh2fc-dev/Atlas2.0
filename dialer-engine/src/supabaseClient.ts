@@ -490,6 +490,73 @@ export async function getRecentAbandonmentRate(campaignId: string, windowMinutes
   return ((abandonedCount ?? 0) / answeredCount) * 100;
 }
 
+/** Intentos terminados mínimos para que la tasa de contacto sea una señal y no ruido. */
+const CONTACT_RATE_MIN_SAMPLE = 15;
+
+/**
+ * Fracción (0..1) de los intentos del pool terminados en la ventana que
+ * llegaron a conversación con un ejecutivo. Es la señal con la que el modo
+ * predictivo decide cuántas líneas por ejecutivo libre necesita: con 12 % de
+ * contacto, una línea por ejecutivo deja a la persona esperando ~8 intentos.
+ * Devuelve null si todavía no hay muestra suficiente.
+ */
+export async function getRecentContactRate(campaignId: string, windowMinutes: number): Promise<number | null> {
+  const since = new Date(Date.now() - windowMinutes * 60_000).toISOString();
+  const [terminal, bridged] = await Promise.all([
+    supabase
+      .from("dial_attempts")
+      .select("id", { count: "exact", head: true })
+      .eq("campaign_id", campaignId)
+      .eq("attempt_kind", "pool")
+      .not("ended_at", "is", null)
+      .gte("ended_at", since),
+    supabase
+      .from("dial_attempts")
+      .select("id", { count: "exact", head: true })
+      .eq("campaign_id", campaignId)
+      .eq("attempt_kind", "pool")
+      .not("ended_at", "is", null)
+      .not("bridged_at", "is", null)
+      .gte("ended_at", since),
+  ]);
+  if (terminal.error) throw new Error(`dial_attempts (terminados): ${terminal.error.message}`);
+  if (bridged.error) throw new Error(`dial_attempts (conectados): ${bridged.error.message}`);
+  const total = terminal.count ?? 0;
+  if (total < CONTACT_RATE_MIN_SAMPLE) return null;
+  return (bridged.count ?? 0) / total;
+}
+
+/**
+ * Estado actual de las sesiones de discado de un ejecutivo. Lo usa la
+ * liberación por evento para confirmar que la tipificación ya lo dejó
+ * 'available' antes de despausarlo en Asterisk.
+ */
+export async function getAgentSessionStatuses(profileId: string): Promise<Array<{ campaign_id: string; status: string }>> {
+  const { data, error } = await supabase
+    .from("dialer_agent_sessions")
+    .select("campaign_id, status")
+    .eq("profile_id", profileId);
+  if (error) throw new Error(`dialer_agent_sessions (por ejecutivo): ${error.message}`);
+  return data ?? [];
+}
+
+/**
+ * true si el ejecutivo eligió un motivo de pausa (AUX) desde la barra CTI.
+ * La liberación por evento no debe despausarlo en Asterisk en ese caso aunque
+ * su sesión de discado diga 'available'.
+ */
+export async function isAgentInPauseReason(profileId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("agent_current_status")
+    .select("profile_id, agent_status_reasons(is_pause)")
+    .eq("profile_id", profileId)
+    .maybeSingle();
+  if (error) throw new Error(`agent_current_status (por ejecutivo): ${error.message}`);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const reason = (data as any)?.agent_status_reasons as { is_pause: boolean } | null | undefined;
+  return reason?.is_pause === true;
+}
+
 const HEARTBEAT_GRACE_SECONDS = 60;
 
 /**

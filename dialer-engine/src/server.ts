@@ -8,6 +8,8 @@ import { runAiVoiceCampaignTick } from "./dialer/aiVoiceCampaignLoop";
 import { refreshAgentDirectory, getActiveCredentials } from "./dialer/agentDirectory";
 import { ensureAgentEndpoints, ensureAmdContext } from "./asterisk/configSync";
 import { syncAgentPauseStates } from "./dialer/agentPause";
+import { subscribeAgentReleases } from "./dialer/agentRelease";
+import { setPacingWakeHandler, type PacingWakeReason } from "./dialer/pacingWake";
 import { checkAgentHeartbeats } from "./dialer/agentHeartbeat";
 import { AGENT_CONTROL_POLL_MS, processAgentControlCommands } from "./dialer/agentControl";
 import { AmiRecordingController } from "./recording/controller";
@@ -19,7 +21,12 @@ import { publishAgentSipProvisioningStates } from "./supabaseClient";
 
 const AGENT_DIRECTORY_REFRESH_MS = 10_000;
 const AGENT_ENDPOINT_RECONCILE_MS = 60_000;
-const AGENT_PAUSE_SYNC_MS = 10_000;
+// Respaldo de la liberación por evento (agentRelease.ts): con 10 s, un
+// ejecutivo recién liberado podía quedar pausado en Asterisk hasta 10 s
+// mientras el pacing ya le originaba llamadas.
+const AGENT_PAUSE_SYNC_MS = 5_000;
+/** Varias liberaciones o fallos seguidos se agrupan en un solo ciclo rápido. */
+const PACING_WAKE_DEBOUNCE_MS = 300;
 const AGENT_HEARTBEAT_CHECK_MS = 30_000;
 
 async function main() {
@@ -179,23 +186,73 @@ async function main() {
   };
   scheduleAgentControl();
 
-  // Ciclo single-flight: el siguiente tick se agenda cuando terminó el
-  // anterior. setInterval permitía superposición si AMI/Supabase demoraban.
-  const scheduleCampaignTick = () => {
-    setTimeout(async () => {
-      try {
-        const report = await runCampaignTick(ami, config.campaignIds, queueToCampaignId);
-        if (report.ok) health.success("campaignLoop");
-        else health.failure("campaignLoop", "campaign_tick_partial_failure");
-      } catch (err) {
-        health.failure("campaignLoop", "campaign_tick_unhandled_error");
-        logger.error({ err }, "runCampaignTick falló");
-      } finally {
-        scheduleCampaignTick();
+  // Ciclo single-flight: el siguiente tick completo se agenda cuando terminó
+  // el anterior (setInterval permitía superposición si AMI/Supabase
+  // demoraban). Entre medio, un evento (ejecutivo liberado, línea que se
+  // soltó) puede adelantar un ciclo rápido de sólo pacing: si ya hay uno
+  // corriendo, queda anotado y se ejecuta apenas termine.
+  let campaignTickRunning = false;
+  let pendingWake: { reason: PacingWakeReason; campaignId?: string } | null = null;
+  let nextFullTickTimer: NodeJS.Timeout | null = null;
+  let wakeDebounceTimer: NodeJS.Timeout | null = null;
+  let lastFullTickAt = 0;
+
+  const runCampaignTickOnce = async (mode: "full" | "fast", campaignId?: string) => {
+    campaignTickRunning = true;
+    if (nextFullTickTimer) {
+      clearTimeout(nextFullTickTimer);
+      nextFullTickTimer = null;
+    }
+    // Un ciclo rápido no puede postergar el completo indefinidamente: colas,
+    // pausas y agendas se reconcilian al menos cada dos ticks.
+    const effectiveMode: "full" | "fast" =
+      mode === "fast" && Date.now() - lastFullTickAt <= config.tickMs * 2 ? "fast" : "full";
+    try {
+      const report = await runCampaignTick(ami, config.campaignIds, queueToCampaignId, {
+        pacingOnly: effectiveMode === "fast",
+        campaignId: effectiveMode === "fast" ? campaignId : undefined,
+      });
+      if (effectiveMode === "full") lastFullTickAt = Date.now();
+      if (report.ok) health.success("campaignLoop");
+      else health.failure("campaignLoop", "campaign_tick_partial_failure");
+    } catch (err) {
+      health.failure("campaignLoop", "campaign_tick_unhandled_error");
+      logger.error({ err, mode: effectiveMode }, "runCampaignTick falló");
+    } finally {
+      campaignTickRunning = false;
+      if (pendingWake) {
+        const wake = pendingWake;
+        pendingWake = null;
+        void runCampaignTickOnce("fast", wake.campaignId);
+      } else {
+        nextFullTickTimer = setTimeout(() => void runCampaignTickOnce("full"), config.tickMs);
       }
-    }, config.tickMs);
+    }
   };
-  scheduleCampaignTick();
+
+  setPacingWakeHandler((reason, campaignId) => {
+    if (pendingWake) {
+      // Dos eventos de campañas distintas antes de correr: ciclo de todas.
+      if (pendingWake.campaignId !== campaignId) pendingWake = { reason, campaignId: undefined };
+      return;
+    }
+    pendingWake = { reason, campaignId };
+    if (campaignTickRunning || wakeDebounceTimer) return;
+    wakeDebounceTimer = setTimeout(() => {
+      wakeDebounceTimer = null;
+      if (campaignTickRunning || !pendingWake) return;
+      const wake = pendingWake;
+      pendingWake = null;
+      logger.debug({ reason: wake.reason, campaignId: wake.campaignId }, "Pacing despertado por evento");
+      void runCampaignTickOnce("fast", wake.campaignId);
+    }, PACING_WAKE_DEBOUNCE_MS);
+  });
+
+  nextFullTickTimer = setTimeout(() => void runCampaignTickOnce("full"), config.tickMs);
+
+  // Liberación de ejecutivos por evento (call.closed vía Realtime): despausa
+  // en Asterisk y despierta el pacing sin esperar los ciclos periódicos.
+  subscribeAgentReleases(ami);
 
   // Ciclo separado para campañas atendidas por IA. No toca Queue, agentes ni
   // extensiones: Atlas reclama la base y ElevenLabs origina por su troncal SIP.

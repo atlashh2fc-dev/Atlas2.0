@@ -20,6 +20,7 @@ import {
 import type { RecordingCoordinator } from "../recording/types";
 import { AttemptEventLifecycle } from "./eventLifecycle";
 import { forgetPersonalCallback, getPersonalCallback } from "./personalCallbacks";
+import { requestPacingWake } from "../dialer/pacingWake";
 
 // uniqueid del canal saliente (la pata que originamos) -> dial_attempt_id.
 // Se puebla en OriginateResponse (ActionID = dial_attempt_id) y se limpia en Hangup.
@@ -245,6 +246,9 @@ export function registerEventRouter(
         // Una agenda cuyo ejecutivo no contestó no genera Hangup correlacionable:
         // se suelta aquí para no acumularla en memoria.
         if (!success) forgetPersonalCallback(actionId);
+        // La línea se liberó (número rechazado, apagado, ocupado, sin
+        // respuesta): el pacing puede reponerla ahora, no en el próximo tick.
+        if (!success) requestPacingWake("originate_failed");
         enqueueAttemptTask(actionId, "register_dial_event (originate)", async () => {
           // Un fallo no siempre es técnico: Reason 3 es que sonó y nadie
           // contestó, y la causa Q.850 del carrier dice si el número no
@@ -477,6 +481,10 @@ export function registerEventRouter(
             : state?.answered && !state.bridged
               ? "abandoned"
               : hangupCauseToStatus(evt.cause);
+
+        // Terminó sin conversación (buzón, abandono, corte antes del bridge):
+        // hay una línea libre y ningún ejecutivo ocupado por ella.
+        if (!state?.bridged) requestPacingWake("attempt_ended");
 
         enqueueAttemptTask(dialAttemptId, "register_dial_event (hangup)", () =>
           registerDialEvent({

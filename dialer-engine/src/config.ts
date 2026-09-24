@@ -34,6 +34,10 @@ const envSchema = z.object({
   ELEVENLABS_API_KEY: z.string().min(1).optional(),
 
   TICK_MS: z.coerce.number().int().positive().default(3000),
+  /** Cuánto suena una llamada saliente antes de darla por no contestada.
+   * 30 s dejaba a cada ejecutivo esperando un tercio más por cada intento
+   * que no contesta; 25 s es lo habitual en discadores predictivos. */
+  ORIGINATE_TIMEOUT_MS: z.coerce.number().int().min(10_000).max(60_000).default(25_000),
   PORT: z.coerce.number().int().positive().default(8080),
   ATLAS_RELEASE: z.string().trim().min(1).default("unknown"),
 
@@ -103,6 +107,7 @@ export const config = {
   elevenLabsApiKey: env.ELEVENLABS_API_KEY,
 
   tickMs: env.TICK_MS,
+  originateTimeoutMs: env.ORIGINATE_TIMEOUT_MS,
   port: env.PORT,
   release: env.ATLAS_RELEASE,
 

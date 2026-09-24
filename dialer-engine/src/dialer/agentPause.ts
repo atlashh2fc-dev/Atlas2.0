@@ -26,6 +26,23 @@ export async function pauseAgentForWrapUp(ami: AmiClient, extension: string): Pr
   lastPausedByExtension.set(extension, true);
 }
 
+/**
+ * Despausa al ejecutivo apenas Atlas lo dejó 'available' (cierre de la
+ * tipificación), sin esperar al ciclo periódico de sincronización: esa espera
+ * de hasta 10 s era una ventana en la que el motor ya contaba al ejecutivo
+ * como libre pero Asterisk todavía no le entregaba llamadas, y un cliente
+ * que contestaba en ese lapso quedaba en la cola escuchando silencio.
+ */
+export async function resumeAgentAfterWrapUp(ami: AmiClient, extension: string): Promise<void> {
+  await amiAction(ami, {
+    Action: "QueuePause",
+    Interface: `PJSIP/${extension}`,
+    Paused: "false",
+    Reason: "",
+  });
+  lastPausedByExtension.set(extension, false);
+}
+
 export async function syncAgentPauseStates(
   ami: AmiClient,
   options: { force?: boolean } = {}

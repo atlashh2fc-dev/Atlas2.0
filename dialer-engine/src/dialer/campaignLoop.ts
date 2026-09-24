@@ -16,13 +16,18 @@ import {
   getActiveCampaignConfigs,
   getCampaignAgentExtensions,
   getRecentAbandonmentRate,
+  getRecentContactRate,
   registerDialEvent,
 } from "../supabaseClient";
 
-const MAX_BATCH_PER_TICK = 10;
+/** Lote por ciclo. Con predictivo real (varias líneas por ejecutivo libre)
+ * 10 tardaba demasiado en llenar la capacidad de una campaña de 12 personas. */
+const MAX_BATCH_PER_TICK = 20;
 /** Entregas de compromisos por ciclo: van aparte del pacing del pool. */
 const MAX_CALLBACKS_PER_TICK = 5;
 const ABANDONMENT_WINDOW_MINUTES = 15;
+/** Ventana para medir qué fracción de los intentos termina en conversación. */
+const CONTACT_RATE_WINDOW_MINUTES = 30;
 
 type CampaignConfig = {
   campaign_id: string;
@@ -57,27 +62,51 @@ export type CampaignTickReport = {
   campaignFailures: number;
 };
 
+export type CampaignTickOptions = {
+  /**
+   * Ciclo rápido disparado por un evento (ejecutivo liberado, línea que se
+   * soltó): sólo pacing del pool, con las colas y pausas que dejó consistente
+   * el último ciclo completo. Sin ciclo completo previo, corre completo.
+   */
+  pacingOnly?: boolean;
+  /** Restringe el ciclo rápido a una campaña cuando el evento la conoce. */
+  campaignId?: string;
+};
+
+// Lo que dejó el último ciclo completo, para que un ciclo rápido no repita
+// GetConfig/QueueStatus/QueuePause por campaña (varios segundos con cinco
+// campañas activas contra un AMI remoto).
+let lastFullTickConfigs: CampaignConfig[] = [];
+const lastFullTickReadyCampaignIds = new Set<string>();
+
 export async function runCampaignTick(
   ami: AmiClient,
   campaignIds: string[],
-  queueToCampaignId: Map<string, string>
+  queueToCampaignId: Map<string, string>,
+  options: CampaignTickOptions = {}
 ): Promise<CampaignTickReport> {
   if (campaignIds.length === 0) {
     return { ok: true, configuredCampaigns: 0, readyQueues: 0, queueFailures: 0, campaignFailures: 0 };
   }
 
+  const pacingOnly = options.pacingOnly === true && lastFullTickConfigs.length > 0;
+
   let configs: CampaignConfig[];
-  try {
-    configs = (await getActiveCampaignConfigs(campaignIds)) as CampaignConfig[];
-  } catch (err) {
-    logger.error({ err }, "No se pudo leer dialer_campaign_configs");
-    return {
-      ok: false,
-      configuredCampaigns: campaignIds.length,
-      readyQueues: 0,
-      queueFailures: campaignIds.length,
-      campaignFailures: 0,
-    };
+  if (pacingOnly) {
+    configs = lastFullTickConfigs;
+  } else {
+    try {
+      configs = (await getActiveCampaignConfigs(campaignIds)) as CampaignConfig[];
+    } catch (err) {
+      logger.error({ err }, "No se pudo leer dialer_campaign_configs");
+      return {
+        ok: false,
+        configuredCampaigns: campaignIds.length,
+        readyQueues: 0,
+        queueFailures: campaignIds.length,
+        campaignFailures: 0,
+      };
+    }
   }
 
   // Fase 1: dejar colas, miembros y pausas consistentes antes de originar.
@@ -87,30 +116,39 @@ export async function runCampaignTick(
   let queueMembershipChanged = false;
   let queueFailures = 0;
   let campaignFailures = 0;
-  for (const cfg of configs) {
-    queueToCampaignId.set(cfg.queue_name, cfg.campaign_id);
+  if (pacingOnly) {
+    for (const id of lastFullTickReadyCampaignIds) queueReadyCampaignIds.add(id);
+  } else {
+    for (const cfg of configs) {
+      queueToCampaignId.set(cfg.queue_name, cfg.campaign_id);
 
-    try {
-      // Cola + wrapuptime + miembros primero: esto tiene que reflejar lo que
-      // haya en el CRM incluso en campañas manuales (el agente igual marca
-      // manualmente y necesita quedar en la queue con el wrapuptime bien).
-      const extensions = await getCampaignAgentExtensions(cfg.campaign_id);
-      await ensureQueue(ami, cfg.queue_name, cfg.wrapup_seconds);
-      queueMembershipChanged =
-        (await syncQueueMembers(ami, cfg.queue_name, extensions))
-        || queueMembershipChanged;
-      queueReadyCampaignIds.add(cfg.campaign_id);
-    } catch (err) {
-      queueFailures += 1;
-      logger.error({ err, campaignId: cfg.campaign_id }, "Sync de cola/extensiones falló");
+      try {
+        // Cola + wrapuptime + miembros primero: esto tiene que reflejar lo que
+        // haya en el CRM incluso en campañas manuales (el agente igual marca
+        // manualmente y necesita quedar en la queue con el wrapuptime bien).
+        const extensions = await getCampaignAgentExtensions(cfg.campaign_id);
+        await ensureQueue(ami, cfg.queue_name, cfg.wrapup_seconds);
+        queueMembershipChanged =
+          (await syncQueueMembers(ami, cfg.queue_name, extensions))
+          || queueMembershipChanged;
+        queueReadyCampaignIds.add(cfg.campaign_id);
+      } catch (err) {
+        queueFailures += 1;
+        logger.error({ err, campaignId: cfg.campaign_id }, "Sync de cola/extensiones falló");
+      }
     }
-  }
 
-  await syncAgentPauseStates(ami, { force: queueMembershipChanged });
+    await syncAgentPauseStates(ami, { force: queueMembershipChanged });
+
+    lastFullTickConfigs = configs;
+    lastFullTickReadyCampaignIds.clear();
+    for (const id of queueReadyCampaignIds) lastFullTickReadyCampaignIds.add(id);
+  }
 
   // Fase 2: pacing. Una campaña cuya cola no pudo reconciliarse no origina.
   for (const cfg of configs) {
     if (!queueReadyCampaignIds.has(cfg.campaign_id)) continue;
+    if (options.campaignId && cfg.campaign_id !== options.campaignId) continue;
 
     // 'manual': la campaña existe solo para marcación manual desde la barra
     // CTI (o un botón "Llamar" en la ficha del lead) — el motor no debe
@@ -118,21 +156,23 @@ export async function runCampaignTick(
     if (cfg.dial_mode === "manual") continue;
 
     try {
-      try {
-        const expired = await expireStaleQueuedDialAttempts(cfg.campaign_id);
-        if (expired > 0) {
-          logger.warn(
-            { campaignId: cfg.campaign_id, expired },
-            "Intentos queued sin respuesta AMI recuperados"
+      if (!pacingOnly) {
+        try {
+          const expired = await expireStaleQueuedDialAttempts(cfg.campaign_id);
+          if (expired > 0) {
+            logger.warn(
+              { campaignId: cfg.campaign_id, expired },
+              "Intentos queued sin respuesta AMI recuperados"
+            );
+          }
+        } catch (err) {
+          // countInFlightAttempts también ignora queued antiguos, por lo que un
+          // fallo transitorio del reconciliador no vuelve a congelar la campaña.
+          logger.error(
+            { err, campaignId: cfg.campaign_id },
+            "No se pudieron recuperar intentos queued antiguos"
           );
         }
-      } catch (err) {
-        // countInFlightAttempts también ignora queued antiguos, por lo que un
-        // fallo transitorio del reconciliador no vuelve a congelar la campaña.
-        logger.error(
-          { err, campaignId: cfg.campaign_id },
-          "No se pudieron recuperar intentos queued antiguos"
-        );
       }
 
       // Los compromisos agendados van PRIMERO: un cliente al que se le prometió
@@ -140,7 +180,8 @@ export async function runCampaignTick(
       // claim_due_personal_callbacks entrega una sola agenda por ejecutivo y
       // solo si está libre; la capacidad del pool se mide DESPUÉS, para que el
       // ejecutivo que recibe su agenda no cuente también como disponible.
-      if (cfg.personal_callback_enabled !== false) {
+      // En un ciclo rápido se omiten: son por hora, no por evento.
+      if (!pacingOnly && cfg.personal_callback_enabled !== false) {
         try {
           const callbacks = await claimDuePersonalCallbacks(cfg.campaign_id, MAX_CALLBACKS_PER_TICK);
           for (const callback of callbacks) {
@@ -201,21 +242,34 @@ export async function runCampaignTick(
       // max_dial_ratio tal cual — ver computeEffectiveRatio en pacing.ts.
       let effectiveRatio = cfg.max_dial_ratio;
       if (cfg.dial_mode === "predictive") {
+        const [abandonment, contact] = await Promise.allSettled([
+          getRecentAbandonmentRate(cfg.campaign_id, ABANDONMENT_WINDOW_MINUTES),
+          getRecentContactRate(cfg.campaign_id, CONTACT_RATE_WINDOW_MINUTES),
+        ]);
         let measuredAbandonmentRate: number | null = null;
-        try {
-          measuredAbandonmentRate = await getRecentAbandonmentRate(cfg.campaign_id, ABANDONMENT_WINDOW_MINUTES);
-        } catch (err) {
-          logger.error({ err, campaignId: cfg.campaign_id }, "No se pudo medir abandono reciente; se usa el ratio anterior");
-        }
+        if (abandonment.status === "fulfilled") measuredAbandonmentRate = abandonment.value;
+        else logger.error({ err: abandonment.reason, campaignId: cfg.campaign_id }, "No se pudo medir abandono reciente; se usa el ratio anterior");
+        let measuredContactRate: number | null = null;
+        if (contact.status === "fulfilled") measuredContactRate = contact.value;
+        else logger.error({ err: contact.reason, campaignId: cfg.campaign_id }, "No se pudo medir la tasa de contacto; se usa el ratio anterior");
+
         effectiveRatio = computeEffectiveRatio({
           campaignId: cfg.campaign_id,
           dialMode: cfg.dial_mode,
           baseRatio: cfg.max_dial_ratio,
           targetAbandonmentRate: cfg.target_abandonment_rate,
           measuredAbandonmentRate,
+          measuredContactRate,
         });
         logger.info(
-          { campaignId: cfg.campaign_id, measuredAbandonmentRate, effectiveRatio, targetAbandonmentRate: cfg.target_abandonment_rate },
+          {
+            campaignId: cfg.campaign_id,
+            measuredAbandonmentRate,
+            measuredContactRate,
+            effectiveRatio,
+            ceiling: cfg.max_dial_ratio,
+            targetAbandonmentRate: cfg.target_abandonment_rate,
+          },
           "Ratio predictivo ajustado"
         );
       }
@@ -233,7 +287,7 @@ export async function runCampaignTick(
       if (targets.length === 0) continue;
 
       logger.info(
-        { campaignId: cfg.campaign_id, available, inFlight, capacity, claimed: targets.length },
+        { campaignId: cfg.campaign_id, available, inFlight, capacity, claimed: targets.length, pacingOnly },
         "Originando lote de discado"
       );
 

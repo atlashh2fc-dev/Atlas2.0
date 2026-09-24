@@ -13,6 +13,14 @@ el razonamiento completo de por qué vive aparte y cómo se integra.
    llamadas nuevas puede originar según agentes disponibles y el ratio
    configurado, reclama leads vía `claim_next_dial_targets` (RPC transaccional
    con `for update skip locked`, sin doble marcado) y origina cada llamada.
+   Entre ticks, un evento adelanta un ciclo rápido de sólo pacing: un
+   ejecutivo que cerró su tipificación (`call.closed` por Realtime, ver
+   `dialer/agentRelease.ts`, que además lo despausa en Asterisk al instante),
+   un Originate rechazado o un intento que terminó sin conversación.
+   En `dial_mode = 'predictive'` el ratio lo calcula el motor con la tasa de
+   contacto de los últimos 30 minutos (1 / tasa) y lo frena con el abandono
+   medido; `max_dial_ratio` es el techo que autoriza el admin, no el valor
+   fijo (ver `dialer/pacing.ts`).
 3. Cada llamada saliente contestada se deja directo en una Queue de Asterisk
    (`Application: Queue`) — Asterisk decide a qué agente conectarla. El motor
    no reimplementa distribución de agentes.
@@ -70,6 +78,8 @@ Ver `.env.example`. Las críticas:
   `ai_voice_campaign_configs` con el número/troncal SIP importado.
 - `ELEVENLABS_API_KEY`: secreto exclusivo del motor. Nunca se guarda en
   Supabase, Vercel, el navegador ni los registros de la campaña.
+- `ORIGINATE_TIMEOUT_MS`: cuánto suena una llamada saliente antes de darla
+  por no contestada (default `25000`; antes 30 s fijos). Entre 10 y 60 s.
 - `DIAL_PREFIX`: prefijo que el carrier requiere delante del destino. Para
   Siptel Chile es `85848994`. El motor elimina separadores y el signo `+` del
   teléfono antes de armar el Request-URI, por lo que los leads deben estar en
