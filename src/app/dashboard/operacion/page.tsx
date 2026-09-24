@@ -212,6 +212,22 @@ export default async function OperationsPage({
   );
   const queues = (queuesResult.data ?? []) as Queue[];
   const sources = (sourcesResult.data ?? []) as Source[];
+  // Con una campaña elegida solo se muestran los canales que esa campaña
+  // tiene configurados: Equifax es solo voz, y paneles de WhatsApp o correo
+  // "No disponible" no aportan nada. Sin canales configurados se muestra todo,
+  // para no dejar la pantalla vacía.
+  const campaignChannels = filters.campaign
+    ? new Set(
+        sources
+          .filter((source) => source.is_active && source.campaign_id === filters.campaign)
+          .map((source) => source.channel_type),
+      )
+    : null;
+  const channelShown = (channel: string) =>
+    !campaignChannels || campaignChannels.size === 0 || campaignChannels.has(channel);
+  const viewVoice = showVoice && channelShown("voice");
+  const viewWhatsApp = showWhatsApp && channelShown("whatsapp");
+  const viewMail = showMail && channelShown("email");
   const members = membersUnavailable
     ? []
     : ((membersResult.data ?? []) as Member[]);
@@ -492,137 +508,139 @@ export default async function OperationsPage({
           Limpia los filtros para consultar tu alcance autorizado.
         </Callout>
       )}
-      {stockResult.error && showWhatsApp && (
+      {stockResult.error && viewWhatsApp && (
         <Callout tone="warning">{stockResult.error}</Callout>
       )}
 
-      <SectionCard
-        title={
-          <span className="flex items-center gap-2">
-            <Bot size={16} /> Automatización general de WhatsApp{" "}
-            <Badge
-              tone={
-                automationState === "Activa"
-                  ? "success"
-                  : automationState === "Mixta"
-                    ? "warning"
-                    : "neutral"
-              }
-            >
-              {automationState}
-            </Badge>
-          </span>
-        }
-        description={
-          permissions.canConfigurePlatform
-            ? "Control administrativo de todas las campañas configuradas. Este control no se limita por los filtros del monitor."
-            : "Control general de todas las campañas configuradas dentro de tu alcance autorizado. No se limita por los filtros del monitor."
-        }
-      >
-        <div className="space-y-3 p-4">
-          <p className="text-xs text-muted-foreground">
-            {automationUnavailable
-              ? "No fue posible consultar el estado de automatización; el control está deshabilitado."
-              : `${automationEnabled} de ${automationConfigs.length} campañas con automatización activa.`}{" "}
-            La IA atiende hasta derivar a un ejecutivo. Activarla no retoma
-            conversaciones ya transferidas a atención humana.
-          </p>
-          {!permissions.canConfigurePlatform && (
-            <p className="text-xs text-muted-foreground">
-              En campañas compartidas con equipos fuera de tu alcance, el cambio
-              general requiere un administrador.
-            </p>
-          )}
-          {automationHistoryResult.error && (
-            <Callout tone="warning">
-              No se pudo consultar la auditoría del control general. Verifica
-              que la migración de roles esté aplicada y que tu cuenta tenga
-              permisos. No se habilitan cambios sin esta verificación.
-            </Callout>
-          )}
-          {!automationUnavailable && automationConfigs.length > 0 && (
-            <ActionForm
-              action={setWhatsAppAutomationEnabled}
-              success="Control general de automatización actualizado"
-              className="flex flex-wrap items-end gap-3"
-            >
-              <label className="flex min-w-64 flex-col gap-1 text-xs font-medium">
-                Aplicar a todo el alcance
-                <Select name="enabled" defaultValue="" required fieldSize="sm">
-                  <option value="" disabled>
-                    Seleccionar cambio general
-                  </option>
-                  <option value="true">Activar automatización general</option>
-                  <option value="false">Pausar automatización general</option>
-                </Select>
-              </label>
-              <label className="inline-flex items-center gap-2 py-2 text-xs text-muted-foreground">
-                <input type="checkbox" required /> Confirmo el cambio en las{" "}
-                {automationConfigs.length} campañas de mi alcance
-              </label>
-              <ActionSubmit
-                variant="secondary"
-                size="sm"
-                pendingLabel="Aplicando…"
+      {viewWhatsApp && (
+        <SectionCard
+          title={
+            <span className="flex items-center gap-2">
+              <Bot size={16} /> Automatización general de WhatsApp{" "}
+              <Badge
+                tone={
+                  automationState === "Activa"
+                    ? "success"
+                    : automationState === "Mixta"
+                      ? "warning"
+                      : "neutral"
+                }
               >
-                Aplicar control general
-              </ActionSubmit>
-            </ActionForm>
-          )}
-          {!automationHistoryResult.error && (
-            <details className="border-t border-border pt-3 text-xs">
-              <summary className="cursor-pointer font-medium text-foreground">
-                Últimos cambios generales · hasta 10 registros de campaña
-              </summary>
-              <div className="mt-3 overflow-x-auto">
-                <Table>
-                  <Thead>
-                    <Th>Fecha</Th>
-                    <Th>Responsable</Th>
-                    <Th>Campaña</Th>
-                    <Th>Antes</Th>
-                    <Th>Después</Th>
-                  </Thead>
-                  <Tbody>
-                    {automationHistory.length === 0 ? (
-                      <TableEmpty colSpan={5}>
-                        No hay cambios generales registrados en tu alcance.
-                      </TableEmpty>
-                    ) : (
-                      automationHistory.map((change) => (
-                        <Tr key={change.id}>
-                          <Td>
-                            {new Date(change.created_at).toLocaleString(
-                              "es-CL",
-                              {
-                                timeZone: "America/Santiago",
-                                dateStyle: "short",
-                                timeStyle: "short",
-                              },
-                            )}
-                          </Td>
-                          <Td>
-                            {one(change.profiles)?.full_name ??
-                              "Usuario registrado"}
-                          </Td>
-                          <Td>
-                            {one(change.campaigns)?.name ??
-                              "Campaña registrada"}
-                          </Td>
-                          <Td>
-                            {change.previous_enabled ? "Activa" : "Pausada"}
-                          </Td>
-                          <Td>{change.enabled ? "Activa" : "Pausada"}</Td>
-                        </Tr>
-                      ))
-                    )}
-                  </Tbody>
-                </Table>
-              </div>
-            </details>
-          )}
-        </div>
-      </SectionCard>
+                {automationState}
+              </Badge>
+            </span>
+          }
+          description={
+            permissions.canConfigurePlatform
+              ? "Control administrativo de todas las campañas configuradas. Este control no se limita por los filtros del monitor."
+              : "Control general de todas las campañas configuradas dentro de tu alcance autorizado. No se limita por los filtros del monitor."
+          }
+        >
+          <div className="space-y-3 p-4">
+            <p className="text-xs text-muted-foreground">
+              {automationUnavailable
+                ? "No fue posible consultar el estado de automatización; el control está deshabilitado."
+                : `${automationEnabled} de ${automationConfigs.length} campañas con automatización activa.`}{" "}
+              La IA atiende hasta derivar a un ejecutivo. Activarla no retoma
+              conversaciones ya transferidas a atención humana.
+            </p>
+            {!permissions.canConfigurePlatform && (
+              <p className="text-xs text-muted-foreground">
+                En campañas compartidas con equipos fuera de tu alcance, el cambio
+                general requiere un administrador.
+              </p>
+            )}
+            {automationHistoryResult.error && (
+              <Callout tone="warning">
+                No se pudo consultar la auditoría del control general. Verifica
+                que la migración de roles esté aplicada y que tu cuenta tenga
+                permisos. No se habilitan cambios sin esta verificación.
+              </Callout>
+            )}
+            {!automationUnavailable && automationConfigs.length > 0 && (
+              <ActionForm
+                action={setWhatsAppAutomationEnabled}
+                success="Control general de automatización actualizado"
+                className="flex flex-wrap items-end gap-3"
+              >
+                <label className="flex min-w-64 flex-col gap-1 text-xs font-medium">
+                  Aplicar a todo el alcance
+                  <Select name="enabled" defaultValue="" required fieldSize="sm">
+                    <option value="" disabled>
+                      Seleccionar cambio general
+                    </option>
+                    <option value="true">Activar automatización general</option>
+                    <option value="false">Pausar automatización general</option>
+                  </Select>
+                </label>
+                <label className="inline-flex items-center gap-2 py-2 text-xs text-muted-foreground">
+                  <input type="checkbox" required /> Confirmo el cambio en las{" "}
+                  {automationConfigs.length} campañas de mi alcance
+                </label>
+                <ActionSubmit
+                  variant="secondary"
+                  size="sm"
+                  pendingLabel="Aplicando…"
+                >
+                  Aplicar control general
+                </ActionSubmit>
+              </ActionForm>
+            )}
+            {!automationHistoryResult.error && (
+              <details className="border-t border-border pt-3 text-xs">
+                <summary className="cursor-pointer font-medium text-foreground">
+                  Últimos cambios generales · hasta 10 registros de campaña
+                </summary>
+                <div className="mt-3 overflow-x-auto">
+                  <Table>
+                    <Thead>
+                      <Th>Fecha</Th>
+                      <Th>Responsable</Th>
+                      <Th>Campaña</Th>
+                      <Th>Antes</Th>
+                      <Th>Después</Th>
+                    </Thead>
+                    <Tbody>
+                      {automationHistory.length === 0 ? (
+                        <TableEmpty colSpan={5}>
+                          No hay cambios generales registrados en tu alcance.
+                        </TableEmpty>
+                      ) : (
+                        automationHistory.map((change) => (
+                          <Tr key={change.id}>
+                            <Td>
+                              {new Date(change.created_at).toLocaleString(
+                                "es-CL",
+                                {
+                                  timeZone: "America/Santiago",
+                                  dateStyle: "short",
+                                  timeStyle: "short",
+                                },
+                              )}
+                            </Td>
+                            <Td>
+                              {one(change.profiles)?.full_name ??
+                                "Usuario registrado"}
+                            </Td>
+                            <Td>
+                              {one(change.campaigns)?.name ??
+                                "Campaña registrada"}
+                            </Td>
+                            <Td>
+                              {change.previous_enabled ? "Activa" : "Pausada"}
+                            </Td>
+                            <Td>{change.enabled ? "Activa" : "Pausada"}</Td>
+                          </Tr>
+                        ))
+                      )}
+                    </Tbody>
+                  </Table>
+                </div>
+              </details>
+            )}
+          </div>
+        </SectionCard>
+      )}
 
       <SectionCard
         title={
@@ -657,7 +675,7 @@ export default async function OperationsPage({
           filters.channel === "all" ? "grid gap-4 xl:grid-cols-3" : "grid gap-4"
         }
       >
-        {showWhatsApp && (
+        {viewWhatsApp && (
           <SectionCard
             title={
               <span className="flex items-center gap-2">
@@ -696,7 +714,7 @@ export default async function OperationsPage({
             </dl>
           </SectionCard>
         )}
-        {showVoice && (
+        {viewVoice && (
           <SectionCard
             title={
               <span className="flex items-center gap-2">
@@ -742,7 +760,7 @@ export default async function OperationsPage({
             </dl>
           </SectionCard>
         )}
-        {showMail && (
+        {viewMail && (
           <SectionCard
             title={
               <span className="flex items-center gap-2">
@@ -764,7 +782,7 @@ export default async function OperationsPage({
         )}
       </div>
 
-      {showWhatsApp && (
+      {viewWhatsApp && (
         <SectionCard
           title="WhatsApp · detalle interno"
           description="Carga y estado del canal WhatsApp dentro de la unidad seleccionada."
@@ -911,7 +929,7 @@ export default async function OperationsPage({
         </SectionCard>
       )}
 
-      {showVoice && (
+      {viewVoice && (
         <SectionCard
           title="Voz outbound · detalle interno"
           description="Contadores de hoy según America/Santiago. Fuente: motor de discado; no incluye contenido ni grabaciones."
@@ -963,7 +981,7 @@ export default async function OperationsPage({
         </SectionCard>
       )}
 
-      {showMail && (
+      {viewMail && (
         <SectionCard
           title="Correo · detalle interno"
           description="Las oportunidades conservan su campaña y responsable CRM; la asignación se realiza sin duplicar contactos."
@@ -1041,7 +1059,7 @@ export default async function OperationsPage({
                 </TableEmpty>
               ) : (
                 <>
-                  {showVoice &&
+                  {viewVoice &&
                     (agentsUnavailable ? (
                       <TableEmpty colSpan={5}>
                         No se pudo consultar la presencia de voz.
@@ -1065,7 +1083,7 @@ export default async function OperationsPage({
                         </Tr>
                       ))
                     ))}
-                  {showWhatsApp &&
+                  {viewWhatsApp &&
                     (membersUnavailable ? (
                       <TableEmpty colSpan={5}>
                         No se pudo consultar la membresía de WhatsApp.
