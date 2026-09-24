@@ -23,10 +23,10 @@ export default async function DashboardLayout({
   const showAgendaReminder = canAttendCustomers;
   const supabase = await createClient();
 
-  // Las dos lecturas del armazón salen juntas, no una tras otra: el contador
-  // del menú (una cuenta con `head: true`, no trae filas) y las cuentas de
-  // demostración (solo consultan algo para esas cuentas).
-  const [{ count: overdueCount }, demoAccounts] = await Promise.all([
+  // Las lecturas del armazón salen juntas, no una tras otra: los contadores
+  // del menú (cuentas, no traen filas) y las cuentas de demostración (solo
+  // consultan algo para esas cuentas).
+  const [{ count: overdueCount }, demoAccounts, salesToValidate] = await Promise.all([
     profile.role === "agente"
       ? getMyAgendaCampaignId(supabase).then((agendaCampaignId) => {
           // Solo la campaña en la que está trabajando, como "Mi agenda".
@@ -40,6 +40,13 @@ export default async function DashboardLayout({
         })
       : Promise.resolve({ count: null }),
     listDemoViewAccounts(profile),
+    // Ventas esperando que supervisión las apruebe o rechace (ya acotadas a
+    // sus equipos por la RPC). Un fallo no debe tumbar el armazón.
+    profile.role === "agente"
+      ? Promise.resolve(0)
+      : supabase.rpc("count_sale_validations").then(({ data }) =>
+          ((data ?? []) as { status: string; total: number }[]).find((row) => row.status === "pendiente")?.total ?? 0,
+        ),
   ]);
 
   // Edición, aplicaciones contratadas y empresas a las que llega la persona.
@@ -48,7 +55,7 @@ export default async function DashboardLayout({
   // campañas ni grabaciones) y el color con la edición.
   const { edicion, modulos: modules, empresas, duenio } = await contextoDeMiEmpresa();
 
-  const badges = { "overdue-agenda": overdueCount ?? 0 };
+  const badges = { "overdue-agenda": overdueCount ?? 0, "sales-to-validate": salesToValidate };
 
   return (
     // `data-edicion` cambia las variables de color de todo lo que cuelga de acá:
@@ -76,7 +83,7 @@ export default async function DashboardLayout({
               <AgendaBanner />
             </AgendaProvider>
           ) : (
-            <Header profile={profile} demoAccounts={demoAccounts} empresas={empresas} modules={modules} edicion={edicion} duenio={duenio} />
+            <Header profile={profile} badges={badges} demoAccounts={demoAccounts} empresas={empresas} modules={modules} edicion={edicion} duenio={duenio} />
           )}
           <main className="flex-1 overflow-y-auto p-5">{children}</main>
         </div>

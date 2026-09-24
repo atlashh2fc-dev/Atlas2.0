@@ -1,5 +1,6 @@
 import {
   Activity,
+  BadgeCheck,
   BarChart3,
   Building2,
   Handshake,
@@ -44,7 +45,7 @@ import { getWorkspacePermissions } from "./workspace-permissions";
  *  5. Sin jerga de proveedor en el menú (Vocalcom, SIP, Equifax viven dentro de la página).
  */
 
-export type NavBadge = "live-agents" | "overdue-agenda";
+export type NavBadge = "live-agents" | "overdue-agenda" | "sales-to-validate";
 export type NavSpaceId = "console" | "admin";
 
 export type NavTab = { label: string; href: string; roles?: AppRole[] };
@@ -328,6 +329,17 @@ const CONSOLE: NavSpace = {
           ediciones: ["dental", "vet"],
         },
         {
+          id: "validacion-ventas",
+          label: "Validación de ventas",
+          href: "/dashboard/validacion-ventas",
+          icon: BadgeCheck,
+          roles: OPERACION,
+          description: "Ventas tipificadas por los ejecutivos: aprobarlas para que avancen en el CRM o rechazarlas con motivo",
+          badge: "sales-to-validate",
+          modules: ["contact_center"],
+          ediciones: ["center"],
+        },
+        {
           id: "calidad",
           label: "Grabaciones y calidad",
           href: "/dashboard/calidad/grabaciones",
@@ -356,14 +368,14 @@ const WORKSPACE_SECTIONS: Record<AppRole, { id: string; label?: string; itemIds:
   admin: [
     { id: "control-home", itemIds: ["inicio"] },
     { id: "control-operation", label: "Control diario", itemIds: ["operacion", "agenda-clinica", "pacientes", "caja", "recordatorios", "campanas-clinica", "ventas", "correo", "registros"] },
-    { id: "control-results", label: "Revisión", itemIds: ["conversaciones", "conversaciones-clinica", "reportes", "reportes-clinica", "calidad"] },
+    { id: "control-results", label: "Revisión", itemIds: ["validacion-ventas", "conversaciones", "conversaciones-clinica", "reportes", "reportes-clinica", "calidad"] },
     { id: "admin-operation", label: "Configuración", itemIds: ["aranceles", "insumos", "correo-clinica", "campanas", "colas", "flujos", "estados-agente", "cargas"] },
     { id: "admin-platform", label: "Plataforma", itemIds: ["empresas", "usuarios", "extensiones", "integraciones"] },
   ],
   supervisor: [
     { id: "supervision-home", itemIds: ["inicio"] },
     { id: "supervision-operation", label: "Supervisión", itemIds: ["operacion", "agenda-clinica", "pacientes", "caja", "recordatorios", "campanas-clinica", "ventas", "correo", "equipo", "usuarios-equipo", "campanas-operativas", "registros"] },
-    { id: "supervision-review", label: "Revisión y resultados", itemIds: ["conversaciones", "conversaciones-clinica", "calidad", "reportes", "reportes-clinica"] },
+    { id: "supervision-review", label: "Revisión y resultados", itemIds: ["validacion-ventas", "conversaciones", "conversaciones-clinica", "calidad", "reportes", "reportes-clinica"] },
   ],
   agente: [
     { id: "attention-workspace", itemIds: ["inicio", "conversaciones", "registros", "agenda"] },

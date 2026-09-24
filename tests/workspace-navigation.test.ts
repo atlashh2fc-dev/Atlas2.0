@@ -35,6 +35,7 @@ test("Control is an overview, not a response inbox", () => {
     "Ventas",
     "Correo",
     "Registros",
+    "Validación de ventas",
     "Reportes",
     "Grabaciones y calidad",
     "Procedimientos y precios",
@@ -65,7 +66,7 @@ test("Control is an overview, not a response inbox", () => {
 });
 
 test("Supervisión groups control and review without assuming an agent role", () => {
-  assert.deepEqual(labels("supervisor"), ["Resumen", "Operación", "Pacientes", "Ventas", "Correo", "Mi equipo", "Usuarios", "Campañas", "Registros", "Historial", "Grabaciones y calidad", "Reportes"]);
+  assert.deepEqual(labels("supervisor"), ["Resumen", "Operación", "Pacientes", "Ventas", "Correo", "Mi equipo", "Usuarios", "Campañas", "Registros", "Validación de ventas", "Historial", "Grabaciones y calidad", "Reportes"]);
   assert.equal(nav.workspaceLabel("supervisor"), "Supervisión");
   assert.deepEqual(nav.visibleSections("admin", "supervisor"), []);
   assert.equal(nav.allItemsForRole("supervisor").some((item) => item.href.startsWith("/dashboard/admin")), false);

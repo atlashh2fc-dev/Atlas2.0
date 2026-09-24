@@ -235,6 +235,7 @@ export default async function LeadDetailPage({
     { data: whatsAppMessagesData },
     { data: mailMessagesData },
     { data: mailReplyCommandsData },
+    { data: saleValidationData },
   ] = await Promise.all([
     supabase
       .from("lead_external_refs")
@@ -266,7 +267,23 @@ export default async function LeadDetailPage({
       .eq("lead_id", id)
       .order("created_at", { ascending: false })
       .limit(20) : Promise.resolve({ data: [] }),
+    // Última venta tipificada del registro y lo que decidió supervisión. La
+    // RLS deja al ejecutivo ver solo las suyas.
+    supabase
+      .from("sale_validations")
+      .select("status, decision_note, decision_source, decided_at")
+      .eq("lead_id", id)
+      .neq("status", "anulada")
+      .order("sold_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
+  const saleValidation = saleValidationData as {
+    status: "pendiente" | "aprobada" | "rechazada";
+    decision_note: string | null;
+    decision_source: string | null;
+    decided_at: string | null;
+  } | null;
   const externalRefs = (externalRefsData ?? []) as ExternalReference[];
   const externalEvents = (externalEventsData ?? []) as ExternalEvent[];
   const whatsAppMessages = (whatsAppMessagesData ?? []) as WhatsAppTimelineMessage[];
@@ -438,6 +455,22 @@ export default async function LeadDetailPage({
               </ActionForm>
             )}
           </div>
+        </Callout>
+      )}
+
+      {saleValidation && (
+        <Callout tone={saleValidation.status === "aprobada" ? "success" : saleValidation.status === "rechazada" ? "danger" : "warning"}>
+          {saleValidation.status === "pendiente" && "Venta en validación: espera la revisión de supervisión antes de avanzar."}
+          {saleValidation.status === "aprobada" &&
+            (saleValidation.decision_source === "atlas1"
+              ? "Venta validada en Atlas 1."
+              : `Venta aprobada por supervisión${saleValidation.decision_note ? `: ${saleValidation.decision_note}` : "."}`)}
+          {saleValidation.status === "rechazada" && `Venta rechazada por supervisión: ${saleValidation.decision_note}`}
+          {profile.role !== "agente" && (
+            <Link href="/dashboard/validacion-ventas" className="ml-2 font-medium underline">
+              Ir a validación de ventas
+            </Link>
+          )}
         </Callout>
       )}
 
