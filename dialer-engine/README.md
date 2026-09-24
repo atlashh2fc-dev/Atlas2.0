@@ -101,6 +101,14 @@ inyecta desde `/etc/atlas-dialer-engine/release.env`. Nunca levantar una copia
 manual/PM2 en paralelo: dos motores pueden reclamar u originar llamadas a la
 vez.
 
+Para desplegar desde el Mac (empaqueta el commit publicado, lo sube al bucket
+de releases y lo instala por SSM, con tests y rollback anotado):
+
+```bash
+dialer-engine/scripts/desplegar-motor.sh          # origin/main
+dialer-engine/scripts/desplegar-motor.sh <commit> # un commit ya publicado
+```
+
 Verificaciones mínimas después de cada despliegue:
 
 ```bash
