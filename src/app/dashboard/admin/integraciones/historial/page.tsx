@@ -32,16 +32,15 @@ export default async function HistoricalAgentsAdminPage() {
 
   const { data: teams } = await supabase.from("teams").select("*").order("name");
 
-  const { data: callCounts } = await supabase
-    .from("calls")
-    .select("historical_agent_id")
-    .not("historical_agent_id", "is", null);
+  // Se cuenta en la base: traer las filas topa en 1.000 y deja a casi todos en 0.
+  const { data: callCounts } = await supabase.rpc("historical_agent_call_counts");
 
-  const countsByAgent = new Map<string, number>();
-  for (const row of callCounts ?? []) {
-    const id = row.historical_agent_id as string;
-    countsByAgent.set(id, (countsByAgent.get(id) ?? 0) + 1);
-  }
+  const countsByAgent = new Map<string, number>(
+    (callCounts ?? []).map((row: { historical_agent_id: string; calls: number }) => [
+      row.historical_agent_id,
+      Number(row.calls),
+    ])
+  );
 
   const linkedProfileIds = (agents ?? [])
     .map((a) => a.linked_profile_id)
