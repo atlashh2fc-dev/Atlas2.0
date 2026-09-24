@@ -4,6 +4,7 @@ import { Header } from "@/components/header";
 import { DialerListener } from "@/components/dialer-listener";
 import { AgendaBanner, AgendaProvider } from "@/components/agenda-reminder";
 import { CtiBar } from "@/components/cti-bar";
+import { AgentDayBar } from "@/components/agent-day-bar";
 import { ToastProvider } from "@/components/ui";
 import { createClient } from "@/lib/supabase/server";
 import { getMyAgendaCampaignId } from "@/lib/agenda-scope";
@@ -59,6 +60,8 @@ export default async function DashboardLayout({
         {canAttendCustomers && <DialerListener userId={profile.id} />}
         <Sidebar profile={profile} badges={badges} modules={modules} edicion={edicion} duenio={duenio} />
         <div className="flex flex-1 flex-col overflow-hidden">
+          {/* Totales de la jornada del ejecutivo, arriba y fuera del teléfono. */}
+          {profile.role === "agente" && <AgentDayBar />}
           {showAgendaReminder ? (
             <AgendaProvider userId={profile.id}>
               <Header

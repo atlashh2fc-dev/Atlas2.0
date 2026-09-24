@@ -173,3 +173,21 @@ export async function toggleStatusReasonActive(formData: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/admin/estados-agente");
 }
+
+export type MyStatusDay = {
+  desde: string;
+  actual: { reason_id: string; since: string } | null;
+  estados: { reason_id: string; code: string; label: string; is_pause: boolean; segundos: number }[];
+  conectado_segundos: number;
+  gestiones: number;
+  tmo_segundos: number | null;
+};
+
+/** Totales del día del propio ejecutivo por estado (barra superior). */
+export async function getMyStatusDay(): Promise<MyStatusDay | null> {
+  await requireProfile(["agente"]);
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("get_my_status_day");
+  if (error) throw new Error(error.message);
+  return (data ?? null) as MyStatusDay | null;
+}
