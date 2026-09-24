@@ -45,7 +45,25 @@ test("el motor distingue 'sonó y nadie contestó' de una falla técnica del Ori
   assert.equal(originateFailureEvent("5"), "busy");
   assert.equal(originateFailureEvent("0"), "failed");
   assert.equal(originateFailureEvent("8"), "failed");
-  assert.match(RUTEADOR, /eventType: success \? "originating" : originateFailureEvent\(evt\.reason\)/);
+  assert.match(RUTEADOR, /eventType: success \? "originating" : originateFailureEvent\(evt\.reason, cause\)/);
+  // Con Reason 0 manda la causa Q.850 que respondió el carrier.
+  assert.equal(originateFailureEvent("0", "19"), "no_answer");
+  assert.equal(originateFailureEvent("0", "17"), "busy");
+  assert.equal(originateFailureEvent("0", "21"), "failed");
+});
+
+test("la causa Q.850 separa número inexistente, rechazo y falla de red", () => {
+  const migracion = readFileSync(
+    new URL("../supabase/migrations/20260924230000_causa_q850_clasifica_intentos.sql", import.meta.url),
+    "utf8"
+  );
+  assert.match(migracion, /in \('1', '22', '28'\) then 'invalido'/);
+  assert.match(migracion, /in \('16', '17', '18', '19', '20', '21', '31'\) then 'real'/);
+  // Solo la red o la falta de causa es técnica (y solo eso abre el cortacircuitos).
+  assert.match(migracion, /p_status = 'failed' and p_originated_at is null then 'tecnico'/);
+  // Dos "no existe" en 7 días sacan el número por 90 días, no uno.
+  assert.match(migracion, /\) < 2 then\s+return null;/);
+  assert.match(migracion, /now\(\) \+ interval '90 days'/);
 });
 
 test("la base clasifica cada intento terminado como real, técnico o ignorado", () => {

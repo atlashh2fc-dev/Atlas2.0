@@ -1,5 +1,5 @@
 import type AmiClient from "asterisk-manager";
-import { originateFailureEvent } from "./originateOutcome";
+import { dialAttemptIdFromChanVariable, originateFailureEvent } from "./originateOutcome";
 import { logger } from "../logger";
 import {
   confirmDialAttemptAgent,
@@ -51,6 +51,36 @@ const voicemailAttemptIds = new Set<string>();
 // bridge y la llamada. Esta cola conserva el orden por intento sin serializar
 // llamadas independientes.
 const taskTailByAttemptId = new Map<string, Promise<unknown>>();
+
+// Causa Q.850 del Hangup de un Originate que falló antes de crear la
+// correlación por uniqueid (403, 404, 480 del carrier). Llega por el
+// channelvar DIAL_ATTEMPT_ID y la usa el OriginateResponse para distinguir
+// número inexistente, apagado, rechazo o falla de red. Vive segundos.
+const failureCauseByAttemptId = new Map<string, { cause: string; at: number }>();
+const FAILURE_CAUSE_TTL_MS = 60_000;
+const FAILURE_CAUSE_WAIT_MS = 1_500;
+
+function rememberFailureCause(dialAttemptId: string, cause: string): void {
+  const now = Date.now();
+  failureCauseByAttemptId.set(dialAttemptId, { cause, at: now });
+  for (const [id, entry] of failureCauseByAttemptId) {
+    if (now - entry.at > FAILURE_CAUSE_TTL_MS) failureCauseByAttemptId.delete(id);
+  }
+}
+
+/** Espera brevemente la causa si el Hangup todavía no llegó. */
+async function takeFailureCause(dialAttemptId: string): Promise<string | null> {
+  const deadline = Date.now() + FAILURE_CAUSE_WAIT_MS;
+  for (;;) {
+    const entry = failureCauseByAttemptId.get(dialAttemptId);
+    if (entry) {
+      failureCauseByAttemptId.delete(dialAttemptId);
+      return entry.cause;
+    }
+    if (Date.now() >= deadline) return null;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
 const attemptLifecycle = new AttemptEventLifecycle();
 const correlationCleanupTimers = new Map<string, NodeJS.Timeout>();
 const CORRELATION_CLEANUP_MS = 30_000;
@@ -215,17 +245,20 @@ export function registerEventRouter(
         // Una agenda cuyo ejecutivo no contestó no genera Hangup correlacionable:
         // se suelta aquí para no acumularla en memoria.
         if (!success) forgetPersonalCallback(actionId);
-        enqueueAttemptTask(actionId, "register_dial_event (originate)", () =>
-          registerDialEvent({
+        enqueueAttemptTask(actionId, "register_dial_event (originate)", async () => {
+          // Un fallo no siempre es técnico: Reason 3 es que sonó y nadie
+          // contestó, y la causa Q.850 del carrier dice si el número no
+          // existe, está apagado, ocupado o nos rechazaron.
+          const cause = success ? null : await takeFailureCause(actionId);
+          return registerDialEvent({
             dialAttemptId: actionId,
-            // Un fallo no siempre es técnico: Reason 3 es que sonó y nadie
-            // contestó, y eso sí es un intento sobre el cliente.
-            eventType: success ? "originating" : originateFailureEvent(evt.reason),
+            eventType: success ? "originating" : originateFailureEvent(evt.reason, cause),
             amiUniqueId: uniqueId,
             amiChannel: String(evt.channel ?? "") || null,
-            payload: { raw_response: evt.response ?? null, reason: evt.reason ?? null },
-          })
-        );
+            hangupCause: cause,
+            payload: { raw_response: evt.response ?? null, reason: evt.reason ?? null, q850_cause: cause },
+          });
+        });
         return;
       }
 
@@ -401,7 +434,14 @@ export function registerEventRouter(
 
       case "hangup": {
         const dialAttemptId = attemptIdFromEvent(evt);
-        if (!dialAttemptId) return;
+        if (!dialAttemptId) {
+          // Canal de un Originate que falló antes de correlacionarse: solo se
+          // guarda su causa para el OriginateResponse que viene.
+          const fromChannelVar = dialAttemptIdFromChanVariable(evt.chanvariable);
+          const cause = String(evt.cause ?? "").trim();
+          if (fromChannelVar && cause) rememberFailureCause(fromChannelVar, cause);
+          return;
+        }
         // Ambas patas del bridge generan Hangup. Sólo la primera determina el
         // estado terminal; la correlación se conserva para un AgentComplete
         // tardío, que es quien informa qué lado terminó la conversación.
