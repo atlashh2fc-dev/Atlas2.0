@@ -230,6 +230,15 @@ const CONSOLE: NavSpace = {
           modules: ["contact_center"],
         },
         {
+          id: "usuarios-equipo",
+          label: "Usuarios",
+          href: "/dashboard/team/usuarios",
+          icon: UserCog,
+          roles: ["supervisor"],
+          description: "Tus ejecutivos: campañas (skills), contraseña y acceso",
+          modules: ["contact_center"],
+        },
+        {
           id: "campanas-operativas",
           label: "Campañas",
           href: "/dashboard/campanas",
@@ -353,7 +362,7 @@ const WORKSPACE_SECTIONS: Record<AppRole, { id: string; label?: string; itemIds:
   ],
   supervisor: [
     { id: "supervision-home", itemIds: ["inicio"] },
-    { id: "supervision-operation", label: "Supervisión", itemIds: ["operacion", "agenda-clinica", "pacientes", "caja", "recordatorios", "campanas-clinica", "ventas", "correo", "equipo", "campanas-operativas", "registros"] },
+    { id: "supervision-operation", label: "Supervisión", itemIds: ["operacion", "agenda-clinica", "pacientes", "caja", "recordatorios", "campanas-clinica", "ventas", "correo", "equipo", "usuarios-equipo", "campanas-operativas", "registros"] },
     { id: "supervision-review", label: "Revisión y resultados", itemIds: ["conversaciones", "conversaciones-clinica", "calidad", "reportes", "reportes-clinica"] },
   ],
   agente: [
