@@ -48,7 +48,8 @@ cd \$REL/dialer-engine
 cp -p \$ANTERIOR/.env .env
 npm ci --no-audit --no-fund
 npm run build
-node --test dist/*.test.js dist/**/*.test.js 2>&1 | grep -E '^ℹ (tests|pass|fail)'
+node --test dist/*.test.js dist/**/*.test.js >/tmp/motor-tests-\$SHA.log 2>&1 || { tail -40 /tmp/motor-tests-\$SHA.log; echo "Tests del motor fallaron; no se despliega." >&2; exit 1; }
+grep -E '^(ℹ|# )(tests|pass|fail)' /tmp/motor-tests-\$SHA.log || true
 npm prune --omit=dev --no-audit --no-fund
 echo "ANTERIOR=\$ANTERIOR" > \$REL/rollback.txt
 ln -sfn \$REL/dialer-engine /opt/atlas-dialer-engine
