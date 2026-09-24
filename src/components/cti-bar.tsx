@@ -1,6 +1,7 @@
 "use client";
 
 import { markScreenPop } from "@/components/screen-pop-timing";
+import { fetchIncomingDialContextDirect } from "@/lib/incoming-context-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -1340,7 +1341,10 @@ export function CtiBar({ profile }: { profile: Profile }) {
     for (let retry = 0; retry < 20; retry += 1) {
       if (callAttemptRef.current !== callAttempt) return;
       try {
-        const context = await getMyIncomingDialContext();
+        // Directo a la base (~0,2 s); la vía del servidor (~1 s) queda de
+        // respaldo si la política no dejó leer el lead o hubo error.
+        const direct = await fetchIncomingDialContextDirect(profile.id).catch(() => undefined);
+        const context = direct === undefined ? await getMyIncomingDialContext() : direct;
         if (context) {
           // Medición del screen-pop: la cierra la ficha al dibujarse.
           markScreenPop({
@@ -1349,7 +1353,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
             inviteAt,
             contextAt: Date.now(),
             polls: retry + 1,
-            source: "poll",
+            source: direct === undefined ? "servidor" : "directo",
           });
           incomingContextRef.current = context;
           setIncomingContext(context);
