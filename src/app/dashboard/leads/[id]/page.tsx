@@ -5,7 +5,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, CalendarClock, PencilLine, RefreshCw } from "lucide-react";
 import { LEAD_STATUSES } from "@/lib/types";
-import { getOpenCall, getRevisableCall } from "@/app/actions/calls";
+import { getLeadSupervisionContext, getOpenCall, getRevisableCall, getSupervisableCall, type LeadSupervisionContext } from "@/app/actions/calls";
 import { fetchCampaignAgendaPolicy } from "@/lib/campaign-agenda-policy";
 import { AgendaCallButton } from "@/components/agenda-call-button";
 import { LeadPhonesPanel } from "@/components/lead-phones-panel";
@@ -24,7 +24,7 @@ import {
 } from "@/lib/campaign-vertical";
 import { metricDefinition } from "@/lib/metric-definitions";
 import { completeKovacsDemoAssignment } from "@/app/actions/lead-orchestrator";
-import type { Campaign, Lead, Profile, Team, Workflow, WorkflowStep, WorkflowStepBranch } from "@/lib/types";
+import type { Call, Campaign, Lead, Profile, Team, Workflow, WorkflowStep, WorkflowStepBranch } from "@/lib/types";
 import { ActionForm, ActionSubmit, Badge, Callout, Card, InfoTooltip, PageHeader, buttonClasses } from "@/components/ui";
 import type { ReactNode } from "react";
 import { getCampaignAppointmentScheduleUrl } from "@/lib/campaign-appointment-schedules";
@@ -168,14 +168,16 @@ export default async function LeadDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tipificar?: string | string[]; corregir?: string | string[]; orquestado?: string | string[] }>;
+  searchParams: Promise<{ tipificar?: string | string[]; corregir?: string | string[]; orquestado?: string | string[]; supervisar?: string | string[] }>;
 }) {
   const profile = await requireProfile();
   const permissions = getWorkspacePermissions(profile.role);
   const leeConversaciones = await puedeLeerConversaciones(profile.role);
   const { id } = await params;
-  const { corregir, orquestado } = await searchParams;
+  const { corregir, orquestado, supervisar } = await searchParams;
   const correctionRequested = corregir === "1";
+  // ?supervisar=<id de gestión> corrige esa gestión; ?supervisar=nueva agrega una.
+  const supervisionTarget = typeof supervisar === "string" && supervisar ? supervisar : null;
   const supabase = await createClient();
 
   const { data: lead360 } = await supabase.rpc("get_lead_360", { p_lead_id: id });
@@ -299,6 +301,44 @@ export default async function LeadDetailPage({
   const revisableCall =
     canManageCall && !call && lead.managed_by === profile.id
       ? await getRevisableCall(id)
+      : null;
+
+  // Supervisión corrige o agrega tipificaciones (p. ej. una venta que el
+  // ejecutivo no marcó como venta). Fuera de su alcance la RPC falla y el
+  // panel simplemente no aparece.
+  let supervisionContext: LeadSupervisionContext | null = null;
+  if (profile.role === "supervisor" || profile.role === "admin") {
+    try {
+      supervisionContext = await getLeadSupervisionContext(id);
+    } catch {
+      supervisionContext = null;
+    }
+  }
+  const supervisedCall: Call | null =
+    supervisionContext && supervisionTarget
+      ? supervisionTarget === "nueva"
+        ? ({
+            id: "",
+            lead_id: lead.id,
+            agent_id: supervisionContext.defaultAgentId ?? "",
+            status: null,
+            outcome: null,
+            reason: null,
+            notes: null,
+            next_action_at: null,
+            next_action_window: null,
+            callback_owner_user_id: null,
+            equifax_products: null,
+            equifax_uf_amount: null,
+            equifax_recipient_email: null,
+            phone_status: null,
+            started_at: new Date().toISOString(),
+            ended_at: null,
+            discarded_reason: null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          } satisfies Call)
+        : await getSupervisableCall(lead.id, supervisionTarget)
       : null;
 
   const entries: TimelineEntry[] = [
@@ -472,6 +512,89 @@ export default async function LeadDetailPage({
             </Link>
           )}
         </Callout>
+      )}
+
+      {supervisionContext && (
+        <section className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
+          <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Supervisión de la gestión</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Corrige una tipificación o agrega la última. Una venta que no se marcó como tal entra a la
+                validación de ventas al dejarla como VENTA EN VALIDACION.
+              </p>
+            </div>
+            <Link
+              href={`/dashboard/leads/${lead.id}?supervisar=nueva#supervision-form`}
+              className={buttonClasses({ variant: supervisionTarget === "nueva" ? "primary" : "secondary", size: "sm" })}
+            >
+              Agregar tipificación
+            </Link>
+          </div>
+          {supervisionContext.managements.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Este registro no tiene gestiones tipificadas.</p>
+          ) : (
+            <ul className="divide-y divide-border rounded-lg border border-border">
+              {supervisionContext.managements.map((management) => (
+                <li key={management.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
+                  <div className="min-w-0">
+                    <p className="font-medium text-foreground">{management.reason ?? "Sin tipificación"}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {[
+                        new Date(management.endedAt).toLocaleString("es-CL", {
+                          dateStyle: "short",
+                          timeStyle: "short",
+                          timeZone: "America/Santiago",
+                        }),
+                        management.agentName,
+                        management.channel === "supervision" ? "Registrada por supervisión" : null,
+                        management.fromAtlas1 ? "Atlas 1" : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  </div>
+                  {management.fromAtlas1 ? (
+                    <span className="text-xs text-muted-foreground" title="El historial de Atlas 1 no se reescribe: agrega una tipificación nueva.">
+                      No se corrige
+                    </span>
+                  ) : (
+                    <Link
+                      href={`/dashboard/leads/${lead.id}?supervisar=${management.id}#supervision-form`}
+                      className={buttonClasses({ variant: supervisionTarget === management.id ? "primary" : "ghost", size: "sm" })}
+                    >
+                      <PencilLine size={13} />
+                      Corregir
+                    </Link>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
+      {supervisionContext && supervisionTarget && !supervisedCall && (
+        <Callout tone="warning">No se encontró esa gestión, o fue descartada.</Callout>
+      )}
+
+      {supervisionContext && supervisedCall && (
+        <section id="supervision-form" className="rounded-2xl border-2 border-warning/20 bg-warning/[0.025] p-3 sm:p-5">
+          <CallTypificationForm
+            key={supervisedCall.id || "nueva"}
+            lead={lead}
+            call={supervisedCall}
+            reasonCatalog={reasonCatalog}
+            equifaxCommercialFieldsEnabled={equifaxCommercialFieldsEnabled}
+            appointmentScheduleUrl={appointmentScheduleUrl}
+            agendaPolicy={agendaPolicy}
+            supervision={{
+              callId: supervisionTarget === "nueva" ? null : supervisedCall.id,
+              agents: supervisionContext.agents,
+              defaultAgentId: supervisionContext.defaultAgentId,
+            }}
+          />
+        </section>
       )}
 
       {orquestado === "1" && !orchestratorAssignment && campaign?.name === "Kovacs" && (

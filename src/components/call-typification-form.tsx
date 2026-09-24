@@ -23,6 +23,7 @@ import {
   closeCall,
   discardCallTechnicalError,
   reviseCallManagement,
+  superviseCallManagement,
 } from "@/app/actions/calls";
 import {
   INTERCALL_BREAK_EVENT,
@@ -62,7 +63,8 @@ export function CallTypificationForm({
   equifaxCommercialFieldsEnabled,
   appointmentScheduleUrl,
   agendaPolicy = null,
-  revision = false,
+  revision: revisionProp = false,
+  supervision = null,
 }: {
   lead: Lead;
   call: Call;
@@ -82,7 +84,19 @@ export function CallTypificationForm({
   agendaPolicy?: AgendaPolicy | null;
   /** Corrige una gestión ya cerrada sin crear una llamada ficticia. */
   revision?: boolean;
+  /**
+   * Supervisión corrige una gestión cerrada (callId) o agrega una tipificación
+   * nueva acreditada a un ejecutivo (callId null). Se comporta como una
+   * corrección y además pide el motivo y, al agregar, el ejecutivo.
+   */
+  supervision?: {
+    callId: string | null;
+    agents: { id: string; name: string }[];
+    defaultAgentId: string | null;
+  } | null;
 }) {
+  const revision = revisionProp || supervision !== null;
+  const adding = supervision !== null && supervision.callId === null;
   const router = useRouter();
   const fieldId = useId();
   // La ficha siempre recibe el catálogo de su workflow. En campañas que no
@@ -121,6 +135,8 @@ export function CallTypificationForm({
   const [equifaxProducts, setEquifaxProducts] = useState<string[]>(call.equifax_products ?? []);
   const [equifaxUf, setEquifaxUf] = useState<string>(call.equifax_uf_amount?.toString() ?? "");
   const [equifaxEmail, setEquifaxEmail] = useState<string>(call.equifax_recipient_email ?? "");
+  const [supervisorNote, setSupervisorNote] = useState("");
+  const [creditedAgentId, setCreditedAgentId] = useState<string>(supervision?.defaultAgentId ?? "");
   const [discardOpen, setDiscardOpen] = useState(false);
   const [discardReason, setDiscardReason] = useState("");
   const [attemptedClose, setAttemptedClose] = useState(false);
@@ -258,21 +274,36 @@ export function CallTypificationForm({
       setMessage({ type: "error", text: "Completa los campos marcados antes de cerrar." });
       return;
     }
+    if (supervision && !supervisorNote.trim()) {
+      setMessage({ type: "error", text: "Indica por qué corriges o agregas la tipificación." });
+      return;
+    }
+    if (adding && !creditedAgentId) {
+      setMessage({ type: "error", text: "Elige a qué ejecutivo se acredita la gestión." });
+      return;
+    }
 
     closeInFlightRef.current = true;
     setPending("close");
     setMessage(null);
     let completed = false;
     try {
-      const result = revision
-        ? await reviseCallManagement(payload)
-        : await closeCall(payload);
+      const result = supervision
+        ? await superviseCallManagement({
+            ...payload,
+            callId: supervision.callId,
+            agentId: adding ? creditedAgentId : null,
+            supervisorNote,
+          })
+        : revision
+          ? await reviseCallManagement(payload)
+          : await closeCall(payload);
       if (!result.ok) {
         setMessage({ type: "error", text: result.error });
         return;
       }
       completed = true;
-      setMessage({ type: "success", text: "Tipificación guardada. Abriendo la siguiente gestión…" });
+      setMessage({ type: "success", text: revision ? "Tipificación guardada." : "Tipificación guardada. Abriendo la siguiente gestión…" });
       if (!revision) notifyAgentManagementClosed();
       // Un cierre confirmado no debe volver a habilitar el botón mientras la
       // navegación de Next termina. Una carga completa evita que una transición
@@ -446,7 +477,56 @@ export function CallTypificationForm({
         }
       }}
     >
-      {revision && (
+      {supervision && (
+        <div className="space-y-3 rounded-2xl border border-warning/30 bg-warning-bg px-4 py-3 text-foreground">
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-warning text-white">
+              <CalendarClock size={17} />
+            </span>
+            <div>
+              <p className="text-sm font-bold">
+                {adding ? "Agregar tipificación (supervisión)" : "Corregir tipificación (supervisión)"}
+              </p>
+              <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                {adding
+                  ? "Queda como la última gestión del registro, a nombre del ejecutivo que elijas. No genera una llamada."
+                  : "La gestión sigue siendo del ejecutivo que la hizo; la versión anterior queda en la auditoría."}{" "}
+                Si la marcas como VENTA EN VALIDACION, entra a la validación de ventas.
+              </p>
+            </div>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {adding && (
+              <label className="block text-xs font-medium text-muted-foreground">
+                Ejecutivo al que se acredita
+                <select
+                  value={creditedAgentId}
+                  onChange={(event) => setCreditedAgentId(event.target.value)}
+                  className="mt-1 block w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
+                >
+                  <option value="">Elige un ejecutivo</option>
+                  {supervision.agents.map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agent.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <label className={`block text-xs font-medium text-muted-foreground ${adding ? "" : "sm:col-span-2"}`}>
+              Motivo de supervisión
+              <input
+                type="text"
+                value={supervisorNote}
+                onChange={(event) => setSupervisorNote(event.target.value)}
+                placeholder="Ej.: el ejecutivo cerró como cotización una venta"
+                className="mt-1 block w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
+              />
+            </label>
+          </div>
+        </div>
+      )}
+      {revision && !supervision && (
         <div className="flex items-start gap-3 rounded-2xl border border-warning/30 bg-warning-bg px-4 py-3 text-foreground">
           <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-warning text-white">
             <CalendarClock size={17} />
@@ -531,9 +611,11 @@ export function CallTypificationForm({
               ? revision
                 ? "Guardando corrección..."
                 : "Cerrando..."
-              : revision
-                ? "Guardar corrección"
-                : "Guardar y cerrar"}
+              : adding
+                ? "Guardar tipificación"
+                : revision
+                  ? "Guardar corrección"
+                  : "Guardar y cerrar"}
           </button>
           {reasonConfig && <span className="text-xs font-medium text-muted-foreground">{reasonConfig.label}</span>}
 
@@ -575,7 +657,7 @@ export function CallTypificationForm({
         </div>
         <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
         <h2 className="mb-4 text-sm font-semibold text-foreground">
-          {revision ? "Corregir tipificación" : "Tipificar"}
+          {adding ? "Nueva tipificación" : revision ? "Corregir tipificación" : "Tipificar"}
         </h2>
 
         <div className="space-y-5">

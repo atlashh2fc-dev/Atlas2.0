@@ -1026,6 +1026,156 @@ export async function reviseCallManagement(input: {
   }
 }
 
+export type SupervisionManagement = {
+  id: string;
+  endedAt: string;
+  reason: string | null;
+  notes: string | null;
+  agentName: string | null;
+  channel: string | null;
+  fromAtlas1: boolean;
+};
+
+export type LeadSupervisionContext = {
+  defaultAgentId: string | null;
+  agents: { id: string; name: string }[];
+  managements: SupervisionManagement[];
+};
+
+/**
+ * Lo que supervisión necesita en la ficha para corregir o agregar una
+ * tipificación: gestiones cerradas, ejecutivos de sus equipos y a quién
+ * acreditar por defecto. La RPC valida rol, empresa y equipo.
+ */
+export async function getLeadSupervisionContext(leadId: string): Promise<LeadSupervisionContext> {
+  await requireProfile(["supervisor", "admin"]);
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("lead_supervision_context", { p_lead_id: leadId });
+  if (error) throw new Error(error.message);
+  const raw = (data ?? {}) as {
+    default_agent_id?: string | null;
+    agents?: { id: string; name: string }[];
+    managements?: Record<string, unknown>[];
+  };
+  return {
+    defaultAgentId: raw.default_agent_id ?? null,
+    agents: raw.agents ?? [],
+    managements: (raw.managements ?? []).map((row) => ({
+      id: String(row.id),
+      endedAt: String(row.ended_at),
+      reason: typeof row.reason === "string" ? row.reason : null,
+      notes: typeof row.notes === "string" ? row.notes : null,
+      agentName: typeof row.agent_name === "string" ? row.agent_name : null,
+      channel: typeof row.management_channel === "string" ? row.management_channel : null,
+      fromAtlas1: row.from_atlas1 === true,
+    })),
+  };
+}
+
+/** Gestión cerrada que supervisión va a corregir, leída con su sesión. */
+export async function getSupervisableCall(leadId: string, callId: string): Promise<Call | null> {
+  await requireProfile(["supervisor", "admin"]);
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("calls")
+    .select("*")
+    .eq("id", callId)
+    .eq("lead_id", leadId)
+    .not("ended_at", "is", null)
+    .is("discarded_reason", null)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data as Call | null) ?? null;
+}
+
+/**
+ * Supervisión corrige una gestión cerrada de Atlas 2.0 (callId) o agrega una
+ * tipificación nueva acreditada a un ejecutivo (callId null). Mismas reglas
+ * de cierre que el ejecutivo; una venta entra sola a la validación de ventas.
+ * Ver la migración 20260925040000_supervision_corrige_tipificaciones.sql.
+ */
+export async function superviseCallManagement(input: {
+  callId: string | null;
+  leadId: string;
+  agentId: string | null;
+  supervisorNote: string;
+  status: CallStatus | null;
+  outcome: CallOutcome | null;
+  reason: string | null;
+  notes: string | null;
+  next_action_at: string | null;
+  equifax_products: string[];
+  equifax_uf_amount: number | null;
+  equifax_recipient_email: string | null;
+}): Promise<CallActionResult> {
+  try {
+    await requireProfile(["supervisor", "admin"]);
+    const supabase = await createClient();
+    if (!input.supervisorNote.trim()) throw new Error("Indica por qué corriges o agregas la tipificación.");
+    if (!input.callId && !input.agentId) throw new Error("Elige a qué ejecutivo se acredita la gestión.");
+
+    const { data: lead, error: leadError } = await supabase
+      .from("leads")
+      .select("id, email, workflow_id, campaign_id")
+      .eq("id", input.leadId)
+      .single();
+    if (leadError) throw new Error("No tienes acceso a este registro.");
+
+    const original = input.callId ? await getSupervisableCall(input.leadId, input.callId) : null;
+    if (input.callId && !original) throw new Error("La gestión no existe o fue descartada.");
+    if (original?.legacy_call_id) {
+      throw new Error("Esta gestión viene de Atlas 1 y no se reescribe. Agrega una tipificación nueva.");
+    }
+
+    const [reasonCatalog, agendaPolicy] = await Promise.all([
+      getLeadCallReasonCatalog({ supabase, lead }),
+      fetchCampaignAgendaPolicy(supabase, lead.campaign_id),
+    ]);
+    const errors = validateCallClosure(
+      {
+        status: input.status,
+        outcome: input.outcome,
+        reason: input.reason,
+        notes: input.notes,
+        next_action_at: input.next_action_at,
+        equifax_products: input.equifax_products,
+        equifax_uf_amount: input.equifax_uf_amount,
+        equifax_recipient_email: input.equifax_recipient_email,
+        lead_email: lead.email,
+        contact_email: lead.email,
+      },
+      reasonCatalog,
+      { agendaPolicy, previousNextActionAt: original?.next_action_at ?? null }
+    );
+    if (errors.length > 0) throw new Error(errors.join(" "));
+
+    const { error } = await supabase.rpc("supervise_call_management", {
+      p_lead_id: input.leadId,
+      p_call_id: input.callId,
+      p_agent_id: input.callId ? null : input.agentId,
+      p_status: input.status,
+      p_outcome: input.outcome,
+      p_reason: input.reason,
+      p_notes: input.notes,
+      p_next_action_at: input.next_action_at,
+      p_equifax_products: input.equifax_products,
+      p_equifax_uf_amount: input.equifax_uf_amount,
+      p_equifax_recipient_email: input.equifax_recipient_email,
+      p_supervisor_note: input.supervisorNote.trim(),
+    });
+    if (error) throw new Error(error.message);
+
+    revalidatePath(`/dashboard/leads/${input.leadId}`);
+    revalidatePath("/dashboard/validacion-ventas");
+    return { ok: true, data: null };
+  } catch (error) {
+    return callActionError("superviseCallManagement", error, {
+      callId: input.callId,
+      leadId: input.leadId,
+    });
+  }
+}
+
 /**
  * Descartar la llamada por error técnico: cierra el registro de la llamada
  * pero NO escribe tipificación ni estado de gestión en el lead, porque no
