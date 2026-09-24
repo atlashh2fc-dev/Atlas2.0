@@ -14,6 +14,14 @@
 --     salía 5.296 veces con 2.674 llamadas), y la interacción de una llamada sin
 --     motivo aportaba la etiqueta técnica «connected». Ahora la interacción solo
 --     aporta su resultado cuando no declara una llamada en metadata.call_id.
+--   * Ventas y cotizaciones: la venta es outcome = 'sale' y la cotización el
+--     motivo «COTIZACION ENVIADA» (public.report_call_is_quote). Buscar «VENTA»
+--     en el motivo contaba las 206 «CLIENTE NO SUJETO A VENTA» de Atlas 1: en
+--     septiembre Equifax mostraba 37 ventas y eran 5. El UF sigue siendo la
+--     suma de equifax_uf_amount, igual que antes.
+--   * kpis.llamadas_atlas1: cuántas de las llamadas cerradas del período son
+--     historial migrado. El reporte las sigue contando (son gestiones reales
+--     del equipo), pero el supervisor ve qué parte no se hizo en Atlas 2.0.
 --   * El día del gráfico diario y de los recorridos se corta en hora Chile. En
 --     UTC, lo hecho después de las 21:00 caía al día siguiente.
 --   * La frontera de empresa se resuelve una vez y no por lead. Con la base de
@@ -23,7 +31,9 @@
 -- Efecto en otras campañas: solo el TMO (se descartan gestiones abiertas más de
 -- 2 horas, 13 en toda la base), las tipificaciones (dejan de salir dobles) y el
 -- corte del día. Ninguna llamada nativa descartada tiene interacción, así que las
--- gestiones CRM de las demás campañas no cambian.
+-- gestiones CRM de las demás campañas no cambian. Ventas y cotizaciones tampoco:
+-- toda llamada nativa con «VENTA» en el motivo ya tenía outcome 'sale', y toda
+-- cotización nativa usa el motivo exacto.
 
 -- Las interacciones se cruzan con las llamadas descartadas por el texto de
 -- metadata.call_id. Son pocas (6.107 hoy), así que un índice parcial basta para
@@ -113,6 +123,7 @@ begin
       c.lead_id, c.status, c.reason, c.outcome, c.ended_at, c.started_at,
       c.next_action_at, c.equifax_uf_amount,
       public.report_call_handle_seconds(c.started_at, c.ended_at, c.legacy_call_id) as handle_seconds,
+      c.legacy_call_id is not null as is_legacy,
       coalesce(c.ended_at, c.updated_at, c.created_at) as activity_at,
       coalesce(ha.linked_profile_id::text, c.historical_agent_id::text, c.agent_id::text) as report_agent_key
     from public.calls c
@@ -153,11 +164,11 @@ begin
   ),
   agent_events as (
     select report_agent_key, lead_id, true as is_call, status, reason, outcome,
-           ended_at, started_at, next_action_at, equifax_uf_amount, handle_seconds
+           ended_at, started_at, next_action_at, equifax_uf_amount, handle_seconds, is_legacy
     from call_rows
     union all
     select report_agent_key, lead_id, false, null::text, null::text, null::text,
-           null::timestamptz, null::timestamptz, null::timestamptz, null::numeric, null::numeric
+           null::timestamptz, null::timestamptz, null::timestamptz, null::numeric, null::numeric, false
     from interaction_rows
   ),
   agent_metrics as (
@@ -169,8 +180,11 @@ begin
       count(distinct lead_id) filter (where is_call and status = 'connected')::int as contactos_efectivos,
       count(*) filter (where is_call and status in ('no_answer','busy','voicemail','out_of_service'))::int as no_contacto,
       count(*) filter (where is_call and next_action_at is not null)::int as agendas,
-      count(*) filter (where is_call and reason ilike '%COTIZACION%')::int as cotizaciones,
-      count(*) filter (where is_call and (outcome = 'sale' or reason ilike '%VENTA%'))::int as ventas,
+      count(*) filter (where is_call and public.report_call_is_quote(reason))::int as cotizaciones,
+      -- Venta es lo que se declaró venta; buscar «VENTA» en el motivo contaba
+      -- «CLIENTE NO SUJETO A VENTA».
+      count(*) filter (where is_call and outcome = 'sale')::int as ventas,
+      count(*) filter (where is_call and is_legacy and ended_at is not null)::int as llamadas_atlas1,
       coalesce(sum(equifax_uf_amount) filter (where is_call), 0)::numeric as uf,
       coalesce(sum(handle_seconds) filter (where is_call and handle_seconds is not null), 0)::numeric as tmo_sum_seconds,
       count(*) filter (where is_call and handle_seconds is not null)::int as tmo_count
@@ -266,6 +280,7 @@ begin
   totals as (
     select coalesce(sum(crm_gestiones),0)::int as crm_gestiones,
       coalesce(sum(llamadas_cerradas),0)::int as llamadas_cerradas,
+      coalesce(sum(llamadas_atlas1),0)::int as llamadas_atlas1,
       coalesce(sum(agendas),0)::int as agendas_creadas,
       coalesce(sum(cotizaciones),0)::int as cotizaciones,
       coalesce(sum(ventas),0)::int as ventas,
@@ -297,6 +312,9 @@ begin
         then round((day_flag_totals.contactados::numeric / day_flag_totals.recorridos::numeric) * 100, 1) else null end,
       'crm_gestiones', totals.crm_gestiones,
       'llamadas_cerradas', totals.llamadas_cerradas,
+      -- Cuántas de esas llamadas vienen del historial de Atlas 1, para que el
+      -- supervisor sepa qué parte del período no se hizo en Atlas 2.0.
+      'llamadas_atlas1', totals.llamadas_atlas1,
       'no_contacto', day_flag_totals.no_contacto,
       'agendas_creadas', totals.agendas_creadas,
       'agendas_vencidas', lead_totals.agendas_vencidas,
@@ -345,8 +363,9 @@ grant execute on function public.get_supervisor_report_summary(timestamptz, time
 -- alinean con la regla del reporte en vivo para que nadie las vuelva a usar con
 -- cifras falsas. Su día sigue cortado en UTC: cambiarlo exige mover a la vez los
 -- triggers y los recálculos por rango, y no vale la pena mientras nadie las lea.
--- Después de aplicar hay que recalcular el rango de Atlas 1 (ver la nota de
--- entrega): lo ya guardado no se corrige solo.
+-- Las tablas de tipificaciones se alinean en 20260924183400. Después de aplicar
+-- hay que recalcular todos los equipos desde marzo (ver la nota de entrega): lo
+-- ya guardado no se corrige solo.
 
 create or replace function public.refresh_supervisor_report_agent_metric_row(p_day date, p_team_id uuid, p_report_agent_key text)
 returns void
@@ -453,9 +472,9 @@ begin
       (select count(distinct lead_id)::int from day_calls where status = 'connected') as contactos_efectivos,
       (select count(*)::int from day_calls where status in ('no_answer', 'busy', 'voicemail', 'out_of_service')) as no_contacto,
       (select count(*)::int from day_calls where next_action_at is not null) as agendas,
-      (select count(*)::int from day_calls where reason ilike '%COTIZACION%') as cotizaciones,
-      (select count(*)::int from day_calls where outcome = 'sale' or reason ilike '%VENTA%') as ventas,
-      (select coalesce(sum(equifax_uf_amount), 0)::numeric from day_calls where outcome = 'sale' or reason ilike '%VENTA%' or reason ilike '%COTIZACION%' or equifax_uf_amount is not null) as uf,
+      (select count(*)::int from day_calls where public.report_call_is_quote(reason)) as cotizaciones,
+      (select count(*)::int from day_calls where outcome = 'sale') as ventas,
+      (select coalesce(sum(equifax_uf_amount), 0)::numeric from day_calls) as uf,
       (select coalesce(sum(handle_seconds), 0)::numeric from day_calls where handle_seconds is not null) as tmo_sum_seconds,
       (select count(*)::int from day_calls where handle_seconds is not null) as tmo_count
   )
@@ -606,9 +625,9 @@ begin
       (select count(distinct lead_id)::int from day_calls where status = 'connected') as contactos_efectivos,
       (select count(*)::int from day_calls where status in ('no_answer', 'busy', 'voicemail', 'out_of_service')) as no_contacto,
       (select count(*)::int from day_calls where next_action_at is not null) as agendas,
-      (select count(*)::int from day_calls where reason ilike '%COTIZACION%') as cotizaciones,
-      (select count(*)::int from day_calls where outcome = 'sale' or reason ilike '%VENTA%') as ventas,
-      (select coalesce(sum(equifax_uf_amount), 0)::numeric from day_calls where outcome = 'sale' or reason ilike '%VENTA%' or reason ilike '%COTIZACION%' or equifax_uf_amount is not null) as uf,
+      (select count(*)::int from day_calls where public.report_call_is_quote(reason)) as cotizaciones,
+      (select count(*)::int from day_calls where outcome = 'sale') as ventas,
+      (select coalesce(sum(equifax_uf_amount), 0)::numeric from day_calls) as uf,
       (select coalesce(sum(handle_seconds), 0)::numeric from day_calls where handle_seconds is not null) as tmo_sum_seconds,
       (select count(*)::int from day_calls where handle_seconds is not null) as tmo_count
   )

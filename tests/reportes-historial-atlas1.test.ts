@@ -8,6 +8,7 @@
 // ni la corrección ni la frontera de empresa y de supervisor.
 
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
@@ -15,10 +16,11 @@ const leer = (ruta: string) => readFileSync(new URL(`../${ruta}`, import.meta.ur
 const migracion = (nombre: string) => leer(`supabase/migrations/${nombre}`);
 const soloCodigo = (sql: string) => sql.replace(/--[^\n]*/g, "");
 
-const REGLA_TMO = soloCodigo(migracion("20260924183000_reportes_regla_de_duracion_del_tmo.sql"));
+const REGLA_TMO = soloCodigo(migracion("20260924183000_reportes_reglas_de_tmo_y_cotizacion.sql"));
 const SUPERVISOR = soloCodigo(migracion("20260924183100_reporte_supervisor_sin_distorsion_de_atlas1.sql"));
 const INTEGRIDAD = soloCodigo(migracion("20260924183200_integridad_no_juzga_el_historial_de_atlas1.sql"));
 const GESTION = soloCodigo(migracion("20260924183300_reportes_sin_llamadas_descartadas_y_dia_en_chile.sql"));
+const VENTAS_Y_COLA = soloCodigo(migracion("20260924183400_reportes_ventas_reales_salud_de_cola_y_tipificaciones.sql"));
 
 /** Cuerpo de una función dentro de una migración, hasta su delimitador de cierre. */
 function cuerpo(sql: string, funcion: string): string {
@@ -142,11 +144,71 @@ test("las funciones reescritas conservan la frontera de empresa y el alcance del
 });
 
 test("las migraciones se pueden volver a aplicar sin romper nada", () => {
-  for (const sql of [REGLA_TMO, SUPERVISOR, INTEGRIDAD, GESTION]) {
+  for (const sql of [REGLA_TMO, SUPERVISOR, INTEGRIDAD, GESTION, VENTAS_Y_COLA]) {
     assert.doesNotMatch(sql, /\bdrop (function|table|index)\b/i);
     assert.doesNotMatch(sql, /\bcreate function\b/i);
     assert.doesNotMatch(sql, /\bcreate index (?!if not exists)/i);
     // Nada de escrituras sobre datos: solo definiciones.
     assert.doesNotMatch(sql, /^\s*(update|delete from|insert into) public\.(calls|interactions|leads)\b/im);
   }
+});
+
+test("venta es lo declarado como venta y cotización el motivo exacto, en resumen, detalle y precalculados", () => {
+  assert.match(REGLA_TMO, /create or replace function public\.report_call_is_quote\(p_reason text\)/);
+  assert.match(REGLA_TMO, /upper\(btrim\(translate\(p_reason, 'óÓ', 'oO'\)\)\) = 'COTIZACION ENVIADA'/);
+  // Sin «set search_path» Postgres incrusta las reglas en la consulta; con él,
+  // la cotización costaba 3,6 s sobre las 107 mil llamadas.
+  assert.doesNotMatch(REGLA_TMO, /set search_path/);
+
+  const conVentas: [string, string][] = [
+    [SUPERVISOR, "get_supervisor_report_summary"],
+    [SUPERVISOR, "refresh_supervisor_report_agent_metric_row"],
+    [SUPERVISOR, "refresh_supervisor_report_metric_row"],
+    [VENTAS_Y_COLA, "get_supervisor_report_drilldown"],
+  ];
+  for (const [sql, funcion] of conVentas) {
+    const definicion = cuerpo(sql, funcion);
+    // «CLIENTE NO SUJETO A VENTA» contiene «VENTA»: salían 37 ventas donde había 5.
+    assert.doesNotMatch(definicion, /ilike '%VENTA%'/, `${funcion} vuelve a buscar VENTA en el motivo`);
+    assert.doesNotMatch(definicion, /ilike '%COTIZACION%'/, `${funcion} vuelve a buscar COTIZACION en el motivo`);
+    assert.match(definicion, /report_call_is_quote\((c\.)?reason\)/, `${funcion} sin la regla de cotización`);
+    assert.match(definicion, /outcome = 'sale'/, funcion);
+  }
+  const resumen = cuerpo(SUPERVISOR, "get_supervisor_report_summary");
+  assert.match(resumen, /'llamadas_atlas1', totals\.llamadas_atlas1/);
+  assert.match(leer("src/app/dashboard/reportes/page.tsx"), /kpis\.llamadas_atlas1/);
+});
+
+test("la salud de cola cuenta solo lo gestionado hoy en Atlas 2.0 y conserva su alcance", () => {
+  const salud = cuerpo(VENTAS_Y_COLA, "get_queue_health");
+  // Gestiones, contactos efectivos y ventas: las tres subconsultas de calls.
+  assert.equal(salud.match(/and c\.discarded_reason is null\s+and c\.legacy_call_id is null/g)?.length, 3);
+  assert.match(salud, /security definer/i);
+  assert.match(salud, /public\.can_access_org\(public\.org_of_campaign\(dc\.campaign_id\)\)/);
+  assert.match(salud, /v_team_ids := public\.supervised_team_ids\(\)/);
+  assert.match(salud, /not coalesce\(public\.is_current_app_session_valid\(\), false\)/);
+  assert.match(salud, /date_trunc\('day', now\(\) at time zone 'America\/Santiago'\) at time zone 'America\/Santiago'/);
+});
+
+test("las tipificaciones precalculadas cuentan cada gestión una vez", () => {
+  for (const funcion of ["refresh_supervisor_report_agent_tipification_rows", "refresh_supervisor_report_tipification_rows"]) {
+    const definicion = cuerpo(VENTAS_Y_COLA, funcion);
+    assert.match(definicion, /and c\.discarded_reason is null/, funcion);
+    // La interacción de una llamada (descartada o no) ya está en el motivo de la llamada.
+    assert.match(definicion, /and not \(i\.metadata \? 'call_id'\)/, funcion);
+  }
+});
+
+// Comportamiento, no solo texto: levanta un PostgreSQL local y desechable con
+// una migrada de 3 días, una descartada con su interacción, una nativa de 90 s
+// a las 22:30 de Chile y ventas falsas por texto (ver
+// tests/fixtures/reportes-historial-atlas1*.sql). Sin PostgreSQL instalado se omite.
+const faltaPostgres = ["initdb", "pg_ctl", "psql"].some(
+  (programa) => spawnSync("sh", ["-c", `command -v ${programa}`]).status !== 0,
+);
+test("los reportes calculan bien con datos (PostgreSQL local)", { skip: faltaPostgres && "sin PostgreSQL local" }, () => {
+  const guion = decodeURIComponent(new URL("../scripts/test-reportes-historial-atlas1.sh", import.meta.url).pathname);
+  const corrida = spawnSync("bash", [guion], { encoding: "utf8", timeout: 120_000 });
+  assert.equal(corrida.status, 0, `${corrida.stdout}\n${corrida.stderr}`);
+  assert.match(corrida.stdout, /Reportes con historial de Atlas 1: OK/);
 });

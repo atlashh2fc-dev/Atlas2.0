@@ -47,6 +47,8 @@ type SupervisorReportKpis = {
   contactabilidad: number | null;
   crm_gestiones: number;
   llamadas_cerradas: number;
+  /** Llamadas cerradas del período que vienen migradas de Atlas 1. */
+  llamadas_atlas1?: number;
   no_contacto: number;
   agendas_creadas: number;
   agendas_vencidas: number;
@@ -340,7 +342,11 @@ export default async function ReportesPage({
           <MetricCard
             label={vocabulary.kpi.gestiones}
             value={formatNumber(kpis.crm_gestiones)}
-            detail={`${formatNumber(kpis.llamadas_cerradas)} llamadas cerradas`}
+            detail={
+              kpis.llamadas_atlas1
+                ? `${formatNumber(kpis.llamadas_cerradas)} llamadas cerradas · ${formatNumber(kpis.llamadas_atlas1)} del historial de Atlas 1`
+                : `${formatNumber(kpis.llamadas_cerradas)} llamadas cerradas`
+            }
             progress={percent(kpis.crm_gestiones, kpis.llamadas_cerradas)}
           />
           <MetricCard
