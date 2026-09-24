@@ -8,6 +8,7 @@ import { LEAD_STATUSES } from "@/lib/types";
 import { getOpenCall, getRevisableCall } from "@/app/actions/calls";
 import { fetchCampaignAgendaPolicy } from "@/lib/campaign-agenda-policy";
 import { AgendaCallButton } from "@/components/agenda-call-button";
+import { LeadPhonesPanel } from "@/components/lead-phones-panel";
 import { CallTypificationForm } from "@/components/call-typification-form";
 import { CallTimer } from "@/components/call-timer";
 import { LeadTimeline, type TimelineEntry } from "@/components/lead-timeline";
@@ -562,9 +563,16 @@ export default async function LeadDetailPage({
               <InfoRow label="Correo">{lead.email ?? "—"}</InfoRow>
             </dl>
 
-            {contacts.length > 0 && (
+            {/* Teléfonos en el orden en que se llaman; supervisión agrega los
+                que están fuera de base y elige el principal. */}
+            <LeadPhonesPanel
+              leadId={lead.id}
+              canManage={profile.role === "admin" || profile.role === "supervisor"}
+            />
+
+            {contacts.some((contact) => contact.contact_type !== "phone") && (
               <div className="mt-4 space-y-2 border-t border-border pt-3 text-sm">
-                {contacts.map((contact) => (
+                {contacts.filter((contact) => contact.contact_type !== "phone").map((contact) => (
                   <div key={contact.id} className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
                       <p className="truncate text-foreground">{contact.value}</p>

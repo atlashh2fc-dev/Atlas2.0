@@ -24,6 +24,8 @@ export type AgentDialRequestEventDetail = {
   source?: "agenda" | "assigned_lead";
   /** Solo para feedback inmediato en el CTI: el teléfono real lo resuelve el servidor. */
   fullName?: string | null;
+  /** Número elegido entre los de la ficha; sin él se marca el principal. */
+  phone?: string | null;
 };
 
 export function requestAgentDial(detail: AgentDialRequestEventDetail) {

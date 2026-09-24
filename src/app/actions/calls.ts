@@ -173,6 +173,8 @@ export type AgendaCallbackManagement = {
   phone: string;
   /** Los 8 dígitos del abonado, que es lo que marca el CTI. */
   subscriber: string;
+  /** Número completo a marcar (56...): móvil o fijo, el que eligió el ejecutivo. */
+  dialDigits: string | null;
   fullName: string | null;
 };
 
@@ -263,13 +265,17 @@ export async function getMyPendingCallManagement(): Promise<PendingCallManagemen
  * origine y la gestión termine tipificada como cualquier otra.
  */
 export async function beginAgendaCallback(
-  leadId: string
+  leadId: string,
+  chosenPhone?: string | null
 ): Promise<CallActionResult<AgendaCallbackManagement>> {
   try {
     const { supabase } = await requireAgent();
-    await assertNotOnDoNotCallList(supabase, { leadId });
+    // Con un número elegido, la base valida ese número (que sea de la ficha y
+    // no esté en la lista de no llamar); sin él, el principal, como antes.
+    if (!chosenPhone) await assertNotOnDoNotCallList(supabase, { leadId });
     const { data, error } = await supabase.rpc("begin_agent_agenda_callback", {
       p_lead_id: leadId,
+      p_phone: chosenPhone || null,
     });
     if (error) throw new Error(error.message);
 
@@ -298,6 +304,7 @@ export async function beginAgendaCallback(
         campaignId,
         phone,
         subscriber,
+        dialDigits: typeof value?.dial_digits === "string" ? value.dial_digits : null,
         fullName: typeof value?.full_name === "string" ? value.full_name : null,
       },
     };
@@ -308,13 +315,17 @@ export async function beginAgendaCallback(
 
 /** Opens one auditable call management for the currently assigned lead. */
 export async function beginAssignedLeadCall(
-  leadId: string
+  leadId: string,
+  chosenPhone?: string | null
 ): Promise<CallActionResult<AgendaCallbackManagement>> {
   try {
     const { supabase } = await requireAgent();
-    await assertNotOnDoNotCallList(supabase, { leadId });
+    // Con un número elegido, la base valida ese número (que sea de la ficha y
+    // no esté en la lista de no llamar); sin él, el principal, como antes.
+    if (!chosenPhone) await assertNotOnDoNotCallList(supabase, { leadId });
     const { data, error } = await supabase.rpc("begin_agent_assigned_lead_call", {
       p_lead_id: leadId,
+      p_phone: chosenPhone || null,
     });
     if (error) throw new Error(error.message);
 
@@ -341,6 +352,7 @@ export async function beginAssignedLeadCall(
         campaignId,
         phone,
         subscriber,
+        dialDigits: typeof value?.dial_digits === "string" ? value.dial_digits : null,
         fullName: typeof value?.full_name === "string" ? value.full_name : null,
       },
     };

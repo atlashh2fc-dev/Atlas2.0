@@ -1392,9 +1392,13 @@ export function CtiBar({ profile }: { profile: Profile }) {
   async function handleCall(preopened?: {
     management: ManualCallManagement;
     subscriber: string;
+    /** Número completo validado por el servidor (móvil o fijo de la ficha). */
+    dialDigits?: string | null;
     contactName: string | null;
   }) {
-    const target = fullChileMobile(preopened?.subscriber ?? subscriber);
+    const target = preopened?.dialDigits && /^56[2-9]\d{8}$/.test(preopened.dialDigits)
+      ? preopened.dialDigits
+      : fullChileMobile(preopened?.subscriber ?? subscriber);
     if (!target) {
       setCallError("Ingresa los 8 dígitos del móvil.");
       return;
@@ -1539,20 +1543,21 @@ export function CtiBar({ profile }: { profile: Profile }) {
     }
 
     const result = detail.source === "assigned_lead"
-      ? await beginAssignedLeadCall(detail.leadId)
-      : await beginAgendaCallback(detail.leadId);
+      ? await beginAssignedLeadCall(detail.leadId, detail.phone)
+      : await beginAgendaCallback(detail.leadId, detail.phone);
     if (!result.ok) {
       setCallError(result.error);
       return;
     }
 
-    const { leadId, callId, campaignId, subscriber: target, fullName } = result.data;
+    const { leadId, callId, campaignId, subscriber: target, dialDigits, fullName } = result.data;
     setSelectedName(fullName);
     setSubscriber(target);
 
     await handleCall({
       management: { leadId, callId, campaignId, leadCreated: false, leadReused: true },
       subscriber: target,
+      dialDigits,
       contactName: fullName,
     });
   }
