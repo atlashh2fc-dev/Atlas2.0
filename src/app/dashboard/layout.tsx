@@ -6,6 +6,7 @@ import { AgendaBanner, AgendaProvider } from "@/components/agenda-reminder";
 import { CtiBar } from "@/components/cti-bar";
 import { ToastProvider } from "@/components/ui";
 import { createClient } from "@/lib/supabase/server";
+import { getMyAgendaCampaignId } from "@/lib/agenda-scope";
 import { ForceLogoutGuard } from "@/components/force-logout-guard";
 import { getWorkspacePermissions } from "@/lib/workspace-permissions";
 import { listDemoViewAccounts } from "@/lib/demo-accounts";
@@ -26,12 +27,16 @@ export default async function DashboardLayout({
   // demostración (solo consultan algo para esas cuentas).
   const [{ count: overdueCount }, demoAccounts] = await Promise.all([
     profile.role === "agente"
-      ? supabase
-          .from("leads")
-          .select("id", { count: "exact", head: true })
-          .eq("managed_by", profile.id)
-          .not("next_action_at", "is", null)
-          .lte("next_action_at", new Date().toISOString())
+      ? getMyAgendaCampaignId(supabase).then((agendaCampaignId) => {
+          // Solo la campaña en la que está trabajando, como "Mi agenda".
+          const query = supabase
+            .from("leads")
+            .select("id", { count: "exact", head: true })
+            .eq("managed_by", profile.id)
+            .not("next_action_at", "is", null)
+            .lte("next_action_at", new Date().toISOString());
+          return agendaCampaignId ? query.eq("campaign_id", agendaCampaignId) : query;
+        })
       : Promise.resolve({ count: null }),
     listDemoViewAccounts(profile),
   ]);

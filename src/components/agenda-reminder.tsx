@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { getMyAgendaCampaignId } from "@/lib/agenda-scope";
 import { Bell, AlertTriangle } from "lucide-react";
 
 interface AgendaItem {
@@ -39,13 +40,18 @@ function useAgendaSubscription(userId: string): AgendaContextValue {
 
   const refresh = useCallback(async () => {
     const supabase = createClient();
-    const { data } = await supabase
+    // Solo la campaña en la que está trabajando: se pregunta en cada refresco
+    // porque el ejecutivo o su supervisor pueden cambiarla durante el día.
+    const agendaCampaignId = await getMyAgendaCampaignId(supabase);
+    const query = supabase
       .from("leads")
       .select("id, full_name, next_action_at, next_action_channel, extra")
       .eq("managed_by", userId)
       .not("next_action_at", "is", null)
       .order("next_action_at", { ascending: true })
       .limit(15);
+    if (agendaCampaignId) query.eq("campaign_id", agendaCampaignId);
+    const { data } = await query;
     setItems((data ?? []) as AgendaItem[]);
   }, [userId]);
 
@@ -58,9 +64,14 @@ function useAgendaSubscription(userId: string): AgendaContextValue {
   }, [refresh]);
 
   useEffect(() => {
-    const tickId = setInterval(() => setNowTick(Date.now()), 30_000);
+    // El tick también refresca: un cambio de campaña no toca `leads` y el
+    // realtime no lo avisa.
+    const tickId = setInterval(() => {
+      setNowTick(Date.now());
+      void refresh();
+    }, 30_000);
     return () => clearInterval(tickId);
-  }, []);
+  }, [refresh]);
 
   useEffect(() => {
     const supabase = createClient();

@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { getMyAgendaCampaignId } from "@/lib/agenda-scope";
 import { AgendaTable, type AgendaRow } from "@/components/agenda-table";
 import { Callout, EmptyState, SectionCard, StatCard, buttonClasses } from "@/components/ui";
 import { getCampaignsWithChannel } from "@/lib/campaign-channels";
@@ -67,7 +68,12 @@ export default async function VoiceQueuePage() {
 
   // El ejecutivo atiende lo suyo; supervisión consulta lo de sus equipos y la
   // RLS ya acota `leads` a los equipos supervisados.
-  if (permissions.canAttendCustomers) agendaQuery.eq("managed_by", profile.id);
+  if (permissions.canAttendCustomers) {
+    agendaQuery.eq("managed_by", profile.id);
+    // Solo la campaña en la que está trabajando (multiskill), como "Mi agenda".
+    const agendaCampaignId = await getMyAgendaCampaignId(supabase);
+    if (agendaCampaignId) agendaQuery.eq("campaign_id", agendaCampaignId);
+  }
 
   const pendingQuery = supabase
     .from("leads")

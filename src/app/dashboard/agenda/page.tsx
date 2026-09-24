@@ -1,6 +1,7 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { resolveCampaignScope } from "@/lib/campaign-scope";
+import { getMyAgendaCampaignId } from "@/lib/agenda-scope";
 import { Callout, PageHeader } from "@/components/ui";
 import { AgendaTable, type AgendaRow } from "@/components/agenda-table";
 
@@ -11,8 +12,9 @@ export default async function MyAgendaPage({
 }) {
   const profile = await requireProfile(["agente"]);
   const { campaign } = await searchParams;
-  const campaignScope = resolveCampaignScope(campaign);
   const supabase = await createClient();
+  // Sin ?campaign= manda la campaña en la que está trabajando (multiskill).
+  const campaignScope = resolveCampaignScope(campaign) ?? (await getMyAgendaCampaignId(supabase));
 
   // El embed tiene que nombrar la clave foránea: `campaigns(name)` es ambiguo
   // (hay más de una relación entre leads y campaigns) y PostgREST responde
