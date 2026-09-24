@@ -64,8 +64,15 @@ test("un número tomado por el pool no tumba la entrega de las demás agendas", 
   assert.match(claim.body, /exception when unique_violation then/);
 });
 
-test("la ventana horaria queda marcada para cuando exista", () => {
-  assert.match(claim.body, /TODO\(ventana horaria\)[\s\S]*dialer_campaign_in_calling_window/);
+test("la agenda automática respeta horario, multiskill y lista de no llamar", () => {
+  assert.match(claim.body, /if not public\.dialer_campaign_in_calling_window\(p_campaign_id\) then\s+return;/);
+  assert.match(claim.body, /get_active_campaign_agent_extensions\(p_campaign_id\)/);
+  assert.match(claim.body, /s\.extension = any\(v_active_extensions\)/);
+  assert.match(claim.body, /not public\.dialer_phone_is_suppressed\(l\.organization_id, p_campaign_id, l\.phone\)/);
+  // El resguardo de dial_attempts descarta sin fila: no se entrega un intento vacío.
+  assert.match(claim.body, /continue when v_attempt_id is null;/);
+  // Una falla de troncal no gasta los timbres de cortesía del cliente.
+  assert.match(claim.body, /rung\.status <> 'failed'/);
 });
 
 test("el motor registra la conexión de la agenda cuando el cliente contesta", () => {

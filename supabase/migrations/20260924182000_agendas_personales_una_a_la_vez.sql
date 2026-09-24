@@ -71,6 +71,7 @@ declare
   v_max_customer_rings constant integer := 2;
   v_customer_ring_gap constant interval := interval '10 minutes';
   v_owners uuid[] := '{}';
+  v_active_extensions text[];
   v_candidate record;
   v_attempt_id uuid;
 begin
@@ -86,11 +87,18 @@ begin
     return;
   end if;
 
-  -- TODO(ventana horaria): cuando exista
-  -- public.dialer_campaign_in_calling_window(p_campaign_id) (otro frente la está
-  -- creando), salir aquí con `return;` si la campaña está fuera de su horario
-  -- de marcación. Una agenda automática no debe sonar fuera de horario aunque
-  -- el cliente la haya pedido; queda vencida en la agenda para llamarla a mano.
+  -- Una agenda automática no suena fuera del horario de la campaña aunque el
+  -- cliente la haya pedido: queda vencida en la agenda para llamarla a mano.
+  if not public.dialer_campaign_in_calling_window(p_campaign_id) then
+    return;
+  end if;
+
+  -- El dueño tiene que estar en la cola de esta campaña según el multiskill: la
+  -- campaña que eligió o que le fijó su supervisor, y su franja. La sesión por
+  -- sí sola puede quedar en 'available' de una campaña que ya no opera.
+  v_active_extensions := array(
+    select active.extension from public.get_active_campaign_agent_extensions(p_campaign_id) active
+  );
 
   for v_candidate in
     select
@@ -106,6 +114,7 @@ begin
       on s.profile_id = coalesce(l.managed_by, l.assigned_to)
      and s.campaign_id = p_campaign_id
      and s.status = 'available'
+     and s.extension = any(v_active_extensions)
     where l.campaign_id = p_campaign_id
       and l.workflow_status = 'callback'
       and l.callback_mode = 'personal'
@@ -118,6 +127,9 @@ begin
       and coalesce(l.managed_by, l.assigned_to) is not null
       and l.phone is not null
       and btrim(l.phone) <> ''
+      -- Un número en la lista de no llamar no se marca ni aunque haya compromiso;
+      -- el resguardo de dial_attempts lo descartaría igual, pero sin avisar.
+      and not public.dialer_phone_is_suppressed(l.organization_id, p_campaign_id, l.phone)
       and (
         l.callback_last_attempt_at is null
         or l.callback_last_attempt_at <= v_now - make_interval(secs => v_cfg.personal_callback_retry_seconds)
@@ -139,6 +151,8 @@ begin
           and answered.answered_at is not null
       )
       -- Cortesía con el cliente: máximo dos timbres por compromiso, separados.
+      -- Solo cuenta lo que llegó a sonarle: una falla de la troncal ('failed')
+      -- con el ejecutivo ya en línea no gasta el cupo del cliente.
       and (
         select count(*)
         from public.dial_attempts rung
@@ -146,6 +160,7 @@ begin
           and rung.attempt_kind = 'personal_callback'
           and rung.created_at >= l.next_action_at
           and rung.originated_at is not null
+          and rung.status <> 'failed'
       ) < v_max_customer_rings
       and not exists (
         select 1 from public.dial_attempts rung
@@ -153,6 +168,7 @@ begin
           and rung.attempt_kind = 'personal_callback'
           and rung.created_at >= l.next_action_at
           and rung.originated_at is not null
+          and rung.status <> 'failed'
           and coalesce(rung.ended_at, rung.updated_at) > v_now - v_customer_ring_gap
       )
       and not exists (
@@ -212,6 +228,7 @@ begin
         and reason.code = 'desconectado'
     );
 
+    v_attempt_id := null;
     begin
       insert into public.dial_attempts (lead_id, campaign_id, phone, status, agent_id, attempt_kind)
       values (v_candidate.id, p_campaign_id, v_candidate.phone, 'queued', v_candidate.owner_id, 'personal_callback')
@@ -221,6 +238,10 @@ begin
       -- y la inserción. Esta agenda espera al siguiente ciclo.
       continue;
     end;
+
+    -- El resguardo de dial_attempts descarta en silencio (sin fila) un intento
+    -- hacia un número recién suprimido: no hay nada que entregar al motor.
+    continue when v_attempt_id is null;
 
     update public.leads
        set callback_attempts = coalesce(callback_attempts, 0) + 1,
