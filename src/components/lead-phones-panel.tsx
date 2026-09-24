@@ -2,6 +2,7 @@ import { ActionForm, ActionSubmit, Badge, Input } from "@/components/ui";
 import {
   addLeadPhone,
   deactivateLeadPhone,
+  liftLeadPhoneSuppression,
   listLeadDialPhones,
   setLeadPrimaryPhone,
   type LeadDialPhone,
@@ -43,6 +44,16 @@ export async function LeadPhonesPanel({ leadId, canManage }: { leadId: string; c
               {phone.isPrimary && <Badge tone="success">Principal</Badge>}
               {phone.blockedReason && <Badge tone="danger">No llamar</Badge>}
             </div>
+            {canManage && phone.blockedReason && (
+              <ActionForm action={liftLeadPhoneSuppression} success="Número liberado de la lista de no llamar" className="flex flex-wrap items-center gap-1.5">
+                <input type="hidden" name="lead_id" value={leadId} />
+                <input type="hidden" name="phone" value={phone.dialDigits} />
+                <Input name="reason" required placeholder="Motivo para liberarlo" aria-label="Motivo para liberar el número" className="h-8 min-w-0 flex-1 text-xs" />
+                <ActionSubmit variant="secondary" size="sm" pendingLabel="Liberando…">
+                  Liberar
+                </ActionSubmit>
+              </ActionForm>
+            )}
             {canManage && !phone.isPrimary && (
               <div className="flex flex-wrap gap-1.5">
                 <ActionForm action={setLeadPrimaryPhone} success="Quedó como número principal">

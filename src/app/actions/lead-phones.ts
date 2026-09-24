@@ -74,3 +74,25 @@ export async function setLeadPrimaryPhone(formData: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath(`/dashboard/leads/${leadId}`);
 }
+
+/**
+ * Libera un número de la lista de no llamar (p. ej. un CLIENTE MOLESTO del
+ * historial). Solo supervisión y administración; queda registrado quién,
+ * cuándo y por qué, y el lead vuelve a la cola si no hay otra razón.
+ */
+export async function liftLeadPhoneSuppression(formData: FormData) {
+  await requireProfile(["supervisor", "admin"]);
+  const leadId = String(formData.get("lead_id") ?? "");
+  const phone = String(formData.get("phone") ?? "");
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (!leadId || !phone) throw new Error("No se identificó el número.");
+  if (!reason) throw new Error("Indica por qué se libera el número.");
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("lift_lead_phone_suppression", {
+    p_lead_id: leadId,
+    p_phone: phone,
+    p_reason: reason,
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath(`/dashboard/leads/${leadId}`);
+}
