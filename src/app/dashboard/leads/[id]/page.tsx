@@ -430,7 +430,10 @@ export default async function LeadDetailPage({
       )}
 
       {call && (
-        <section className="rounded-2xl border-2 border-primary/20 bg-primary/[0.025] p-3 sm:p-5">
+        <section
+          id="gestion-en-curso"
+          className="scroll-mt-4 rounded-2xl border-2 border-primary/20 bg-primary/[0.025] p-3 sm:p-5"
+        >
           <CallTypificationForm
             key={call.id}
             lead={lead}

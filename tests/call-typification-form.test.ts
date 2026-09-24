@@ -90,7 +90,24 @@ function fixture(options: {
     return result;
   }
   function one(predicate: (element: Element) => boolean) { const matches = all(predicate); assert.equal(matches.length, 1); return matches[0]; }
-  const button = (label: string) => one((e) => e.type === "button" && (e.props["aria-label"] === label || e.props.children === label));
+  const matchesLabel = (e: Element, label: string) =>
+    e.type === "button" && (e.props["aria-label"] === label || e.props.children === label);
+  // La tipificación va en cascada (categoría → subgrupo → motivo): para
+  // llegar a un motivo se abren antes, como lo haría el ejecutivo, las
+  // pastillas de su rama.
+  const openBranch = (label: string) => {
+    const reasonLabel = label.replace(/^Cerrar: /, "");
+    const option = reasonCatalog.find((reason) => reason.label === reasonLabel);
+    if (!option) return;
+    for (const step of [option.stateLabel, ...(option.groupPath ?? [])]) {
+      const chip = all((e) => matchesLabel(e, step) && e.props["aria-pressed"] !== undefined)[0];
+      if (chip && chip.props["aria-pressed"] !== true) { (chip.props.onClick as () => void)(); render(); }
+    }
+  };
+  const button = (label: string) => {
+    if (all((e) => matchesLabel(e, label)).length === 0) openBranch(label);
+    return one((e) => matchesLabel(e, label));
+  };
   const click = (label: string) => { (button(label).props.onClick as () => void)(); render(); };
   const change = (type: string, value: string) => { (one((e) => e.type === type || e.props.type === type).props.onChange as (event: unknown) => void)({ target: { value } }); render(); };
   const flush = async () => { await new Promise((resolve) => setImmediate(resolve)); render(); };
@@ -317,11 +334,16 @@ test("a result option with its own step renders as a labelled group whose sub-op
   );
   const f = fixture({ catalog: workflowCatalog, legal: false });
 
-  f.one((e) => e.props.role === "group" && e.props["aria-label"] === "No Interesa");
-  assert.equal(f.all((e) => e.type === "button" && e.props.children === "No Interesa").length, 0);
+  // En cascada nada se ve hasta elegir la categoría, y la opción con paso
+  // propio es una subcategoría: abre sus motivos, no se tipifica sola.
+  assert.equal(f.all((e) => e.type === "button" && e.props.children === "No lo Necesita").length, 0);
 
   f.click("No lo Necesita");
-  assert.equal(f.one((e) => e.type === "button" && e.props["aria-pressed"] === true).props.children, "No lo Necesita");
+  const pressed = f.all((e) => e.type === "button" && e.props["aria-pressed"] === true).map((e) => e.props.children);
+  assert.deepEqual(pressed, ["CONTACTO", "No Interesa", "No lo Necesita"]);
+  f.one((e) => e.props.role === "group" && e.props["aria-label"] === "Subcategoría");
+  assert.equal(f.all((e) => e.type === "button" && e.props.children === "Por precio").length, 1);
+  assert.equal(f.all((e) => e.type === "button" && e.props.children === "No Contesta").length, 0);
 });
 
 test("Equifax: SE ENVIA INFORMACION sin agenda pide nota y la agenda respeta la franja de la campaña", async () => {

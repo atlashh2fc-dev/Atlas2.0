@@ -1157,6 +1157,14 @@ export function CtiBar({ profile }: { profile: Profile }) {
     const navigation = resolveCallManagementNavigation(window.location.pathname, leadId);
     if (navigation.kind === "refresh") {
       router.refresh();
+      // Ya estaba en la ficha, quizá abajo en el historial: el refresco no
+      // mueve la página y "Completar tipificación" parecía no hacer nada.
+      // Se lleva al formulario en cuanto aparece.
+      for (const delay of [0, 400, 1200]) {
+        setTimeout(() => {
+          document.getElementById("gestion-en-curso")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, delay);
+      }
       return;
     }
     router.push(navigation.href);

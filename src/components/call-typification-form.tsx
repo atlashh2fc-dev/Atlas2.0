@@ -110,6 +110,12 @@ export function CallTypificationForm({
   const [status, setStatus] = useState<CallStatus | null>((call.status as CallStatus | null) ?? initialReason?.status ?? null);
   const [outcome, setOutcome] = useState<CallOutcome | null>((call.outcome as CallOutcome | null) ?? initialReason?.outcome ?? null);
   const [reason, setReason] = useState<string>(call.reason ?? "");
+  // Cascada como en Atlas 1: primero la categoría (CONTACTO / NO CONTACTO),
+  // después el subgrupo y al final solo los motivos de esa rama. Una
+  // corrección parte abierta en la rama del motivo que ya tenía.
+  const [reasonPath, setReasonPath] = useState<string[]>(() =>
+    initialReason ? [initialReason.stateLabel, ...(initialReason.groupPath ?? [])] : []
+  );
   const [notes, setNotes] = useState<string>(call.notes ?? "");
   const [nextActionAt, setNextActionAt] = useState<string>(isoToLocalInput(call.next_action_at));
   const [equifaxProducts, setEquifaxProducts] = useState<string[]>(call.equifax_products ?? []);
@@ -155,6 +161,9 @@ export function CallTypificationForm({
   }, [legalBreakUntil, clockNow]);
 
   const reasonGroups = useMemo(() => groupReasonsByState(catalog), [catalog]);
+  // Con una sola categoría no hay nada que elegir: se abre sola.
+  const selectedStateLabel = reasonGroups.length === 1 ? reasonGroups[0].label : reasonPath[0];
+  const selectedState = reasonGroups.find((state) => state.label === selectedStateLabel);
   const reasonConfig = getReasonConfigFrom(catalog, reason);
   const showAgendaBlock = reasonConfig?.agenda === "required" || reasonConfig?.agenda === "optional";
   // Una corrección puede partir de una gestión que sí tenía agenda. Si la
@@ -382,6 +391,49 @@ export function CallTypificationForm({
     return <div className="space-y-2">{blocks}</div>;
   }
 
+  function renderStepChips(labels: string[], selected: string | undefined, depth: number, title: string) {
+    return (
+      <div role="group" aria-label={title} className="flex flex-wrap gap-2">
+        {labels.map((label) => (
+          <button
+            key={`${depth}-${label}`}
+            type="button"
+            aria-pressed={selected === label}
+            onClick={() =>
+              setReasonPath((current) =>
+                depth === 0 ? [label] : [selectedStateLabel ?? "", ...current.slice(1, depth), label]
+              )
+            }
+            className={`min-h-10 rounded-full border px-4 py-1.5 text-xs font-bold uppercase transition-colors ${
+              selected === label
+                ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                : "border-border bg-background text-foreground hover:border-primary/50 hover:bg-surface-muted"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  // Un nivel de la cascada: los subgrupos se eligen como pastillas y solo se
+  // despliega el elegido; los motivos sueltos de ese nivel se ven de inmediato.
+  function renderCascadeLevel(nodes: ReasonOptionNode[], depth: number): ReactNode {
+    const groups = nodes.filter((node): node is Extract<ReasonOptionNode, { kind: "group" }> => node.kind === "group");
+    const reasons = nodes.filter((node) => node.kind === "reason");
+    const selectedGroup = groups.find((group) => group.label === reasonPath[depth]);
+    return (
+      <div className="space-y-3">
+        {groups.length > 0 && renderStepChips(groups.map((group) => group.label), selectedGroup?.label, depth, "Subcategoría")}
+        {reasons.length > 0 && renderReasonNodes(reasons, `cascade-${depth}`)}
+        {selectedGroup && (
+          <div className="border-l-2 border-primary/30 pl-3">{renderCascadeLevel(selectedGroup.children, depth + 1)}</div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div
       className="space-y-4"
@@ -527,17 +579,24 @@ export function CallTypificationForm({
         </h2>
 
         <div className="space-y-5">
-          {reasonGroups.map((state, index) => (
-            <section key={state.label} aria-labelledby={`${fieldId}-state-${index}`}>
-              <h3
-                id={`${fieldId}-state-${index}`}
-                className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground"
-              >
-                {state.label}
-              </h3>
-              {renderReasonNodes(nestReasonOptions(state.reasons), `state-${index}`)}
-            </section>
-          ))}
+          <section aria-labelledby={`${fieldId}-state`} className="space-y-3">
+            <h3 id={`${fieldId}-state`} className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+              Categoría
+            </h3>
+            {renderStepChips(
+              reasonGroups.map((state) => state.label),
+              selectedStateLabel,
+              0,
+              "Categoría"
+            )}
+            {selectedState ? (
+              <div className="border-l-2 border-primary/30 pl-3">
+                {renderCascadeLevel(nestReasonOptions(selectedState.reasons), 1)}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Elige la categoría para ver sus motivos.</p>
+            )}
+          </section>
 
           {showAgendaBlock && (
             <div className="rounded-lg border border-border bg-background p-4">
