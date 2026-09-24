@@ -650,3 +650,36 @@ export async function getMyIncomingDialContext(): Promise<IncomingDialContext | 
         : {},
   };
 }
+
+/**
+ * Medición de cuánto tarda la ficha en aparecer cuando cae una llamada:
+ * desde que suena el teléfono del ejecutivo hasta tener el contexto del
+ * cliente, y desde ahí hasta que la ficha se dibuja. Queda en call_events
+ * ('cti.screen_pop_timing') para decidir dónde se pierde el tiempo.
+ */
+export async function recordScreenPopTiming(input: {
+  leadId: string;
+  dialAttemptId: string | null;
+  inviteToContextMs: number | null;
+  contextToRenderMs: number | null;
+  polls: number | null;
+  source: string;
+}): Promise<void> {
+  const profile = await requireProfile(["agente"]);
+  const clamp = (value: number | null) =>
+    typeof value === "number" && Number.isFinite(value) && value >= 0 && value < 600_000 ? Math.round(value) : null;
+  const admin = createAdminClient();
+  const { error } = await admin.from("call_events").insert({
+    lead_id: input.leadId,
+    agent_id: profile.id,
+    event_type: "cti.screen_pop_timing",
+    payload: {
+      dial_attempt_id: input.dialAttemptId,
+      invite_to_context_ms: clamp(input.inviteToContextMs),
+      context_to_render_ms: clamp(input.contextToRenderMs),
+      polls: typeof input.polls === "number" ? input.polls : null,
+      source: String(input.source).slice(0, 20),
+    },
+  });
+  if (error) console.error("recordScreenPopTiming", error.message);
+}

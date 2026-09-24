@@ -10,6 +10,7 @@ import { fetchCampaignAgendaPolicy } from "@/lib/campaign-agenda-policy";
 import { AgendaCallButton } from "@/components/agenda-call-button";
 import { LeadPhonesPanel } from "@/components/lead-phones-panel";
 import { OfflineManagementButton } from "@/components/offline-management-button";
+import { ScreenPopTiming } from "@/components/screen-pop-timing";
 import { CallTypificationForm } from "@/components/call-typification-form";
 import { CallTimer } from "@/components/call-timer";
 import { LeadTimeline, type TimelineEntry } from "@/components/lead-timeline";
@@ -449,6 +450,8 @@ export default async function LeadDetailPage({
           id="gestion-en-curso"
           className="scroll-mt-4 rounded-2xl border-2 border-primary/20 bg-primary/[0.025] p-3 sm:p-5"
         >
+          {/* Cierra la medición de cuánto tardó la ficha en aparecer. */}
+          {profile.role === "agente" && <ScreenPopTiming leadId={lead.id} />}
           {call.management_channel && (
             <p className="mb-3 inline-flex items-center gap-2 rounded-full bg-surface px-3 py-1 text-xs font-medium text-foreground">
               Gestión sin llamada · {OFFLINE_CHANNEL_LABEL[call.management_channel] ?? "Otro canal"}

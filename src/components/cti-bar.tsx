@@ -1,5 +1,6 @@
 "use client";
 
+import { markScreenPop } from "@/components/screen-pop-timing";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -246,6 +247,8 @@ export function CtiBar({ profile }: { profile: Profile }) {
   // ref evita perder el lead al colgar por usar un closure anterior.
   const incomingContextRef = useRef<IncomingDialContext | null>(null);
   const automaticManagementOpenedRef = useRef<string | null>(null);
+  /** Cuándo llegó la última llamada automática (medición del screen-pop). */
+  const inviteAtRef = useRef<number | null>(null);
   const [isIncomingCall, setIsIncomingCall] = useState(false);
   const [operatingMode, setOperatingMode] = useState<
     AgentDialerOperatingMode | undefined
@@ -1328,6 +1331,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
   }
 
   async function loadIncomingContext(callAttempt: number) {
+    const inviteAt = inviteAtRef.current;
     // En el pool el intento queda a nombre del ejecutivo recién cuando el
     // motor procesa la conexión (AgentConnect) y la escribe en la base. Con
     // solo 8 reintentos de 300 ms (~2,4 s) a algunos ejecutivos no les llegaba
@@ -1338,6 +1342,15 @@ export function CtiBar({ profile }: { profile: Profile }) {
       try {
         const context = await getMyIncomingDialContext();
         if (context) {
+          // Medición del screen-pop: la cierra la ficha al dibujarse.
+          markScreenPop({
+            leadId: context.lead_id,
+            dialAttemptId: context.dial_attempt_id,
+            inviteAt,
+            contextAt: Date.now(),
+            polls: retry + 1,
+            source: "poll",
+          });
           incomingContextRef.current = context;
           setIncomingContext(context);
           setSelectedName(context.full_name);
@@ -1352,7 +1365,9 @@ export function CtiBar({ profile }: { profile: Profile }) {
       } catch (err) {
         console.error("CTI: fallo al cargar contexto de llamada automática", err);
       }
-      await new Promise((resolve) => setTimeout(resolve, retry < 10 ? 300 : 1000));
+      // Los primeros segundos se pregunta cada 150 ms: la conexión suele
+      // quedar registrada casi de inmediato y cada vuelta cuenta.
+      await new Promise((resolve) => setTimeout(resolve, retry < 12 ? 150 : 1000));
     }
     console.error("CTI: la llamada automática llegó sin contexto asignado");
   }
@@ -1366,6 +1381,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
 
     const callAttempt = callAttemptRef.current + 1;
     callAttemptRef.current = callAttempt;
+    inviteAtRef.current = Date.now();
     sessionRef.current = invitation;
     setIsIncomingCall(true);
     incomingContextRef.current = null;
