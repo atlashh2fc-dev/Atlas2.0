@@ -24,7 +24,9 @@ import {
 import { CallbacksPanel, type CallbackRow } from "@/components/callbacks-panel";
 import { TeamCampaignControl } from "@/components/team-campaign-control";
 import { listAgentCampaignBoard, type AgentCampaignBoardRow } from "@/app/actions/campaign-control";
-import { REPORT_TIME_ZONE, toDateTimeInput } from "@/lib/report-range";
+// Los días del reporte son los de Chile: el servidor corre en UTC y con
+// setHours la ventana terminaba a las 21:00 de hoy.
+import { REPORT_TIME_ZONE, addDays, endOfDay, startOfDay, toDateTimeInput } from "@/lib/report-range";
 import {
   TeamAgentsTable,
   TeamLeadsAssignment,
@@ -81,24 +83,6 @@ function agendaChannelLabel(channel: AgendaLead["next_action_channel"]): string 
 }
 
 const TEAM_REPORT_WINDOW_DAYS = 180;
-
-function startOfDay(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function endOfDay(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(23, 59, 59, 999);
-  return d;
-}
-
-function addDays(date: Date, days: number): Date {
-  const d = new Date(date);
-  d.setDate(d.getDate() + days);
-  return d;
-}
 
 function percent(part: number, total: number): number {
   if (total <= 0) return 0;

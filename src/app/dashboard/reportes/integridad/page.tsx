@@ -35,7 +35,9 @@ export default async function ReportesIntegridadPage({
         discador y cadencia entre cierres—, así que una extensión del navegador no puede falsearlas.
         Son indicios para investigar, no una acusación: una llamada que no contestan se tipifica
         rápido y con razón. El indicio más fuerte es &quot;contacto sin llamada&quot;: una gestión
-        cerrada como contactada sin que la central registre conexión.
+        cerrada como contactada sin que la central registre conexión. Solo se evalúan gestiones
+        hechas en Atlas 2.0: el historial migrado de Atlas 1 y las llamadas anuladas no tienen
+        esas señales y quedan fuera (siguen completos en la ficha del cliente).
       </Callout>
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-5">
