@@ -256,6 +256,15 @@ export interface DialerCampaignConfig {
   personal_callback_window_minutes: number;
   personal_callback_retry_seconds: number;
   personal_callback_on_expiry: "keep_in_agenda" | "release_to_pool";
+  /** Días ISO permitidos (1 = lunes ... 7 = domingo), en hora Chile. null = todos. */
+  calling_days?: number[] | null;
+  /** Franja [inicio, fin) en hora Chile, "HH:MM:SS". null = sin límite. */
+  calling_start_time?: string | null;
+  calling_end_time?: string | null;
+  /** Espera en minutos tras el 1.º, 2.º... intento sin contacto; el último se repite. */
+  redial_backoff_minutes?: number[];
+  /** Intentos sin contacto tras los que el lead sale de la cola. null = sin tope. */
+  max_uncontacted_attempts?: number | null;
   created_at: string;
   updated_at: string;
 }
