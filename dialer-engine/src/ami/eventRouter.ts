@@ -433,15 +433,16 @@ export function registerEventRouter(
       }
 
       case "hangup": {
+        // La causa Q.850 se guarda siempre que el canal trae DIAL_ATTEMPT_ID:
+        // en un Originate fallido el OriginateResponse suele llegar ANTES que
+        // este Hangup (y ya dejó la correlación por uniqueid), y está
+        // esperando la causa para registrar la falla con ella.
+        const fromChannelVar = dialAttemptIdFromChanVariable(evt.chanvariable ?? evt.ChanVariable);
+        const hangupCause = String(evt.cause ?? "").trim();
+        if (fromChannelVar && hangupCause) rememberFailureCause(fromChannelVar, hangupCause);
+
         const dialAttemptId = attemptIdFromEvent(evt);
-        if (!dialAttemptId) {
-          // Canal de un Originate que falló antes de correlacionarse: solo se
-          // guarda su causa para el OriginateResponse que viene.
-          const fromChannelVar = dialAttemptIdFromChanVariable(evt.chanvariable);
-          const cause = String(evt.cause ?? "").trim();
-          if (fromChannelVar && cause) rememberFailureCause(fromChannelVar, cause);
-          return;
-        }
+        if (!dialAttemptId) return;
         // Ambas patas del bridge generan Hangup. Sólo la primera determina el
         // estado terminal; la correlación se conserva para un AgentComplete
         // tardío, que es quien informa qué lado terminó la conversación.
