@@ -133,8 +133,10 @@ begin
   insert into public.historical_agents (full_name, legacy_system, legacy_executive_id, organization_id)
   select coalesce(nullif(btrim(a.full_name), ''), a.email, 'Ejecutivo legado'), v_source, a.legacy_agent_id, v_org
   from public.mig_a1_agents a
-  -- Un usuario borrado en Atlas 1 no tiene nombre ni correo: no se crea como ejecutivo.
+  -- Un usuario borrado en Atlas 1 no tiene nombre ni correo, y las cuentas @example.com
+  -- son de prueba: ninguno se crea como ejecutivo.
   where coalesce(nullif(btrim(a.full_name), ''), nullif(btrim(a.email), '')) is not null
+    and coalesce(a.email, '') not like '%@example.com'
   on conflict (legacy_system, legacy_executive_id) do nothing;
   get diagnostics v_count = row_count;
   v_report := v_report || jsonb_build_object('agentes_historicos_nuevos', v_count);
