@@ -1092,7 +1092,7 @@ export async function getSupervisableCall(leadId: string, callId: string): Promi
  * Supervisión corrige una gestión cerrada de Atlas 2.0 (callId) o agrega una
  * tipificación nueva acreditada a un ejecutivo (callId null). Mismas reglas
  * de cierre que el ejecutivo; una venta entra sola a la validación de ventas.
- * Ver la migración 20260925040000_supervision_corrige_tipificaciones.sql.
+ * Ver la migración 20260925050000_supervision_corrige_tipificaciones.sql.
  */
 export async function superviseCallManagement(input: {
   callId: string | null;
