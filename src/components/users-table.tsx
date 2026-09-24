@@ -40,10 +40,13 @@ export function UsersTable({
   rows,
   teams,
   campaigns,
+  canEditAccess = true,
 }: {
   rows: UserRow[];
   teams: { id: string; name: string }[];
   campaigns: { id: string; name: string }[];
+  /** Rol y equipo son de administración: un supervisor ve la tabla sin esa columna. */
+  canEditAccess?: boolean;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -72,7 +75,7 @@ export function UsersTable({
   );
 
   const columns = useMemo<Column<UserRow>[]>(
-    () => [
+    () => ([
       {
         id: "usuario",
         header: "Usuario",
@@ -166,8 +169,8 @@ export function UsersTable({
             <span className="text-xs text-muted-foreground">No aplica</span>
           ),
       },
-    ],
-    [campaignNameById, campaigns, teams]
+    ] as Column<UserRow>[]).filter((column) => canEditAccess || column.id !== "acceso"),
+    [campaignNameById, campaigns, teams, canEditAccess]
   );
 
   const bulkActions = useMemo<BulkAction<UserRow>[]>(

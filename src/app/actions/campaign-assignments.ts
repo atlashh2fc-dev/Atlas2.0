@@ -1,21 +1,23 @@
 "use server";
 
-import { requireProfile } from "@/lib/auth";
+import { requireAgentManager } from "@/lib/agent-management";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
 /** Reemplaza las campañas activas de un ejecutivo en una sola operación. */
 export async function setAgentCampaigns(formData: FormData) {
-  await requireProfile(["admin"]);
   const profileId = formData.get("profile_id") as string;
+  if (!profileId) throw new Error("Ejecutivo inválido.");
+  // Admin a cualquiera; supervisor solo a los ejecutivos de sus equipos. Las
+  // campañas elegibles son las activas que ve (las de su empresa).
+  const { writer } = await requireAgentManager([profileId]);
   const selectedCampaignIds = [...new Set(
     formData.getAll("campaign_ids").filter((value): value is string => typeof value === "string" && value.length > 0)
   )];
-  if (!profileId) throw new Error("Ejecutivo inválido.");
 
   const supabase = await createClient();
   const [{ data: agent, error: agentError }, { data: activeCampaigns, error: campaignsError }] = await Promise.all([
-    supabase.from("profiles").select("id").eq("id", profileId).eq("role", "agente").eq("active", true).maybeSingle(),
+    writer.from("profiles").select("id").eq("id", profileId).eq("role", "agente").eq("active", true).maybeSingle(),
     supabase.from("campaigns").select("id").eq("is_active", true),
   ]);
   if (agentError) throw new Error(agentError.message);
@@ -27,7 +29,7 @@ export async function setAgentCampaigns(formData: FormData) {
     throw new Error("Una de las campañas seleccionadas ya no está activa.");
   }
 
-  const { data: existing, error: existingError } = await supabase
+  const { data: existing, error: existingError } = await writer
     .from("campaign_agents")
     .select("campaign_id")
     .eq("profile_id", profileId);
@@ -43,7 +45,7 @@ export async function setAgentCampaigns(formData: FormData) {
   const toRemove = existingActiveIds.filter((id) => !selectedIds.has(id));
 
   if (toAdd.length > 0) {
-    const { error } = await supabase
+    const { error } = await writer
       .from("campaign_agents")
       .upsert(toAdd.map((campaignId) => ({ campaign_id: campaignId, profile_id: profileId, schedule_required: false })), {
         onConflict: "campaign_id,profile_id",
@@ -52,7 +54,7 @@ export async function setAgentCampaigns(formData: FormData) {
     if (error) throw new Error(error.message);
   }
   if (toRemove.length > 0) {
-    const { error } = await supabase
+    const { error } = await writer
       .from("campaign_agents")
       .delete()
       .eq("profile_id", profileId)
@@ -61,6 +63,7 @@ export async function setAgentCampaigns(formData: FormData) {
   }
 
   revalidatePath("/dashboard/admin/usuarios");
+  revalidatePath("/dashboard/team", "layout");
   for (const campaignId of [...toAdd, ...toRemove]) {
     revalidatePath(`/dashboard/admin/campanas/${campaignId}`);
   }

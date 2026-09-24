@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 import type { AppRole } from "@/lib/types";
 import { requireProfile } from "@/lib/auth";
+import { requireAgentManager } from "@/lib/agent-management";
 import { parseDateTimeInput } from "@/lib/report-range";
 
 export async function createUserAccount(formData: FormData) {
@@ -111,9 +112,9 @@ export async function updateUserRole(formData: FormData) {
  * directamente a Supabase Auth y nunca se persiste en `profiles`.
  */
 export async function updateUserPassword(formData: FormData) {
-  await requireProfile(["admin"]);
-
   const userId = String(formData.get("user_id") ?? "").trim();
+  // Admin a cualquiera; supervisor solo a los ejecutivos de sus equipos.
+  await requireAgentManager([userId]);
   const password = String(formData.get("password") ?? "");
   const confirmation = String(formData.get("password_confirmation") ?? "");
 
@@ -135,18 +136,18 @@ export async function updateUserPassword(formData: FormData) {
 }
 
 export async function toggleUserActive(formData: FormData) {
-  await requireProfile(["admin"]);
   const userId = formData.get("user_id") as string;
   const active = formData.get("active") === "true";
+  const { writer } = await requireAgentManager([userId]);
 
-  const supabase = await createClient();
-  const { error } = await supabase
+  const { error } = await writer
     .from("profiles")
     .update({ active: !active })
     .eq("id", userId);
 
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/admin/usuarios");
+  revalidatePath("/dashboard/team", "layout");
 }
 
 /** Activa o desactiva varias cuentas de una vez desde la tabla de usuarios. */
@@ -154,15 +155,20 @@ export async function bulkSetUserActive(
   userIds: string[],
   active: boolean
 ): Promise<{ ok: number; error: string | null }> {
-  await requireProfile(["admin"]);
   const ids = [...new Set(userIds)];
   if (ids.length === 0) return { ok: 0, error: "No hay usuarios seleccionados." };
+  let writer;
+  try {
+    ({ writer } = await requireAgentManager(ids));
+  } catch (err) {
+    return { ok: 0, error: err instanceof Error ? err.message : "Sin permiso." };
+  }
 
-  const supabase = await createClient();
-  const { error } = await supabase.from("profiles").update({ active }).in("id", ids);
+  const { error } = await writer.from("profiles").update({ active }).in("id", ids);
   if (error) return { ok: 0, error: error.message };
 
   revalidatePath("/dashboard/admin/usuarios");
+  revalidatePath("/dashboard/team", "layout");
   return { ok: ids.length, error: null };
 }
 

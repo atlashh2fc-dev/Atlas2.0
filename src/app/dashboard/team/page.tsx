@@ -10,6 +10,7 @@ import {
   FilterBar,
   Field,
   MetricCard,
+  NavTabs,
   PageHeader,
   SectionCard,
   Select,
@@ -318,6 +319,13 @@ export default async function TeamPage({
       <PageHeader
         title="Mi equipo"
         description="Reparte registros, corrige agendas vencidas y vigila la carga de tus ejecutivos."
+        className="border-b-0 pb-0"
+      />
+      <NavTabs
+        tabs={[
+          { label: "Operación", href: "/dashboard/team" },
+          { label: "Usuarios", href: "/dashboard/team/usuarios" },
+        ]}
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">

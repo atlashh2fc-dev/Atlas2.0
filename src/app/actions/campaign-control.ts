@@ -40,7 +40,7 @@ export async function assignAgentCampaign(profileId: string, campaignId: string)
     p_campaign_id: campaignId,
   });
   if (error) throw new Error(error.message);
-  revalidatePath("/dashboard/team");
+  revalidatePath("/dashboard/team", "layout");
 }
 
 /** Devuelve al ejecutivo la libertad de elegir; se queda en la campaña actual. */
@@ -49,7 +49,7 @@ export async function releaseAgentCampaign(profileId: string): Promise<void> {
   const supabase = await createClient();
   const { error } = await supabase.rpc("supervisor_release_agent_campaign", { p_profile_id: profileId });
   if (error) throw new Error(error.message);
-  revalidatePath("/dashboard/team");
+  revalidatePath("/dashboard/team", "layout");
 }
 
 /** Orden de prioridad de las campañas del ejecutivo: la primera se disca primero. */
@@ -61,5 +61,5 @@ export async function setAgentCampaignPriorities(profileId: string, campaignIds:
     p_campaign_ids: campaignIds,
   });
   if (error) throw new Error(error.message);
-  revalidatePath("/dashboard/team");
+  revalidatePath("/dashboard/team", "layout");
 }
