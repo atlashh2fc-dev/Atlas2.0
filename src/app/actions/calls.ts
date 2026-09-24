@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import {
   CALL_REASONS,
   type CallAgendaPayload,
+  agendaSlotError,
   buildCallReasonCatalogFromWorkflow,
   validateCallClosure,
   type CallStatus,
@@ -14,6 +15,7 @@ import {
 import { LEGAL_INTERCALL_BREAK_MS } from "@/lib/intercall-break";
 import type { Call, WorkflowStep, WorkflowStepBranch } from "@/lib/types";
 import { requireProfile } from "@/lib/auth";
+import { fetchCampaignAgendaPolicy } from "@/lib/campaign-agenda-policy";
 
 async function requireAgent() {
   const profile = await requireProfile(["agente"]);
@@ -499,7 +501,12 @@ export async function getRevisableCall(leadId: string): Promise<Call | null> {
     .limit(1);
 
   if (error) throw new Error(error.message);
-  return data?.[0] ? (data[0] as Call) : null;
+  const latest = data?.[0] as Call | undefined;
+  // Una gestión traída de Atlas 1 no se corrige: reescribirla borraría la
+  // versión original, la que se concilia con Vocalcom y el histórico. Lo que
+  // cambió después se registra con una gestión nueva (20260924180200).
+  if (!latest || latest.legacy_call_id) return null;
+  return latest;
 }
 
 /**
@@ -701,6 +708,8 @@ export async function saveCallAgenda(input: CallAgendaPayload): Promise<CallActi
     if (!nextActionAt || Number.isNaN(new Date(nextActionAt).getTime())) {
       throw new Error("Selecciona una fecha y hora de agenda válida.");
     }
+    const slotError = agendaSlotError(nextActionAt, await fetchCampaignAgendaPolicy(supabase, campaignId));
+    if (slotError) throw new Error(slotError);
 
     const hasConflict = await findAgendaConflict({ supabase, leadId, excludeCallId: callId, nextActionAt });
     if (hasConflict) {
@@ -796,7 +805,10 @@ export async function closeCall(input: {
       campaignId: lead.campaign_id,
       requireCallEnded: true,
     });
-    const reasonCatalog = await getLeadCallReasonCatalog({ supabase, lead });
+    const [reasonCatalog, agendaPolicy] = await Promise.all([
+      getLeadCallReasonCatalog({ supabase, lead }),
+      fetchCampaignAgendaPolicy(supabase, lead.campaign_id),
+    ]);
 
     const errors = validateCallClosure(
       {
@@ -811,7 +823,8 @@ export async function closeCall(input: {
         lead_email: lead.email,
         contact_email: lead.email,
       },
-      reasonCatalog
+      reasonCatalog,
+      { agendaPolicy }
     );
     if (errors.length > 0) {
       throw new Error(errors.join(" "));
@@ -906,7 +919,23 @@ export async function reviseCallManagement(input: {
       .single();
     if (leadError) throw new Error("El registro ya no pertenece a tu historial de gestión.");
 
-    const reasonCatalog = await getLeadCallReasonCatalog({ supabase, lead });
+    const { data: original, error: originalError } = await supabase
+      .from("calls")
+      .select("next_action_at, legacy_call_id")
+      .eq("id", input.callId)
+      .eq("lead_id", input.leadId)
+      .eq("agent_id", userId)
+      .maybeSingle();
+    if (originalError) throw new Error(originalError.message);
+    if (!original) throw new Error("La gestión no existe o no pertenece a tu usuario.");
+    if (original.legacy_call_id) {
+      throw new Error("Esta gestión viene de Atlas 1 y no se puede corregir. Registra una gestión nueva.");
+    }
+
+    const [reasonCatalog, agendaPolicy] = await Promise.all([
+      getLeadCallReasonCatalog({ supabase, lead }),
+      fetchCampaignAgendaPolicy(supabase, lead.campaign_id),
+    ]);
     const errors = validateCallClosure(
       {
         status: input.status,
@@ -920,7 +949,8 @@ export async function reviseCallManagement(input: {
         lead_email: lead.email,
         contact_email: lead.email,
       },
-      reasonCatalog
+      reasonCatalog,
+      { agendaPolicy, previousNextActionAt: original.next_action_at }
     );
     if (errors.length > 0) throw new Error(errors.join(" "));
 

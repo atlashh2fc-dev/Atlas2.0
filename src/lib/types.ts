@@ -171,6 +171,8 @@ export interface Call {
   started_at: string;
   ended_at: string | null;
   discarded_reason: string | null;
+  /** Id de la llamada en Atlas 1 cuando vino en la migración; esas no se corrigen. */
+  legacy_call_id?: string | null;
   created_at: string;
   updated_at: string;
 }

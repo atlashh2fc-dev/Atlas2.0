@@ -8,12 +8,14 @@ import { notifyAgentManagementClosed } from "@/lib/agent-control";
 import type { Call, Lead } from "@/lib/types";
 import {
   EQUIFAX_PRODUCTS,
+  describeAgendaPolicy,
   getReasonConfigFrom,
   groupReasonsByState,
   nestReasonOptions,
   validateCallClosure,
   type CallOutcome,
   type CallReasonConfig,
+  type AgendaPolicy,
   type CallStatus,
   type ReasonOptionNode,
 } from "@/lib/call-typification";
@@ -59,6 +61,7 @@ export function CallTypificationForm({
   reasonCatalog,
   equifaxCommercialFieldsEnabled,
   appointmentScheduleUrl,
+  agendaPolicy = null,
   revision = false,
 }: {
   lead: Lead;
@@ -72,6 +75,11 @@ export function CallTypificationForm({
   equifaxCommercialFieldsEnabled: boolean;
   /** Agenda pública específica de la campaña, mostrada dentro del CRM. */
   appointmentScheduleUrl?: string | null;
+  /**
+   * Franja en que la campaña acepta agendas (Equifax: lunes a viernes, 09:00 a
+   * 19:00 hora Chile). Null no restringe; la base valida lo mismo al guardar.
+   */
+  agendaPolicy?: AgendaPolicy | null;
   /** Corrige una gestión ya cerrada sin crear una llamada ficticia. */
   revision?: boolean;
 }) {
@@ -87,6 +95,7 @@ export function CallTypificationForm({
         : reasonCatalog.map((option) => ({
             ...option,
             requiresEquifaxData: false,
+            notesRequiredWithoutAgenda: false,
             // Sin contrato Equifax la cotizacion no exige agenda, pero si la
             // admite: dejarla en "none" impedia guardar la gestion, porque la
             // base si acepta (y la operacion necesita) un seguimiento.
@@ -160,6 +169,14 @@ export function CallTypificationForm({
   );
   const legalBreakActive = !revision && legalBreakRemaining > 0;
 
+  // Al corregir, la agenda original no se vuelve a juzgar si no cambia.
+  const closureOptions = useMemo(
+    () => ({ agendaPolicy, previousNextActionAt: revision ? call.next_action_at : null }),
+    [agendaPolicy, revision, call.next_action_at]
+  );
+  const notesRequired = reasonConfig?.notesRequiredWithoutAgenda === true && !closureNextActionAt;
+  const agendaPolicyText = describeAgendaPolicy(agendaPolicy);
+
   const pendingIssues = useMemo(
     () =>
       validateCallClosure(
@@ -175,9 +192,10 @@ export function CallTypificationForm({
           lead_email: lead.email,
           contact_email: lead.email,
         },
-        catalog
+        catalog,
+        closureOptions
       ),
-    [catalog, status, outcome, reason, notes, closureNextActionAt, equifaxProducts, equifaxUf, equifaxEmail, lead.email]
+    [catalog, closureOptions, status, outcome, reason, notes, closureNextActionAt, equifaxProducts, equifaxUf, equifaxEmail, lead.email]
   );
 
   function handleReasonSelect(option: CallReasonConfig) {
@@ -222,7 +240,11 @@ export function CallTypificationForm({
     };
     if (selectedReason) handleReasonSelect(selectedReason);
     setAttemptedClose(true);
-    const issues = validateCallClosure({ ...payload, lead_email: lead.email, contact_email: lead.email }, catalog);
+    const issues = validateCallClosure(
+      { ...payload, lead_email: lead.email, contact_email: lead.email },
+      catalog,
+      closureOptions
+    );
     if (issues.length > 0) {
       setMessage({ type: "error", text: "Completa los campos marcados antes de cerrar." });
       return;
@@ -543,9 +565,18 @@ export function CallTypificationForm({
                     id={`${fieldId}-schedule`}
                     type="datetime-local"
                     value={nextActionAt}
+                    // Bloques de 30 minutos como en Atlas 1; el navegador solo
+                    // sugiere, la validación de la franja es la que manda.
+                    step={agendaPolicy ? 1800 : undefined}
+                    aria-describedby={agendaPolicyText ? `${fieldId}-schedule-policy` : undefined}
                     onChange={(e) => setNextActionAt(e.target.value)}
                     className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
+                  {agendaPolicyText && (
+                    <p id={`${fieldId}-schedule-policy`} className="mt-1 text-xs text-muted-foreground">
+                      {agendaPolicyText}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <p className="mb-1.5 block text-xs font-medium text-muted-foreground">Bloque inferido</p>
@@ -604,13 +635,16 @@ export function CallTypificationForm({
           )}
 
           <div>
-            <label htmlFor={`${fieldId}-notes`} className="mb-1.5 block text-xs font-medium text-muted-foreground">Nota</label>
+            <label htmlFor={`${fieldId}-notes`} className="mb-1.5 block text-xs font-medium text-muted-foreground">
+              {notesRequired ? "Nota (obligatoria sin agenda)" : "Nota"}
+            </label>
             <textarea
               id={`${fieldId}-notes`}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
-              placeholder="Opcional"
+              aria-required={notesRequired}
+              placeholder={notesRequired ? "Obligatoria sin agenda: qué se envió y a quién" : "Opcional"}
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           </div>

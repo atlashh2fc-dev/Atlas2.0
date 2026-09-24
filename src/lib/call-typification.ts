@@ -32,6 +32,13 @@ export interface CallReasonConfig {
    * otros flujos sin compartir ese contrato de datos.
    */
   requiresEquifaxData?: boolean;
+  /**
+   * Regla de Atlas 1 para SE ENVIA INFORMACION: la agenda es opcional, pero sin
+   * agenda el cierre exige una nota que diga qué se envió y a quién; si no,
+   * nadie vuelve a ese cliente. Solo bajo el contrato Equifax, igual que
+   * `requiresEquifaxData`, para no cambiar otras campañas con la misma etiqueta.
+   */
+  notesRequiredWithoutAgenda?: boolean;
 }
 
 export const CALL_STATUSES: { value: CallStatus; label: string }[] = [
@@ -118,6 +125,7 @@ export const CALL_REASONS: CallReasonConfig[] = ([
     status: "connected",
     outcome: "interested",
     agenda: "optional",
+    notesRequiredWithoutAgenda: true,
   },
   {
     value: "VOLVER A LLAMAR",
@@ -448,6 +456,134 @@ export interface CallClosurePayload {
   lead_email?: string | null;
 }
 
+/**
+ * Franja en la que una campaña acepta agendas. Atlas 1 solo ofrecía bloques de
+ * lunes a viernes entre 09:00 y 19:00: una agenda un domingo, a las 23:00 o en
+ * el pasado queda en la cola del ejecutivo y el discador no la puede cumplir.
+ * Se declara por campaña (campaigns.agenda_*, migración 20260924180100); sin
+ * declaración no se restringe nada, que es como operan hoy las demás campañas.
+ * La base valida lo mismo en private.agenda_fuera_de_franja.
+ */
+export interface AgendaPolicy {
+  /** Días ISO permitidos: 1 = lunes … 7 = domingo. */
+  weekdays: number[] | null;
+  /** "HH:MM", inclusive. */
+  from: string | null;
+  /** "HH:MM", exclusivo: 19:00 es el fin de la franja, no un bloque más. */
+  until: string | null;
+}
+
+export const AGENDA_TIME_ZONE = "America/Santiago";
+
+const WEEKDAY_NAMES = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"];
+const WEEKDAY_BY_SHORT: Record<string, number> = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
+
+/** Convierte la fila de campaigns (PostgREST entrega `time` como "09:00:00"). */
+export function readAgendaPolicy(
+  row:
+    | {
+        agenda_dias_habiles?: number[] | null;
+        agenda_hora_desde?: string | null;
+        agenda_hora_hasta?: string | null;
+      }
+    | null
+    | undefined
+): AgendaPolicy | null {
+  if (!row) return null;
+  const weekdays =
+    Array.isArray(row.agenda_dias_habiles) && row.agenda_dias_habiles.length > 0
+      ? [...row.agenda_dias_habiles].map(Number).sort((a, b) => a - b)
+      : null;
+  const from = row.agenda_hora_desde ? row.agenda_hora_desde.slice(0, 5) : null;
+  const until = row.agenda_hora_hasta ? row.agenda_hora_hasta.slice(0, 5) : null;
+  if (!weekdays && !from && !until) return null;
+  return { weekdays, from, until };
+}
+
+function joinSpanish(items: string[]) {
+  if (items.length <= 1) return items.join("");
+  return `${items.slice(0, -1).join(", ")} y ${items[items.length - 1]}`;
+}
+
+function hoursText(policy: AgendaPolicy) {
+  const parts = [
+    policy.from ? `desde las ${policy.from}` : null,
+    policy.until ? `antes de las ${policy.until}` : null,
+  ].filter(Boolean);
+  return parts.join(" y ");
+}
+
+/** Texto para el ejecutivo: «lunes, martes, … y viernes, desde las 09:00 y antes de las 19:00 (hora Chile)». */
+export function describeAgendaPolicy(policy: AgendaPolicy | null): string | null {
+  if (!policy) return null;
+  const days = policy.weekdays ? joinSpanish(policy.weekdays.map((day) => WEEKDAY_NAMES[day - 1] ?? String(day))) : null;
+  const hours = hoursText(policy);
+  return `${[days, hours].filter(Boolean).join(", ")} (hora Chile)`;
+}
+
+function minutesOf(value: string) {
+  const [hours, minutes] = value.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
+function chileClock(date: Date) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: AGENDA_TIME_ZONE,
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const read = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  return {
+    isoDay: WEEKDAY_BY_SHORT[read("weekday")] ?? 0,
+    minutes: Number(read("hour")) * 60 + Number(read("minute")),
+  };
+}
+
+/**
+ * Motivo por el que una agenda no cabe en la franja de la campaña, o null.
+ * Se evalúa en hora Chile sobre el instante, no sobre la hora del navegador.
+ */
+export function agendaSlotError(
+  nextActionAt: string | null | undefined,
+  policy: AgendaPolicy | null | undefined,
+  now: Date = new Date()
+): string | null {
+  if (!nextActionAt || !policy) return null;
+  const date = new Date(nextActionAt);
+  if (Number.isNaN(date.getTime())) return "Selecciona una fecha y hora de agenda válida.";
+  if (date.getTime() <= now.getTime()) return "La agenda debe quedar en una fecha y hora futura.";
+  const clock = chileClock(date);
+  if (policy.weekdays && !policy.weekdays.includes(clock.isoDay)) {
+    const days = joinSpanish(policy.weekdays.map((day) => WEEKDAY_NAMES[day - 1] ?? String(day)));
+    return `La agenda debe caer en un día hábil de la campaña (${days}).`;
+  }
+  if (
+    (policy.from && clock.minutes < minutesOf(policy.from)) ||
+    (policy.until && clock.minutes >= minutesOf(policy.until))
+  ) {
+    return `La agenda debe quedar ${hoursText(policy)}, hora Chile.`;
+  }
+  return null;
+}
+
+export interface CallClosureOptions {
+  /** Franja de agendas de la campaña; null o ausente no restringe. */
+  agendaPolicy?: AgendaPolicy | null;
+  /**
+   * Agenda que ya tenía la gestión al corregirla. Si no cambia no se vuelve a
+   * exigir futura: la fecha original pudo quedar atrás sin que sea un error.
+   */
+  previousNextActionAt?: string | null;
+  now?: Date;
+}
+
+function sameInstant(a: string | null | undefined, b: string | null | undefined) {
+  if (!a || !b) return false;
+  return new Date(a).getTime() === new Date(b).getTime();
+}
+
 export interface CallAgendaPayload {
   callId: string;
   leadId: string;
@@ -501,7 +637,7 @@ function displayResultLabel(stateLabel: string, value: string) {
   if (stateLabel === "NO CONTACTO") return "NO CONTACTO";
   if (normalized === "INTERESADO" || normalized === "NO INTERESADO") return normalized;
   if (normalized.includes("NO INTERES")) return "NO INTERESADO";
-  if (normalized.includes("VENTA") || normalized.includes("FUTURO") || normalized.includes("CALLBACK")) return "INTERESADO";
+  if (affirmsSale(normalized) || normalized.includes("FUTURO") || normalized.includes("CALLBACK")) return "INTERESADO";
   return normalized || "GESTION";
 }
 
@@ -552,16 +688,35 @@ function inferCollectionsOutcome(text: string): CallOutcome | null {
   return null;
 }
 
+/**
+ * «VENTA» afirmada, no negada. «CLIENTE NO SUJETO A VENTA» contiene la palabra
+ * y se grababa como venta: la ficha le exigía datos Equifax y el cierre lo
+ * rechazaba por no ser VENTA EN VALIDACION. Una negación (NO o SIN) hasta tres
+ * palabras antes anula la mención, y lo que declara falta de interés nunca es
+ * venta, venga en el resultado o en el motivo.
+ */
+function affirmsSale(text: string) {
+  if (text.includes("NO INTERES")) return false;
+  const withoutNegations = text.replace(/\b(?:NO|SIN)\s+(?:[A-Z0-9]+\s+){0,3}?VENTAS?\b/g, " ");
+  return withoutNegations.includes("VENTA");
+}
+
 function inferOutcome(stateLabel: string, resultLabel: string, reason: string): CallOutcome {
   const text = normalizeKey(`${stateLabel} ${resultLabel} ${reason}`);
   if (stateLabel === "NO CONTACTO") return "other";
   const collections = inferCollectionsOutcome(text);
   if (collections) return collections;
-  if (text.includes("VENTA")) return "sale";
+  if (affirmsSale(text)) return "sale";
   if (text.includes("VOLVER") || text.includes("REUNION") || text.includes("AGEND") || text.includes("MOMENTO")) return "callback";
   if (resultLabel === "NO INTERESADO") return "not_interested";
   if (resultLabel === "INTERESADO") return "interested";
   return "other";
+}
+
+/** Espejo de private.assert_management_closure_rules (20260924180100). */
+function sendsInformation(reason: string) {
+  const normalized = normalizeKey(reason);
+  return normalized.includes("ENVIA INFORMACION") || normalized.includes("ENVIAR INFORMACION");
 }
 
 function inferAgenda(reason: string, requiresEquifaxData: boolean): AgendaRequirement {
@@ -599,7 +754,7 @@ function titleToReason(step: WorkflowStep, fallback: string) {
   const text = normalizeKey(`${step.name} ${step.description ?? ""}`);
   const known = CALL_REASONS.find((reason) => text.includes(normalizeKey(reason.value)));
   if (known) return known.value;
-  if (text.includes("VENTA")) return "VENTA EN VALIDACION";
+  if (affirmsSale(text)) return "VENTA EN VALIDACION";
   if (text.includes("FUERA") || text.includes("SIN SERVICIO")) return "TELEFONO FUERA DE SERVICIO";
   if (text.includes("BUZON")) return "BUZON DE VOZ";
   if (text.includes("NO CONTESTA")) return "NO CONTESTA";
@@ -680,13 +835,15 @@ export function buildCallReasonCatalogFromWorkflow(
     const requiresEquifaxData =
       workflowRequiresEquifaxData &&
       (value === "COTIZACION ENVIADA" || outcome === "sale");
+    const agenda = inferAgenda(input.reasonLabel, requiresEquifaxData);
     catalog.push({
       value,
       label: input.reasonLabel,
       status,
       outcome,
-      agenda: inferAgenda(input.reasonLabel, requiresEquifaxData),
+      agenda,
       requiresEquifaxData,
+      notesRequiredWithoutAgenda: workflowRequiresEquifaxData && agenda === "optional" && sendsInformation(value),
       stateLabel: input.stateLabel,
       stateOrderIndex: input.stateOrderIndex,
       resultLabel: input.resultLabel,
@@ -824,7 +981,11 @@ export function nestReasonOptions(reasons: CallReasonConfig[]): ReasonOptionNode
   return root;
 }
 
-export function validateCallClosure(payload: CallClosurePayload, catalog: CallReasonConfig[] = CALL_REASONS): string[] {
+export function validateCallClosure(
+  payload: CallClosurePayload,
+  catalog: CallReasonConfig[] = CALL_REASONS,
+  options: CallClosureOptions = {}
+): string[] {
   const errors: string[] = [];
 
   if (!payload.status || !payload.reason) {
@@ -855,6 +1016,15 @@ export function validateCallClosure(payload: CallClosurePayload, catalog: CallRe
   }
   // "optional" no valida nada: la agenda es una decision del ejecutivo y el
   // cierre nunca se bloquea por ella.
+
+  if (hasAgenda && reasonConfig.agenda !== "none" && !sameInstant(payload.next_action_at, options.previousNextActionAt)) {
+    const slotError = agendaSlotError(payload.next_action_at, options.agendaPolicy, options.now);
+    if (slotError) errors.push(slotError);
+  }
+
+  if (reasonConfig.notesRequiredWithoutAgenda && !hasAgenda && !payload.notes?.trim()) {
+    errors.push(`Sin agenda, ${reasonConfig.value} exige una nota con lo enviado.`);
+  }
 
   if (payload.outcome === "sale" && payload.reason !== "VENTA EN VALIDACION") {
     errors.push("Para registrar venta usa la tipificacion VENTA EN VALIDACION.");

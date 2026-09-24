@@ -23,6 +23,7 @@ function fixture(options: {
   empty?: boolean;
   catalog?: typification.CallReasonConfig[];
   equifaxCommercialFieldsEnabled?: boolean;
+  agendaPolicy?: typification.AgendaPolicy | null;
 } = {}) {
   const slots: unknown[] = [];
   let cursor = 0;
@@ -71,6 +72,7 @@ function fixture(options: {
       options.equifaxCommercialFieldsEnabled ??
       reasonCatalog.some((reason) => reason.requiresEquifaxData === true),
     appointmentScheduleUrl: options.legal === false ? null : "https://calendar.example.test",
+    agendaPolicy: options.agendaPolicy ?? null,
     revision: options.revision ?? false,
   };
   let tree: Element;
@@ -320,4 +322,40 @@ test("a result option with its own step renders as a labelled group whose sub-op
 
   f.click("No lo Necesita");
   assert.equal(f.one((e) => e.type === "button" && e.props["aria-pressed"] === true).props.children, "No lo Necesita");
+});
+
+test("Equifax: SE ENVIA INFORMACION sin agenda pide nota y la agenda respeta la franja de la campaña", async () => {
+  const equifax = typification.CALL_REASONS.filter((r) => ["SE ENVIA INFORMACION", "VOLVER A LLAMAR"].includes(r.value));
+  const options = {
+    legal: false,
+    catalog: equifax,
+    equifaxCommercialFieldsEnabled: true,
+    agendaPolicy: { weekdays: [1, 2, 3, 4, 5], from: "09:00", until: "19:00" },
+  };
+  const issues = (f: ReturnType<typeof fixture>) =>
+    f.all((e) => e.type === "li").map((e) => String((e.props.children as unknown[]).join("")));
+
+  const info = fixture(options);
+  info.click("Se envia informacion");
+  assert.match(String(info.one((e) => e.type === "textarea").props.placeholder), /Obligatoria sin agenda/);
+  info.click("Guardar y cerrar");
+  assert.equal(info.submissions.length, 0);
+  assert.ok(issues(info).some((text) => text.includes("SE ENVIA INFORMACION exige una nota")));
+  info.change("textarea", "Brochure RI a finanzas");
+  info.click("Guardar y cerrar");
+  assert.equal(info.submissions.length, 1);
+  info.finish(); await info.flush();
+
+  // Domingo 06-10-2030 a mediodía: fuera de la franja; lunes sí entra.
+  const callback = fixture(options);
+  callback.click("Volver a llamar");
+  assert.match(String(callback.one((e) => e.type === "p" && e.props.id === "fixture-schedule-policy").props.children), /lunes, martes/);
+  callback.change("datetime-local", "2030-10-06T12:00");
+  callback.click("Guardar y cerrar");
+  assert.equal(callback.submissions.length, 0);
+  assert.ok(issues(callback).some((text) => text.includes("día hábil")));
+  callback.change("datetime-local", "2030-10-07T12:00");
+  callback.click("Guardar y cerrar");
+  assert.equal(callback.submissions.length, 1);
+  callback.finish(); await callback.flush();
 });

@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, CalendarClock, PencilLine, RefreshCw } from "lucide-react";
 import { LEAD_STATUSES } from "@/lib/types";
 import { getOpenCall, getRevisableCall } from "@/app/actions/calls";
+import { fetchCampaignAgendaPolicy } from "@/lib/campaign-agenda-policy";
 import { AgendaCallButton } from "@/components/agenda-call-button";
 import { CallTypificationForm } from "@/components/call-typification-form";
 import { CallTimer } from "@/components/call-timer";
@@ -216,6 +217,7 @@ export default async function LeadDetailPage({
   const equifaxCommercialFieldsEnabled = reasonCatalog.some(
     (reason) => reason.requiresEquifaxData === true
   );
+  const agendaPolicy = await fetchCampaignAgendaPolicy(supabase, lead.campaign_id ?? campaign?.id ?? null);
 
   const [
     { data: externalRefsData },
@@ -428,6 +430,7 @@ export default async function LeadDetailPage({
             reasonCatalog={reasonCatalog}
             equifaxCommercialFieldsEnabled={equifaxCommercialFieldsEnabled}
             appointmentScheduleUrl={appointmentScheduleUrl}
+            agendaPolicy={agendaPolicy}
           />
         </section>
       )}
@@ -441,6 +444,7 @@ export default async function LeadDetailPage({
             reasonCatalog={reasonCatalog}
             equifaxCommercialFieldsEnabled={equifaxCommercialFieldsEnabled}
             appointmentScheduleUrl={appointmentScheduleUrl}
+            agendaPolicy={agendaPolicy}
             revision
           />
         </section>
