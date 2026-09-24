@@ -27,6 +27,13 @@ export function getProfileIdForExtension(extension: string): string | undefined 
   return extensionToProfileId[extension];
 }
 
+export function getExtensionForProfileId(profileId: string): string | undefined {
+  for (const credential of credentialsByExtension.values()) {
+    if (credential.profileId === profileId) return credential.extension;
+  }
+  return undefined;
+}
+
 export function getActiveCredentials(): AgentCredential[] {
   return Array.from(credentialsByExtension.values());
 }

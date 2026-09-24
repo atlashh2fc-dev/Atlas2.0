@@ -74,7 +74,7 @@ export function originateCall(params: OriginateParams): Promise<void> {
     actionid: target.dial_attempt_id,
     Channel: channel,
     Async: "true",
-    Timeout: "30000",
+    Timeout: String(config.originateTimeoutMs),
   };
   if (callerId) action.CallerID = callerId;
 
