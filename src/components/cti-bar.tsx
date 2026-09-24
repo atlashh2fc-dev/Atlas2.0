@@ -277,6 +277,9 @@ export function CtiBar({ profile }: { profile: Profile }) {
 
   const [statusReasons, setStatusReasons] = useState<AgentStatusReason[]>([]);
   const [currentReasonId, setCurrentReasonId] = useState<string | null>(null);
+  // Desde cuándo está en el estado actual (Disponible o AUX): el cronómetro
+  // que ve el ejecutivo es el mismo tiempo que ve su supervisor en el monitor.
+  const [statusSince, setStatusSince] = useState<string | null>(null);
   const [savingStatus, setSavingStatus] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [statusLoading, setStatusLoading] = useState(profile.role === "agente");
@@ -548,6 +551,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
               : reasons
           );
           setCurrentReasonId(selected?.id ?? null);
+          setStatusSince(currentIsSelectable ? current?.since ?? null : null);
           setHybridManualMode(currentIsHybrid);
 
           // Solo se declara Disponible cuando el teléfono está realmente
@@ -592,6 +596,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
         : [...reasons, current.reason]
     );
     setCurrentReasonId(current.reason.id);
+    setStatusSince(current.since);
     setHybridManualMode(current.reason.code === "llamada_manual");
   }, [profile.role]);
 
@@ -635,8 +640,17 @@ export function CtiBar({ profile }: { profile: Profile }) {
       return;
     }
 
+    // El permiso de notificaciones se pide dentro de un clic (lo exige el
+    // navegador) y cuando el ejecutivo se pone a recibir llamadas.
+    if (requestedReason && !requestedReason.is_pause && "Notification" in window && Notification.permission === "default") {
+      void Notification.requestPermission().catch(() => {});
+    }
+
     const previous = currentReasonId;
+    const previousSince = statusSince;
     setCurrentReasonId(reasonId);
+    // Elegir el mismo estado no reinicia el tiempo (igual que en la base).
+    if (reasonId !== previous) setStatusSince(new Date().toISOString());
     setSavingStatus(true);
     setStatusError(null);
     try {
@@ -646,6 +660,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
       // Sin esto la barra mostraba el estado nuevo mientras la base seguía con
       // el anterior, y el discador actuaba según la base.
       setCurrentReasonId(previous);
+      setStatusSince(previousSince);
       setStatusError(err instanceof Error ? err.message : "No se pudo guardar el estado.");
     } finally {
       setSavingStatus(false);
@@ -1089,6 +1104,39 @@ export function CtiBar({ profile }: { profile: Profile }) {
       });
   }
 
+  /**
+   * Además del sonido: el título de la pestaña parpadea y, si el ejecutivo
+   * está mirando otra pestaña u otra ventana, aparece una notificación del
+   * sistema con el nombre del cliente.
+   */
+  function alertIncomingCall(name: string | null) {
+    const originalTitle = document.title.startsWith("📞") ? "Atlas" : document.title;
+    let ticks = 0;
+    const blink = window.setInterval(() => {
+      ticks += 1;
+      document.title = ticks % 2 === 1 ? "📞 LLAMADA ENTRANTE" : originalTitle;
+      if (ticks >= 12) {
+        window.clearInterval(blink);
+        document.title = originalTitle;
+      }
+    }, 700);
+    try {
+      if (document.hidden && "Notification" in window && Notification.permission === "granted") {
+        const notification = new Notification("📞 Llamada entrante", {
+          body: name ? `${name} ya está en línea.` : "Tienes un cliente en línea.",
+          requireInteraction: false,
+          tag: "atlas-incoming-call",
+        });
+        notification.onclick = () => {
+          window.focus();
+          notification.close();
+        };
+      }
+    } catch (err) {
+      console.error("CTI: no se pudo mostrar la notificación de llamada", err);
+    }
+  }
+
   function playConnectedChime() {
     const AudioContextConstructor =
       window.AudioContext ??
@@ -1100,20 +1148,24 @@ export function CtiBar({ profile }: { profile: Profile }) {
     void context
       .resume()
       .then(() => {
-        [659, 880].forEach((frequency, index) => {
+        // Aviso notorio: el teléfono contesta solo y el ejecutivo tiene que
+        // darse cuenta de inmediato de que ya hay un cliente en línea. Antes
+        // eran dos notas cortas casi inaudibles. Tres notas, dos veces.
+        [659, 880, 1175, 659, 880, 1175].forEach((frequency, index) => {
           const oscillator = context.createOscillator();
           const gain = context.createGain();
-          const start = context.currentTime + index * 0.13;
+          const start = context.currentTime + index * 0.16 + (index >= 3 ? 0.25 : 0);
+          oscillator.type = "triangle";
           oscillator.frequency.value = frequency;
           gain.gain.setValueAtTime(0, start);
-          gain.gain.linearRampToValueAtTime(0.08, start + 0.015);
-          gain.gain.linearRampToValueAtTime(0, start + 0.11);
+          gain.gain.linearRampToValueAtTime(0.28, start + 0.015);
+          gain.gain.linearRampToValueAtTime(0, start + 0.14);
           oscillator.connect(gain);
           gain.connect(context.destination);
           oscillator.start(start);
-          oscillator.stop(start + 0.12);
+          oscillator.stop(start + 0.15);
         });
-        setTimeout(() => void context.close().catch(() => {}), 450);
+        setTimeout(() => void context.close().catch(() => {}), 1600);
       })
       .catch(() => void context.close().catch(() => {}));
   }
@@ -1276,7 +1328,12 @@ export function CtiBar({ profile }: { profile: Profile }) {
   }
 
   async function loadIncomingContext(callAttempt: number) {
-    for (let retry = 0; retry < 8; retry += 1) {
+    // En el pool el intento queda a nombre del ejecutivo recién cuando el
+    // motor procesa la conexión (AgentConnect) y la escribe en la base. Con
+    // solo 8 reintentos de 300 ms (~2,4 s) a algunos ejecutivos no les llegaba
+    // nunca la ficha: ahora se insiste rápido al principio y luego cada
+    // segundo, hasta ~13 s o hasta que la llamada termine.
+    for (let retry = 0; retry < 20; retry += 1) {
       if (callAttemptRef.current !== callAttempt) return;
       try {
         const context = await getMyIncomingDialContext();
@@ -1295,7 +1352,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
       } catch (err) {
         console.error("CTI: fallo al cargar contexto de llamada automática", err);
       }
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      await new Promise((resolve) => setTimeout(resolve, retry < 10 ? 300 : 1000));
     }
     console.error("CTI: la llamada automática llegó sin contexto asignado");
   }
@@ -1333,6 +1390,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
             setCallState("in_call");
             setCallStartedAt(Date.now());
             playConnectedChime();
+            alertIncomingCall(incomingContextRef.current?.full_name ?? null);
             attachRemoteAudio(invitation);
             break;
           case SessionState.Terminated:
@@ -1346,7 +1404,17 @@ export function CtiBar({ profile }: { profile: Profile }) {
               );
               // Una llamada automática no puede terminar dejando al agente en
               // el teclado o en otra pantalla: siempre vuelve a su gestión.
-              openAutomaticManagement(finishedContext);
+              if (finishedContext) {
+                openAutomaticManagement(finishedContext);
+              } else {
+                // El contexto no alcanzó a llegar durante la llamada: se abre
+                // la gestión que quedó pendiente para que pueda tipificar.
+                void getMyPendingCallManagement()
+                  .then((pending) => {
+                    if (pending) openManagementScreen(pending.leadId);
+                  })
+                  .catch((err) => console.error("CTI: no se pudo abrir la gestión pendiente", err));
+              }
             }
             detachRemoteAudio();
             setCallState("idle");
@@ -1769,6 +1837,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
                   </optgroup>
                 )}
               </Select>
+              <StatusElapsed since={statusSince} compact />
               {statusError && !statusLoading && (
                 <button
                   type="button"
@@ -1911,6 +1980,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
               </optgroup>
             )}
           </Select>
+          <StatusElapsed since={statusSince} />
 
           {statusError && (
             <div className="ml-auto flex items-center gap-2">
@@ -2689,5 +2759,40 @@ function ContextField({ label, value }: { label: string; value: string }) {
       </p>
       <p className="mt-0.5 break-words font-medium text-white/90">{value}</p>
     </div>
+  );
+}
+
+/**
+ * Cuánto lleva el ejecutivo en su estado actual (Disponible o AUX). Tiene su
+ * propio reloj para no redibujar toda la barra cada segundo.
+ */
+function StatusElapsed({ since, compact = false }: { since: string | null; compact?: boolean }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!since) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [since]);
+  if (!since) return null;
+  const started = new Date(since).getTime();
+  if (Number.isNaN(started)) return null;
+  const seconds = Math.max(0, Math.floor((now - started) / 1000));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const rest = seconds % 60;
+  const label = hours > 0
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`
+    : `${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
+  return (
+    <span
+      title="Tiempo en el estado actual"
+      className={
+        compact
+          ? "rounded-lg border border-border bg-surface px-2 py-1 font-mono text-xs font-semibold tabular-nums shadow-xl"
+          : "font-mono text-xs font-semibold tabular-nums text-muted-foreground"
+      }
+    >
+      {label}
+    </span>
   );
 }

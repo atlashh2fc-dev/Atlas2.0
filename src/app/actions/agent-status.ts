@@ -76,19 +76,22 @@ export async function heartbeat(): Promise<void> {
  * Estado actual del agente que llama (su propia fila, vía RLS
  * profile_id = auth.uid()).
  */
-export async function getMyCurrentStatus(): Promise<{ reason: AgentStatusReason } | null> {
+export async function getMyCurrentStatus(): Promise<{ reason: AgentStatusReason; since: string | null } | null> {
   const profile = await requireProfile(["agente"]);
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("agent_current_status")
-    .select("reason_id, agent_status_reasons(*)")
+    .select("reason_id, since, agent_status_reasons(*)")
     .eq("profile_id", profile.id)
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) return null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const reason = (data as any).agent_status_reasons as AgentStatusReason | null;
-  return reason ? { reason } : null;
+  // `since` es desde cuándo está en este estado: la barra muestra el cronómetro.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const since = typeof (data as any).since === "string" ? ((data as any).since as string) : null;
+  return reason ? { reason, since } : null;
 }
 
 /**

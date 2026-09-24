@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type 
 import { Bar, BarChart, Cell, Label, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import ReactGridLayout, { useContainerWidth, verticalCompactor, type Layout, type LayoutItem } from "react-grid-layout";
 import { LogOut, Plus, RotateCcw, X } from "lucide-react";
-import { forceAgentLogout, getAgentLiveStatus, getQueueHealth } from "@/app/actions/supervision";
+import { forceAgentLogout, getAgentLiveStatus, getLiveWallboard, getQueueHealth, type LiveWallboard } from "@/app/actions/supervision";
 import type { AgentLiveStatus, QueueHealth } from "@/lib/types";
 import { LEGAL_INTERCALL_BREAK_SECONDS } from "@/lib/intercall-break";
 import { useViewPreference } from "@/lib/use-view-preference";
@@ -28,6 +28,8 @@ import {
 } from "@/components/ui";
 
 const POLL_MS = 2000;
+/** Las métricas del día cambian por minuto, no por segundo. */
+const WALLBOARD_POLL_MS = 15000;
 
 /** Umbrales operativos: sobre estos valores el estado se marca en rojo. */
 const THRESHOLDS = {
@@ -54,6 +56,12 @@ type WidgetId =
   | "effective-contacts"
   | "attempts-per-contact"
   | "sales-today"
+  | "tmo"
+  | "tmc"
+  | "production"
+  | "technical-failures"
+  | "hourly"
+  | "pause-reasons"
   | "status-chart"
   | "campaign-chart"
   | "queues"
@@ -94,10 +102,16 @@ const DEFAULT_LAYOUT: WidgetLayout[] = [
   { i: "effective-contacts", x: 3, y: 9, w: 3, h: 3, minW: 2, minH: 2 },
   { i: "attempts-per-contact", x: 6, y: 9, w: 3, h: 3, minW: 2, minH: 2 },
   { i: "sales-today", x: 9, y: 9, w: 3, h: 3, minW: 2, minH: 2 },
-  { i: "status-chart", x: 0, y: 12, w: 6, h: 6, minW: 4, minH: 5 },
-  { i: "campaign-chart", x: 6, y: 12, w: 6, h: 6, minW: 4, minH: 5 },
-  { i: "queues", x: 0, y: 18, w: 12, h: 6, minW: 6, minH: 3 },
-  { i: "agents", x: 0, y: 24, w: 12, h: 10, minW: 6, minH: 6 },
+  { i: "tmo", x: 0, y: 12, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "tmc", x: 3, y: 12, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "production", x: 6, y: 12, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "technical-failures", x: 9, y: 12, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "hourly", x: 0, y: 15, w: 6, h: 6, minW: 4, minH: 5 },
+  { i: "pause-reasons", x: 6, y: 15, w: 6, h: 6, minW: 4, minH: 5 },
+  { i: "status-chart", x: 0, y: 21, w: 6, h: 6, minW: 4, minH: 5 },
+  { i: "campaign-chart", x: 6, y: 21, w: 6, h: 6, minW: 4, minH: 5 },
+  { i: "queues", x: 0, y: 27, w: 12, h: 6, minW: 6, minH: 3 },
+  { i: "agents", x: 0, y: 33, w: 12, h: 10, minW: 6, minH: 6 },
 ];
 
 /** Orden canónico para el panel de tarjetas ocultas. */
@@ -129,6 +143,12 @@ const WIDGET_TITLE: Record<WidgetId, string> = {
   "effective-contacts": "Contactos efectivos",
   "attempts-per-contact": "Intentos por contacto",
   "sales-today": "Ventas hoy",
+  tmo: "TMO del día",
+  tmc: "Tiempo de conversación",
+  production: "Producción del día",
+  "technical-failures": "Fallas de troncal",
+  hourly: "Curva por hora",
+  "pause-reasons": "Pausa por motivo",
   "status-chart": "Estados del equipo",
   "campaign-chart": "Actividad por campaña",
   queues: "Salud de campañas",
@@ -152,6 +172,12 @@ const WIDGET_KICKER: Record<WidgetId, string> = {
   "effective-contacts": "CONVERSACIONES",
   "attempts-per-contact": "COSTO DE CONTACTO",
   "sales-today": "RESULTADO COMERCIAL",
+  tmo: "TIEMPO MEDIO DE OPERACIÓN",
+  tmc: "CONVERSACIÓN",
+  production: "PRODUCCIÓN",
+  "technical-failures": "TELEFONÍA",
+  hourly: "RITMO DE LA JORNADA",
+  "pause-reasons": "AUXILIARES",
   "status-chart": "LECTURA DEL EQUIPO",
   "campaign-chart": "PULSO DE CAMPAÑAS",
   queues: "SALUD OPERACIONAL",
@@ -261,6 +287,7 @@ function QueueNumber({ label, value }: { label: string; value: number }) {
 export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boolean }) {
   const [agents, setAgents] = useState<AgentLiveStatus[]>([]);
   const [queues, setQueues] = useState<QueueHealth[]>([]);
+  const [wallboard, setWallboard] = useState<LiveWallboard | null>(null);
   const [now, setNow] = useState(() => new Date().getTime());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -347,6 +374,28 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
     return () => clearInterval(id);
   }, []);
 
+  // Métricas del día: van aparte y más lento que el estado en vivo. Si fallan,
+  // el monitor sigue funcionando y las tarjetas del día muestran guion.
+  useEffect(() => {
+    let disposed = false;
+    async function pollWallboard() {
+      try {
+        const data = await getLiveWallboard();
+        if (!disposed) setWallboard(data);
+      } catch (err) {
+        console.error("Monitor: no se pudo leer el tablero del día", err);
+      }
+    }
+    pollWallboard();
+    const id = setInterval(pollWallboard, WALLBOARD_POLL_MS);
+    return () => { disposed = true; clearInterval(id); };
+  }, []);
+
+  const todayByAgent = useMemo(
+    () => new Map((wallboard?.por_ejecutivo ?? []).map((row) => [row.profile_id, row])),
+    [wallboard]
+  );
+
   const groups = useMemo(() => {
     const counters: Record<AgentGroup, number> = { available: 0, on_call: 0, wrap_up: 0, paused: 0, offline: 0 };
     for (const agent of agents) counters[groupOf(agent)] += 1;
@@ -405,6 +454,9 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
     { id: "extension", header: "Extensión", value: (row) => row.extension, className: "text-muted-foreground" },
     { id: "campana", header: "Campaña", value: (row) => row.campaign_name ?? "", cell: (row) => row.campaign_name ?? "—", className: "text-muted-foreground" },
     { id: "estado", header: "Estado", value: (row) => agentDisplay(row, now).label, cell: (row) => { const { label, tone } = agentDisplay(row, now); return <span className="inline-flex items-center gap-2"><StatusDot tone={tone} />{label}</span>; } },
+    { id: "gestiones-hoy", header: "Gestiones hoy", align: "right", value: (row) => todayByAgent.get(row.profile_id)?.gestiones ?? 0, cell: (row) => { const today = todayByAgent.get(row.profile_id); return <span className="tabular-nums">{today ? `${today.gestiones} · ${today.contactos} ctc` : "—"}</span>; } },
+    { id: "tmo-hoy", header: "TMO hoy", align: "right", value: (row) => todayByAgent.get(row.profile_id)?.tmo_segundos ?? -1, cell: (row) => <span className="tabular-nums">{formatElapsed(todayByAgent.get(row.profile_id)?.tmo_segundos ?? null)}</span> },
+    { id: "pausa-hoy", header: "Pausa hoy", align: "right", value: (row) => todayByAgent.get(row.profile_id)?.pausa_segundos ?? 0, cell: (row) => { const today = todayByAgent.get(row.profile_id); const detail = (today?.pausa_por_motivo ?? []).map((item) => `${item.motivo}: ${formatElapsed(item.segundos)}`).join(" · "); return <span className="tabular-nums" title={detail || undefined}>{today && today.pausa_segundos > 0 ? formatElapsed(today.pausa_segundos) : "—"}</span>; } },
     { id: "tiempo", header: "Tiempo en estado", align: "right", value: (row) => elapsedSeconds(agentDisplay(row, now).since, now) ?? -1, cell: (row) => { const { since, alert } = agentDisplay(row, now); return <span className={alert ? "font-medium text-danger" : "tabular-nums"}>{formatElapsed(elapsedSeconds(since, now))}{alert && " ⚠"}</span>; } },
     ...(canForceLogout ? [{
       id: "acciones",
@@ -440,8 +492,12 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
         );
       },
     }] : []),
-  ], [now, canForceLogout, openLogoutDialog]);
+  ], [now, canForceLogout, openLogoutDialog, todayByAgent]);
 
+
+  const today = wallboard?.hoy ?? null;
+  const hourlyData = (wallboard?.por_hora ?? []).map((row) => ({ name: `${String(row.hora).padStart(2, "0")}h`, Intentos: row.intentos, Gestiones: row.gestiones, Contactos: row.contactos }));
+  const pauseTotal = (wallboard?.pausa_equipo ?? []).reduce((sum, item) => sum + item.segundos, 0);
   const widgets: Record<WidgetId, ReactNode> = {
     occupancy: <MetricWidget kicker={WIDGET_KICKER.occupancy} label="Ocupación del equipo" metric="ocupacion" value={`${occupancy}%`} hint={`${connected} conectados · objetivo operativo 85%`} tone={occupancy >= 85 ? "warn" : "default"} />,
     connected: <MetricWidget kicker={WIDGET_KICKER.connected} label="Equipo conectado" value={connected} hint={`de ${agents.length} ejecutivos`} />,
@@ -459,6 +515,52 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
     "effective-contacts": <MetricWidget kicker={WIDGET_KICKER["effective-contacts"]} label="Contactos efectivos" value={formatInt(totals.contacts)} hint={`${formatInt(totals.managements)} gestiones cerradas hoy`} />,
     "attempts-per-contact": <MetricWidget kicker={WIDGET_KICKER["attempts-per-contact"]} label="Intentos por contacto" metric="intentos_por_contacto" value={attemptsPerContact === null ? "—" : attemptsPerContact.toFixed(1)} hint={attemptsPerContact === null ? "Aún sin contactos efectivos" : `${formatInt(totals.attempts)} intentos · ${formatInt(totals.contacts)} contactos`} tone={attemptsPerContact !== null && attemptsPerContact > 15 ? "warn" : "default"} />,
     "sales-today": <MetricWidget kicker={WIDGET_KICKER["sales-today"]} label="Ventas hoy" value={formatInt(totals.sales)} hint={totals.contacts ? `${conversionRate}% de los contactos efectivos` : "Sin contactos efectivos todavía"} tone={totals.sales > 0 ? "good" : "default"} />,
+    tmo: <MetricWidget kicker={WIDGET_KICKER.tmo} label="TMO del día" value={formatElapsed(today?.tmo_segundos ?? null)} hint={today ? `Gestión completa, de abrir a tipificar · con contacto ${formatElapsed(today.tmo_contacto_segundos)}` : "Calculando…"} />,
+    tmc: <MetricWidget kicker={WIDGET_KICKER.tmc} label="Tiempo de conversación" value={formatElapsed(today?.tmc_segundos ?? null)} hint={today ? `Promedio por llamada conectada · ${formatInt(today.discador_conectadas)} conectadas hoy` : "Calculando…"} />,
+    production: <MetricWidget kicker={WIDGET_KICKER.production} label="Producción del día" value={today ? formatInt(today.gestiones) : "—"} hint={today ? `${formatInt(today.contactos)} contactos (${today.contactabilidad ?? 0}%) · ${formatInt(today.ventas)} ventas · ${formatInt(today.cotizaciones)} cotizaciones · ${formatInt(today.agendas)} agendas` : "Calculando…"} tone={today && today.ventas > 0 ? "good" : "default"} />,
+    "technical-failures": <MetricWidget kicker={WIDGET_KICKER["technical-failures"]} label="Fallas de troncal" value={today?.fallas_tecnicas == null ? "—" : `${today.fallas_tecnicas}%`} hint={today ? `Intentos que no alcanzaron a sonar · ${formatInt(today.discador_intentos)} intentos hoy · abandono ${today.abandono ?? 0}%` : "Calculando…"} tone={today?.fallas_tecnicas != null && today.fallas_tecnicas >= 30 ? "danger" : today?.fallas_tecnicas != null && today.fallas_tecnicas >= 10 ? "warn" : "good"} />,
+    hourly: (
+      <div className="h-[19.5rem]">
+        <p className="text-[10px] font-semibold tracking-[0.18em] text-primary">{WIDGET_KICKER.hourly}</p>
+        <p className="mt-2 text-lg font-semibold tracking-tight text-foreground">Curva por hora</p>
+        <p className="mt-1 text-xs text-muted-foreground">Intentos del discador, gestiones y contactos de hoy, hora Chile.</p>
+        {hourlyData.length ? (
+          <ResponsiveContainer width="100%" height="72%">
+            <BarChart data={hourlyData} margin={{ top: 16, left: -12, right: 8, bottom: 0 }} barCategoryGap="22%">
+              <XAxis dataKey="name" tick={{ fill: "var(--muted-foreground)", fontSize: 10 }} tickLine={false} axisLine={false} interval={0} />
+              <YAxis allowDecimals={false} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickLine={false} axisLine={false} />
+              <Tooltip cursor={{ fill: "var(--surface-muted)" }} contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, fontSize: 12 }} />
+              <Bar dataKey="Intentos" fill="var(--accent)" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="Gestiones" fill="var(--primary)" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="Contactos" fill="var(--success)" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        ) : <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">Sin actividad todavía.</div>}
+      </div>
+    ),
+    "pause-reasons": (
+      <div className="h-[19.5rem] overflow-y-auto">
+        <p className="text-[10px] font-semibold tracking-[0.18em] text-primary">{WIDGET_KICKER["pause-reasons"]}</p>
+        <p className="mt-2 text-lg font-semibold tracking-tight text-foreground">Pausa por motivo</p>
+        <p className="mt-1 text-xs text-muted-foreground">Tiempo acumulado hoy del equipo y quiénes están en pausa ahora.</p>
+        <div className="mt-4 space-y-2.5">
+          {(wallboard?.pausa_equipo ?? []).length === 0 && <p className="text-sm text-muted-foreground">Sin pausas registradas hoy.</p>}
+          {(wallboard?.pausa_equipo ?? []).map((item) => {
+            const pausedNow = wallboard?.estado.pausa_por_motivo.find((row) => row.motivo === item.motivo)?.ejecutivos ?? 0;
+            const share = pauseTotal > 0 ? Math.round((item.segundos / pauseTotal) * 100) : 0;
+            return (
+              <div key={item.motivo}>
+                <div className="flex items-baseline justify-between gap-2 text-xs">
+                  <span className="font-medium text-foreground">{item.motivo}{pausedNow > 0 && <span className="ml-1.5 text-danger">· {pausedNow} ahora</span>}</span>
+                  <span className="font-mono tabular-nums text-muted-foreground">{formatElapsed(item.segundos)}</span>
+                </div>
+                <div className="mt-1 h-2 overflow-hidden rounded-full bg-surface-muted"><div className="h-full rounded-full bg-danger/70" style={{ width: `${share}%` }} /></div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    ),
     "status-chart": (
       <div className="h-[19.5rem]">
         <div className="flex items-start justify-between gap-4">
