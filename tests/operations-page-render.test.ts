@@ -38,6 +38,9 @@ const ui = {
     React.createElement("h1", null, title as React.ReactNode),
     React.createElement("p", null, description as React.ReactNode), actions as React.ReactNode),
   SectionCard: section,
+  // Pestañas Centro de operaciones / Monitor en vivo: enlaces simples.
+  NavTabs: ({ tabs }: { tabs: { label: string; href: string }[] }) => React.createElement("nav", null,
+    tabs.map((tab) => React.createElement("a", { key: tab.href, href: tab.href }, tab.label))),
   Card: element("div"), Badge: element("span"), Callout: element("aside"),
   Select: element("select"), Table: element("table"), Tbody: element("tbody"),
   Td: element("td"), Th: element("th"), Tr: element("tr"),
@@ -145,6 +148,8 @@ async function renderOperations({
 
 test("real admin Operations render contains queue metadata and no customer inbox or content", async () => {
   const { html, reads } = await renderOperations();
+  // El monitor en vivo es parte de Operación: tiene que poder abrirse desde aquí.
+  assert.match(html, /href="\/dashboard\/supervision\/monitor"[^>]*>Monitor en vivo</);
   assert.match(html, /Centro de operaciones/);
   assert.match(html, /Administración sin atención al cliente/);
   assert.match(html, /Secretaría Virtual/);

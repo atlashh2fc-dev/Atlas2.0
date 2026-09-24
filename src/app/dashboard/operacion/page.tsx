@@ -17,6 +17,7 @@ import {
   Badge,
   Callout,
   Card,
+  NavTabs,
   PageHeader,
   SectionCard,
   Select,
@@ -120,6 +121,12 @@ function phoneState(agent: AgentLiveStatus) {
     ? "Disponible para voz"
     : "Sin estado";
 }
+
+/** Operación tiene dos vistas: la foto de colas y canales, y el monitor en vivo. */
+const OPERATION_TABS = [
+  { label: "Centro de operaciones", href: "/dashboard/operacion" },
+  { label: "Monitor en vivo", href: "/dashboard/supervision/monitor" },
+];
 
 export default async function OperationsPage({
   searchParams,
@@ -425,6 +432,7 @@ export default async function OperationsPage({
           ) : undefined
         }
       />
+      <NavTabs tabs={OPERATION_TABS} />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
           <ShieldCheck size={14} /> Solo metadatos operativos · Sin contenido de

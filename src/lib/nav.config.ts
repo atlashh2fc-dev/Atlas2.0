@@ -130,6 +130,10 @@ const CONSOLE: NavSpace = {
           description: "Colas de voz, WhatsApp y correo, capacidad y excepciones; sin atender clientes",
           badge: "live-agents",
           match: ["/dashboard/operacion", "/dashboard/supervision/monitor"],
+          tabs: [
+            { label: "Centro de operaciones", href: "/dashboard/operacion" },
+            { label: "Monitor en vivo", href: "/dashboard/supervision/monitor" },
+          ],
           modules: ["contact_center"],
         },
         {

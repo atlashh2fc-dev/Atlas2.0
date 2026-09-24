@@ -1,6 +1,6 @@
 import { requireProfile } from "@/lib/auth";
 import { LiveMonitor } from "@/components/live-monitor";
-import { PageHeader } from "@/components/ui";
+import { NavTabs, PageHeader } from "@/components/ui";
 
 export default async function MonitorEnVivoPage() {
   const profile = await requireProfile(["admin", "supervisor"]);
@@ -9,7 +9,14 @@ export default async function MonitorEnVivoPage() {
     <div className="space-y-6">
       <PageHeader
         title="Monitor en vivo"
-        description="Una consola configurable para vigilar capacidad, riesgo y carga operacional en tiempo real."
+        description="Estado del equipo al segundo y métricas del día: TMO, contactabilidad, abandono, producción y pausas."
+        className="border-b-0 pb-0"
+      />
+      <NavTabs
+        tabs={[
+          { label: "Centro de operaciones", href: "/dashboard/operacion" },
+          { label: "Monitor en vivo", href: "/dashboard/supervision/monitor" },
+        ]}
       />
       <LiveMonitor canForceLogout={profile.role === "admin"} />
     </div>
