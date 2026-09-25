@@ -547,7 +547,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
     paused: <MetricWidget kicker={WIDGET_KICKER.paused} label="En pausa" value={groups.paused} hint="Fuera de la cola por AUX" tone={groups.paused > 0 ? "warn" : "default"} />,
     alerts: <MetricWidget kicker={WIDGET_KICKER.alerts} label="Alertas operativas" value={alerts} hint={alerts ? "Pausa o cierre fuera de umbral" : "Todo dentro de los umbrales"} tone={alerts ? "danger" : "good"} />,
     campaigns: <MetricWidget kicker={WIDGET_KICKER.campaigns} label="Campañas activas" value={queues.length} hint={`${totals.inFlight} llamadas en curso`} />,
-    answered: <MetricWidget kicker={WIDGET_KICKER.answered} label="Conectados hoy" metric="conectados" value={funnel ? formatInt(funnel.conectados) : "—"} hint={funnel ? (funnel.conectados ? `${formatPercent(funnel.tasa_conexion)} de lo recorrido · ${formatInt(funnel.contactados)} con aló (${formatPercent(funnel.alo_de_conectados)})` : "Nadie ha contestado todavía") : "Calculando…"} />,
+    answered: <MetricWidget kicker={WIDGET_KICKER.answered} label="Conectados hoy" metric="conectados" value={funnel ? formatInt(funnel.conectados) : "—"} hint={funnel ? (funnel.conectados ? `${formatPercent(funnel.tasa_conexion)} de ${formatInt(funnel.recorridos)} recorridos únicos · ${formatInt(funnel.contactados)} con aló (${formatPercent(funnel.alo_de_conectados)})` : "Nadie ha contestado todavía") : "Calculando…"} />,
     completed: <MetricWidget kicker={WIDGET_KICKER.completed} label="Completadas hoy" value={formatInt(totals.completed)} hint={totals.answered ? `${Math.round((totals.completed / totals.answered) * 100)}% de las llamadas conectadas` : "Sin llamadas conectadas"} />,
     "abandon-rate": <MetricWidget kicker={WIDGET_KICKER["abandon-rate"]} label="Abandono hoy" metric="abandono" value={`${abandonRate}%`} hint={`${formatInt(totals.abandoned)} abandonadas · umbral ${THRESHOLDS.abandonRate}%`} tone={abandonRate > THRESHOLDS.abandonRate ? "danger" : "good"} />,
     "no-answer-rate": <MetricWidget kicker={WIDGET_KICKER["no-answer-rate"]} label="Sin respuesta hoy" value={`${noAnswerRate}%`} hint={`${formatInt(totals.noAnswer)} intentos sin respuesta`} tone={noAnswerRate >= 70 ? "warn" : "default"} />,
@@ -559,11 +559,11 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
       <div className="flex h-[19.5rem] flex-col">
         <p className="text-[10px] font-semibold tracking-[0.18em] text-primary">{WIDGET_KICKER.funnel}</p>
         <p className="mt-2 text-lg font-semibold tracking-tight text-foreground">Embudo del día</p>
-        <p className="mt-1 text-xs text-muted-foreground">Registros distintos, hora Chile. Cada tasa sobre el recorrido; entre paréntesis, sobre la etapa anterior.</p>
+        <p className="mt-1 text-xs text-muted-foreground">Toques únicos a la base: cada registro cuenta una vez al día aunque se marque varias veces. Hora Chile. Cada tasa sobre el recorrido; entre paréntesis, sobre la etapa anterior.</p>
         {funnel && funnel.recorridos > 0 ? (
           <div className="mt-3 flex-1 space-y-2">
             {([
-              { label: "Recorridos", value: funnel.recorridos, color: "var(--accent)", step: null, stepLabel: `${formatRatio(funnel.intensidad)} marcaciones por registro` },
+              { label: "Recorridos únicos", value: funnel.recorridos, color: "var(--accent)", step: null, stepLabel: `${formatInt(funnel.intentos)} marcaciones · ${formatRatio(funnel.intensidad)} por registro` },
               { label: "Conectados", value: funnel.conectados, color: "var(--muted-foreground)", step: null, stepLabel: `${formatPercent(funnel.tasa_conexion)} conexión` },
               { label: "Aló", value: funnel.contactados, color: "var(--primary)", step: funnel.alo_de_conectados, stepLabel: "de los conectados" },
               { label: "Titular", value: funnel.titulares, color: "var(--success)", step: funnel.titularidad, stepLabel: "de los aló" },
