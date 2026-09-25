@@ -1,6 +1,6 @@
 # Arquitectura de espacios de trabajo — Atlas 2.0
 
-Actualizado: 27 de agosto de 2026. Describe la implementación local y sus criterios de verificación;
+Actualizado: 25 de septiembre de 2026. Describe la implementación local y sus criterios de verificación;
 no certifica un despliegue ni una prueba con cuentas de producción.
 
 ## Modelo funcional
@@ -17,9 +17,12 @@ existentes. No se agrega un selector para asumir otro rol.
 | Supervisor | Supervisión | Colas y carga de sus equipos, asignación, revisión y resultados | Consulta autorizada de historial, sin responder como ejecutivo |
 | Agente | Atención | Interacciones asignadas, llamadas, registros propios y seguimientos | Opera dentro de su asignación y alcance |
 
-Para el administrador, control y configuración forman un único árbol de tareas. La
-autorización sigue separada por página y acción, pero la persona no tiene que cambiar de
-"modo" ni perder el contexto para llegar a una configuración.
+Operar y configurar son espacios distintos, como en los CRM grandes (Setup de Salesforce,
+engranaje de HubSpot, Admin Center de Zendesk). La operación diaria no mezcla destinos de
+configuración; la configuración se abre con **⚙ Configuración** al pie del menú, siempre visible
+para quien tiene algo que configurar, y se vuelve con **← Volver a la operación**. El buscador
+encuentra los destinos de los dos espacios. (Entre el 04-09 y el 25-09-2026 fueron un único
+árbol; se volvió a separar porque la configuración diluía la operación.)
 La IA se controla a nivel general desde el espacio operativo autorizado: no es un interruptor
 por ejecutivo ni una función de cada conversación.
 
@@ -40,54 +43,43 @@ por ejecutivo ni una función de cada conversación.
 ## Navegación por tarea
 
 La fuente de verdad es `src/lib/nav.config.ts`: inventario compartido de destinos más una
-estructura explícita de secciones por rol. Sidebar, drawer móvil y búsqueda usan esa fuente.
+estructura explícita de secciones por perfil y por espacio (`console` = operación, `admin` =
+configuración). Sidebar, drawer móvil y búsqueda usan esa fuente. Los ítems se filtran además
+por módulos contratados y edición (Center, Dental, Vet).
 
 ### Administrador — Control
 
 ```text
-Resumen
-Control diario
-  Operación
-  Registros
-Revisión
-  Reportes
-  Grabaciones y calidad
-Configuración
-  Campañas
-  Colas y enrutamiento
-  Flujos de gestión
-  Estados de agente
-  Cargas y listas
-Plataforma
-  Usuarios y equipos
-  Extensiones SIP
-  Integraciones
-Ayuda · perfil
+Operación                          ⚙ Configuración
+  Resumen                            Contact center
+  Operación en vivo                    Campañas · Colas y enrutamiento · Flujos de gestión
+    Operación · Correo                 Estados de agente · Cargas y listas
+  Gestión                            Clínica
+    Ventas · Registros                 Procedimientos y precios · Materiales e insumos
+    Validación de ventas               Correo de la clínica
+  Análisis y calidad                 Plataforma
+    Reportes                           Empresas · Usuarios y equipos
+    Grabaciones y calidad              Telefonía · diagnóstico · Integraciones
 ```
-
-Operación abre `/dashboard/operacion`: el destino de colas, capacidad y excepciones, no una
-conversación seleccionada automáticamente. El administrador puede revisar grabaciones y calidad
-desde el mismo árbol; no existe una segunda entrada de Campañas ni un enlace "Volver a Control".
 
 ### Supervisor — Supervisión
 
 ```text
-Resumen
-Supervisión
-  Operación
-  Mi equipo
-  Campañas
-  Registros
-Revisión y resultados
-  Historial
-  Grabaciones y calidad
-  Reportes
-──────────────────────
-Ayuda · perfil
+Operación                          ⚙ Configuración
+  Resumen                            Mi equipo
+  Operación en vivo                    Usuarios y skills
+    Operación · Mi equipo · Correo
+  Gestión
+    Campañas · Ventas · Registros
+    Validación de ventas
+  Análisis y calidad
+    Historial · Reportes · Grabaciones y calidad
 ```
 
 Historial reutiliza `/dashboard/conversaciones` para consulta autorizada, sin convertir al
-supervisor en participante. Reasignar trabajo y responder al cliente son capacidades diferentes.
+supervisor en participante. Campañas (`/dashboard/campanas`) es operativa: elige la campaña con
+la que se trabaja. Lo que el supervisor configura es a su equipo (campañas que opera cada
+ejecutivo, contraseña y acceso), en `/dashboard/team/usuarios`.
 
 ### Agente — Atención
 
@@ -96,15 +88,25 @@ Mi jornada
 Mi atención
 Mis registros
 Mi agenda
-──────────────────────
-Ayuda · perfil
 ```
 
-Mi atención abre `/dashboard/conversaciones`. Voice conserva su puesto de atención y la
-gestión de llamadas; no se traslada al espacio de Control por compartir plataforma.
+El agente no tiene espacio de configuración. Mi atención abre `/dashboard/conversaciones`.
 
-No se agrega una entrada de Auditoría sin una ruta funcional existente. Las acciones de crear,
-importar y editar viven junto al objeto correspondiente, no como destinos de primer nivel.
+En Dental y Vet la operación suma Agenda, Pacientes, Caja, Recordatorios, Campañas y
+Conversaciones de la clínica en los mismos grupos.
+
+### Personalización por persona
+
+Cada persona ajusta su menú dentro de lo que su perfil permite, y se guarda en su cuenta
+(`user_view_preferences`, clave `sidebar`), así que la sigue entre equipos:
+
+- **Favoritos:** la ★ al pasar el mouse fija un destino arriba de la operación, incluso uno de
+  configuración. En «Personalizar menú» se reordenan.
+- **Ocultar:** en «Personalizar menú» el ojo saca un destino que no usa. La página abierta
+  nunca desaparece y el buscador sigue encontrando lo oculto.
+- **Secciones plegadas** y **Restaurar menú** para volver al menú del perfil.
+
+La personalización no concede nada: solo reordena y esconde destinos ya autorizados.
 
 ## Inicio por rol
 
@@ -125,8 +127,8 @@ aplica silenciosamente el filtro persistido de campaña; declara su alcance.
 
 1. Resumen → lista/cola → detalle explícito. Encontrar un registro no lo abre automáticamente.
 2. Menú y búsqueda ofrecen los mismos destinos por rol, en el mismo orden lógico.
-3. Secciones de navegación y registros recientes se guardan por usuario y rol; no se reutiliza
-   el historial local genérico de otra sesión.
+3. La personalización del menú se guarda en la cuenta, y los registros recientes por usuario y
+   rol; la caché local también va por persona y no se reutiliza la de otra sesión.
 4. El buscador encuentra secciones por nombre/descripción y registros por la RPC existente.
    Si falla la consulta, lo comunica y conserva los accesos a secciones.
 5. El menú móvil usa el mismo árbol, cierra con Escape, contiene el foco y lo devuelve al botón

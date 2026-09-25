@@ -5,14 +5,19 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import type { Profile } from "@/lib/types";
-import { ROLE_LABEL, workspaceLabel } from "@/lib/nav.config";
-import { NavFooter, NavTree, type NavBadgeCounts } from "@/components/sidebar";
+import { ROLE_LABEL, spaceForPath, workspaceLabel } from "@/lib/nav.config";
+import { NavFooter, NavTree, useNavPersonalization, type NavBadgeCounts } from "@/components/sidebar";
 import { MarcaAtlas } from "@/components/marca-atlas";
 import type { Edicion } from "@/lib/ediciones";
 import type { AppModule } from "@/lib/modules";
 
 export function WorkspaceContext({ role }: { role: Profile["role"] }) {
-  return <span className="hidden text-sm font-medium text-foreground md:block">{workspaceLabel(role)}</span>;
+  const pathname = usePathname();
+  return (
+    <span className="hidden text-sm font-medium text-foreground md:block">
+      {workspaceLabel(role, spaceForPath(pathname, role))}
+    </span>
+  );
 }
 
 /**
@@ -34,6 +39,8 @@ export function MobileNav({
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const personalization = useNavPersonalization(profile);
   const drawerRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -100,7 +107,7 @@ export function MobileNav({
               <div className="leading-none">
                 <MarcaAtlas edicion={edicion} />
                 <p className="mt-0.5 text-[10px] text-muted-foreground">
-                  {workspaceLabel(profile.role)} · {ROLE_LABEL[profile.role]}
+                  {workspaceLabel(profile.role, spaceForPath(pathname, profile.role))} · {ROLE_LABEL[profile.role]}
                 </p>
               </div>
               <button
@@ -122,10 +129,21 @@ export function MobileNav({
                 edicion={edicion}
                 duenio={duenio}
                 onNavigate={() => setOpen(false)}
+                personalization={personalization}
+                editing={editing}
               />
             </nav>
 
-            <NavFooter profile={profile} pathname={pathname} onNavigate={() => setOpen(false)} />
+            <NavFooter
+              profile={profile}
+              pathname={pathname}
+              modules={modules}
+              edicion={edicion}
+              onNavigate={() => setOpen(false)}
+              personalization={personalization}
+              editing={editing}
+              onToggleEditing={() => setEditing((value) => !value)}
+            />
           </aside>
         </div>
       )}

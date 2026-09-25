@@ -163,7 +163,8 @@ test("monitor no consulta ni muta contenido; errores y truncamiento no son cero"
   assert.match(loader, /result\.count > MAX_ROWS/);
   assert.match(loader, /data: null/);
   assert.match(monitor, /stockUnavailable \? null/);
-  assert.match(monitor, /Espera ACD en vivo/);
+  assert.match(monitor, /Contactabilidad hoy/);
+  assert.doesNotMatch(monitor, /Espera ACD/);
 });
 
 test("el modo general sigue centralizado y el agente tiene una toma de atención explícita", () => {

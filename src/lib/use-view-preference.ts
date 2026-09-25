@@ -21,9 +21,18 @@ const SAVE_DEBOUNCE_MS = 800;
 
 export function useViewPreference<T>(
   viewKey: ViewKey,
-  fallback: T
+  fallback: T,
+  /**
+   * Separa la caché del navegador por persona. Sin esto, en un computador
+   * compartido la vista del anterior se pinta hasta que responde el servidor, y
+   * se queda si el nuevo usuario nunca guardó la suya.
+   */
+  cacheScope?: string
 ): [T, (next: T) => void] {
-  const [value, setValue] = usePersistentState<T>(`atlas:view:${viewKey}`, fallback);
+  const [value, setValue] = usePersistentState<T>(
+    cacheScope ? `atlas:view:${viewKey}:${cacheScope}` : `atlas:view:${viewKey}`,
+    fallback
+  );
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Evita que la respuesta del servidor pise un cambio que el usuario acaba de
   // hacer mientras la petición viajaba.

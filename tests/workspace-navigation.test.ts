@@ -16,40 +16,51 @@ new Function("require", "exports", compiled)((specifier: string) =>
 
 type Role = "admin" | "supervisor" | "agente";
 type Item = { id: string; href: string; roles: Role[]; match?: string[] };
-type Section = { id: string; items: Item[] };
+type Section = { id: string; label?: string; items: Item[] };
+type Space = "console" | "admin";
 const nav = moduleExports as {
-  visibleSections: (space: "console" | "admin", role: Role, modules?: string[], duenio?: boolean) => Section[];
+  visibleSections: (space: Space, role: Role, modules?: string[], duenio?: boolean) => Section[];
   allItemsForRole: (role: Role) => Item[];
   navLabel: (item: Item, role: Role) => string;
-  workspaceLabel: (role: Role) => string;
+  workspaceLabel: (role: Role, space?: Space) => string;
+  spaceForPath: (path: string, role?: Role) => Space;
+  setupEntryHref: (role: Role) => string | null;
   isItemActive: (item: Item, path: string) => boolean;
 };
-const consoleItems = (role: Role) => nav.visibleSections("console", role).flatMap((section) => section.items);
-const labels = (role: Role) => consoleItems(role).map((item) => nav.navLabel(item, role));
+const items = (space: Space, role: Role) => nav.visibleSections(space, role).flatMap((section) => section.items);
+const consoleItems = (role: Role) => items("console", role);
+const labels = (space: Space, role: Role) => items(space, role).map((item) => nav.navLabel(item, role));
+const sectionLabels = (space: Space, role: Role) => nav.visibleSections(space, role).map((section) => section.label ?? "");
 
-test("Control is an overview, not a response inbox", () => {
-  assert.deepEqual(labels("admin"), [
+test("Control opera por tarea y deja la configuración en su propio espacio", () => {
+  assert.deepEqual(sectionLabels("console", "admin"), ["", "Operación en vivo", "Gestión", "Análisis y calidad"]);
+  assert.deepEqual(labels("console", "admin"), [
     "Resumen",
     "Operación",
+    "Correo",
     "Pacientes",
     "Ventas",
-    "Correo",
     "Registros",
     "Validación de ventas",
     "Reportes",
     "Grabaciones y calidad",
-    "Procedimientos y precios",
-    "Materiales e insumos",
+  ]);
+  assert.deepEqual(sectionLabels("admin", "admin"), ["Contact center", "Clínica", "Plataforma"]);
+  assert.deepEqual(labels("admin", "admin"), [
     "Campañas",
     "Colas y enrutamiento",
     "Flujos de gestión",
     "Estados de agente",
     "Cargas y listas",
+    "Procedimientos y precios",
+    "Materiales e insumos",
     "Empresas",
     "Usuarios y equipos",
     "Telefonía · diagnóstico",
     "Integraciones",
   ]);
+  // Ninguna configuración se cuela en la operación diaria.
+  assert.equal(consoleItems("admin").some((item) => item.href.startsWith("/dashboard/admin")), false);
   assert.ok(nav.allItemsForRole("admin").every((item) => !item.href.startsWith("/dashboard/conversaciones")));
   // El dueño de la plataforma, aunque sea admin, sí ve Conversaciones (solo lectura).
   assert.ok(
@@ -57,50 +68,53 @@ test("Control is an overview, not a response inbox", () => {
       .flatMap((section) => section.items)
       .some((item) => item.href === "/dashboard/conversaciones"),
   );
-  assert.ok(consoleItems("admin").some((item) => item.href.startsWith("/dashboard/calidad")));
-  assert.equal(nav.workspaceLabel("admin"), "Administración");
-  assert.deepEqual(
-    nav.visibleSections("admin", "admin").flatMap((section) => section.items.map((item) => item.id)),
-    consoleItems("admin").map((item) => item.id),
-  );
+  assert.equal(nav.workspaceLabel("admin"), "Control");
+  assert.equal(nav.workspaceLabel("admin", "admin"), "Configuración");
+  assert.equal(nav.setupEntryHref("admin"), "/dashboard/admin/campanas");
 });
 
-test("Supervisión groups control and review without assuming an agent role", () => {
-  assert.deepEqual(labels("supervisor"), ["Resumen", "Operación", "Pacientes", "Ventas", "Correo", "Mi equipo", "Usuarios", "Campañas", "Registros", "Validación de ventas", "Historial", "Grabaciones y calidad", "Reportes"]);
+test("Supervisión opera su equipo y configura aparte a sus ejecutivos", () => {
+  assert.deepEqual(labels("console", "supervisor"), ["Resumen", "Operación", "Mi equipo", "Correo", "Pacientes", "Campañas", "Ventas", "Registros", "Validación de ventas", "Historial", "Reportes", "Grabaciones y calidad"]);
+  assert.deepEqual(labels("admin", "supervisor"), ["Usuarios y skills"]);
   assert.equal(nav.workspaceLabel("supervisor"), "Supervisión");
-  assert.deepEqual(nav.visibleSections("admin", "supervisor"), []);
+  assert.equal(nav.setupEntryHref("supervisor"), "/dashboard/team/usuarios");
+  assert.equal(nav.spaceForPath("/dashboard/team/usuarios", "supervisor"), "admin");
+  assert.equal(nav.spaceForPath("/dashboard/team", "supervisor"), "console");
   assert.equal(nav.allItemsForRole("supervisor").some((item) => item.href.startsWith("/dashboard/admin")), false);
 });
 
-test("Atención orders personal work without control modules", () => {
-  assert.deepEqual(labels("agente"), ["Mi jornada", "Mi atención", "Mis registros", "Mi agenda"]);
+test("Atención ordena el trabajo personal y no tiene configuración", () => {
+  assert.deepEqual(labels("console", "agente"), ["Mi jornada", "Mi atención", "Mis registros", "Mi agenda"]);
   assert.equal(nav.workspaceLabel("agente"), "Atención");
   assert.deepEqual(nav.visibleSections("admin", "agente"), []);
+  assert.equal(nav.setupEntryHref("agente"), null);
   assert.equal(nav.allItemsForRole("agente").some((item) => item.href.startsWith("/dashboard/operacion")), false);
 });
 
 test("command palette shares visible navigation and every destination exists", () => {
   for (const role of ["admin", "supervisor", "agente"] as const) {
-    const items = nav.allItemsForRole(role);
-    const visible = role === "admin"
-      ? consoleItems(role)
-      : [...consoleItems(role), ...nav.visibleSections("admin", role).flatMap((section) => section.items)];
-    assert.deepEqual(items.slice(0, -1).map((item) => item.id), visible.map((item) => item.id));
-    assert.equal(new Set(items.map((item) => item.id)).size, items.length);
-    for (const item of items) {
+    const all = nav.allItemsForRole(role);
+    const visible = [...items("console", role), ...items("admin", role)];
+    assert.deepEqual(all.slice(0, -1).map((item) => item.id), visible.map((item) => item.id));
+    assert.equal(new Set(all.map((item) => item.id)).size, all.length);
+    for (const item of all) {
       assert.ok(item.roles.includes(role));
       assert.ok(existsSync(new URL(`../src/app${item.href}/page.tsx`, import.meta.url)), `${role} links to missing ${item.href}`);
     }
   }
 });
 
-test("administración no queda oculta detrás de un cambio de espacio", () => {
+test("la configuración está a un clic y el menú se personaliza por cuenta", () => {
   const desktop = readFileSync(new URL("../src/components/sidebar.tsx", import.meta.url), "utf8");
   const mobile = readFileSync(new URL("../src/components/mobile-nav.tsx", import.meta.url), "utf8");
-
-  assert.doesNotMatch(desktop, /Volver a Control/);
-  assert.doesNotMatch(mobile, /Volver a Control/);
-  assert.doesNotMatch(desktop, /profile\.role === "admin" && !inAdmin/);
+  // El engranaje vive en el pie, siempre visible: la configuración no se esconde.
+  assert.match(desktop, /label="Configuración"/);
+  assert.match(desktop, /Volver a la operación/);
+  assert.match(desktop, /useViewPreference<NavPreference>\(\s*"sidebar"/);
+  assert.match(desktop, /Personalizar menú/);
+  assert.match(mobile, /useNavPersonalization\(profile\)/);
+  assert.equal(nav.spaceForPath("/dashboard/admin/colas", "admin"), "admin");
+  assert.equal(nav.spaceForPath("/dashboard/operacion", "admin"), "console");
 });
 
 test("Operations includes Voice monitor context; summary matches only home", () => {
