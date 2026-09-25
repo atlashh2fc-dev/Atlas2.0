@@ -49,20 +49,30 @@ function normalize(value: string) {
 /**
  * Persona con quien hablar. Null si la base no la trae o si repite el nombre
  * del registro (en Equifax el registro es la razón social).
+ *
+ * Primero lo que trajo la propia base o Atlas 1 (con quien ya se habló) y al
+ * final `extra.contacto`, que completa scripts/completar-contacto-bigdata.mjs
+ * con el representante o la persona del número que se marca.
  */
 export function leadContactPerson(
   extra: Record<string, unknown> | null | undefined,
   recordName: string | null | undefined
 ): string | null {
   if (!extra) return null;
+  const isOwnName = (value: string) => Boolean(recordName) && normalize(value) === normalize(recordName ?? "");
   const scopes = [extra, ...NESTED_GROUPS.map((group) => extra[group]).filter(isRecord)];
   for (const scope of scopes) {
     for (const key of CONTACT_KEYS) {
       const value = scope[key];
-      if (typeof value !== "string" || !value.trim()) continue;
-      if (recordName && normalize(value) === normalize(recordName)) return null;
+      if (typeof value !== "string" || !value.trim() || isOwnName(value)) continue;
       return value.trim();
     }
+  }
+  const enriched = extra.contacto;
+  if (isRecord(enriched) && typeof enriched.nombre === "string" && enriched.nombre.trim()) {
+    if (isOwnName(enriched.nombre)) return null;
+    const cargo = typeof enriched.cargo === "string" && enriched.cargo.trim() ? ` · ${enriched.cargo.trim()}` : "";
+    return `${enriched.nombre.trim()}${cargo}`;
   }
   return null;
 }

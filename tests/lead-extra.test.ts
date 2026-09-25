@@ -43,3 +43,22 @@ test("el primer nivel se sigue mostrando igual y respeta las exclusiones", () =>
   const fields = leadExtraFields({ monto: 1000, plan: "Pro", contact_name: "Ana", deuda: 5 }, { exclude: ["deuda"] });
   assert.deepEqual(fields, [["monto", "1000"], ["plan", "Pro"]]);
 });
+
+test("sin persona en la base se usa la que completó Bigdata, con su cargo", () => {
+  const extra = {
+    base_discado: { rubro: "X" },
+    contacto: { nombre: "Manuela Chicharro Vargas", cargo: "Representante legal", fuente: "bigdata" },
+  };
+  assert.equal(leadContactPerson(extra, "EMPRESA SPA"), "Manuela Chicharro Vargas · Representante legal");
+  // La persona con quien se habló en Atlas 1 manda sobre la de Bigdata.
+  assert.equal(
+    leadContactPerson({ ...extra, atlas1: { nombre_cliente: "Freddy Brevis" } }, "EMPRESA SPA"),
+    "Freddy Brevis"
+  );
+  // Si Atlas 1 solo repetía la razón social, se cae a Bigdata.
+  assert.equal(
+    leadContactPerson({ ...extra, atlas1: { nombre_cliente: "Empresa SpA" } }, "EMPRESA SPA"),
+    "Manuela Chicharro Vargas · Representante legal"
+  );
+  assert.equal("contacto" in Object.fromEntries(leadExtraFields(extra)), false);
+});
