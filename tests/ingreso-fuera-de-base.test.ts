@@ -69,3 +69,21 @@ test("la ficha guarda dirección, rubro y de dónde salió el dato", () => {
   );
   assert.match(CON_BIGDATA, /v_result := public\.create_manual_lead_record\(/);
 });
+
+const AGENDA = soloCodigo(leer("supabase/migrations/20260925220000_ingreso_asignado_queda_en_agenda.sql"));
+const MI_AGENDA = leer("src/app/dashboard/agenda/page.tsx");
+
+test("asignado a un ejecutivo, el registro queda en su agenda personal", () => {
+  // Mi agenda filtra por managed_by y next_action_at: sin eso el ejecutivo no lo ve.
+  assert.match(MI_AGENDA, /\.eq\("managed_by", profile\.id\)/);
+  assert.match(MI_AGENDA, /\.not\("next_action_at", "is", null\)/);
+  assert.match(AGENDA, /set managed_by = p_assigned_to,\s*next_action_at = v_agenda_at,/);
+  // Lo que exige claim_due_personal_callbacks para marcarlo a la hora.
+  assert.match(AGENDA, /workflow_status = 'callback'/);
+  assert.match(AGENDA, /callback_mode = 'personal'/);
+  assert.match(AGENDA, /next_action_channel = 'phone'/);
+  // Una hora pasada no la marcaría nadie: se agenda ya.
+  assert.match(AGENDA, /greatest\(coalesce\(p_agenda_at, now\(\)\), now\(\)\)/);
+  assert.match(ACCION, /p_agenda_at: agendaAt\?\.toISOString\(\) \?\? null/);
+  assert.match(ACCION, /parseDateTimeInput\(agendaInput\)/);
+});

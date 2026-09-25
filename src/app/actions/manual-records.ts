@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireProfile } from "@/lib/auth";
 import { normalizeChilePhone } from "@/lib/chile-phone";
+import { parseDateTimeInput } from "@/lib/report-range";
 import { formatRut } from "@/lib/rut";
 import { createClient } from "@/lib/supabase/server";
 
@@ -24,6 +25,8 @@ type ManualRecordInput = {
   product?: string;
   /** "bigdata" cuando algún campo se propuso desde Bigdata. */
   completadoCon?: string;
+  /** `datetime-local` en hora Chile. Vacío = ahora. Solo con ejecutivo. */
+  agendaAt?: string;
 };
 
 type ManualRecordResult = {
@@ -31,6 +34,7 @@ type ManualRecordResult = {
   message?: string;
   leadId?: string;
   duplicate?: boolean;
+  agendaAt?: string;
 };
 
 function blankToNull(value: string | undefined): string | null {
@@ -67,6 +71,10 @@ export async function createManualLeadRecord(input: ManualRecordInput): Promise<
     const rut = formatRut(rutInput);
     const phone = phoneOrNull(input.phone, "Teléfono");
     const phoneAlt = phoneOrNull(input.phoneAlt, "Teléfono adicional");
+    const assignedTo = blankToNull(input.assignedTo);
+    const agendaInput = assignedTo ? blankToNull(input.agendaAt) : null;
+    const agendaAt = agendaInput ? parseDateTimeInput(agendaInput) : null;
+    if (agendaInput && !agendaAt) return { ok: false, message: "La fecha de la agenda no es válida." };
 
     const supabase = await createClient();
     const { data, error } = await supabase.rpc("ingresar_lead_fuera_de_base", {
@@ -77,7 +85,9 @@ export async function createManualLeadRecord(input: ManualRecordInput): Promise<
       p_phone_alt: phoneAlt,
       p_email: blankToNull(input.email),
       p_team_id: blankToNull(input.teamId),
-      p_assigned_to: blankToNull(input.assignedTo),
+      p_assigned_to: assignedTo,
+      // Con ejecutivo, el registro queda en su agenda personal (ahora si va vacío).
+      p_agenda_at: agendaAt?.toISOString() ?? null,
       p_notes: blankToNull(input.notes),
       p_detalle: {
         nombre_contacto: blankToNull(input.contactName),
@@ -98,12 +108,18 @@ export async function createManualLeadRecord(input: ManualRecordInput): Promise<
         : undefined;
     const duplicate =
       data && typeof data === "object" && "duplicate" in data && data.duplicate === true;
+    const agendaAtResult =
+      data && typeof data === "object" && "agenda_at" in data && typeof data.agenda_at === "string"
+        ? data.agenda_at
+        : undefined;
 
     revalidatePath("/dashboard/leads");
     revalidatePath("/dashboard/team");
     if (leadId) revalidatePath(`/dashboard/leads/${leadId}`);
 
-    return { ok: true, leadId, duplicate };
+    revalidatePath("/dashboard/agenda");
+
+    return { ok: true, leadId, duplicate, agendaAt: agendaAtResult };
   } catch (error) {
     return {
       ok: false,

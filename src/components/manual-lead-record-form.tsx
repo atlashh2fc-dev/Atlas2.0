@@ -14,6 +14,7 @@ import {
   type BigdataTelefono,
   type FichaFormFields,
 } from "@/lib/bigdata-ficha";
+import { toDateTimeInput } from "@/lib/report-range";
 import { compactRut, isValidRut } from "@/lib/rut";
 
 const INPUT_CLASS =
@@ -154,6 +155,7 @@ export function ManualLeadRecordForm({
         rubro: fields.rubro,
         product: field("product"),
         completadoCon: fromBigdata.size > 0 ? "bigdata" : undefined,
+        agendaAt: field("agenda_at"),
       });
 
       if (!result.ok) {
@@ -161,11 +163,19 @@ export function ManualLeadRecordForm({
         return;
       }
 
+      const agent = agents.find((item) => item.id === assignedTo);
+      const agenda = result.agendaAt && agent
+        ? ` Quedó en la agenda de ${agent.name} para el ${new Date(result.agendaAt).toLocaleString("es-CL", {
+            dateStyle: "short",
+            timeStyle: "short",
+            timeZone: "America/Santiago",
+          })}.`
+        : "";
       setMessage({
         type: "success",
-        text: result.duplicate
+        text: (result.duplicate
           ? "Ese RUT ya está en la base de la campaña. Abriremos su ficha."
-          : "Registro ingresado fuera de base.",
+          : "Registro ingresado fuera de base.") + agenda,
       });
       if (result.leadId) router.push(`/dashboard/leads/${result.leadId}`);
       else router.push("/dashboard/leads");
@@ -429,6 +439,21 @@ export function ManualLeadRecordForm({
             ))}
           </select>
         </label>
+
+        {assignedTo && (
+          <label className="space-y-1.5">
+            <FieldLabel>Agendar para</FieldLabel>
+            <input
+              type="datetime-local"
+              name="agenda_at"
+              min={toDateTimeInput(new Date())}
+              className={INPUT_CLASS}
+            />
+            <span className="block text-xs text-muted-foreground">
+              Hora Chile. Vacío = ahora: le aparece de inmediato en Mi agenda y, si está Disponible, el sistema se lo marca.
+            </span>
+          </label>
+        )}
       </div>
 
       <label className="block space-y-1.5">
