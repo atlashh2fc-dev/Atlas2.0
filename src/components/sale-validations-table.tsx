@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Check, ExternalLink, X } from "lucide-react";
 import { resolveSales, type SaleValidationRow, type SaleValidationStatus } from "@/app/actions/validacion-ventas";
+import { formatUf } from "@/lib/sale-validation-format";
 import { Badge, Button, DataTable, Input, SlideOver, useToast, type BadgeTone, type BulkAction, type Column } from "@/components/ui";
 
 /**
@@ -33,11 +34,6 @@ const dateOnly = new Intl.DateTimeFormat("es-CL", {
   month: "short",
   year: "numeric",
 });
-
-export function formatUf(value: number | null | undefined) {
-  if (value == null) return "—";
-  return `${value.toLocaleString("es-CL", { maximumFractionDigits: 2 })} UF`;
-}
 
 function daysWaiting(iso: string) {
   return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000));
