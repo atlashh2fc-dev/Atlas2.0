@@ -415,9 +415,29 @@ export async function countAvailableAgents(campaignId: string): Promise<number> 
     throw new Error(`dial_attempts (agendas en vuelo): ${callbackAttemptsError.message}`);
   }
 
+  // Quien eligió un AUX no es capacidad aunque su sesión diga 'available'
+  // (p. ej. lo eligió durante el cierre: Asterisk ya lo tenía pausado y no
+  // hubo evento que corrigiera la sesión). Contarlo hacía que el predictivo
+  // originara clientes para nadie o se los cargara al resto del equipo.
+  const { data: currentStatuses, error: currentStatusesError } = await supabase
+    .from("agent_current_status")
+    .select("profile_id, agent_status_reasons(is_pause)")
+    .in(
+      "profile_id",
+      availableSessions.map((session) => session.profile_id)
+    );
+  if (currentStatusesError) {
+    throw new Error(`agent_current_status (disponibles): ${currentStatusesError.message}`);
+  }
+  const pausedAgents = (currentStatuses ?? [])
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .filter((status) => (status as any).agent_status_reasons?.is_pause === true)
+    .map((status) => status.profile_id);
+
   const busyAgents = new Set([
     ...(openCalls ?? []).map((call) => call.agent_id),
     ...(callbackAttempts ?? []).map((attempt) => attempt.agent_id),
+    ...pausedAgents,
   ]);
   return availableSessions.filter(
     (session) => !busyAgents.has(session.profile_id)

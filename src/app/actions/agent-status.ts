@@ -95,6 +95,29 @@ export async function getMyCurrentStatus(): Promise<{ reason: AgentStatusReason;
 }
 
 /**
+ * Motivo AUX que el agente tenía justo antes de quedar 'desconectado' (se cayó
+ * el SIP, venció el heartbeat, recargó la página o cerró sesión). La barra CTI
+ * lo restaura al volver: antes, al no ser 'desconectado' seleccionable, lo
+ * dejaba Disponible sin que lo eligiera y el discador le entregaba llamadas
+ * en plena colación o baño. Devuelve null si antes estaba Disponible.
+ */
+export async function getMyPauseBeforeDisconnect(): Promise<AgentStatusReason | null> {
+  const profile = await requireProfile(["agente"]);
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("agent_current_status_history")
+    .select("agent_status_reasons(*)")
+    .eq("profile_id", profile.id)
+    .order("until", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const reason = (data as any)?.agent_status_reasons as AgentStatusReason | null | undefined;
+  return reason?.is_pause && reason.code !== "desconectado" ? reason : null;
+}
+
+/**
  * El agente cambia su propio estado (Disponible o un motivo AUX concreto).
  * Se guarda en agent_current_status; el motor de discado lo lee
  * (poll ~10s) y sincroniza QueuePause en Asterisk para todas las colas en

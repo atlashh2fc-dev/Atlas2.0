@@ -34,9 +34,32 @@ async function clearLegalIntercallBreak(userId: string) {
   if (error) throw new Error(error.message);
 }
 
+/**
+ * Estado al que vuelve la sesión del discador al terminar el cierre. Si el
+ * ejecutivo eligió un AUX durante la tipificación queda 'paused': Asterisk ya
+ * lo tenía pausado por el cierre y no emite evento que corrija la sesión, así
+ * que 'available' lo dejaba contado como libre por el predictivo y elegible
+ * para agendas personales, que marcan directo a su anexo.
+ */
+async function sessionStatusAfterWrapUp(
+  admin: ReturnType<typeof createAdminClient>,
+  userId: string
+): Promise<"available" | "paused"> {
+  const { data, error } = await admin
+    .from("agent_current_status")
+    .select("agent_status_reasons(is_pause)")
+    .eq("profile_id", userId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const reason = (data as any)?.agent_status_reasons as { is_pause: boolean } | null | undefined;
+  return reason?.is_pause ? "paused" : "available";
+}
+
 async function releaseAgentFromWrapUp(userId: string) {
   const admin = createAdminClient();
   const now = new Date().toISOString();
+  const status = await sessionStatusAfterWrapUp(admin, userId);
 
   // Un ejecutivo puede pertenecer a varias campañas, pero solo puede mantener
   // una llamada a la vez. Al cerrar esa gestión hay que liberar cualquier ACW
@@ -45,7 +68,7 @@ async function releaseAgentFromWrapUp(userId: string) {
   const { error } = await admin
     .from("dialer_agent_sessions")
     .update({
-      status: "available",
+      status,
       last_state_change_at: now,
       updated_at: now,
     })
@@ -241,7 +264,10 @@ export async function getMyPendingCallManagement(): Promise<PendingCallManagemen
 
   const { error: releaseError } = await admin
     .from("dialer_agent_sessions")
-    .update({ status: "available", updated_at: new Date().toISOString() })
+    .update({
+      status: await sessionStatusAfterWrapUp(admin, userId),
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", session.id)
     .eq("status", "wrap_up");
   if (releaseError) {

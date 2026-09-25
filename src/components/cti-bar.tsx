@@ -39,6 +39,7 @@ import {
 import {
   listActiveStatusReasons,
   getMyCurrentStatus,
+  getMyPauseBeforeDisconnect,
   enterMyHybridManualMode,
   exitMyHybridManualMode,
   markAgentUnavailable,
@@ -548,20 +549,36 @@ export function CtiBar({ profile }: { profile: Profile }) {
           const currentIsSelectable = Boolean(
             currentIsHybrid || (current && reasons.some((reason) => reason.id === current.reason.id))
           );
-          const selected = currentIsSelectable ? current?.reason ?? null : available;
+          // Volver de 'desconectado' (SIP caído, heartbeat vencido, recarga)
+          // no puede sacar a nadie de su AUX: se restaura la pausa que tenía.
+          const pauseToRestore =
+            !currentIsSelectable && current?.reason.code === "desconectado"
+              ? await getMyPauseBeforeDisconnect()
+                  .then((reason) =>
+                    reason && reasons.some((option) => option.id === reason.id) ? reason : null
+                  )
+                  .catch(() => null)
+              : null;
+          // Si esto falla sigue 'desconectado' en la base: tampoco recibe llamadas.
+          if (pauseToRestore) await setMyCurrentStatus(pauseToRestore.id).catch(() => {});
+          const selected = currentIsSelectable
+            ? current?.reason ?? null
+            : pauseToRestore ?? available;
           setStatusReasons(
             currentIsHybrid && current
               ? [...reasons.filter((reason) => reason.id !== current.reason.id), current.reason]
               : reasons
           );
           setCurrentReasonId(selected?.id ?? null);
-          setStatusSince(currentIsSelectable ? current?.since ?? null : null);
+          setStatusSince(
+            currentIsSelectable ? current?.since ?? null : pauseToRestore ? new Date().toISOString() : null
+          );
           setHybridManualMode(currentIsHybrid);
 
           // Solo se declara Disponible cuando el teléfono está realmente
           // registrado: marcarlo antes hacía que el discador entregara llamadas
           // a una extensión muerta y el cliente contestaba en el vacío.
-          if (!currentIsSelectable && available && registeredRef.current) {
+          if (!currentIsSelectable && !pauseToRestore && available && registeredRef.current) {
             await setMyCurrentStatus(available.id);
           }
         } else {
