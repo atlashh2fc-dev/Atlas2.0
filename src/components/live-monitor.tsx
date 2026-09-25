@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type 
 import { Bar, BarChart, Cell, Label, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import ReactGridLayout, { useContainerWidth, verticalCompactor, type Layout, type LayoutItem } from "react-grid-layout";
 import { LogOut, Plus, RotateCcw, X } from "lucide-react";
-import { forceAgentLogout, getAgentLiveStatus, getLiveWallboard, getQueueHealth, type LiveWallboard } from "@/app/actions/supervision";
+import { forceAgentLogout, getAgentLiveStatus, getLiveWallboard, getQueueHealth, type EmbudoCopc, type LiveWallboard } from "@/app/actions/supervision";
 import type { AgentLiveStatus, QueueHealth } from "@/lib/types";
 import { LEGAL_INTERCALL_BREAK_SECONDS } from "@/lib/intercall-break";
 import { useViewPreference } from "@/lib/use-view-preference";
@@ -56,6 +56,7 @@ type WidgetId =
   | "effective-contacts"
   | "attempts-per-contact"
   | "sales-today"
+  | "funnel"
   | "tmo"
   | "tmc"
   | "production"
@@ -85,33 +86,36 @@ const STATUS_COLORS: Record<AgentGroup, string> = {
   offline: "var(--muted-foreground)",
 };
 
+// Primero el embudo COPC outbound (contactabilidad, titular, venta), después la
+// telefonía y los tiempos, y al final el estado del equipo.
 const DEFAULT_LAYOUT: WidgetLayout[] = [
-  { i: "occupancy", x: 0, y: 0, w: 3, h: 3, minW: 2, minH: 2 },
-  { i: "connected", x: 3, y: 0, w: 3, h: 3, minW: 2, minH: 2 },
-  { i: "available", x: 6, y: 0, w: 3, h: 3, minW: 2, minH: 2 },
-  { i: "on-call", x: 9, y: 0, w: 3, h: 3, minW: 2, minH: 2 },
-  { i: "wrap-up", x: 0, y: 3, w: 3, h: 3, minW: 2, minH: 2 },
-  { i: "paused", x: 3, y: 3, w: 3, h: 3, minW: 2, minH: 2 },
-  { i: "alerts", x: 6, y: 3, w: 3, h: 3, minW: 2, minH: 2 },
-  { i: "campaigns", x: 9, y: 3, w: 3, h: 3, minW: 2, minH: 2 },
-  { i: "answered", x: 0, y: 6, w: 3, h: 3, minW: 2, minH: 2 },
-  { i: "completed", x: 3, y: 6, w: 3, h: 3, minW: 2, minH: 2 },
-  { i: "abandon-rate", x: 6, y: 6, w: 3, h: 3, minW: 2, minH: 2 },
-  { i: "no-answer-rate", x: 9, y: 6, w: 3, h: 3, minW: 2, minH: 2 },
-  { i: "contact-rate", x: 0, y: 9, w: 3, h: 3, minW: 2, minH: 2 },
-  { i: "effective-contacts", x: 3, y: 9, w: 3, h: 3, minW: 2, minH: 2 },
-  { i: "attempts-per-contact", x: 6, y: 9, w: 3, h: 3, minW: 2, minH: 2 },
-  { i: "sales-today", x: 9, y: 9, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "contact-rate", x: 0, y: 0, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "effective-contacts", x: 3, y: 0, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "sales-today", x: 6, y: 0, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "attempts-per-contact", x: 9, y: 0, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "funnel", x: 0, y: 3, w: 6, h: 6, minW: 4, minH: 5 },
+  { i: "hourly", x: 6, y: 3, w: 6, h: 6, minW: 4, minH: 5 },
+  { i: "abandon-rate", x: 0, y: 9, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "no-answer-rate", x: 3, y: 9, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "technical-failures", x: 6, y: 9, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "answered", x: 9, y: 9, w: 3, h: 3, minW: 2, minH: 2 },
   { i: "tmo", x: 0, y: 12, w: 3, h: 3, minW: 2, minH: 2 },
   { i: "tmc", x: 3, y: 12, w: 3, h: 3, minW: 2, minH: 2 },
   { i: "production", x: 6, y: 12, w: 3, h: 3, minW: 2, minH: 2 },
-  { i: "technical-failures", x: 9, y: 12, w: 3, h: 3, minW: 2, minH: 2 },
-  { i: "hourly", x: 0, y: 15, w: 6, h: 6, minW: 4, minH: 5 },
-  { i: "pause-reasons", x: 6, y: 15, w: 6, h: 6, minW: 4, minH: 5 },
-  { i: "status-chart", x: 0, y: 21, w: 6, h: 6, minW: 4, minH: 5 },
-  { i: "campaign-chart", x: 6, y: 21, w: 6, h: 6, minW: 4, minH: 5 },
-  { i: "queues", x: 0, y: 27, w: 12, h: 6, minW: 6, minH: 3 },
-  { i: "agents", x: 0, y: 33, w: 12, h: 10, minW: 6, minH: 6 },
+  { i: "completed", x: 9, y: 12, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "occupancy", x: 0, y: 15, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "connected", x: 3, y: 15, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "available", x: 6, y: 15, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "on-call", x: 9, y: 15, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "wrap-up", x: 0, y: 18, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "paused", x: 3, y: 18, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "alerts", x: 6, y: 18, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "campaigns", x: 9, y: 18, w: 3, h: 3, minW: 2, minH: 2 },
+  { i: "pause-reasons", x: 0, y: 21, w: 6, h: 6, minW: 4, minH: 5 },
+  { i: "status-chart", x: 6, y: 21, w: 6, h: 6, minW: 4, minH: 5 },
+  { i: "campaign-chart", x: 0, y: 27, w: 12, h: 6, minW: 4, minH: 5 },
+  { i: "queues", x: 0, y: 33, w: 12, h: 6, minW: 6, minH: 3 },
+  { i: "agents", x: 0, y: 39, w: 12, h: 10, minW: 6, minH: 6 },
 ];
 
 /** Orden canónico para el panel de tarjetas ocultas. */
@@ -140,9 +144,10 @@ const WIDGET_TITLE: Record<WidgetId, string> = {
   "abandon-rate": "Abandono hoy",
   "no-answer-rate": "Sin respuesta hoy",
   "contact-rate": "Contactabilidad hoy",
-  "effective-contacts": "Contactos efectivos",
+  "effective-contacts": "Contacto titular",
   "attempts-per-contact": "Intentos por contacto",
   "sales-today": "Ventas hoy",
+  funnel: "Embudo COPC",
   tmo: "TMO del día",
   tmc: "Tiempo de conversación",
   production: "Producción del día",
@@ -168,10 +173,11 @@ const WIDGET_KICKER: Record<WidgetId, string> = {
   completed: "RESULTADO",
   "abandon-rate": "GUARDARRAÍL",
   "no-answer-rate": "CONTACTO",
-  "contact-rate": "EFECTIVIDAD",
-  "effective-contacts": "CONVERSACIONES",
+  "contact-rate": "ALÓ ÷ RECORRIDO",
+  "effective-contacts": "TITULAR ÷ RECORRIDO",
   "attempts-per-contact": "COSTO DE CONTACTO",
   "sales-today": "RESULTADO COMERCIAL",
+  funnel: "COPC OUTBOUND",
   tmo: "TIEMPO MEDIO DE OPERACIÓN",
   tmc: "CONVERSACIÓN",
   production: "PRODUCCIÓN",
@@ -257,7 +263,15 @@ function MetricWidget({ label, value, hint, tone = "default", metric, children, 
   );
 }
 
-function QueueHealthCard({ queue }: { queue: QueueHealth }) {
+function formatPercent(value: number | null | undefined): string {
+  return value == null ? "—" : `${value.toLocaleString("es-CL", { maximumFractionDigits: 1 })}%`;
+}
+
+function formatRatio(value: number | null | undefined): string {
+  return value == null ? "—" : value.toLocaleString("es-CL", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
+function QueueHealthCard({ queue, funnel }: { queue: QueueHealth; funnel?: EmbudoCopc }) {
   const handled = queue.answered_today + queue.abandoned_today;
   const abandonRate = handled > 0 ? Math.round((queue.abandoned_today / handled) * 100) : 0;
   const overThreshold = abandonRate > THRESHOLDS.abandonRate;
@@ -268,9 +282,18 @@ function QueueHealthCard({ queue }: { queue: QueueHealth }) {
           <p className="text-sm font-semibold text-foreground">{queue.campaign_name}</p>
           <p className="mt-0.5 text-[11px] uppercase tracking-[0.12em] text-muted-foreground">Cola · {queue.queue_name}</p>
         </div>
-        <span className={cn("rounded-full border px-2 py-1 text-[11px] font-semibold", overThreshold ? "border-danger/30 bg-danger-bg text-danger" : "border-border bg-surface text-muted-foreground")}>Abandono {abandonRate}%</span>
+        <div className="flex flex-wrap gap-1.5">
+          <span className="rounded-full border border-primary/25 bg-surface px-2 py-1 text-[11px] font-semibold text-primary">Contactabilidad {formatPercent(funnel?.contactabilidad)}</span>
+          <span className={cn("rounded-full border px-2 py-1 text-[11px] font-semibold", overThreshold ? "border-danger/30 bg-danger-bg text-danger" : "border-border bg-surface text-muted-foreground")}>Abandono {abandonRate}%</span>
+        </div>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <QueueNumber label="Recorridos" value={funnel?.recorridos ?? 0} />
+        <QueueNumber label="Aló" value={funnel?.contactados ?? 0} />
+        <QueueNumber label="Titular" value={funnel?.titulares ?? 0} />
+        <QueueNumber label="Ventas" value={funnel?.ventas ?? 0} />
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-3 border-t border-border/70 pt-3 sm:grid-cols-4">
         <QueueNumber label="En curso" value={queue.in_flight} />
         <QueueNumber label="Contestadas" value={queue.answered_today} />
         <QueueNumber label="Completadas" value={queue.completed_today} />
@@ -404,16 +427,18 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
   const connected = agents.length - groups.offline;
   const occupancy = connected > 0 ? Math.round(((groups.on_call + groups.wrap_up) / connected) * 100) : 0;
   const alerts = agents.filter((agent) => agentDisplay(agent, now).alert).length;
-  const totals = useMemo(() => queues.reduce((all, queue) => ({ inFlight: all.inFlight + queue.in_flight, attempts: all.attempts + (queue.attempts_today ?? 0), answered: all.answered + queue.answered_today, completed: all.completed + queue.completed_today, abandoned: all.abandoned + queue.abandoned_today, noAnswer: all.noAnswer + queue.no_answer_today, managements: all.managements + (queue.managements_today ?? 0), contacts: all.contacts + (queue.effective_contacts_today ?? 0), sales: all.sales + (queue.sales_today ?? 0) }), { inFlight: 0, attempts: 0, answered: 0, completed: 0, abandoned: 0, noAnswer: 0, managements: 0, contacts: 0, sales: 0 }), [queues]);
+  const totals = useMemo(() => queues.reduce((all, queue) => ({ inFlight: all.inFlight + queue.in_flight, answered: all.answered + queue.answered_today, completed: all.completed + queue.completed_today, abandoned: all.abandoned + queue.abandoned_today, noAnswer: all.noAnswer + queue.no_answer_today }), { inFlight: 0, answered: 0, completed: 0, abandoned: 0, noAnswer: 0 }), [queues]);
   const abandonRate = totals.answered + totals.abandoned > 0 ? Math.round((totals.abandoned / (totals.answered + totals.abandoned)) * 100) : 0;
   const noAnswerRate = totals.answered + totals.noAnswer > 0 ? Math.round((totals.noAnswer / (totals.answered + totals.noAnswer)) * 100) : 0;
-  // Contactabilidad sobre gestiones cerradas, no sobre intentos: mide en cuántas
-  // de las que el ejecutivo trabajó se logró hablar con la persona.
-  const contactRate = totals.managements > 0 ? Math.round((totals.contacts / totals.managements) * 100) : 0;
-  // Cuántas marcaciones cuesta cada conversación. Sin contactos todavía no hay
-  // razón que calcular: se muestra guion, no un cero que parezca eficiencia.
-  const attemptsPerContact = totals.contacts > 0 ? totals.attempts / totals.contacts : null;
-  const conversionRate = totals.contacts > 0 ? Math.round((totals.sales / totals.contacts) * 100) : 0;
+  // Embudo COPC outbound, por registro: recorrido → aló → titular → venta. La
+  // contactabilidad es aló ÷ recorrido: los no contesta del discador restan
+  // aunque nunca lleguen a un ejecutivo. Sin datos se muestra guion, no un cero
+  // que parezca un resultado.
+  const funnel = wallboard?.embudo ?? null;
+  const funnelByCampaign = useMemo(
+    () => new Map((wallboard?.por_campana ?? []).map((row) => [row.campaign_id, row])),
+    [wallboard]
+  );
   const campaignOptions = useMemo(() => [...new Set(agents.map((agent) => agent.campaign_name).filter((name): name is string => Boolean(name)))].sort(), [agents]);
   const normalizedTerm = term.trim().toLocaleLowerCase("es-CL");
   const filteredAgents = useMemo(() => agents.filter((agent) => {
@@ -496,7 +521,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
 
 
   const today = wallboard?.hoy ?? null;
-  const hourlyData = (wallboard?.por_hora ?? []).map((row) => ({ name: `${String(row.hora).padStart(2, "0")}h`, Intentos: row.intentos, Gestiones: row.gestiones, Contactos: row.contactos }));
+  const hourlyData = (wallboard?.por_hora ?? []).map((row) => ({ name: `${String(row.hora).padStart(2, "0")}h`, Recorridos: row.recorridos ?? 0, "Aló": row.contactados ?? 0, Titular: row.titulares ?? 0, Contactabilidad: row.recorridos ? `${Math.round(((row.contactados ?? 0) / row.recorridos) * 1000) / 10}%` : "—" }));
   const pauseTotal = (wallboard?.pausa_equipo ?? []).reduce((sum, item) => sum + item.segundos, 0);
   const widgets: Record<WidgetId, ReactNode> = {
     occupancy: <MetricWidget kicker={WIDGET_KICKER.occupancy} label="Ocupación del equipo" metric="ocupacion" value={`${occupancy}%`} hint={`${connected} conectados · objetivo operativo 85%`} tone={occupancy >= 85 ? "warn" : "default"} />,
@@ -511,28 +536,61 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
     completed: <MetricWidget kicker={WIDGET_KICKER.completed} label="Completadas hoy" value={formatInt(totals.completed)} hint={totals.answered ? `${Math.round((totals.completed / totals.answered) * 100)}% de las contestadas` : "Sin llamadas contestadas"} />,
     "abandon-rate": <MetricWidget kicker={WIDGET_KICKER["abandon-rate"]} label="Abandono hoy" metric="abandono" value={`${abandonRate}%`} hint={`${formatInt(totals.abandoned)} abandonadas · umbral ${THRESHOLDS.abandonRate}%`} tone={abandonRate > THRESHOLDS.abandonRate ? "danger" : "good"} />,
     "no-answer-rate": <MetricWidget kicker={WIDGET_KICKER["no-answer-rate"]} label="Sin respuesta hoy" value={`${noAnswerRate}%`} hint={`${formatInt(totals.noAnswer)} intentos sin respuesta`} tone={noAnswerRate >= 70 ? "warn" : "default"} />,
-    "contact-rate": <MetricWidget kicker={WIDGET_KICKER["contact-rate"]} label="Contactabilidad hoy" metric="contactabilidad" value={`${contactRate}%`} hint={totals.managements ? `${formatInt(totals.contacts)} de ${formatInt(totals.managements)} gestiones cerradas` : "Sin gestiones cerradas todavía"} tone={totals.managements > 0 && contactRate < 30 ? "warn" : "default"} />,
-    "effective-contacts": <MetricWidget kicker={WIDGET_KICKER["effective-contacts"]} label="Contactos efectivos" value={formatInt(totals.contacts)} hint={`${formatInt(totals.managements)} gestiones cerradas hoy`} />,
-    "attempts-per-contact": <MetricWidget kicker={WIDGET_KICKER["attempts-per-contact"]} label="Intentos por contacto" metric="intentos_por_contacto" value={attemptsPerContact === null ? "—" : attemptsPerContact.toFixed(1)} hint={attemptsPerContact === null ? "Aún sin contactos efectivos" : `${formatInt(totals.attempts)} intentos · ${formatInt(totals.contacts)} contactos`} tone={attemptsPerContact !== null && attemptsPerContact > 15 ? "warn" : "default"} />,
-    "sales-today": <MetricWidget kicker={WIDGET_KICKER["sales-today"]} label="Ventas hoy" value={formatInt(totals.sales)} hint={totals.contacts ? `${conversionRate}% de los contactos efectivos` : "Sin contactos efectivos todavía"} tone={totals.sales > 0 ? "good" : "default"} />,
+    "contact-rate": <MetricWidget kicker={WIDGET_KICKER["contact-rate"]} label="Contactabilidad hoy" metric="contactabilidad" value={formatPercent(funnel?.contactabilidad)} hint={funnel ? (funnel.recorridos ? `${formatInt(funnel.contactados)} aló de ${formatInt(funnel.recorridos)} registros recorridos` : "Sin registros recorridos todavía") : "Calculando…"} />,
+    "effective-contacts": <MetricWidget kicker={WIDGET_KICKER["effective-contacts"]} label="Contacto titular" metric="contacto_titular" value={formatPercent(funnel?.contactabilidad_titular)} hint={funnel ? (funnel.contactados ? `${formatInt(funnel.titulares)} titulares · ${formatPercent(funnel.titularidad)} de los aló` : "Sin aló todavía") : "Calculando…"} />,
+    "attempts-per-contact": <MetricWidget kicker={WIDGET_KICKER["attempts-per-contact"]} label="Intentos por contacto" metric="intentos_por_contacto" value={formatRatio(funnel?.intentos_por_contacto)} hint={funnel ? (funnel.contactados ? `${formatInt(funnel.intentos)} marcaciones · intensidad ${formatRatio(funnel.intensidad)} por registro` : "Aún sin aló") : "Calculando…"} tone={funnel?.intentos_por_contacto != null && funnel.intentos_por_contacto > 15 ? "warn" : "default"} />,
+    "sales-today": <MetricWidget kicker={WIDGET_KICKER["sales-today"]} label="Ventas hoy" value={funnel ? formatInt(funnel.ventas) : "—"} hint={funnel ? (funnel.titulares ? `Conversión ${formatPercent(funnel.conversion)} de los contactos titulares` : "Sin contactos titulares todavía") : "Calculando…"} tone={funnel && funnel.ventas > 0 ? "good" : "default"} />,
+    funnel: (
+      <div className="flex h-[19.5rem] flex-col">
+        <p className="text-[10px] font-semibold tracking-[0.18em] text-primary">{WIDGET_KICKER.funnel}</p>
+        <p className="mt-2 text-lg font-semibold tracking-tight text-foreground">Embudo del día</p>
+        <p className="mt-1 text-xs text-muted-foreground">Registros distintos, hora Chile. Cada tasa sobre el recorrido; entre paréntesis, sobre la etapa anterior.</p>
+        {funnel && funnel.recorridos > 0 ? (
+          <div className="mt-4 flex-1 space-y-3">
+            {([
+              { label: "Recorridos", value: funnel.recorridos, color: "var(--accent)", step: null, stepLabel: `${formatRatio(funnel.intensidad)} marcaciones por registro` },
+              { label: "Aló", value: funnel.contactados, color: "var(--primary)", step: funnel.contactabilidad, stepLabel: "contactabilidad" },
+              { label: "Titular", value: funnel.titulares, color: "var(--success)", step: funnel.titularidad, stepLabel: "de los aló" },
+              { label: "Ventas", value: funnel.ventas, color: "var(--warning)", step: funnel.conversion, stepLabel: "conversión" },
+            ]).map((stage) => {
+              const share = Math.round((stage.value / funnel.recorridos) * 1000) / 10;
+              return (
+                <div key={stage.label}>
+                  <div className="flex items-baseline justify-between gap-2 text-xs">
+                    <span className="font-medium text-foreground">{stage.label}</span>
+                    <span className="tabular-nums text-muted-foreground">
+                      <span className="font-mono font-semibold text-foreground">{formatInt(stage.value)}</span>
+                      {stage.step === null ? ` · ${stage.stepLabel}` : ` · ${formatPercent(share)} (${formatPercent(stage.step)} ${stage.stepLabel})`}
+                    </span>
+                  </div>
+                  <div className="mt-1 h-2.5 overflow-hidden rounded-full bg-surface-muted">
+                    <div className="h-full rounded-full" style={{ width: `${Math.max(share, stage.value > 0 ? 1 : 0)}%`, backgroundColor: stage.color }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">{funnel ? "Sin registros recorridos todavía." : "Calculando…"}</div>}
+      </div>
+    ),
     tmo: <MetricWidget kicker={WIDGET_KICKER.tmo} label="TMO del día" value={formatElapsed(today?.tmo_segundos ?? null)} hint={today ? `Gestión completa, de abrir a tipificar · con contacto ${formatElapsed(today.tmo_contacto_segundos)}` : "Calculando…"} />,
     tmc: <MetricWidget kicker={WIDGET_KICKER.tmc} label="Tiempo de conversación" value={formatElapsed(today?.tmc_segundos ?? null)} hint={today ? `Promedio por llamada conectada · ${formatInt(today.discador_conectadas)} conectadas hoy` : "Calculando…"} />,
-    production: <MetricWidget kicker={WIDGET_KICKER.production} label="Producción del día" value={today ? formatInt(today.gestiones) : "—"} hint={today ? `${formatInt(today.contactos)} contactos (${today.contactabilidad ?? 0}%) · ${formatInt(today.ventas)} ventas · ${formatInt(today.cotizaciones)} cotizaciones · ${formatInt(today.agendas)} agendas` : "Calculando…"} tone={today && today.ventas > 0 ? "good" : "default"} />,
+    production: <MetricWidget kicker={WIDGET_KICKER.production} label="Producción del día" value={today ? formatInt(today.gestiones) : "—"} hint={today ? `Gestiones cerradas del equipo · ${formatInt(today.contactos)} con aló · ${formatInt(today.ventas)} ventas · ${formatInt(today.cotizaciones)} cotizaciones · ${formatInt(today.agendas)} agendas` : "Calculando…"} tone={today && today.ventas > 0 ? "good" : "default"} />,
     "technical-failures": <MetricWidget kicker={WIDGET_KICKER["technical-failures"]} label="Fallas de troncal" value={today?.fallas_tecnicas == null ? "—" : `${today.fallas_tecnicas}%`} hint={today ? `Intentos que no alcanzaron a sonar · ${formatInt(today.discador_intentos)} intentos hoy · abandono ${today.abandono ?? 0}%` : "Calculando…"} tone={today?.fallas_tecnicas != null && today.fallas_tecnicas >= 30 ? "danger" : today?.fallas_tecnicas != null && today.fallas_tecnicas >= 10 ? "warn" : "good"} />,
     hourly: (
       <div className="h-[19.5rem]">
         <p className="text-[10px] font-semibold tracking-[0.18em] text-primary">{WIDGET_KICKER.hourly}</p>
         <p className="mt-2 text-lg font-semibold tracking-tight text-foreground">Curva por hora</p>
-        <p className="mt-1 text-xs text-muted-foreground">Intentos del discador, gestiones y contactos de hoy, hora Chile.</p>
+        <p className="mt-1 text-xs text-muted-foreground">Registros recorridos, con aló y con titular en cada hora de hoy, hora Chile.</p>
         {hourlyData.length ? (
           <ResponsiveContainer width="100%" height="72%">
             <BarChart data={hourlyData} margin={{ top: 16, left: -12, right: 8, bottom: 0 }} barCategoryGap="22%">
               <XAxis dataKey="name" tick={{ fill: "var(--muted-foreground)", fontSize: 10 }} tickLine={false} axisLine={false} interval={0} />
               <YAxis allowDecimals={false} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickLine={false} axisLine={false} />
-              <Tooltip cursor={{ fill: "var(--surface-muted)" }} contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, fontSize: 12 }} />
-              <Bar dataKey="Intentos" fill="var(--accent)" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="Gestiones" fill="var(--primary)" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="Contactos" fill="var(--success)" radius={[4, 4, 0, 0]} />
+              <Tooltip cursor={{ fill: "var(--surface-muted)" }} contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, fontSize: 12 }} labelFormatter={(label, payload) => `${label} · contactabilidad ${payload?.[0]?.payload?.Contactabilidad ?? "—"}`} />
+              <Bar dataKey="Recorridos" fill="var(--accent)" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="Aló" fill="var(--primary)" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="Titular" fill="var(--success)" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         ) : <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">Sin actividad todavía.</div>}
@@ -625,7 +683,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
     ),
     queues: (
       <SectionCard className="rounded-xl border-border" title={<span className="text-base tracking-tight">Salud de las colas</span>} description={`Actualizado automáticamente cada ${POLL_MS / 1000} segundos.`} actions={<span className="hidden items-center gap-1 text-[10px] font-semibold tracking-[0.14em] text-success sm:inline-flex"><span className="size-1.5 rounded-full bg-success" />LIVE</span>}>
-        <div className="space-y-3 p-4">{queues.length === 0 ? <p className="text-sm text-muted-foreground">No hay campañas activas para el motor de discado.</p> : queues.map((queue) => <QueueHealthCard key={queue.campaign_id} queue={queue} />)}</div>
+        <div className="space-y-3 p-4">{queues.length === 0 ? <p className="text-sm text-muted-foreground">No hay campañas activas para el motor de discado.</p> : queues.map((queue) => <QueueHealthCard key={queue.campaign_id} queue={queue} funnel={funnelByCampaign.get(queue.campaign_id)} />)}</div>
       </SectionCard>
     ),
     agents: (

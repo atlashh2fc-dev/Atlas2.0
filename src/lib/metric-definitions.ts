@@ -88,10 +88,36 @@ export const METRIC_DEFINITIONS = {
     definition: "Cuánto espera en promedio un cliente antes de que alguien atienda. En inglés, ASA.",
     channels: ["inbound"],
   },
+  recorridos: {
+    label: "Recorridos",
+    definition:
+      "Registros distintos que se marcaron al menos una vez y la llamada llegó a la red, o que tuvieron una gestión. Las fallas de la troncal no cuentan.",
+    channels: ["outbound"],
+  },
   contactabilidad: {
     label: "Contactabilidad",
-    definition: "Parte de los registros trabajados en que se logró hablar con la persona.",
-    formula: "contactos efectivos ÷ registros recorridos",
+    definition:
+      "Parte de los registros recorridos en que alguien contestó y habló con un ejecutivo (el «aló»), sea o no el titular. Criterio COPC outbound: se cuenta por registro, no por llamada.",
+    formula: "registros con aló ÷ registros recorridos",
+    channels: ["outbound"],
+  },
+  contacto_titular: {
+    label: "Contacto titular",
+    definition:
+      "Parte de los registros recorridos en que se habló con la persona buscada. Excluye tercero y número erróneo o que no corresponde.",
+    formula: "registros con contacto titular ÷ registros recorridos",
+    channels: ["outbound"],
+  },
+  conversion: {
+    label: "Conversión",
+    definition: "Ventas logradas por cada contacto con el titular.",
+    formula: "registros con venta ÷ registros con contacto titular",
+    channels: ["outbound"],
+  },
+  intensidad: {
+    label: "Intensidad de marcación",
+    definition: "Cuántas veces se marca en promedio cada registro recorrido.",
+    formula: "marcaciones ÷ registros recorridos",
     channels: ["outbound"],
   },
   ring_promedio: {
@@ -109,7 +135,7 @@ export const METRIC_DEFINITIONS = {
     label: "Intentos por contacto",
     definition:
       "Cuántas marcaciones cuesta cada conversación efectiva. Delata bases de mala calidad o reintentos mal parametrizados.",
-    formula: "intentos de discado ÷ contactos efectivos",
+    formula: "marcaciones ÷ registros con aló",
     channels: ["outbound"],
   },
   registros_agotados: {

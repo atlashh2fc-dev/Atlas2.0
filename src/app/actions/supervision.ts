@@ -60,6 +60,18 @@ export async function forceAgentLogout(
   return { commandId: data };
 }
 
+export type EmbudoCopc = {
+  recorridos: number;
+  intentos: number;
+  /** Registros con aló: contestó alguien, titular o no. */
+  contactados: number;
+  titulares: number;
+  ventas: number;
+  contactabilidad: number | null;
+  contactabilidad_titular: number | null;
+  conversion: number | null;
+};
+
 export type LiveWallboard = {
   generado: string;
   estado: {
@@ -76,7 +88,6 @@ export type LiveWallboard = {
   hoy: {
     gestiones: number;
     contactos: number;
-    contactabilidad: number | null;
     tmo_segundos: number | null;
     tmo_contacto_segundos: number | null;
     ventas: number;
@@ -90,7 +101,25 @@ export type LiveWallboard = {
     tmc_segundos: number | null;
     en_curso: number;
   };
-  por_hora: { hora: number; gestiones: number; contactos: number; intentos: number }[];
+  /**
+   * Embudo COPC outbound del día, por registro: recorridos → aló → titular →
+   * venta. Tasas en porcentaje (intensidad e intentos por contacto, razón).
+   */
+  embudo: EmbudoCopc & {
+    titularidad: number | null;
+    intensidad: number | null;
+    intentos_por_contacto: number | null;
+  };
+  por_campana: (EmbudoCopc & { campaign_id: string })[];
+  por_hora: {
+    hora: number;
+    intentos: number;
+    recorridos: number;
+    contactados: number;
+    titulares: number;
+    gestiones: number;
+    contactos: number;
+  }[];
   por_ejecutivo: {
     profile_id: string;
     gestiones: number;
@@ -105,8 +134,8 @@ export type LiveWallboard = {
 
 /**
  * Tablero del día (hora Chile) sobre los mismos ejecutivos que ve el monitor:
- * TMO, contactabilidad, abandono, producción, curva por hora y pausa por
- * motivo. get_live_wallboard acota por supervisor y empresa.
+ * TMO, embudo COPC (recorrido, aló, titular, venta), abandono, producción,
+ * curva por hora y pausa por motivo. get_live_wallboard acota por supervisor y empresa.
  */
 export async function getLiveWallboard(campaignId?: string | null): Promise<LiveWallboard> {
   await requireProfile(["admin", "supervisor"]);
