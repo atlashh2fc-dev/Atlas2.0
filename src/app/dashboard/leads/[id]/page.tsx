@@ -22,6 +22,7 @@ import {
   formatClp,
   readDebtSnapshot,
 } from "@/lib/campaign-vertical";
+import { leadContactPerson, leadExtraFields } from "@/lib/lead-extra";
 import { metricDefinition } from "@/lib/metric-definitions";
 import { completeKovacsDemoAssignment } from "@/app/actions/lead-orchestrator";
 import type { Call, Campaign, Lead, Profile, Team, Workflow, WorkflowStep, WorkflowStepBranch } from "@/lib/types";
@@ -194,11 +195,8 @@ export default async function LeadDetailPage({
   // en el volcado de la carga solo agrega ruido a la pantalla del ejecutivo.
   const vertical = await fetchCampaignVertical(supabase, lead.campaign_id ?? campaign?.id ?? null);
   const debt = vertical === "cobranza" ? readDebtSnapshot(lead.extra) : null;
-  const campaignData = Object.entries(lead.extra ?? {}).filter(
-    ([key, value]) =>
-      (!debt || !DEBT_EXTRA_KEYS.includes(key)) &&
-      (typeof value === "string" || typeof value === "number" || typeof value === "boolean")
-  );
+  const campaignData = leadExtraFields(lead.extra, { exclude: debt ? DEBT_EXTRA_KEYS : [] });
+  const contactPerson = leadContactPerson(lead.extra, lead.full_name);
 
   const { data: orchestratorAssignment } = profile.role === "agente"
     ? await supabase
@@ -432,6 +430,9 @@ export default async function LeadDetailPage({
         title={lead.full_name}
         description={
           <span className="flex flex-wrap items-center gap-2">
+            {contactPerson && (
+              <span className="text-sm font-semibold text-foreground">Contacto: {contactPerson}</span>
+            )}
             <Badge tone="neutral">{statusLabel}</Badge>
             {campaign?.name && <span className="text-sm text-muted-foreground">{campaign.name}</span>}
             {lead.tipificacion_actual && (
@@ -739,10 +740,10 @@ export default async function LeadDetailPage({
             </span>
           </div>
           <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
-            {campaignData.map(([key, value]) => (
-              <div key={key} className="min-w-0 border-b border-border/70 pb-2">
+            {campaignData.map(([key, value], index) => (
+              <div key={`${key}-${index}`} className="min-w-0 border-b border-border/70 pb-2">
                 <dt className="text-xs font-medium text-muted-foreground">{key}</dt>
-                <dd className="mt-0.5 break-words text-sm text-foreground">{String(value)}</dd>
+                <dd className="mt-0.5 break-words text-sm text-foreground">{value}</dd>
               </div>
             ))}
           </dl>
@@ -755,6 +756,7 @@ export default async function LeadDetailPage({
           <Card>
             <h2 className="mb-3 text-sm font-semibold text-foreground">Datos de contacto</h2>
             <dl className="space-y-2 text-sm">
+              {contactPerson && <InfoRow label="Contacto">{contactPerson}</InfoRow>}
               <InfoRow label="RUT">{lead.rut ?? "—"}</InfoRow>
               <InfoRow label="Teléfono">{lead.phone ?? "—"}</InfoRow>
               <InfoRow label="Correo">{lead.email ?? "—"}</InfoRow>

@@ -75,6 +75,7 @@ import {
   type AgentDialRequestEventDetail,
   type AgentForceLogoutEventDetail,
 } from "@/lib/agent-control";
+import { leadContactPerson, leadExtraFields } from "@/lib/lead-extra";
 
 const HEARTBEAT_MS = 20_000;
 const SIP_DOMAIN = process.env.NEXT_PUBLIC_SIP_DOMAIN ?? "ws-atlas.geimser.cl";
@@ -1843,12 +1844,11 @@ export function CtiBar({ profile }: { profile: Profile }) {
     (campaign) => campaign.id === operatingMode.active_campaign_id
   );
   const incomingFields = incomingContext
-    ? Object.entries(incomingContext.extra).filter(
-        ([key, value]) =>
-          key.toLowerCase() !== "source" &&
-          (typeof value === "string" || typeof value === "number" || typeof value === "boolean")
-      )
+    ? leadExtraFields(incomingContext.extra, { exclude: ["source", "Source", "SOURCE"] })
     : [];
+  const incomingContactPerson = incomingContext
+    ? leadContactPerson(incomingContext.extra, incomingContext.full_name)
+    : null;
 
   if (minimized) {
     // El <audio> tiene que seguir montado: es el destino del stream SIP y
@@ -2173,6 +2173,11 @@ export function CtiBar({ profile }: { profile: Profile }) {
                     {selectedName ??
                       (isIncomingCall ? "Cargando datos del contacto..." : "Llamada saliente")}
                   </p>
+                  {isIncomingCall && incomingContactPerson && (
+                    <p className="mt-0.5 text-sm font-medium text-emerald-200">
+                      Contacto: {incomingContactPerson}
+                    </p>
+                  )}
                   <p className="mt-1 font-mono text-sm text-white/70">
                     {subscriber
                       ? `+56 9 ${formatSubscriber(subscriber)}`
@@ -2191,8 +2196,8 @@ export function CtiBar({ profile }: { profile: Profile }) {
                         {incomingContext.email && (
                           <ContextField label="Email" value={incomingContext.email} />
                         )}
-                        {incomingFields.map(([key, value]) => (
-                          <ContextField key={key} label={key} value={String(value)} />
+                        {incomingFields.map(([key, value], index) => (
+                          <ContextField key={`${key}-${index}`} label={key} value={value} />
                         ))}
                       </div>
                     </div>
