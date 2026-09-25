@@ -201,6 +201,51 @@ export type AgendaCallbackManagement = {
   fullName: string | null;
 };
 
+export type OpenManagement = {
+  leadId: string;
+  callId: string;
+  leadName: string | null;
+  /** Canal de una gestión sin llamada (whatsapp, correo…); null si es llamada. */
+  channel: string | null;
+  startedAt: string;
+};
+
+/**
+ * La gestión abierta del ejecutivo, si tiene una. Solo lee: el teléfono la
+ * consulta seguido para mostrar "Gestión pendiente" en cualquier modo. Antes
+ * ese aviso existía solo con el discador en ACW, así que una llamada manual o
+ * una gestión sin llamada abierta bloqueaba el marcado ("tienes una gestión
+ * pendiente") sin que el ejecutivo pudiera saber cuál era ni cómo volver.
+ *
+ * Misma regla que las funciones que bloquean el marcado: `ended_at` nulo y
+ * sin descartar. El nombre sale con el cliente de servicio porque el registro
+ * puede haber cambiado de dueño y la política ya no dejarle leerlo, y aun así
+ * la gestión lo sigue bloqueando.
+ */
+export async function getMyOpenManagement(): Promise<OpenManagement | null> {
+  const { userId } = await requireAgent();
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("calls")
+    .select("id, lead_id, management_channel, started_at, leads(full_name)")
+    .eq("agent_id", userId)
+    .is("ended_at", null)
+    .is("discarded_reason", null)
+    .order("started_at", { ascending: false })
+    .limit(1);
+  if (error) throw new Error(error.message);
+  const row = data?.[0];
+  if (!row) return null;
+  const lead = Array.isArray(row.leads) ? row.leads[0] : row.leads;
+  return {
+    leadId: row.lead_id,
+    callId: row.id,
+    leadName: (lead as { full_name?: string | null } | null)?.full_name ?? null,
+    channel: row.management_channel ?? null,
+    startedAt: row.started_at,
+  };
+}
+
 /** Intentos que el motor todavía puede convertir en una gestión abierta. */
 const LIVE_DIAL_ATTEMPT_STATUSES = [
   "queued",
@@ -1059,6 +1104,15 @@ export async function reviseCallManagement(input: {
       { agendaPolicy, previousNextActionAt: original.next_action_at }
     );
     if (errors.length > 0) throw new Error(errors.join(" "));
+
+    // La base igual lo rechaza, pero sin decir cuál gestión: el ejecutivo
+    // quedaba sin saber qué cerrar ni dónde.
+    const open = await getMyOpenManagement();
+    if (open && open.callId !== input.callId) {
+      throw new Error(
+        `Tienes abierta la gestión de ${open.leadName ?? "otro registro"}. Ciérrala primero: está en «Gestión pendiente» del teléfono.`
+      );
+    }
 
     const { error } = await supabase.rpc("revise_call_management", {
       p_call_id: input.callId,

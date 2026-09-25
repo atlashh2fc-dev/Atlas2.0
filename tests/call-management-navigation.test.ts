@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  isPendingManagementError,
   resolveCallManagementNavigation,
   resolveManualCallManagementAction,
 } from "../src/lib/call-management-navigation.ts";
@@ -43,4 +44,13 @@ test("an answered call remains open for its final typification", () => {
 
 test("only an origination failure discards the technical management", () => {
   assert.equal(resolveManualCallManagementAction("origination_failed"), "discard");
+});
+
+test("los rechazos por otra gestión abierta se reconocen para llevar al ejecutivo a ella", () => {
+  assert.equal(isPendingManagementError("Tienes una gestión pendiente de tipificación. Ciérrala antes de llamar."), true);
+  assert.equal(isPendingManagementError("Tienes una gestión pendiente de tipificación. Ciérrala antes de llamar desde tu agenda."), true);
+  assert.equal(isPendingManagementError("Completa primero la llamada activa antes de corregir una gestión anterior."), true);
+  assert.equal(isPendingManagementError("No puedes corregir una gestión mientras tienes una llamada o tipificación en curso."), true);
+  assert.equal(isPendingManagementError("Este número ya tiene una llamada en curso."), false);
+  assert.equal(isPendingManagementError(null), false);
 });

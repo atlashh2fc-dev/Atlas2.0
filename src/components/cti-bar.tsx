@@ -3,7 +3,7 @@
 import { markScreenPop } from "@/components/screen-pop-timing";
 import { fetchIncomingDialContextDirect } from "@/lib/incoming-context-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   ChevronDown,
   ChevronUp,
@@ -51,10 +51,12 @@ import {
   beginAssignedLeadCall,
   beginManualCallManagement,
   discardCallTechnicalError,
+  getMyOpenManagement,
   getMyPendingCallManagement,
   registerManualCall,
   startLegalIntercallBreak,
   type ManualCallManagement,
+  type OpenManagement,
 } from "@/app/actions/calls";
 import { SlideOver, StatusDot, Input, Select, type BadgeTone } from "@/components/ui";
 import {
@@ -63,6 +65,8 @@ import {
 } from "@/lib/intercall-break";
 import { cn } from "@/lib/utils";
 import {
+  isPendingManagementError,
+  OFFLINE_CHANNEL_LABEL,
   resolveCallManagementNavigation,
   resolveManualCallManagementAction,
   type ManualCallEndState,
@@ -234,6 +238,7 @@ function automaticAttemptTone(status: string): string {
 
 export function CtiBar({ profile }: { profile: Profile }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [credential, setCredential] = useState<
     { extension: string; sip_password: string } | null | undefined
   >(undefined);
@@ -306,6 +311,8 @@ export function CtiBar({ profile }: { profile: Profile }) {
   const [manualRecoveryPending, setManualRecoveryPending] = useState(false);
   const [manualRecoveryError, setManualRecoveryError] = useState<string | null>(null);
   const [pendingTypificationOpening, setPendingTypificationOpening] = useState(false);
+  /** Gestión abierta (llamada o sin llamada) que bloquea marcar otra. */
+  const [openManagement, setOpenManagement] = useState<OpenManagement | null>(null);
 
   const [statusReasons, setStatusReasons] = useState<AgentStatusReason[]>([]);
   const [currentReasonId, setCurrentReasonId] = useState<string | null>(null);
@@ -662,6 +669,34 @@ export function CtiBar({ profile }: { profile: Profile }) {
     setStatusSince(current.since);
     setHybridManualMode(current.reason.code === "llamada_manual");
   }, [profile.role]);
+
+  const refreshOpenManagement = useCallback(async () => {
+    if (profile.role !== "agente") return null;
+    try {
+      const management = await getMyOpenManagement();
+      setOpenManagement(management);
+      return management;
+    } catch (err) {
+      console.error("CTI: no se pudo leer la gestión abierta", err);
+      return null;
+    }
+  }, [profile.role]);
+
+  // Cualquier gestión abierta bloquea marcar otra, no solo el ACW del
+  // discador. Sin este sondeo una llamada manual o una gestión sin llamada
+  // abierta dejaba al ejecutivo en un loop: "tienes una gestión pendiente"
+  // sin decir cuál, y el teléfono sin nada que abrir.
+  useEffect(() => {
+    if (profile.role !== "agente") return;
+    queueMicrotask(() => void refreshOpenManagement());
+    const timer = setInterval(() => void refreshOpenManagement(), 5_000);
+    const onClosed = () => void refreshOpenManagement();
+    window.addEventListener(AGENT_MANAGEMENT_CLOSED_EVENT, onClosed);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener(AGENT_MANAGEMENT_CLOSED_EVENT, onClosed);
+    };
+  }, [profile.role, refreshOpenManagement]);
 
   useEffect(() => {
     if (profile.role !== "agente") return;
@@ -1320,6 +1355,24 @@ export function CtiBar({ profile }: { profile: Profile }) {
     }
   }
 
+  /**
+   * La base rechazó la llamada porque hay otra gestión abierta: en vez de solo
+   * repetir el error, se lleva al ejecutivo a esa gestión y se le dice cuál es.
+   */
+  async function redirectToOpenManagement(message: string): Promise<boolean> {
+    if (!isPendingManagementError(message)) return false;
+    const management = await refreshOpenManagement();
+    if (!management) {
+      setCallError(message);
+      return true;
+    }
+    setCallError(
+      `Primero cierra la gestión de ${management.leadName ?? "otro registro"}. Te llevamos a ella.`
+    );
+    openManagementScreen(management.leadId);
+    return true;
+  }
+
   function discardUnconnectedManualManagement(management: ManualCallManagement) {
     if (manualManagementRef.current?.callId !== management.callId) return;
     manualManagementRef.current = null;
@@ -1576,7 +1629,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
           entryMode: "before_dial",
         });
         if (!result.ok) {
-          setCallError(result.error);
+          if (!(await redirectToOpenManagement(result.error))) setCallError(result.error);
           return;
         }
         management = result.data;
@@ -1696,7 +1749,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
       ? await beginAssignedLeadCall(detail.leadId, detail.phone)
       : await beginAgendaCallback(detail.leadId, detail.phone);
     if (!result.ok) {
-      setCallError(result.error);
+      if (!(await redirectToOpenManagement(result.error))) setCallError(result.error);
       return;
     }
 
@@ -1983,6 +2036,32 @@ export function CtiBar({ profile }: { profile: Profile }) {
     ? leadContactPerson(incomingContext.extra, incomingContext.full_name)
     : null;
 
+  // En la ficha de esa misma gestión el formulario ya está a la vista.
+  const pendingElsewhere =
+    openManagement !== null &&
+    callState === "idle" &&
+    pathname !== `/dashboard/leads/${openManagement.leadId}`;
+  const pendingBanner = pendingElsewhere && openManagement ? (
+    <button
+      type="button"
+      onClick={() => openManagementScreen(openManagement.leadId)}
+      className="flex w-full items-center gap-3 border-b border-warning/30 bg-warning-bg px-4 py-2.5 text-left text-warning transition hover:brightness-95"
+    >
+      <span className="min-w-0 flex-1">
+        <span className="block text-xs font-semibold uppercase tracking-wide">Gestión pendiente</span>
+        <span className="block truncate text-sm font-semibold text-foreground">
+          {openManagement.leadName ?? "Registro sin nombre"}
+          {openManagement.channel
+            ? ` · ${OFFLINE_CHANNEL_LABEL[openManagement.channel] ?? "Otro canal"}`
+            : ""}
+        </span>
+      </span>
+      <span className="shrink-0 rounded-lg bg-warning px-3 py-1.5 text-xs font-bold text-white">
+        Tipificar
+      </span>
+    </button>
+  ) : null;
+
   if (minimized) {
     // El <audio> tiene que seguir montado: es el destino del stream SIP y
     // desmontarlo cortaría el audio de una llamada que entre estando minimizado.
@@ -1990,6 +2069,16 @@ export function CtiBar({ profile }: { profile: Profile }) {
       <>
         <audio ref={audioRef} autoPlay className="hidden" />
         <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2">
+          {pendingElsewhere && openManagement && (
+            <button
+              type="button"
+              onClick={() => openManagementScreen(openManagement.leadId)}
+              className="max-w-64 truncate rounded-lg bg-warning px-3 py-2 text-xs font-bold text-white shadow-xl"
+              title="Gestión pendiente: ciérrala para poder llamar"
+            >
+              Tipificar pendiente · {openManagement.leadName ?? "registro"}
+            </button>
+          )}
           {showStatusSelector && (
             <>
               <Select
@@ -2241,7 +2330,9 @@ export function CtiBar({ profile }: { profile: Profile }) {
             )}
           </div>
 
-          {inAutomaticWrapUp && !expanded && (
+          {pendingBanner}
+
+          {inAutomaticWrapUp && !expanded && !pendingElsewhere && (
             <div className="border-b border-warning/30 bg-warning-bg p-2.5">
               <button
                 type="button"

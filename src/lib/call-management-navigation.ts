@@ -35,3 +35,21 @@ export function resolveManualCallManagementAction(
 ): ManualCallManagementAction {
   return endState === "origination_failed" ? "discard" : "open_typification";
 }
+
+/**
+ * Mensajes con que la base rechaza marcar o corregir mientras otra gestión
+ * del ejecutivo sigue abierta (ver begin_agent_* y revise_call_management).
+ */
+const PENDING_MANAGEMENT_ERROR = /pendiente de tipificaci|llamada activa antes de corregir|llamada o tipificaci[oó]n en curso/i;
+
+export function isPendingManagementError(message: string | null | undefined): boolean {
+  return PENDING_MANAGEMENT_ERROR.test(message ?? "");
+}
+
+/** Canal de una gestión sin llamada, como lo ve el ejecutivo. */
+export const OFFLINE_CHANNEL_LABEL: Record<string, string> = {
+  whatsapp: "WhatsApp",
+  correo: "Correo",
+  presencial: "Presencial",
+  otro: "Otro canal",
+};

@@ -8,6 +8,7 @@ import { LEAD_STATUSES } from "@/lib/types";
 import { getLeadSupervisionContext, getOpenCall, getRevisableCall, getSupervisableCall, type LeadSupervisionContext } from "@/app/actions/calls";
 import { fetchCampaignAgendaPolicy } from "@/lib/campaign-agenda-policy";
 import { AgendaCallButton } from "@/components/agenda-call-button";
+import { OFFLINE_CHANNEL_LABEL } from "@/lib/call-management-navigation";
 import { LeadPhonesPanel } from "@/components/lead-phones-panel";
 import { OfflineManagementButton } from "@/components/offline-management-button";
 import { ScreenPopTiming } from "@/components/screen-pop-timing";
@@ -37,13 +38,6 @@ import {
   type LeadMailReplyCommand,
 } from "@/components/mail-thread-panel";
 import { canOperateAssignedConversation } from "@/lib/workspace-permissions";
-
-const OFFLINE_CHANNEL_LABEL: Record<string, string> = {
-  whatsapp: "WhatsApp",
-  correo: "Correo",
-  presencial: "Presencial",
-  otro: "Otro canal",
-};
 
 /** Fila etiqueta/valor de la columna de identidad. */
 function InfoRow({ label, children }: { label: ReactNode; children: ReactNode }) {
