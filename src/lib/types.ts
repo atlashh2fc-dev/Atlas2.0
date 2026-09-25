@@ -173,6 +173,8 @@ export interface Call {
   callback_owner_user_id: string | null;
   equifax_products: string[] | null;
   equifax_uf_amount: number | null;
+  /** Q de Equifax: consultas o registros contratados. */
+  equifax_q_consultas?: number | null;
   equifax_recipient_email: string | null;
   phone_status: string | null;
   started_at: string;

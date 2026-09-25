@@ -451,6 +451,8 @@ export interface CallClosurePayload {
   next_action_at: string | null;
   equifax_products: string[];
   equifax_uf_amount: number | null;
+  /** Q: consultas o registros que contrata el cliente (columna Q de «Negocios en curso»). Opcional. */
+  equifax_q_consultas?: number | null;
   equifax_recipient_email: string | null;
   contact_email?: string | null;
   lead_email?: string | null;
@@ -1036,6 +1038,10 @@ export function validateCallClosure(
   }
   if (requiresProductAndUf && (payload.equifax_uf_amount === null || payload.equifax_uf_amount === undefined)) {
     errors.push("Ingresa la UF mensual de la oportunidad.");
+  }
+  const q = payload.equifax_q_consultas;
+  if (requiresProductAndUf && q !== null && q !== undefined && (!Number.isInteger(q) || q <= 0)) {
+    errors.push("La Q (consultas o registros) debe ser un número entero mayor que cero.");
   }
 
   if (reasonConfig.requiresEquifaxData && payload.reason === "COTIZACION ENVIADA") {

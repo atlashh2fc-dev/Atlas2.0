@@ -25,6 +25,7 @@ const NEGOCIOS: NegocioEquifax[] = [
     empresa: "MOVITUTTO EXPRESS SPA",
     productos: ["Bundle MC Ilimitado"],
     uf: "2.5",
+    q_consultas: "10",
     id_audio: "4565a9ca-1d78-4846-bc9b-f7e3761a4cf8",
     estado: "APROBADO DEFINITIVO",
     observacion: "hector 933954481  esperpo docuemnbtos",
@@ -91,13 +92,15 @@ test("cada negocio se escribe como lo pega operación", () => {
   assert.equal(venta.ESTADO, "APROBADO DEFINITIVO");
   assert.equal(venta["FECHA GETION "], "14-08-2026");
   assert.equal(venta["fecha  ok contrato "], "03-09-2026");
-  assert.equal(venta.Q, null);
+  assert.equal(venta.Q, "10");
+  assert.equal(venta.$, null);
   assert.equal(venta["NUMERO CONTRATO "], null);
   assert.equal(venta["ULTIMA GESTION"], "03-09-2026 · VENTA EN VALIDACION");
 
   assert.equal(pendiente["PLATAFORMA "], "NORMAL");
   assert.equal(pendiente["TIPO CONTRATO"], "ONE TIME");
   assert.equal(pendiente["fecha seguimiento"], "30-09-2026");
+  assert.equal(pendiente.Q, null);
 });
 
 test("las fechas son fechas de Excel y la UF es número, para filtrar y sumar", () => {
@@ -106,6 +109,8 @@ test("las fechas son fechas de Excel y la UF es número, para filtrar y sumar", 
   assert.equal(hoja.V2.z, "dd-mm-yyyy");
   assert.equal(hoja.L2.t, "n");
   assert.equal(hoja.L2.v, 2.5);
+  assert.equal(hoja.J2.t, "n");
+  assert.equal(hoja.J2.v, 10);
   assert.equal(hoja["!autofilter"]?.ref, "A1:Y3");
 });
 

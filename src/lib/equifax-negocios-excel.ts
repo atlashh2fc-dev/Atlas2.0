@@ -10,8 +10,9 @@ import * as XLSX from "xlsx";
  * BUSCARV que ya usan sigan funcionando al pegar las filas.
  *
  * Las filas vienen de la RPC get_equifax_negocios: una por negocio (empresa con
- * cotización o venta tipificada). Lo que Atlas no registra —Q, $, número de
- * contrato y Back— queda vacío para que operación lo complete.
+ * cotización o venta tipificada). Q es la cantidad de consultas o registros
+ * (de Atlas 1 o de la ficha). Lo que Atlas no registra —$, número de contrato
+ * y Back— queda vacío para que operación lo complete.
  */
 
 export type NegocioEquifax = {
@@ -23,6 +24,7 @@ export type NegocioEquifax = {
   empresa: string | null;
   productos: string[] | null;
   uf: number | string | null;
+  q_consultas?: number | string | null;
   id_audio: string | null;
   estado: string;
   observacion: string | null;
@@ -190,7 +192,7 @@ export function filaData(negocio: NegocioEquifax): Celda[] {
     negocio.empresa ?? "",
     tipoContrato(negocio.productos),
     (negocio.productos ?? []).join(" + "),
-    null,
+    numero(negocio.q_consultas ?? null),
     null,
     numero(negocio.uf),
     negocio.id_audio ?? "",

@@ -924,6 +924,7 @@ export async function closeCall(input: {
   next_action_at: string | null;
   equifax_products: string[];
   equifax_uf_amount: number | null;
+  equifax_q_consultas?: number | null;
   equifax_recipient_email: string | null;
 }): Promise<CallActionResult> {
   try {
@@ -940,6 +941,7 @@ export async function closeCall(input: {
       equifax_uf_amount,
       equifax_recipient_email,
     } = input;
+    const equifax_q_consultas = input.equifax_q_consultas ?? null;
 
     const { data: lead, error: leadFetchError } = await supabase
       .from("leads")
@@ -961,6 +963,7 @@ export async function closeCall(input: {
         next_action_at,
         equifax_products,
         equifax_uf_amount,
+        equifax_q_consultas,
         equifax_recipient_email,
         lead_email: lead.email,
         contact_email: lead.email,
@@ -993,6 +996,7 @@ export async function closeCall(input: {
       p_equifax_products: equifax_products,
       p_equifax_uf_amount: equifax_uf_amount,
       p_equifax_recipient_email: equifax_recipient_email,
+      p_equifax_q_consultas: equifax_q_consultas,
     });
 
     if (closeError) {
@@ -1044,6 +1048,22 @@ export async function closeCall(input: {
 }
 
 /**
+ * Fija la Q de Equifax de una gestión ya guardada. Las RPC de corrección y de
+ * supervisión no la reciben (cambiarles la firma obligaba a reescribirlas
+ * enteras), así que va en un segundo paso con sus propios permisos. Solo si el
+ * formulario la envió: `undefined` deja la que tenía.
+ */
+async function saveEquifaxQ(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  callId: string,
+  q: number | null | undefined
+) {
+  if (q === undefined) return;
+  const { error } = await supabase.rpc("set_call_equifax_q", { p_call_id: callId, p_q: q });
+  if (error) throw new Error(`La gestión se guardó, pero no la Q: ${error.message}`);
+}
+
+/**
  * Corrige una gestión propia ya cerrada. La RPC actualiza el snapshot
  * operativo y conserva los valores anteriores en auditoría; no crea una
  * llamada ficticia ni altera el tiempo real de la conversación.
@@ -1058,6 +1078,7 @@ export async function reviseCallManagement(input: {
   next_action_at: string | null;
   equifax_products: string[];
   equifax_uf_amount: number | null;
+  equifax_q_consultas?: number | null;
   equifax_recipient_email: string | null;
 }): Promise<CallActionResult> {
   try {
@@ -1096,6 +1117,7 @@ export async function reviseCallManagement(input: {
         next_action_at: input.next_action_at,
         equifax_products: input.equifax_products,
         equifax_uf_amount: input.equifax_uf_amount,
+        equifax_q_consultas: input.equifax_q_consultas,
         equifax_recipient_email: input.equifax_recipient_email,
         lead_email: lead.email,
         contact_email: lead.email,
@@ -1127,6 +1149,7 @@ export async function reviseCallManagement(input: {
       p_equifax_recipient_email: input.equifax_recipient_email,
     });
     if (error) throw new Error(error.message);
+    await saveEquifaxQ(supabase, input.callId, input.equifax_q_consultas);
 
     revalidatePath(`/dashboard/leads/${input.leadId}`);
     revalidatePath("/dashboard/leads");
@@ -1220,6 +1243,7 @@ export async function superviseCallManagement(input: {
   next_action_at: string | null;
   equifax_products: string[];
   equifax_uf_amount: number | null;
+  equifax_q_consultas?: number | null;
   equifax_recipient_email: string | null;
   /** Día (YYYY-MM-DD, Chile) en que ocurrió la gestión que se agrega; null o hoy = ahora. */
   managedOn?: string | null;
@@ -1256,6 +1280,7 @@ export async function superviseCallManagement(input: {
         next_action_at: input.next_action_at,
         equifax_products: input.equifax_products,
         equifax_uf_amount: input.equifax_uf_amount,
+        equifax_q_consultas: input.equifax_q_consultas,
         equifax_recipient_email: input.equifax_recipient_email,
         lead_email: lead.email,
         contact_email: lead.email,
@@ -1265,7 +1290,7 @@ export async function superviseCallManagement(input: {
     );
     if (errors.length > 0) throw new Error(errors.join(" "));
 
-    const { error } = await supabase.rpc("supervise_call_management", {
+    const { data: supervised, error } = await supabase.rpc("supervise_call_management", {
       p_lead_id: input.leadId,
       p_call_id: input.callId,
       p_agent_id: input.callId ? null : input.agentId,
@@ -1282,6 +1307,8 @@ export async function superviseCallManagement(input: {
       p_managed_on: input.callId ? null : input.managedOn || null,
     });
     if (error) throw new Error(error.message);
+    const supervisedCallId = (supervised as { call_id?: string } | null)?.call_id ?? input.callId;
+    if (supervisedCallId) await saveEquifaxQ(supabase, supervisedCallId, input.equifax_q_consultas);
 
     revalidatePath(`/dashboard/leads/${input.leadId}`);
     revalidatePath("/dashboard/validacion-ventas");

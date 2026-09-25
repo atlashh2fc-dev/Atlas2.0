@@ -134,6 +134,7 @@ export function CallTypificationForm({
   const [nextActionAt, setNextActionAt] = useState<string>(isoToLocalInput(call.next_action_at));
   const [equifaxProducts, setEquifaxProducts] = useState<string[]>(call.equifax_products ?? []);
   const [equifaxUf, setEquifaxUf] = useState<string>(call.equifax_uf_amount?.toString() ?? "");
+  const [equifaxQ, setEquifaxQ] = useState<string>(call.equifax_q_consultas?.toString() ?? "");
   const [equifaxEmail, setEquifaxEmail] = useState<string>(call.equifax_recipient_email ?? "");
   const [supervisorNote, setSupervisorNote] = useState("");
   const [creditedAgentId, setCreditedAgentId] = useState<string>(supervision?.defaultAgentId ?? "");
@@ -227,6 +228,7 @@ export function CallTypificationForm({
           next_action_at: closureNextActionAt,
           equifax_products: equifaxProducts,
           equifax_uf_amount: equifaxUf ? Number(equifaxUf) : null,
+          equifax_q_consultas: equifaxQ ? Number(equifaxQ) : null,
           equifax_recipient_email: equifaxEmail || null,
           lead_email: lead.email,
           contact_email: lead.email,
@@ -234,7 +236,7 @@ export function CallTypificationForm({
         catalog,
         closureOptions
       ),
-    [catalog, closureOptions, status, outcome, reason, notes, closureNextActionAt, equifaxProducts, equifaxUf, equifaxEmail, lead.email]
+    [catalog, closureOptions, status, outcome, reason, notes, closureNextActionAt, equifaxProducts, equifaxUf, equifaxQ, equifaxEmail, lead.email]
   );
 
   function handleReasonSelect(option: CallReasonConfig) {
@@ -276,6 +278,8 @@ export function CallTypificationForm({
       next_action_at: selectedReason?.agenda === "none" ? null : closureNextActionAt,
       equifax_products: equifaxProducts,
       equifax_uf_amount: equifaxUf ? Number(equifaxUf) : null,
+      // Solo con el bloque Equifax a la vista: fuera de él no hay Q que tocar.
+      equifax_q_consultas: showEquifaxBlock ? (equifaxQ ? Number(equifaxQ) : null) : undefined,
       equifax_recipient_email: equifaxEmail || null,
     };
     if (selectedReason) handleReasonSelect(selectedReason);
@@ -861,6 +865,25 @@ export function CallTypificationForm({
                     value={equifaxUf}
                     onChange={(e) => setEquifaxUf(e.target.value)}
                     className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                </div>
+                <div>
+                  {/* La Q que Atlas 1 pedía por producto: consultas de RI o de
+                      la bolsa, registros de la BBDD, consultas DataFinder… Va a
+                      la columna Q de «Negocios en curso» y a Validación de ventas. */}
+                  <label htmlFor={`${fieldId}-equifax-q`} className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                    Q consultas / registros
+                  </label>
+                  <input
+                    id={`${fieldId}-equifax-q`}
+                    type="number"
+                    min={1}
+                    step={1}
+                    inputMode="numeric"
+                    value={equifaxQ}
+                    onChange={(e) => setEquifaxQ(e.target.value)}
+                    placeholder="Ej: 10 consultas RI, 1000 registros"
+                    className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
                 </div>
                 {reason === "COTIZACION ENVIADA" && (

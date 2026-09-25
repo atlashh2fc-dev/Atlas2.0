@@ -28,6 +28,8 @@ export type SaleValidationRow = {
   agentName: string | null;
   products: string[];
   ufAmount: number | null;
+  /** Q de Equifax: consultas o registros contratados. */
+  qConsultas: number | null;
   recipientEmail: string | null;
   agentNotes: string | null;
   decidedAt: string | null;
@@ -58,6 +60,7 @@ function toRow(row: Record<string, unknown>): SaleValidationRow {
     agentName: text(row.agent_name),
     products: Array.isArray(row.products) ? (row.products as string[]) : [],
     ufAmount: row.uf_amount == null ? null : Number(row.uf_amount),
+    qConsultas: row.q_consultas == null ? null : Number(row.q_consultas),
     recipientEmail: text(row.recipient_email),
     agentNotes: text(row.agent_notes),
     decidedAt: text(row.decided_at),

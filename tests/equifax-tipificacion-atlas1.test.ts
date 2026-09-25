@@ -276,3 +276,43 @@ test("la base aplica las mismas reglas en el cierre y en la corrección", () => 
   assert.match(LEGACY, /legacy_call_id is not null/);
   assert.match(LEGACY, /private\.revise_call_management/);
 });
+
+test("la venta Equifax lleva la Q de consultas: opcional, pero entera y positiva", () => {
+  // Atlas 1 pedía la Q por producto y la planilla «Negocios en curso» la usa en
+  // su columna Q. En Atlas 2.0 se pide junto a productos y UF.
+  const { steps, branches } = workflowFromMigration();
+  const catalog = buildCallReasonCatalogFromWorkflow(steps, branches);
+  const config = catalog.find((item) => item.value === "VENTA EN VALIDACION")!;
+  const close = (q: number | null | undefined) =>
+    validateCallClosure(
+      {
+        status: config.status,
+        outcome: config.outcome,
+        reason: "VENTA EN VALIDACION",
+        notes: null,
+        next_action_at: null,
+        equifax_products: ["Bolsa RI"],
+        equifax_uf_amount: 3,
+        equifax_q_consultas: q,
+        equifax_recipient_email: null,
+      },
+      catalog,
+      { agendaPolicy: EQUIFAX_POLICY, now: NOW }
+    );
+  const error = "La Q (consultas o registros) debe ser un número entero mayor que cero.";
+  assert.deepEqual(close(10), []);
+  assert.deepEqual(close(null), []);
+  assert.deepEqual(close(undefined), []);
+  assert.deepEqual(close(0), [error]);
+  assert.deepEqual(close(2.5), [error]);
+});
+
+test("el cierre, la corrección y la supervisión guardan la Q", () => {
+  const actions = readFileSync(new URL("../src/app/actions/calls.ts", import.meta.url), "utf8");
+  assert.match(actions, /p_equifax_q_consultas: equifax_q_consultas/);
+  // Las RPC de corrección y supervisión no la reciben: va en un segundo paso.
+  assert.equal(actions.match(/await saveEquifaxQ\(/g)?.length, 2);
+  assert.match(actions, /rpc\("set_call_equifax_q"/);
+  const form = readFileSync(new URL("../src/components/call-typification-form.tsx", import.meta.url), "utf8");
+  assert.match(form, /Q consultas \/ registros/);
+});

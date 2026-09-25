@@ -170,6 +170,15 @@ export function SaleValidationsTable({
         cell: (row) => <span className="font-semibold tabular-nums">{formatUf(row.ufAmount)}</span>,
       },
       {
+        id: "q",
+        header: "Q",
+        align: "right",
+        value: (row) => row.qConsultas,
+        cell: (row) => (
+          <span className="tabular-nums">{row.qConsultas == null ? "—" : row.qConsultas.toLocaleString("es-CL")}</span>
+        ),
+      },
+      {
         id: "vendida",
         header: "Venta",
         value: (row) => row.soldAt,
@@ -317,6 +326,9 @@ export function SaleValidationsTable({
               <Item label="Correo">{detail.recipientEmail ?? detail.leadEmail ?? "—"}</Item>
               <Item label="Equipo">{detail.teamName ?? "—"}</Item>
               <Item label="Estado del registro">{detail.leadStatus ?? "—"}</Item>
+              <Item label="Q consultas / registros">
+                {detail.qConsultas == null ? "—" : detail.qConsultas.toLocaleString("es-CL")}
+              </Item>
             </dl>
             {detail.managementChannel && (
               <div className="flex items-start justify-between gap-3 rounded-md border border-border px-3 py-2">
