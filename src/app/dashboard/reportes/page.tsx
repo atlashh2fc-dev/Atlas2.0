@@ -17,7 +17,7 @@ import {
 import { SupervisorAgentMetricsTable } from "@/components/supervisor-agent-metrics-table";
 import { ChartDownloadButton } from "@/components/chart-download-button";
 import Link from "next/link";
-import { Button, Callout, Card, InfoTooltip, Select } from "@/components/ui";
+import { Button, buttonClasses, Callout, Card, InfoTooltip, Select } from "@/components/ui";
 import { metricDefinition, type MetricId } from "@/lib/metric-definitions";
 import { resolveCampaignScope } from "@/lib/campaign-scope";
 import {
@@ -229,6 +229,36 @@ function ChartPanel({
 }
 
 /**
+ * Descarga «Negocios en curso» de Equifax (la hoja Data de operación). Aparece
+ * cuando hay campañas Equifax a la vista; con una campaña elegida baja solo esa.
+ * Es un enlace simple: la ruta devuelve el .xlsx como adjunto.
+ */
+function EquifaxNegociosDownload({
+  campaigns,
+  selectedId,
+}: {
+  campaigns: { id: string; name: string }[];
+  selectedId: string | null;
+}) {
+  const selected = campaigns.find((campaign) => campaign.id === selectedId) ?? null;
+  const equifax = campaigns.filter((campaign) => /equifax/i.test(campaign.name));
+  if (equifax.length === 0 || (selected && !/equifax/i.test(selected.name))) return null;
+  const href = selected
+    ? `/api/reportes/equifax-negocios?campaign=${encodeURIComponent(selected.id)}`
+    : "/api/reportes/equifax-negocios";
+  return (
+    <a
+      href={href}
+      download
+      className={buttonClasses({ variant: "secondary" })}
+      title="Una fila por negocio con cotización o venta: las columnas de la hoja Data de operación"
+    >
+      Descargar negocios Equifax (Excel)
+    </a>
+  );
+}
+
+/**
  * Filtro de campaña del reporte. Navega por GET y conserva el período: sin los
  * campos ocultos, cambiar de campaña volvía al período por defecto.
  */
@@ -375,14 +405,17 @@ export default async function ReportesPage({
           {/* El selector del encabezado se perdió el 10-09 y el supervisor quedó
               sin forma de elegir campaña: el filtro vive en la página, igual
               que para el admin. Solo lista las campañas de su alcance. */}
-          {campaigns.length > 0 && (
-            <CampaignFilter
-              campaigns={campaigns}
-              selectedId={selectedCampaign?.id ?? null}
-              range={range}
-              allLabel="Todas mis campañas"
-            />
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <EquifaxNegociosDownload campaigns={campaigns} selectedId={selectedCampaign?.id ?? null} />
+            {campaigns.length > 0 && (
+              <CampaignFilter
+                campaigns={campaigns}
+                selectedId={selectedCampaign?.id ?? null}
+                range={range}
+                allLabel="Todas mis campañas"
+              />
+            )}
+          </div>
         </div>
 
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -568,9 +601,12 @@ export default async function ReportesPage({
           </p>
           {range.notice && <p className="text-sm text-warning">{range.notice}</p>}
         </div>
-        {campaigns.length > 0 && (
-          <CampaignFilter campaigns={campaigns} selectedId={selectedCampaignId} range={range} />
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <EquifaxNegociosDownload campaigns={campaigns} selectedId={selectedCampaignId} />
+          {campaigns.length > 0 && (
+            <CampaignFilter campaigns={campaigns} selectedId={selectedCampaignId} range={range} />
+          )}
+        </div>
       </div>
 
       {campaigns.length === 0 && (
