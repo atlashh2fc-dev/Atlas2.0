@@ -998,19 +998,20 @@ export default async function OperationsPage({
                 <Th>Cola de voz</Th>
                 <Th align="right">En curso</Th>
                 <Th align="right">Intentos hoy</Th>
-                <Th align="right">Contestadas hoy</Th>
+                <Th align="right">Llamadas conectadas</Th>
                 <Th align="right">Completadas hoy</Th>
                 <Th align="right">Recorridos hoy</Th>
+                <Th align="right">Conectados hoy</Th>
                 <Th align="right">Aló hoy</Th>
                 <Th align="right">Contactabilidad</Th>
               </Thead>
               <Tbody>
                 {voiceUnavailable ? (
-                  <TableEmpty colSpan={9}>
+                  <TableEmpty colSpan={10}>
                     Datos de voz no disponibles.
                   </TableEmpty>
                 ) : voiceQueues.length === 0 ? (
-                  <TableEmpty colSpan={9}>
+                  <TableEmpty colSpan={10}>
                     {filters.state === "inactive"
                       ? "La fuente de voz informa únicamente campañas activas."
                       : "No hay campañas activas de voz que coincidan con estos filtros."}
@@ -1026,6 +1027,9 @@ export default async function OperationsPage({
                       <Td align="right">{queue.completed_today}</Td>
                       <Td align="right">
                         {funnelUnavailable ? "No disponible" : funnelByCampaign.get(queue.campaign_id)?.recorridos ?? 0}
+                      </Td>
+                      <Td align="right">
+                        {funnelUnavailable ? "No disponible" : funnelByCampaign.get(queue.campaign_id)?.conectados ?? 0}
                       </Td>
                       <Td align="right">
                         {funnelUnavailable ? "No disponible" : funnelByCampaign.get(queue.campaign_id)?.contactados ?? 0}

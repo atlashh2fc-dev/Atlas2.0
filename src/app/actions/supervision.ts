@@ -63,13 +63,27 @@ export async function forceAgentLogout(
 export type EmbudoCopc = {
   recorridos: number;
   intentos: number;
-  /** Registros con aló: contestó alguien, titular o no. */
+  /** Registros donde alguien contestó y la llamada llegó a un ejecutivo. */
+  conectados: number;
+  /** Registros con aló: el ejecutivo habló con una persona, titular o no. */
   contactados: number;
   titulares: number;
   ventas: number;
+  /** Conectados ÷ recorridos. */
+  tasa_conexion: number | null;
   contactabilidad: number | null;
   contactabilidad_titular: number | null;
   conversion: number | null;
+};
+
+/** Qué tipificó el ejecutivo en los conectados que no terminaron en aló. */
+export type ConectadosSinAlo = {
+  buzon: number;
+  no_contesta: number;
+  fuera_servicio: number;
+  /** Conectados sin gestión cerrada todavía. */
+  sin_tipificar: number;
+  otro: number;
 };
 
 export type LiveWallboard = {
@@ -106,6 +120,9 @@ export type LiveWallboard = {
    * venta. Tasas en porcentaje (intensidad e intentos por contacto, razón).
    */
   embudo: EmbudoCopc & {
+    conectados_sin_alo: ConectadosSinAlo;
+    /** Aló ÷ conectados: cuánto de lo que conecta es de verdad una persona. */
+    alo_de_conectados: number | null;
     titularidad: number | null;
     intensidad: number | null;
     intentos_por_contacto: number | null;
@@ -115,6 +132,7 @@ export type LiveWallboard = {
     hora: number;
     intentos: number;
     recorridos: number;
+    conectados: number;
     contactados: number;
     titulares: number;
     gestiones: number;
@@ -134,7 +152,7 @@ export type LiveWallboard = {
 
 /**
  * Tablero del día (hora Chile) sobre los mismos ejecutivos que ve el monitor:
- * TMO, embudo COPC (recorrido, aló, titular, venta), abandono, producción,
+ * TMO, embudo COPC (recorrido, conectado, aló, titular, venta), abandono, producción,
  * curva por hora y pausa por motivo. get_live_wallboard acota por supervisor y empresa.
  */
 export async function getLiveWallboard(campaignId?: string | null): Promise<LiveWallboard> {

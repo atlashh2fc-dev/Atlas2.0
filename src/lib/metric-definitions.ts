@@ -94,6 +94,13 @@ export const METRIC_DEFINITIONS = {
       "Registros distintos que se marcaron al menos una vez y la llamada llegó a la red, o que tuvieron una gestión. Las fallas de la troncal no cuentan.",
     channels: ["outbound"],
   },
+  conectados: {
+    label: "Conectados",
+    definition:
+      "Registros recorridos en que alguien contestó y la llamada llegó a un ejecutivo. Después el ejecutivo confirma si fue aló, buzón de voz, silencio o número fuera de servicio. Se cuenta por registro, no por llamada.",
+    formula: "registros conectados ÷ registros recorridos",
+    channels: ["outbound"],
+  },
   contactabilidad: {
     label: "Contactabilidad",
     definition:

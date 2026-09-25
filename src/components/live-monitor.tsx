@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type 
 import { Bar, BarChart, Cell, Label, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import ReactGridLayout, { useContainerWidth, verticalCompactor, type Layout, type LayoutItem } from "react-grid-layout";
 import { LogOut, Plus, RotateCcw, X } from "lucide-react";
-import { forceAgentLogout, getAgentLiveStatus, getLiveWallboard, getQueueHealth, type EmbudoCopc, type LiveWallboard } from "@/app/actions/supervision";
+import { forceAgentLogout, getAgentLiveStatus, getLiveWallboard, getQueueHealth, type ConectadosSinAlo, type EmbudoCopc, type LiveWallboard } from "@/app/actions/supervision";
 import type { AgentLiveStatus, QueueHealth } from "@/lib/types";
 import { LEGAL_INTERCALL_BREAK_SECONDS } from "@/lib/intercall-break";
 import { useViewPreference } from "@/lib/use-view-preference";
@@ -139,7 +139,7 @@ const WIDGET_TITLE: Record<WidgetId, string> = {
   paused: "En pausa",
   alerts: "Alertas operativas",
   campaigns: "Campañas activas",
-  answered: "Contestadas hoy",
+  answered: "Conectados hoy",
   completed: "Completadas hoy",
   "abandon-rate": "Abandono hoy",
   "no-answer-rate": "Sin respuesta hoy",
@@ -169,7 +169,7 @@ const WIDGET_KICKER: Record<WidgetId, string> = {
   paused: "AUXILIAR",
   alerts: "ATENCIÓN",
   campaigns: "OPERACIÓN",
-  answered: "VOLUMEN",
+  answered: "CONECTADO ÷ RECORRIDO",
   completed: "RESULTADO",
   "abandon-rate": "GUARDARRAÍL",
   "no-answer-rate": "CONTACTO",
@@ -267,6 +267,20 @@ function formatPercent(value: number | null | undefined): string {
   return value == null ? "—" : `${value.toLocaleString("es-CL", { maximumFractionDigits: 1 })}%`;
 }
 
+/** Desglose de los conectados que no fueron aló, según la tipificación. */
+function conectadosSinAlo(detalle: ConectadosSinAlo | undefined): string {
+  if (!detalle) return "—";
+  const partes = [
+    [detalle.buzon, "buzón de voz"],
+    [detalle.no_contesta, "no contesta"],
+    [detalle.fuera_servicio, "fuera de servicio"],
+    [detalle.sin_tipificar, "sin tipificar"],
+    [detalle.otro, "otro"],
+  ] as const;
+  const texto = partes.filter(([n]) => n > 0).map(([n, etiqueta]) => `${formatInt(n)} ${etiqueta}`).join(" · ");
+  return texto || "ninguno";
+}
+
 function formatRatio(value: number | null | undefined): string {
   return value == null ? "—" : value.toLocaleString("es-CL", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }
@@ -287,15 +301,16 @@ function QueueHealthCard({ queue, funnel }: { queue: QueueHealth; funnel?: Embud
           <span className={cn("rounded-full border px-2 py-1 text-[11px] font-semibold", overThreshold ? "border-danger/30 bg-danger-bg text-danger" : "border-border bg-surface text-muted-foreground")}>Abandono {abandonRate}%</span>
         </div>
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
         <QueueNumber label="Recorridos" value={funnel?.recorridos ?? 0} />
+        <QueueNumber label="Conectados" value={funnel?.conectados ?? 0} />
         <QueueNumber label="Aló" value={funnel?.contactados ?? 0} />
         <QueueNumber label="Titular" value={funnel?.titulares ?? 0} />
         <QueueNumber label="Ventas" value={funnel?.ventas ?? 0} />
       </div>
       <div className="mt-3 grid grid-cols-2 gap-3 border-t border-border/70 pt-3 sm:grid-cols-4">
         <QueueNumber label="En curso" value={queue.in_flight} />
-        <QueueNumber label="Contestadas" value={queue.answered_today} />
+        <QueueNumber label="Llamadas conectadas" value={queue.answered_today} />
         <QueueNumber label="Completadas" value={queue.completed_today} />
         <QueueNumber label="No responde" value={queue.no_answer_today} />
       </div>
@@ -447,7 +462,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
     return !normalizedTerm || `${agent.full_name} ${agent.extension}`.toLocaleLowerCase("es-CL").includes(normalizedTerm);
   }), [agents, group, campaign, normalizedTerm]);
   const statusChartData = (Object.keys(GROUP_LABEL) as AgentGroup[]).map((key) => ({ name: GROUP_LABEL[key], value: groups[key], color: STATUS_COLORS[key] }));
-  const campaignChartData = queues.map((queue) => ({ name: queue.campaign_name.length > 18 ? `${queue.campaign_name.slice(0, 16)}…` : queue.campaign_name, fullName: queue.campaign_name, "En curso": queue.in_flight, Contestadas: queue.answered_today, Completadas: queue.completed_today }));
+  const campaignChartData = queues.map((queue) => ({ name: queue.campaign_name.length > 18 ? `${queue.campaign_name.slice(0, 16)}…` : queue.campaign_name, fullName: queue.campaign_name, "En curso": queue.in_flight, Conectadas: queue.answered_today, Completadas: queue.completed_today }));
   const openLogoutDialog = useCallback((agent: AgentLiveStatus) => {
     setLogoutTarget(agent);
     setLogoutReason("");
@@ -521,7 +536,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
 
 
   const today = wallboard?.hoy ?? null;
-  const hourlyData = (wallboard?.por_hora ?? []).map((row) => ({ name: `${String(row.hora).padStart(2, "0")}h`, Recorridos: row.recorridos ?? 0, "Aló": row.contactados ?? 0, Titular: row.titulares ?? 0, Contactabilidad: row.recorridos ? `${Math.round(((row.contactados ?? 0) / row.recorridos) * 1000) / 10}%` : "—" }));
+  const hourlyData = (wallboard?.por_hora ?? []).map((row) => ({ name: `${String(row.hora).padStart(2, "0")}h`, Recorridos: row.recorridos ?? 0, Conectados: row.conectados ?? 0, "Aló": row.contactados ?? 0, Titular: row.titulares ?? 0, Contactabilidad: row.recorridos ? `${Math.round(((row.contactados ?? 0) / row.recorridos) * 1000) / 10}%` : "—" }));
   const pauseTotal = (wallboard?.pausa_equipo ?? []).reduce((sum, item) => sum + item.segundos, 0);
   const widgets: Record<WidgetId, ReactNode> = {
     occupancy: <MetricWidget kicker={WIDGET_KICKER.occupancy} label="Ocupación del equipo" metric="ocupacion" value={`${occupancy}%`} hint={`${connected} conectados · objetivo operativo 85%`} tone={occupancy >= 85 ? "warn" : "default"} />,
@@ -532,8 +547,8 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
     paused: <MetricWidget kicker={WIDGET_KICKER.paused} label="En pausa" value={groups.paused} hint="Fuera de la cola por AUX" tone={groups.paused > 0 ? "warn" : "default"} />,
     alerts: <MetricWidget kicker={WIDGET_KICKER.alerts} label="Alertas operativas" value={alerts} hint={alerts ? "Pausa o cierre fuera de umbral" : "Todo dentro de los umbrales"} tone={alerts ? "danger" : "good"} />,
     campaigns: <MetricWidget kicker={WIDGET_KICKER.campaigns} label="Campañas activas" value={queues.length} hint={`${totals.inFlight} llamadas en curso`} />,
-    answered: <MetricWidget kicker={WIDGET_KICKER.answered} label="Contestadas hoy" value={formatInt(totals.answered)} hint={`${formatInt(totals.inFlight)} en curso ahora`} />,
-    completed: <MetricWidget kicker={WIDGET_KICKER.completed} label="Completadas hoy" value={formatInt(totals.completed)} hint={totals.answered ? `${Math.round((totals.completed / totals.answered) * 100)}% de las contestadas` : "Sin llamadas contestadas"} />,
+    answered: <MetricWidget kicker={WIDGET_KICKER.answered} label="Conectados hoy" metric="conectados" value={funnel ? formatInt(funnel.conectados) : "—"} hint={funnel ? (funnel.conectados ? `${formatPercent(funnel.tasa_conexion)} de lo recorrido · ${formatInt(funnel.contactados)} con aló (${formatPercent(funnel.alo_de_conectados)})` : "Nadie ha contestado todavía") : "Calculando…"} />,
+    completed: <MetricWidget kicker={WIDGET_KICKER.completed} label="Completadas hoy" value={formatInt(totals.completed)} hint={totals.answered ? `${Math.round((totals.completed / totals.answered) * 100)}% de las llamadas conectadas` : "Sin llamadas conectadas"} />,
     "abandon-rate": <MetricWidget kicker={WIDGET_KICKER["abandon-rate"]} label="Abandono hoy" metric="abandono" value={`${abandonRate}%`} hint={`${formatInt(totals.abandoned)} abandonadas · umbral ${THRESHOLDS.abandonRate}%`} tone={abandonRate > THRESHOLDS.abandonRate ? "danger" : "good"} />,
     "no-answer-rate": <MetricWidget kicker={WIDGET_KICKER["no-answer-rate"]} label="Sin respuesta hoy" value={`${noAnswerRate}%`} hint={`${formatInt(totals.noAnswer)} intentos sin respuesta`} tone={noAnswerRate >= 70 ? "warn" : "default"} />,
     "contact-rate": <MetricWidget kicker={WIDGET_KICKER["contact-rate"]} label="Contactabilidad hoy" metric="contactabilidad" value={formatPercent(funnel?.contactabilidad)} hint={funnel ? (funnel.recorridos ? `${formatInt(funnel.contactados)} aló de ${formatInt(funnel.recorridos)} registros recorridos` : "Sin registros recorridos todavía") : "Calculando…"} />,
@@ -546,10 +561,11 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
         <p className="mt-2 text-lg font-semibold tracking-tight text-foreground">Embudo del día</p>
         <p className="mt-1 text-xs text-muted-foreground">Registros distintos, hora Chile. Cada tasa sobre el recorrido; entre paréntesis, sobre la etapa anterior.</p>
         {funnel && funnel.recorridos > 0 ? (
-          <div className="mt-4 flex-1 space-y-3">
+          <div className="mt-3 flex-1 space-y-2">
             {([
               { label: "Recorridos", value: funnel.recorridos, color: "var(--accent)", step: null, stepLabel: `${formatRatio(funnel.intensidad)} marcaciones por registro` },
-              { label: "Aló", value: funnel.contactados, color: "var(--primary)", step: funnel.contactabilidad, stepLabel: "contactabilidad" },
+              { label: "Conectados", value: funnel.conectados, color: "var(--muted-foreground)", step: null, stepLabel: `${formatPercent(funnel.tasa_conexion)} conexión` },
+              { label: "Aló", value: funnel.contactados, color: "var(--primary)", step: funnel.alo_de_conectados, stepLabel: "de los conectados" },
               { label: "Titular", value: funnel.titulares, color: "var(--success)", step: funnel.titularidad, stepLabel: "de los aló" },
               { label: "Ventas", value: funnel.ventas, color: "var(--warning)", step: funnel.conversion, stepLabel: "conversión" },
             ]).map((stage) => {
@@ -563,12 +579,15 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
                       {stage.step === null ? ` · ${stage.stepLabel}` : ` · ${formatPercent(share)} (${formatPercent(stage.step)} ${stage.stepLabel})`}
                     </span>
                   </div>
-                  <div className="mt-1 h-2.5 overflow-hidden rounded-full bg-surface-muted">
+                  <div className="mt-1 h-2 overflow-hidden rounded-full bg-surface-muted">
                     <div className="h-full rounded-full" style={{ width: `${Math.max(share, stage.value > 0 ? 1 : 0)}%`, backgroundColor: stage.color }} />
                   </div>
                 </div>
               );
             })}
+            <p className="border-t border-border/70 pt-2 text-[11px] leading-relaxed text-muted-foreground">
+              Conectados sin aló: {conectadosSinAlo(funnel.conectados_sin_alo)}
+            </p>
           </div>
         ) : <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">{funnel ? "Sin registros recorridos todavía." : "Calculando…"}</div>}
       </div>
@@ -581,7 +600,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
       <div className="h-[19.5rem]">
         <p className="text-[10px] font-semibold tracking-[0.18em] text-primary">{WIDGET_KICKER.hourly}</p>
         <p className="mt-2 text-lg font-semibold tracking-tight text-foreground">Curva por hora</p>
-        <p className="mt-1 text-xs text-muted-foreground">Registros recorridos, con aló y con titular en cada hora de hoy, hora Chile.</p>
+        <p className="mt-1 text-xs text-muted-foreground">Registros recorridos, conectados, con aló y con titular en cada hora de hoy, hora Chile.</p>
         {hourlyData.length ? (
           <ResponsiveContainer width="100%" height="72%">
             <BarChart data={hourlyData} margin={{ top: 16, left: -12, right: 8, bottom: 0 }} barCategoryGap="22%">
@@ -589,6 +608,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
               <YAxis allowDecimals={false} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickLine={false} axisLine={false} />
               <Tooltip cursor={{ fill: "var(--surface-muted)" }} contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, fontSize: 12 }} labelFormatter={(label, payload) => `${label} · contactabilidad ${payload?.[0]?.payload?.Contactabilidad ?? "—"}`} />
               <Bar dataKey="Recorridos" fill="var(--accent)" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="Conectados" fill="var(--muted-foreground)" radius={[4, 4, 0, 0]} />
               <Bar dataKey="Aló" fill="var(--primary)" radius={[4, 4, 0, 0]} />
               <Bar dataKey="Titular" fill="var(--success)" radius={[4, 4, 0, 0]} />
             </BarChart>
@@ -663,7 +683,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
           </div>
           <div className="flex flex-col gap-1 text-right text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
             <span className="inline-flex items-center justify-end gap-1.5"><i className="size-2 rounded-sm bg-accent" />En curso</span>
-            <span className="inline-flex items-center justify-end gap-1.5"><i className="size-2 rounded-sm bg-primary" />Contestadas</span>
+            <span className="inline-flex items-center justify-end gap-1.5"><i className="size-2 rounded-sm bg-primary" />Conectadas</span>
             <span className="inline-flex items-center justify-end gap-1.5"><i className="size-2 rounded-sm bg-success" />Completadas</span>
           </div>
         </div>
@@ -674,7 +694,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
               <YAxis allowDecimals={false} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickLine={false} axisLine={false} />
               <Tooltip cursor={{ fill: "var(--surface-muted)" }} contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, fontSize: 12, boxShadow: "0 14px 28px -18px rgba(24,49,55,.55)" }} labelFormatter={(_, payload) => payload?.[0]?.payload?.fullName ?? ""} />
               <Bar dataKey="En curso" stackId="a" fill="var(--accent)" radius={[0, 0, 4, 4]} />
-              <Bar dataKey="Contestadas" stackId="a" fill="var(--primary)" />
+              <Bar dataKey="Conectadas" stackId="a" fill="var(--primary)" />
               <Bar dataKey="Completadas" stackId="a" fill="var(--success)" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
