@@ -297,6 +297,25 @@ export default async function LeadDetailPage({
   const canManageCall = permissions.canAttendCustomers;
   const canReassign = permissions.canManageAssignments;
   const canOperateAssigned = canOperateAssignedConversation(profile, lead.assigned_to);
+  // Sin asignación, el cliente es de quien lo gestionó (mismo criterio que
+  // begin_agent_assigned_lead_call). Los clientes migrados de Atlas 1 llegaron
+  // sin assigned_to y el ejecutivo no tenía cómo llamar a los suyos. Tiene que
+  // seguir en la campaña del registro.
+  const ownsManagedRecord = canManageCall
+    && profile.active
+    && lead.assigned_to === null
+    && lead.managed_by === profile.id
+    && Boolean(lead.campaign_id)
+    && Boolean(
+      (
+        await supabase
+          .from("campaign_agents")
+          .select("campaign_id")
+          .eq("profile_id", profile.id)
+          .eq("campaign_id", lead.campaign_id!)
+          .maybeSingle()
+      ).data,
+    );
   const call = canManageCall ? await getOpenCall(id) : null;
   const revisableCall =
     canManageCall && !call && lead.managed_by === profile.id
@@ -427,7 +446,7 @@ export default async function LeadDetailPage({
             {/* Sin gestión abierta, un compromiso propio se puede marcar desde
                 aquí aunque la campaña sea automática: el discador solo entrega
                 el callback dentro de su ventana y después queda incallable. */}
-            {canManageCall && !call && (canOperateAssigned || ownsAgenda) && lead.phone && (
+            {canManageCall && !call && (canOperateAssigned || ownsManagedRecord || ownsAgenda) && lead.phone && (
               <AgendaCallButton
                 leadId={lead.id}
                 fullName={lead.full_name}
