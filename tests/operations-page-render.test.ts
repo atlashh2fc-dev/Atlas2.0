@@ -79,8 +79,9 @@ async function renderOperations({
       // Sentinels deliberately present even though the real projection excludes them.
       contact_name: "PRIVATE-CUSTOMER-NAME", contact_phone: "+56999888777", text_body: "PRIVATE-TRANSCRIPT-BODY" }],
   };
-  const rpcRows: Record<string, Row[]> = {
+  const rpcRows: Record<string, unknown> = {
     get_queue_health: [{ campaign_id: ids.campaign, campaign_name: "Campaña autorizada", queue_name: "voice-queue", campaign_type: "outbound", in_flight: 2, attempts_today: 6, answered_today: 3, completed_today: 2 }],
+    get_live_wallboard: { por_campana: [{ campaign_id: ids.campaign, recorridos: 40, intentos: 55, contactados: 5, titulares: 4, ventas: 1 }] },
     get_agent_live_status: [{ profile_id: ids.agent, full_name: "Ejecutivo autorizado", campaign_id: ids.campaign, campaign_name: "Campaña autorizada", phone_status: "available", is_pause: false, reason_code: "disponible" }],
     get_mail_engagement_report_read_model: [{ mail_campaign_id: "mail-1", mail_campaign_name: "Correo autorizado", campaign_id: ids.campaign, campaign_name: "Campaña autorizada", sent_leads: 20, opened_leads: 8, clicked_leads: 2, hot_leads: 8, assigned_hot_leads: 3, managed_hot_leads: 1 }],
   };
@@ -197,6 +198,10 @@ test("una campaña Meta selecciona la unidad completa y conserva Voz y Correo co
   assert.match(html, /Voz outbound · detalle interno/);
   assert.match(html, /Correo · detalle interno/);
   assert.match(html, /Secretaria Virtual outbound/);
+  assert.match(html, /Contactabilidad hoy/);
+  assert.match(html, /5 aló de 40 registros recorridos/);
+  assert.match(html, /12,5%/);
+  assert.doesNotMatch(html, /Espera ACD/);
   assert.doesNotMatch(html, />Colas de WhatsApp<|>Campañas y colas de voz<|>Campañas y cola de correo</);
 });
 

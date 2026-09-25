@@ -40,6 +40,7 @@ import {
   summarizeConversationStock,
 } from "@/lib/operations-model";
 import type { AgentLiveStatus, QueueHealth } from "@/lib/types";
+import type { EmbudoCopc } from "@/app/actions/supervision";
 
 type Relation<T> = T | T[] | null;
 type Queue = {
@@ -110,6 +111,12 @@ function DataNumber({
   );
 }
 
+/** COPC outbound: registros con aló ÷ registros recorridos. */
+function contactabilityLabel(contacted: number, swept: number) {
+  if (!swept) return "—";
+  return `${(Math.round((contacted / swept) * 1000) / 10).toLocaleString("es-CL")}%`;
+}
+
 function phoneState(agent: AgentLiveStatus) {
   if (agent.phone_status === "on_call") return "En llamada";
   if (agent.phone_status === "ringing") return "Sonando";
@@ -148,6 +155,7 @@ export default async function OperationsPage({
     campaignsResult,
     voiceResult,
     agentsResult,
+    wallboardResult,
     mailResult,
     stockResult,
     automationResult,
@@ -180,6 +188,11 @@ export default async function OperationsPage({
       .limit(1000),
     supabase.rpc("get_queue_health"),
     supabase.rpc("get_agent_live_status"),
+    // Embudo COPC del día por campaña (recorrido → aló). Outbound no tiene cola
+    // de espera: lo que dice cómo va la voz es la contactabilidad.
+    showVoice
+      ? supabase.rpc("get_live_wallboard", { p_campaign_id: null })
+      : Promise.resolve({ data: null, error: null }),
     showMail
       ? supabase.rpc("get_mail_engagement_report_read_model", {
           p_mail_campaign_id: null,
@@ -372,6 +385,23 @@ export default async function OperationsPage({
   );
   const voiceUnavailable = Boolean(
     voiceResult.error || catalogUnavailable || invalidSelection,
+  );
+  const funnelByCampaign = new Map(
+    (
+      ((wallboardResult.data as { por_campana?: (EmbudoCopc & { campaign_id: string })[] } | null)
+        ?.por_campana ?? [])
+    ).map((row) => [row.campaign_id, row]),
+  );
+  const funnelUnavailable = Boolean(voiceUnavailable || wallboardResult.error);
+  const voiceFunnel = voiceQueues.reduce(
+    (total, queue) => {
+      const row = funnelByCampaign.get(queue.campaign_id);
+      return {
+        recorridos: total.recorridos + Number(row?.recorridos ?? 0),
+        contactados: total.contactados + Number(row?.contactados ?? 0),
+      };
+    },
+    { recorridos: 0, contactados: 0 },
   );
   const agentsUnavailable = Boolean(
     agentsResult.error || (filters.queue && membersUnavailable),
@@ -732,7 +762,7 @@ export default async function OperationsPage({
                 <Phone size={16} /> Voz · Operación actual
               </span>
             }
-            description="Campañas activas del marcador. Las llamadas en curso no equivalen a personas esperando."
+            description="Campañas activas del marcador. Contactabilidad COPC: registros con aló ÷ registros recorridos hoy."
           >
             <dl className="grid grid-cols-2 gap-5 p-5 sm:grid-cols-4">
               <DataNumber
@@ -764,9 +794,19 @@ export default async function OperationsPage({
                 }
               />
               <DataNumber
-                label="Espera ACD en vivo"
-                value="No disponible"
-                hint="No expuesta por la fuente actual"
+                label="Contactabilidad hoy"
+                value={
+                  funnelUnavailable
+                    ? null
+                    : contactabilityLabel(voiceFunnel.contactados, voiceFunnel.recorridos)
+                }
+                hint={
+                  funnelUnavailable
+                    ? undefined
+                    : voiceFunnel.recorridos
+                      ? `${voiceFunnel.contactados.toLocaleString("es-CL")} aló de ${voiceFunnel.recorridos.toLocaleString("es-CL")} registros recorridos`
+                      : "Sin registros recorridos todavía"
+                }
               />
             </dl>
           </SectionCard>
@@ -960,15 +1000,17 @@ export default async function OperationsPage({
                 <Th align="right">Intentos hoy</Th>
                 <Th align="right">Contestadas hoy</Th>
                 <Th align="right">Completadas hoy</Th>
-                <Th>Espera ACD</Th>
+                <Th align="right">Recorridos hoy</Th>
+                <Th align="right">Aló hoy</Th>
+                <Th align="right">Contactabilidad</Th>
               </Thead>
               <Tbody>
                 {voiceUnavailable ? (
-                  <TableEmpty colSpan={7}>
+                  <TableEmpty colSpan={9}>
                     Datos de voz no disponibles.
                   </TableEmpty>
                 ) : voiceQueues.length === 0 ? (
-                  <TableEmpty colSpan={7}>
+                  <TableEmpty colSpan={9}>
                     {filters.state === "inactive"
                       ? "La fuente de voz informa únicamente campañas activas."
                       : "No hay campañas activas de voz que coincidan con estos filtros."}
@@ -982,7 +1024,20 @@ export default async function OperationsPage({
                       <Td align="right">{queue.attempts_today}</Td>
                       <Td align="right">{queue.answered_today}</Td>
                       <Td align="right">{queue.completed_today}</Td>
-                      <Td muted>No disponible</Td>
+                      <Td align="right">
+                        {funnelUnavailable ? "No disponible" : funnelByCampaign.get(queue.campaign_id)?.recorridos ?? 0}
+                      </Td>
+                      <Td align="right">
+                        {funnelUnavailable ? "No disponible" : funnelByCampaign.get(queue.campaign_id)?.contactados ?? 0}
+                      </Td>
+                      <Td align="right" strong>
+                        {funnelUnavailable
+                          ? "No disponible"
+                          : contactabilityLabel(
+                              Number(funnelByCampaign.get(queue.campaign_id)?.contactados ?? 0),
+                              Number(funnelByCampaign.get(queue.campaign_id)?.recorridos ?? 0),
+                            )}
+                      </Td>
                     </Tr>
                   ))
                 )}
@@ -1015,9 +1070,9 @@ export default async function OperationsPage({
               </Thead>
               <Tbody>
                 {mailUnavailable ? (
-                  <TableEmpty colSpan={7}>Datos de correo no disponibles.</TableEmpty>
+                  <TableEmpty colSpan={9}>Datos de correo no disponibles.</TableEmpty>
                 ) : mailReports.length === 0 ? (
-                  <TableEmpty colSpan={7}>
+                  <TableEmpty colSpan={9}>
                     No hay campañas de correo conectadas que coincidan con estos filtros.
                   </TableEmpty>
                 ) : (
