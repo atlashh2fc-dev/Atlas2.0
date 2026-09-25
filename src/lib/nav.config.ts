@@ -258,6 +258,12 @@ const CONSOLE: NavSpace = {
           roles: ALL_ROLES,
           description: "Registros dentro de tu alcance; gestión solo para ejecutivos",
           match: ["/dashboard/leads", "/dashboard/llamadas"],
+          // Solo el ejecutivo tiene cotizaciones propias, y solo en campañas
+          // que las siguen: Mis registros pinta las pestañas cuando aplica.
+          tabs: [
+            { label: "Registros", href: "/dashboard/leads", roles: ["agente"] },
+            { label: "Cotizaciones", href: "/dashboard/leads/cotizaciones", roles: ["agente"] },
+          ],
           modules: ["leads"],
           ediciones: ["center"],
         },

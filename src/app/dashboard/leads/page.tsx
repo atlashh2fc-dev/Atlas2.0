@@ -17,7 +17,8 @@ import {
 } from "@/lib/leads-query";
 import { channelSegmentLabel, parseChannelSegment } from "@/lib/channel-segment";
 import { LeadsQueue, type LeadQueueRow } from "@/components/leads-queue";
-import { Callout, Field, FilterBar, Input, PageHeader, Select, buttonClasses } from "@/components/ui";
+import { Callout, Field, FilterBar, Input, NavTabs, PageHeader, Select, buttonClasses } from "@/components/ui";
+import { getTabs } from "@/lib/nav.config";
 
 type FilterOption = { id: string; full_name?: string; name?: string };
 
@@ -100,14 +101,21 @@ export default async function LeadsPage({
       ])
     : [{ data: [] }, { data: [] }];
 
-  const result = await fetchLeadsPage<LeadQueueRow>(supabase, {
-    role: profile.role,
-    filters,
-    view,
-    page: Number(pageParam) || 1,
-    pageSize: PAGE_SIZE_DEFAULT,
-    segment,
-  });
+  const [result, tracksQuotations] = await Promise.all([
+    fetchLeadsPage<LeadQueueRow>(supabase, {
+      role: profile.role,
+      filters,
+      view,
+      page: Number(pageParam) || 1,
+      pageSize: PAGE_SIZE_DEFAULT,
+      segment,
+    }),
+    // La pestaña Cotizaciones solo aparece si el ejecutivo trabaja una campaña
+    // que las sigue (Secretaria Virtual); si la consulta falla, no se muestra.
+    profile.role === "agente"
+      ? supabase.rpc("agent_tracks_quotations").then(({ data }) => data === true)
+      : Promise.resolve(false),
+  ]);
 
   // Estados presentes en la base + el que esté filtrado, con etiqueta legible
   // cuando el valor pertenece al catálogo del producto.
@@ -141,6 +149,7 @@ export default async function LeadsPage({
       <PageHeader
         title={copy.title}
         description={`Hola, ${profile.full_name.split(" ")[0]}. ${copy.description}`}
+        className={tracksQuotations ? "border-b-0 pb-0" : undefined}
         actions={
           canManage ? (
             <div className="flex items-center gap-2">
@@ -158,6 +167,7 @@ export default async function LeadsPage({
           ) : undefined
         }
       />
+      {tracksQuotations && <NavTabs tabs={getTabs("registros", profile.role)} />}
 
       <FilterBar storageKey="registros">
         <Field label="Buscar" className="min-w-64 flex-1">
