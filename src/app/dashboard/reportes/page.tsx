@@ -228,6 +228,43 @@ function ChartPanel({
   );
 }
 
+/**
+ * Filtro de campaña del reporte. Navega por GET y conserva el período: sin los
+ * campos ocultos, cambiar de campaña volvía al período por defecto.
+ */
+function CampaignFilter({
+  campaigns,
+  selectedId,
+  range,
+  allLabel = "Todas las campañas",
+}: {
+  campaigns: { id: string; name: string }[];
+  selectedId: string | null;
+  range: ReturnType<typeof resolveReportRange>;
+  allLabel?: string;
+}) {
+  return (
+    <form className="flex items-center gap-2">
+      <input type="hidden" name="preset" value={range.preset} />
+      {range.preset === "custom" && (
+        <>
+          <input type="hidden" name="from" value={toDateInput(range.from)} />
+          <input type="hidden" name="to" value={toDateInput(range.to)} />
+        </>
+      )}
+      <Select name="campaign" defaultValue={selectedId ?? ""} className="w-auto" aria-label="Campaña">
+        <option value="">{allLabel}</option>
+        {campaigns.map((campaign) => (
+          <option key={campaign.id} value={campaign.id}>
+            {campaign.name}
+          </option>
+        ))}
+      </Select>
+      <Button type="submit">Ver</Button>
+    </form>
+  );
+}
+
 export default async function ReportesPage({
   searchParams,
 }: {
@@ -328,12 +365,25 @@ export default async function ReportesPage({
 
     return (
       <div className="space-y-6">
-        <p className="text-sm text-muted-foreground">
-          {`${selectedCampaign ? `${selectedCampaign.name} · ` : "Todos tus equipos · "}${formatReportRangeLabel(range)}`}
-        </p>
-        {range.notice && (
-          <p className="text-sm text-warning">{range.notice}</p>
-        )}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">
+              {`${selectedCampaign ? `${selectedCampaign.name} · ` : "Todos tus equipos · "}${formatReportRangeLabel(range)}`}
+            </p>
+            {range.notice && <p className="text-sm text-warning">{range.notice}</p>}
+          </div>
+          {/* El selector del encabezado se perdió el 10-09 y el supervisor quedó
+              sin forma de elegir campaña: el filtro vive en la página, igual
+              que para el admin. Solo lista las campañas de su alcance. */}
+          {campaigns.length > 0 && (
+            <CampaignFilter
+              campaigns={campaigns}
+              selectedId={selectedCampaign?.id ?? null}
+              range={range}
+              allLabel="Todas mis campañas"
+            />
+          )}
+        </div>
 
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <MetricCard
@@ -519,26 +569,7 @@ export default async function ReportesPage({
           {range.notice && <p className="text-sm text-warning">{range.notice}</p>}
         </div>
         {campaigns.length > 0 && (
-          <form className="flex items-center gap-2">
-            {/* El form navega por GET: sin esto, cambiar de campaña borraría el
-                período elegido y volvería al de por defecto. */}
-            <input type="hidden" name="preset" value={range.preset} />
-            {range.preset === "custom" && (
-              <>
-                <input type="hidden" name="from" value={toDateInput(range.from)} />
-                <input type="hidden" name="to" value={toDateInput(range.to)} />
-              </>
-            )}
-            <Select name="campaign" defaultValue={selectedCampaignId ?? ""} className="w-auto">
-              <option value="">Todas las campañas</option>
-              {campaigns.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
-            <Button type="submit">Ver</Button>
-          </form>
+          <CampaignFilter campaigns={campaigns} selectedId={selectedCampaignId} range={range} />
         )}
       </div>
 
