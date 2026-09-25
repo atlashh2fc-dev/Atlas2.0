@@ -49,3 +49,23 @@ test("campaña y RUT son obligatorios, y el formulario no se borra al fallar", (
   assert.doesNotMatch(FORMULARIO, /<option value="">Sin campaña<\/option>/);
   assert.doesNotMatch(FORMULARIO, /<form action=/);
 });
+
+const CON_BIGDATA = soloCodigo(leer("supabase/migrations/20260925210000_ingreso_fuera_de_base_con_bigdata.sql"));
+const CONSULTA = leer("src/app/actions/bigdata-lookup.ts");
+
+test("Bigdata se consulta por el puente firmado existente, sin llaves nuevas", () => {
+  assert.match(CONSULTA, /integrationV2Destinations\(process\.env\.INTEGRATION_OUTBOX_DESTINATIONS_JSON\)\.get\("bigdata"\)/);
+  assert.match(CONSULTA, /"x-atlas-source": "atlas2"/);
+  assert.match(CONSULTA, /integrationV2Signature\(destino\.secret, timestamp/);
+  assert.match(CONSULTA, /\/api\/commercial-intelligence\/atlas-bridge\/ficha-rut/);
+  assert.match(CONSULTA, /requireProfile\(\["supervisor", "admin"\]\)/);
+  assert.doesNotMatch(CONSULTA, /BIGDATA_|SERVICE_ROLE/);
+});
+
+test("la ficha guarda dirección, rubro y de dónde salió el dato", () => {
+  assert.match(
+    CON_BIGDATA,
+    /item\.key in \('nombre_contacto', 'comuna', 'region', 'direccion', 'rubro', 'producto', 'completado_con'\)/
+  );
+  assert.match(CON_BIGDATA, /v_result := public\.create_manual_lead_record\(/);
+});

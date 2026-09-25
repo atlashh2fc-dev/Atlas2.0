@@ -19,7 +19,11 @@ type ManualRecordInput = {
   contactName?: string;
   comuna?: string;
   region?: string;
+  direccion?: string;
+  rubro?: string;
   product?: string;
+  /** "bigdata" cuando algún campo se propuso desde Bigdata. */
+  completadoCon?: string;
 };
 
 type ManualRecordResult = {
@@ -79,7 +83,10 @@ export async function createManualLeadRecord(input: ManualRecordInput): Promise<
         nombre_contacto: blankToNull(input.contactName),
         comuna: blankToNull(input.comuna),
         region: blankToNull(input.region),
+        direccion: blankToNull(input.direccion),
+        rubro: blankToNull(input.rubro),
         producto: blankToNull(input.product),
+        completado_con: input.completadoCon === "bigdata" ? "bigdata" : null,
       },
     });
 

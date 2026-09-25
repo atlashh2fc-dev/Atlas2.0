@@ -8,7 +8,8 @@
  * ejecutivo veía la razón social sin saber por quién preguntar.
  *
  * Lo que el supervisor ingresa fuera de base (contacto, comuna, región,
- * producto) queda en `extra.ingreso_manual`.
+ * dirección, rubro, producto; a veces propuesto por Bigdata) queda en
+ * `extra.ingreso_manual`.
  */
 
 type Primitive = string | number | boolean;
@@ -44,6 +45,8 @@ const LABELS: Record<string, string> = {
   comuna: "Comuna",
   region: "Región",
   producto: "Producto o plan",
+  direccion: "Dirección",
+  completado_con: "Completado con",
   intentos: "Intentos en Atlas 1",
   vocalcom_resultado: "Último resultado Vocalcom",
   vocalcom_ultimo_intento: "Último intento Vocalcom",
@@ -96,6 +99,7 @@ export function leadContactPerson(
 }
 
 function formatValue(key: string, value: Primitive): string {
+  if (key === "completado_con" && value === "bigdata") return "Bigdata";
   if (key === "vocalcom_ultimo_intento" && typeof value === "string") {
     const date = new Date(value);
     if (!Number.isNaN(date.getTime())) {
