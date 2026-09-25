@@ -3,8 +3,8 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, ExternalLink, X } from "lucide-react";
-import { resolveSales, type SaleValidationRow, type SaleValidationStatus } from "@/app/actions/validacion-ventas";
+import { CalendarClock, Check, ExternalLink, X } from "lucide-react";
+import { resolveSales, setSaleDate, type SaleValidationRow, type SaleValidationStatus } from "@/app/actions/validacion-ventas";
 import { formatUf } from "@/lib/sale-validation-format";
 import { Badge, Button, DataTable, Input, SlideOver, useToast, type BadgeTone, type BulkAction, type Column } from "@/components/ui";
 
@@ -35,6 +35,10 @@ const dateOnly = new Intl.DateTimeFormat("es-CL", {
   year: "numeric",
 });
 
+function chileDate(iso: string) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Santiago" }).format(new Date(iso));
+}
+
 function daysWaiting(iso: string) {
   return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000));
 }
@@ -42,10 +46,12 @@ function daysWaiting(iso: string) {
 function decidedBy(row: SaleValidationRow) {
   if (row.decisionSource === "atlas1") return "Backoffice Atlas 1";
   if (row.decisionSource === "revision") return "Corrección de tipificación";
+  if (row.decisionSource === "planilla") return `Planilla Equifax · ${row.decidedByName ?? "carga"}`;
   return row.decidedByName ?? "—";
 }
 
 type Decision = { rows: SaleValidationRow[]; decision: "aprobada" | "rechazada" };
+type Redate = { row: SaleValidationRow; soldOn: string; note: string };
 
 export function SaleValidationsTable({
   rows,
@@ -62,7 +68,27 @@ export function SaleValidationsTable({
   const [detail, setDetail] = useState<SaleValidationRow | null>(null);
   const [decision, setDecision] = useState<Decision | null>(null);
   const [note, setNote] = useState("");
+  const [redate, setRedate] = useState<Redate | null>(null);
   const [pending, startTransition] = useTransition();
+
+  function confirmRedate() {
+    if (!redate) return;
+    if (!redate.soldOn || !redate.note.trim()) {
+      toast({ tone: "danger", message: "Indica la fecha y el motivo." });
+      return;
+    }
+    startTransition(async () => {
+      const result = await setSaleDate({ id: redate.row.id, soldOn: redate.soldOn, note: redate.note });
+      if (!result.ok) {
+        toast({ tone: "danger", message: result.error });
+        return;
+      }
+      toast({ tone: "success", message: "Fecha cambiada: la venta cuenta en ese período, también en el reporte." });
+      setRedate(null);
+      setDetail(null);
+      router.refresh();
+    });
+  }
 
   function openDecision(next: Decision) {
     setNote("");
@@ -144,10 +170,10 @@ export function SaleValidationsTable({
         cell: (row) => <span className="font-semibold tabular-nums">{formatUf(row.ufAmount)}</span>,
       },
       {
-        id: "tipificada",
-        header: "Tipificada",
+        id: "vendida",
+        header: "Venta",
         value: (row) => row.soldAt,
-        exportValues: (row) => ({ Tipificada: dateTime.format(new Date(row.soldAt)) }),
+        exportValues: (row) => ({ "Fecha venta": dateTime.format(new Date(row.soldAt)) }),
         cell: (row) => (
           <span className="whitespace-nowrap text-sm">
             {dateOnly.format(new Date(row.soldAt))}
@@ -286,12 +312,28 @@ export function SaleValidationsTable({
             </div>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
               <Item label="Ejecutivo">{detail.agentName ?? "—"}</Item>
-              <Item label="Tipificada">{dateTime.format(new Date(detail.soldAt))}</Item>
+              <Item label="Fecha de venta">{dateTime.format(new Date(detail.soldAt))}</Item>
               <Item label="Teléfono">{detail.leadPhone ?? "—"}</Item>
               <Item label="Correo">{detail.recipientEmail ?? detail.leadEmail ?? "—"}</Item>
               <Item label="Equipo">{detail.teamName ?? "—"}</Item>
               <Item label="Estado del registro">{detail.leadStatus ?? "—"}</Item>
             </dl>
+            {detail.managementChannel && (
+              <div className="flex items-start justify-between gap-3 rounded-md border border-border px-3 py-2">
+                <p className="text-xs text-muted-foreground">
+                  Registrada sin llamada: su fecha es la del registro. Si la venta fue antes, fecharla la lleva a ese
+                  período en esta vista y en el reporte.
+                </p>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setRedate({ row: detail, soldOn: chileDate(detail.soldAt), note: "" })}
+                >
+                  <CalendarClock size={14} aria-hidden />
+                  Cambiar fecha
+                </Button>
+              </div>
+            )}
             <div>
               <p className="mb-1.5 text-xs uppercase tracking-wide text-muted-foreground">Productos</p>
               <div className="flex flex-wrap gap-1.5">
@@ -372,6 +414,48 @@ export function SaleValidationsTable({
                 placeholder={decision.decision === "rechazada" ? "Ej.: el cliente no confirmó la contratación" : "Ej.: confirmada con el cliente"}
                 className="mt-1"
                 autoFocus
+              />
+            </label>
+          </div>
+        )}
+      </SlideOver>
+
+      <SlideOver
+        open={redate !== null}
+        onClose={() => (pending ? undefined : setRedate(null))}
+        width="sm"
+        title="Cambiar fecha de venta"
+        description={redate ? `${redate.row.leadName ?? "Registro"} · ${redate.row.agentName ?? "—"}` : undefined}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setRedate(null)} disabled={pending}>
+              Cancelar
+            </Button>
+            <Button onClick={confirmRedate} disabled={pending}>
+              {pending ? "Guardando…" : "Guardar fecha"}
+            </Button>
+          </div>
+        }
+      >
+        {redate && (
+          <div className="space-y-4 text-sm">
+            <label className="block text-xs font-medium text-muted-foreground">
+              Día en que se hizo la venta
+              <Input
+                type="date"
+                value={redate.soldOn}
+                max={chileDate(new Date().toISOString())}
+                onChange={(event) => setRedate({ ...redate, soldOn: event.target.value })}
+                className="mt-1"
+              />
+            </label>
+            <label className="block text-xs font-medium text-muted-foreground">
+              Motivo (obligatorio)
+              <Input
+                value={redate.note}
+                onChange={(event) => setRedate({ ...redate, note: event.target.value })}
+                placeholder="Ej.: venta de junio cargada para normalizar"
+                className="mt-1"
               />
             </label>
           </div>

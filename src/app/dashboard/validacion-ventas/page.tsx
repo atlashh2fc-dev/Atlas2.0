@@ -5,7 +5,7 @@ import { SaleValidationsTable } from "@/components/sale-validations-table";
 import { formatUf } from "@/lib/sale-validation-format";
 import { Callout, MetricCard } from "@/components/ui";
 import { ValidacionVentasHeader } from "./header";
-import { SaleFilters, filterOptions, isoDate, resolveOrden, sortSales, type SaleFilterParams } from "./filters";
+import { SaleFilters, filterOptions, monthRange, resolveOrden, resolveRange, sortSales, type SaleFilterParams } from "./filters";
 
 /**
  * Cola de validación de ventas. En Atlas 1 la trabajaba un backoffice; en
@@ -33,11 +33,13 @@ export default async function ValidacionVentasPage({ searchParams }: { searchPar
   await requireProfile(["supervisor", "admin"]);
   const params = await searchParams;
   const orden = resolveOrden(params.orden, "antiguas");
+  const range = resolveRange(params);
+  const thisMonth = monthRange(null);
   const filters = {
     status: "pendiente" as const,
     query: params.q?.trim() || null,
-    from: isoDate(params.desde),
-    to: isoDate(params.hasta),
+    from: range.from,
+    to: range.to,
     agent: params.ejecutivo || null,
     product: params.producto || null,
   };
@@ -51,7 +53,8 @@ export default async function ValidacionVentasPage({ searchParams }: { searchPar
     [pending, found, approvedThisMonth] = await Promise.all([
       listSaleValidations("pendiente"),
       filtered ? searchSaleValidations(filters) : Promise.resolve<SaleValidationRow[]>([]),
-      searchSaleValidations({ status: "aprobada", from: `${todayChile().slice(0, 7)}-01` }),
+      // Por fecha de venta: una venta antigua aprobada hoy no suma en este mes.
+      searchSaleValidations({ status: "aprobada", from: thisMonth.desde, to: thisMonth.hasta, dateField: "venta" }),
     ]);
     if (!filtered) found = pending;
   } catch (error) {
@@ -99,11 +102,11 @@ export default async function ValidacionVentasPage({ searchParams }: { searchPar
           hrefLabel="Ver atrasadas"
         />
         <MetricCard
-          label="Aprobadas este mes"
+          label="Ventas aprobadas del mes"
           value={approvedThisMonth.length.toLocaleString("es-CL")}
-          hint={formatUf(sumUf(approvedThisMonth))}
-          href="/dashboard/validacion-ventas/validadas"
-          hrefLabel="Buscar ventas validadas"
+          hint={`${formatUf(sumUf(approvedThisMonth))} · vendidas este mes`}
+          href={`/dashboard/validacion-ventas/validadas?periodo=${thisMonth.periodo}`}
+          hrefLabel="Ver ventas del mes"
         />
       </section>
 

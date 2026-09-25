@@ -5,27 +5,31 @@ import { SaleValidationsTable } from "@/components/sale-validations-table";
 import { formatUf } from "@/lib/sale-validation-format";
 import { Callout, MetricCard, SectionCard } from "@/components/ui";
 import { ValidacionVentasHeader } from "../header";
-import { SaleFilters, filterOptions, isoDate, resolveOrden, sortSales, type SaleFilterParams } from "../filters";
+import {
+  SaleFilters,
+  filterOptions,
+  monthRange,
+  resolveDateField,
+  resolveOrden,
+  resolveRange,
+  sortSales,
+  type SaleFilterParams,
+} from "../filters";
 
 /**
  * Buscador propio del universo de ventas ya decididas: por empresa, RUT,
- * teléfono, ejecutivo o producto, con rango de fechas de la decisión (hora
- * Chile). Por defecto muestra las aprobadas; también encuentra rechazadas y
- * anuladas. Exporta lo filtrado o lo seleccionado.
+ * teléfono, ejecutivo o producto, por período o rango de fechas (hora Chile).
+ * Por defecto las fechas son las de la venta —el período en que suma en el
+ * reporte—, así que una venta de abril aprobada hoy no cuenta en el mes
+ * actual; también se puede mirar la fecha de la decisión. Muestra las
+ * aprobadas; también encuentra rechazadas y anuladas. Exporta lo filtrado o lo
+ * seleccionado.
  */
 const ESTADOS: { value: SaleValidationStatus; label: string }[] = [
   { value: "aprobada", label: "Aprobadas" },
   { value: "rechazada", label: "Rechazadas" },
   { value: "anulada", label: "Anuladas" },
 ];
-
-function monthRange(offset: number) {
-  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Santiago" }).format(new Date());
-  const [year, month] = today.split("-").map(Number);
-  const first = new Date(Date.UTC(year, month - 1 + offset, 1));
-  const last = new Date(Date.UTC(year, month + offset, 0));
-  return { desde: first.toISOString().slice(0, 10), hasta: last.toISOString().slice(0, 10) };
-}
 
 function sumUf(rows: SaleValidationRow[]) {
   return rows.reduce((sum, row) => sum + (row.ufAmount ?? 0), 0);
@@ -37,13 +41,17 @@ export default async function VentasValidadasPage({ searchParams }: { searchPara
   const params = await searchParams;
   const status = ESTADOS.find((estado) => estado.value === params.estado)?.value ?? "aprobada";
   const orden = resolveOrden(params.orden, "recientes");
+  const range = resolveRange(params);
+  // El período siempre es el de la venta; el selector de fecha solo cambia el rango.
+  const dateField = range.periodo ? "venta" : resolveDateField(params.fecha);
   const filters = {
     status,
     query: params.q?.trim() || null,
-    from: isoDate(params.desde),
-    to: isoDate(params.hasta),
+    from: range.from,
+    to: range.to,
     agent: params.ejecutivo || null,
     product: params.producto || null,
+    dateField,
   };
   const filtered = Boolean(filters.query || filters.from || filters.to || filters.agent || filters.product);
 
@@ -62,7 +70,7 @@ export default async function VentasValidadasPage({ searchParams }: { searchPara
     loadError = error instanceof Error ? error.message : "No se pudieron buscar las ventas.";
   }
 
-  const rows = sortSales(found, orden);
+  const rows = sortSales(found, orden, dateField);
   const { agents, products } = filterOptions(universe);
 
   const totalUf = sumUf(rows);
@@ -73,8 +81,8 @@ export default async function VentasValidadasPage({ searchParams }: { searchPara
     return map;
   }, new Map<string, { ventas: number; uf: number }>())].sort((a, b) => b[1].uf - a[1].uf || b[1].ventas - a[1].ventas);
 
-  const thisMonth = monthRange(0);
-  const lastMonth = monthRange(-1);
+  const thisMonth = monthRange(null);
+  const lastMonth = monthRange(null, -1);
   const estadoLabel = ESTADOS.find((estado) => estado.value === status)!.label.toLowerCase();
 
   return (
@@ -86,13 +94,15 @@ export default async function VentasValidadasPage({ searchParams }: { searchPara
         storageKey="ventas-validadas"
         agents={agents}
         products={products}
-        dateLabel="Decidida"
+        dateLabel="Vendida"
         orden={orden}
         statusOptions={ESTADOS}
         status={status}
+        dateField={dateField}
         systemViews={[
-          { name: "Aprobadas este mes", query: `desde=${thisMonth.desde}&hasta=${thisMonth.hasta}` },
-          { name: "Aprobadas mes anterior", query: `desde=${lastMonth.desde}&hasta=${lastMonth.hasta}` },
+          { name: "Ventas de este mes", query: `periodo=${thisMonth.periodo}` },
+          { name: "Ventas del mes anterior", query: `periodo=${lastMonth.periodo}` },
+          { name: "Decididas este mes", query: `fecha=decision&desde=${thisMonth.desde}&hasta=${thisMonth.hasta}` },
           { name: "Rechazadas", query: "estado=rechazada" },
         ]}
       />
@@ -100,7 +110,17 @@ export default async function VentasValidadasPage({ searchParams }: { searchPara
       {loadError && <Callout tone="danger">{loadError}</Callout>}
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <MetricCard label={`Ventas ${estadoLabel}`} value={rows.length.toLocaleString("es-CL")} hint={filtered ? "Con los filtros aplicados" : "Todo el historial"} />
+        <MetricCard
+          label={`Ventas ${estadoLabel}`}
+          value={rows.length.toLocaleString("es-CL")}
+          hint={
+            range.periodo
+              ? "Vendidas en el período, aunque se hayan cargado o aprobado después"
+              : filtered
+                ? "Con los filtros aplicados"
+                : "Todo el historial"
+          }
+        />
         <MetricCard label="UF mensual" value={formatUf(totalUf)} hint="Suma de las ventas encontradas" />
         <MetricCard label="UF promedio por venta" value={formatUf(rows.length ? totalUf / rows.length : null)} />
         <MetricCard

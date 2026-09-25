@@ -33,7 +33,9 @@ export type SaleValidationRow = {
   decidedAt: string | null;
   decidedByName: string | null;
   decisionNote: string | null;
-  decisionSource: "supervision" | "atlas1" | "revision" | null;
+  decisionSource: "supervision" | "atlas1" | "revision" | "planilla" | null;
+  /** Canal de una gestión sin llamada (supervision, whatsapp…); null si fue una llamada. Solo esas se pueden refechar. */
+  managementChannel: string | null;
 };
 
 function text(value: unknown): string | null {
@@ -62,6 +64,7 @@ function toRow(row: Record<string, unknown>): SaleValidationRow {
     decidedByName: text(row.decided_by_name),
     decisionNote: text(row.decision_note),
     decisionSource: (text(row.decision_source) as SaleValidationRow["decisionSource"]) ?? null,
+    managementChannel: text(row.management_channel),
   };
 }
 
@@ -73,14 +76,21 @@ export async function listSaleValidations(status: SaleValidationStatus): Promise
   return ((data ?? []) as Record<string, unknown>[]).map(toRow);
 }
 
+/**
+ * Qué fecha filtra el rango. `venta` es el período en que se gestionó la venta,
+ * el mismo en que cuenta en el reporte; `decision`, cuándo se aprobó o rechazó.
+ */
+export type SaleDateField = "venta" | "decision";
+
 export type SaleValidationFilters = {
   status: SaleValidationStatus;
   query?: string | null;
-  /** Fechas YYYY-MM-DD en hora Chile: de la decisión, o de la venta si está pendiente. */
+  /** Fechas YYYY-MM-DD en hora Chile, sobre `dateField` (por defecto, la venta). */
   from?: string | null;
   to?: string | null;
   agent?: string | null;
   product?: string | null;
+  dateField?: SaleDateField;
 };
 
 /** Buscador del universo de ventas (search_sale_validations). */
@@ -95,6 +105,7 @@ export async function searchSaleValidations(filters: SaleValidationFilters): Pro
     p_agent: filters.agent || null,
     p_product: filters.product || null,
     p_limit: 5000,
+    p_date_field: filters.dateField ?? "venta",
   });
   if (error) throw new Error(error.message);
   return ((data ?? []) as Record<string, unknown>[]).map(toRow);
@@ -126,6 +137,36 @@ export async function resolveSales(input: {
     return { ok: true, count: Number(data ?? 0) };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "No se pudo guardar la decisión." };
+  }
+}
+
+/**
+ * Fecha una venta registrada sin llamada (supervisión, WhatsApp…) en el día en
+ * que ocurrió: la venta y el reporte pasan a ese período. Una llamada real no
+ * se refecha; la RPC lo rechaza.
+ */
+export async function setSaleDate(input: {
+  id: string;
+  soldOn: string;
+  note: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await requireProfile(["supervisor", "admin"]);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input.soldOn)) throw new Error("Indica la fecha de la venta.");
+    if (!input.note.trim()) throw new Error("Indica por qué cambias la fecha.");
+    const supabase = await createClient();
+    const { error } = await supabase.rpc("set_sale_validation_date", {
+      p_validation_id: input.id,
+      p_sold_on: input.soldOn,
+      p_note: input.note.trim(),
+    });
+    if (error) throw new Error(error.message);
+    revalidatePath("/dashboard/validacion-ventas");
+    revalidatePath("/dashboard/validacion-ventas/validadas");
+    revalidatePath("/dashboard/reportes");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "No se pudo cambiar la fecha." };
   }
 }
 

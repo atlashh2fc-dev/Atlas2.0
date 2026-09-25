@@ -137,6 +137,8 @@ export function CallTypificationForm({
   const [equifaxEmail, setEquifaxEmail] = useState<string>(call.equifax_recipient_email ?? "");
   const [supervisorNote, setSupervisorNote] = useState("");
   const [creditedAgentId, setCreditedAgentId] = useState<string>(supervision?.defaultAgentId ?? "");
+  const todayChile = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Santiago" }).format(new Date());
+  const [managedOn, setManagedOn] = useState(todayChile);
   const [discardOpen, setDiscardOpen] = useState(false);
   const [discardReason, setDiscardReason] = useState("");
   const [attemptedClose, setAttemptedClose] = useState(false);
@@ -312,6 +314,7 @@ export function CallTypificationForm({
             callId: supervision.callId,
             agentId: adding ? creditedAgentId : null,
             supervisorNote,
+            managedOn: adding ? managedOn : null,
           })
         : revision
           ? await reviseCallManagement(payload)
@@ -539,7 +542,7 @@ export function CallTypificationForm({
               </p>
               <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
                 {adding
-                  ? "Queda como la última gestión del registro, a nombre del ejecutivo que elijas. No genera una llamada."
+                  ? "Queda a nombre del ejecutivo que elijas y con la fecha en que ocurrió: una venta antigua cuenta en su mes, no en el actual. No genera una llamada."
                   : "La gestión sigue siendo del ejecutivo que la hizo; la versión anterior queda en la auditoría."}{" "}
                 Si la marcas como VENTA EN VALIDACION, entra a la validación de ventas.
               </p>
@@ -563,7 +566,19 @@ export function CallTypificationForm({
                 </select>
               </label>
             )}
-            <label className={`block text-xs font-medium text-muted-foreground ${adding ? "" : "sm:col-span-2"}`}>
+            {adding && (
+              <label className="block text-xs font-medium text-muted-foreground">
+                Fecha de la gestión
+                <input
+                  type="date"
+                  value={managedOn}
+                  max={todayChile}
+                  onChange={(event) => setManagedOn(event.target.value || todayChile)}
+                  className="mt-1 block w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
+                />
+              </label>
+            )}
+            <label className="block text-xs font-medium text-muted-foreground sm:col-span-2">
               Motivo de supervisión
               <input
                 type="text"

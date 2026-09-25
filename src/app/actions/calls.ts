@@ -1167,6 +1167,8 @@ export async function superviseCallManagement(input: {
   equifax_products: string[];
   equifax_uf_amount: number | null;
   equifax_recipient_email: string | null;
+  /** Día (YYYY-MM-DD, Chile) en que ocurrió la gestión que se agrega; null o hoy = ahora. */
+  managedOn?: string | null;
 }): Promise<CallActionResult> {
   try {
     await requireProfile(["supervisor", "admin"]);
@@ -1222,11 +1224,14 @@ export async function superviseCallManagement(input: {
       p_equifax_uf_amount: input.equifax_uf_amount,
       p_equifax_recipient_email: input.equifax_recipient_email,
       p_supervisor_note: input.supervisorNote.trim(),
+      // Una venta antigua cargada hoy cuenta en su período, no en el actual.
+      p_managed_on: input.callId ? null : input.managedOn || null,
     });
     if (error) throw new Error(error.message);
 
     revalidatePath(`/dashboard/leads/${input.leadId}`);
     revalidatePath("/dashboard/validacion-ventas");
+    revalidatePath("/dashboard/validacion-ventas/validadas");
     return { ok: true, data: null };
   } catch (error) {
     return callActionError("superviseCallManagement", error, {
