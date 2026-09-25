@@ -2,36 +2,19 @@
 
 import { markScreenPop } from "@/components/screen-pop-timing";
 import { fetchIncomingDialContextDirect } from "@/lib/incoming-context-client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { usePathname, useRouter } from "next/navigation";
-import {
-  ChevronDown,
-  ChevronUp,
-  Clock3,
-  ContactRound,
-  Delete,
-  Grid3X3,
-  LoaderCircle,
-  Mic,
-  MicOff,
-  Minus,
-  Phone,
-  PhoneOff,
-  Search,
-  UserRound,
-  Wifi,
-} from "lucide-react";
+import { Phone } from "lucide-react";
 import type { Profile, AgentStatusReason } from "@/lib/types";
 import {
   getMyDialerOperatingMode,
   getMyIncomingDialContext,
   getMySipCredentials,
-  listMyAutomaticDialHistory,
   listMyDialerContacts,
   reportAgentPhoneTelemetry,
   setMyActiveCampaign,
   type AgentPhoneTelemetryPhase,
-  type AgentDialerHistoryItem,
   type AgentDialerOperatingMode,
   type DialerContact,
   type IncomingDialContext,
@@ -58,7 +41,7 @@ import {
   type ManualCallManagement,
   type OpenManagement,
 } from "@/app/actions/calls";
-import { SlideOver, StatusDot, Input, Select, type BadgeTone } from "@/components/ui";
+import { SlideOver, StatusDot, Input, type BadgeTone } from "@/components/ui";
 import {
   beginLegalIntercallBreak,
   LEGAL_INTERCALL_BREAK_SECONDS,
@@ -79,28 +62,29 @@ import {
   type AgentDialRequestEventDetail,
   type AgentForceLogoutEventDetail,
 } from "@/lib/agent-control";
-import { leadContactPerson, leadExtraFields } from "@/lib/lead-extra";
+import { leadContactPerson } from "@/lib/lead-extra";
+import { AudioSettings, readAudioPreference, type AudioDevicePreference } from "@/components/phone/audio-settings";
+import { CallBar, type CallQuality } from "@/components/phone/call-bar";
+import { Dialer, type DialerEntry } from "@/components/phone/dialer";
+import {
+  formatElapsed,
+  formatSubscriber,
+  fullChileMobile,
+  shortcutLabel,
+  subscriberFromPhone,
+} from "@/components/phone/format";
+import { Elapsed, StatusMenu, type StatusTone } from "@/components/phone/status-menu";
 
 const HEARTBEAT_MS = 20_000;
 const SIP_DOMAIN = process.env.NEXT_PUBLIC_SIP_DOMAIN ?? "ws-atlas.geimser.cl";
 const SIP_WSS_SERVER =
   process.env.NEXT_PUBLIC_SIP_WSS_SERVER ?? `wss://${SIP_DOMAIN}:8089/ws`;
-const MOBILE_SUBSCRIBER_DIGITS = 8;
 const MAX_RECONNECT_DELAY_MS = 15_000;
 /** Reintentos silenciosos antes de avisarle al ejecutivo que su teléfono no conecta. */
 const MAX_SILENT_RECONNECT_ATTEMPTS = 3;
-/**
- * El teléfono es un panel fijo abajo a la derecha y ahí mismo viven las barras
- * de acción de otras pantallas (por ejemplo el "Guardar y terminar" de la
- * tipificación). Minimizarlo a una burbuja libera esa esquina; la preferencia
- * se recuerda para no obligar al ejecutivo a repetirlo en cada gestión.
- */
-const CTI_MINIMIZED_KEY = "atlas.cti.minimized";
-
 type RegState = "idle" | "connecting" | "registered" | "error";
 type PhoneIssue = AgentPhoneTelemetryPhase | null;
 type CallState = "idle" | "calling" | "ringing" | "in_call" | "ending";
-type DialerView = "keypad" | "recents" | "contacts";
 type RingbackPlayback = {
   context: AudioContext;
   oscillator: OscillatorNode;
@@ -114,30 +98,6 @@ type DialerRecent = {
   calledAt: string;
 };
 
-const KEYPAD = [
-  { digit: "1", letters: "" },
-  { digit: "2", letters: "ABC" },
-  { digit: "3", letters: "DEF" },
-  { digit: "4", letters: "GHI" },
-  { digit: "5", letters: "JKL" },
-  { digit: "6", letters: "MNO" },
-  { digit: "7", letters: "PQRS" },
-  { digit: "8", letters: "TUV" },
-  { digit: "9", letters: "WXYZ" },
-  { digit: "0", letters: "+" },
-];
-
-/**
- * Teclado de la llamada en curso. Las empresas con menú de voz ("marque 1 para
- * ventas") necesitan los tonos DTMF; se envían dentro del audio (RFC 4733), que
- * es lo que Asterisk acepta por defecto y reenvía a la troncal.
- */
-const IN_CALL_KEYPAD = [
-  ...KEYPAD.slice(0, 9),
-  { digit: "*", letters: "" },
-  KEYPAD[9],
-  { digit: "#", letters: "" },
-];
 const DTMF_TONE = /^[0-9*#]$/;
 const DTMF_DURATION_MS = 160;
 const DTMF_INTER_TONE_GAP_MS = 70;
@@ -148,93 +108,6 @@ const DTMF_FREQUENCIES: Record<string, [number, number]> = {
   "7": [852, 1209], "8": [852, 1336], "9": [852, 1477],
   "*": [941, 1209], "0": [941, 1336], "#": [941, 1477],
 };
-
-function formatElapsed(ms: number): string {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-
-/**
- * El usuario solo escribe los ocho dígitos posteriores a +56 9. También
- * acepta pegar 981406609, 56981406609 o +56 9 8140 6609.
- */
-function subscriberFromPhone(value: string): string {
-  let digits = value.replace(/\D/g, "");
-  if (digits.startsWith("0056")) digits = digits.slice(4);
-  if (digits.startsWith("56") && digits.length >= 10) digits = digits.slice(2);
-  if (digits.startsWith("9") && digits.length === 9) digits = digits.slice(1);
-  if (digits.length > MOBILE_SUBSCRIBER_DIGITS) {
-    digits = digits.slice(-MOBILE_SUBSCRIBER_DIGITS);
-  }
-  return digits.slice(0, MOBILE_SUBSCRIBER_DIGITS);
-}
-
-function fullChileMobile(subscriber: string): string | null {
-  return subscriber.length === MOBILE_SUBSCRIBER_DIGITS ? `569${subscriber}` : null;
-}
-
-function formatSubscriber(subscriber: string): string {
-  return [subscriber.slice(0, 4), subscriber.slice(4, 8)].filter(Boolean).join(" ");
-}
-
-function formatChileMobile(phone: string): string {
-  const subscriber = subscriberFromPhone(phone);
-  return subscriber.length === MOBILE_SUBSCRIBER_DIGITS
-    ? `+56 9 ${formatSubscriber(subscriber)}`
-    : phone;
-}
-
-function contactInitials(name: string): string {
-  return name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("");
-}
-
-function formatRecentTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat("es-CL", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
-}
-
-function automaticAttemptLabel(status: string): string {
-  const labels: Record<string, string> = {
-    queued: "En cola",
-    originating: "Marcando",
-    ringing: "Timbrando",
-    answered: "Contestada",
-    bridged: "En conversación",
-    no_answer: "No contesta",
-    busy: "Ocupado",
-    failed: "Fallida",
-    abandoned: "Abandonada",
-    voicemail: "Buzón de voz",
-    completed: "Completada",
-  };
-  return labels[status] ?? status;
-}
-
-function automaticAttemptTone(status: string): string {
-  if (status === "completed" || status === "bridged" || status === "answered") {
-    return "bg-success-bg text-success";
-  }
-  if (status === "failed" || status === "abandoned") {
-    return "bg-danger-bg text-danger";
-  }
-  if (status === "busy" || status === "no_answer" || status === "voicemail") {
-    return "bg-warning-bg text-warning";
-  }
-  return "bg-surface-muted text-muted-foreground";
-}
 
 export function CtiBar({ profile }: { profile: Profile }) {
   const router = useRouter();
@@ -262,18 +135,23 @@ export function CtiBar({ profile }: { profile: Profile }) {
   const dtmfFeedbackRef = useRef<AudioContext | null>(null);
   const [callStartedAt, setCallStartedAt] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
-  const [expanded, setExpanded] = useState(false);
-  // Arranca desplegado en el servidor y en el primer render del cliente: leer
-  // localStorage durante el montaje rompería la hidratación.
-  const [minimizedPref, setMinimizedPref] = useState(false);
-  // Con llamada en curso el panel se despliega igual: minimizado no habría
-  // forma de colgar, silenciar ni ver quién llama. Al volver a reposo manda de
-  // nuevo la preferencia del ejecutivo.
-  const minimized = minimizedPref && callState === "idle";
-  const [view, setView] = useState<DialerView>("keypad");
+  const [dialerOpen, setDialerOpen] = useState(false);
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+  const [held, setHeld] = useState(false);
+  const [holdPending, setHoldPending] = useState(false);
+  const [callQuality, setCallQuality] = useState<CallQuality>(null);
+  /** Ficha de la llamada en curso, para ofrecer volver a ella. */
+  const [callLeadId, setCallLeadId] = useState<string | null>(null);
+  const [callCampaignName, setCallCampaignName] = useState<string | null>(null);
+  const [audioPreference, setAudioPreference] = useState<AudioDevicePreference>({ micId: "", speakerId: "" });
+  const audioPreferenceRef = useRef(audioPreference);
+  /** Dónde se dibujan el estado (barra superior) y la llamada (sobre el contenido). */
+  const [slots, setSlots] = useState<{ status: HTMLElement | null; call: HTMLElement | null }>({
+    status: null,
+    call: null,
+  });
   const [contacts, setContacts] = useState<DialerContact[]>([]);
   const [contactsLoading, setContactsLoading] = useState(true);
-  const [contactSearch, setContactSearch] = useState("");
   const [recents, setRecents] = useState<DialerRecent[]>([]);
   const [incomingContext, setIncomingContext] = useState<IncomingDialContext | null>(null);
   // El listener SIP conserva el cierre con el estado del render en que llegó
@@ -300,7 +178,6 @@ export function CtiBar({ profile }: { profile: Profile }) {
   );
   const [switchingCampaign, setSwitchingCampaign] = useState(false);
   const [campaignSwitchError, setCampaignSwitchError] = useState<string | null>(null);
-  const [automaticHistory, setAutomaticHistory] = useState<AgentDialerHistoryItem[]>([]);
   const [manualCampaignId, setManualCampaignId] = useState("");
   const [hybridManualMode, setHybridManualMode] = useState(false);
   const [hybridTransitionPending, setHybridTransitionPending] = useState(false);
@@ -341,6 +218,24 @@ export function CtiBar({ profile }: { profile: Profile }) {
   const forcedLogoutRef = useRef(false);
 
   const recentStorageKey = `atlas-cti-recents:${profile.id}`;
+
+  /**
+   * Micrófono elegido por el ejecutivo. `ideal` y no `exact`: si desconecta el
+   * audífono, la llamada sale igual con el micrófono del sistema.
+   */
+  function microphoneConstraint(): MediaTrackConstraints | boolean {
+    const micId = audioPreferenceRef.current.micId;
+    return micId ? { deviceId: { ideal: micId } } : true;
+  }
+
+  /** Limpia lo que la barra de llamada muestra de la llamada que terminó. */
+  function resetCallDisplay() {
+    setHeld(false);
+    setHoldPending(false);
+    setCallQuality(null);
+    setCallLeadId(null);
+    setCallCampaignName(null);
+  }
 
   function telemetryCode(error: unknown, phase: AgentPhoneTelemetryPhase): string {
     if (error instanceof DOMException && error.name) return error.name;
@@ -510,51 +405,54 @@ export function CtiBar({ profile }: { profile: Profile }) {
       }
     }
 
-    async function refreshAutomaticHistory() {
-      try {
-        const history = await listMyAutomaticDialHistory();
-        if (!disposed) setAutomaticHistory(history);
-      } catch (err) {
-        console.error("CTI: fallo al cargar historial automático", err);
-      }
-    }
-
     void refreshOperatingMode();
-    void refreshAutomaticHistory();
     const modeTimer = setInterval(refreshOperatingMode, 2_000);
-    const historyTimer = setInterval(refreshAutomaticHistory, 10_000);
     return () => {
       disposed = true;
       clearInterval(modeTimer);
-      clearInterval(historyTimer);
     };
   }, [profile.role]);
 
   useEffect(() => {
     let disposed = false;
-    try {
-      if (window.localStorage.getItem(CTI_MINIMIZED_KEY) === "1") {
-        queueMicrotask(() => {
-          if (!disposed) setMinimizedPref(true);
-        });
-      }
-    } catch {
-      /* la preferencia es opcional: si el storage falla, el panel queda visible */
-    }
+    queueMicrotask(() => {
+      if (disposed) return;
+      setSlots({
+        status: document.getElementById("cti-status-slot"),
+        call: document.getElementById("cti-callbar-slot"),
+      });
+      const preference = readAudioPreference();
+      audioPreferenceRef.current = preference;
+      setAudioPreference(preference);
+    });
     return () => {
       disposed = true;
     };
   }, []);
 
-  const toggleMinimized = useCallback((next: boolean) => {
-    setMinimizedPref(next);
-    try {
-      if (next) window.localStorage.setItem(CTI_MINIMIZED_KEY, "1");
-      else window.localStorage.removeItem(CTI_MINIMIZED_KEY);
-    } catch {
-      /* la preferencia es opcional */
-    }
+  const changeAudioPreference = useCallback((next: AudioDevicePreference) => {
+    audioPreferenceRef.current = next;
+    setAudioPreference(next);
   }, []);
+
+  // El audífono elegido se aplica a la salida de la llamada.
+  useEffect(() => {
+    const audio = audioRef.current as (HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> }) | null;
+    if (!audio?.setSinkId) return;
+    void audio.setSinkId(audioPreference.speakerId).catch((err) =>
+      console.error("CTI: no se pudo usar el audífono elegido", err)
+    );
+  }, [audioPreference.speakerId]);
+
+  // La ficha oculta su propio cronómetro mientras la barra de llamada muestra uno.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (callState === "idle") delete root.dataset.ctiInCall;
+    else root.dataset.ctiInCall = "1";
+    return () => {
+      delete root.dataset.ctiInCall;
+    };
+  }, [callState]);
 
   useEffect(() => {
     let disposed = false;
@@ -793,7 +691,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
     try {
       await enterMyHybridManualMode(effectiveManualCampaignId);
       await refreshCurrentAgentStatus();
-      setExpanded(true);
+      setDialerOpen(true);
     } catch (err) {
       setCallError(
         err instanceof Error ? err.message : "No se pudo activar la llamada manual."
@@ -1083,11 +981,29 @@ export function CtiBar({ profile }: { profile: Profile }) {
     remoteStream.addEventListener("addtrack", playRemoteAudio);
     playRemoteAudio();
 
+    let lastLost = 0;
+    let lastReceived = 0;
     const statsTimer = setInterval(() => {
       void pc
         .getStats()
         .then((stats) => {
           const audioStats: Record<string, unknown>[] = [];
+          // Pérdida y jitter del audio que llega en los últimos 5 s: lo que
+          // el ejecutivo oye entrecortado.
+          stats.forEach((report) => {
+            if (report.type !== "inbound-rtp" || (report.kind ?? report.mediaType) !== "audio") return;
+            const lost = Number(report.packetsLost ?? 0);
+            const received = Number(report.packetsReceived ?? 0);
+            const lostDelta = Math.max(0, lost - lastLost);
+            const total = lostDelta + Math.max(0, received - lastReceived);
+            lastLost = lost;
+            lastReceived = received;
+            const lossRate = total > 0 ? lostDelta / total : 0;
+            const jitterMs = Number(report.jitter ?? 0) * 1000;
+            setCallQuality(
+              lossRate > 0.05 || jitterMs > 60 ? "poor" : lossRate > 0.02 || jitterMs > 30 ? "fair" : "good"
+            );
+          });
           stats.forEach((report) => {
             if (
               (report.type === "inbound-rtp" || report.type === "outbound-rtp") &&
@@ -1285,25 +1201,13 @@ export function CtiBar({ profile }: { profile: Profile }) {
     });
   }
 
-  function selectDialTarget(phone: string, name: string | null = null) {
-    const nextSubscriber = subscriberFromPhone(phone);
-    setSubscriber(nextSubscriber);
-    setSelectedName(name);
-    setCallError(
-      nextSubscriber.length === MOBILE_SUBSCRIBER_DIGITS
-        ? null
-        : "Este contacto no tiene un móvil chileno válido."
-    );
-    setView("keypad");
-  }
-
   function openManualManagement(management: ManualCallManagement) {
     manualManagementRef.current = null;
     openManagementScreen(management.leadId);
   }
 
   function openManagementScreen(leadId: string) {
-    setExpanded(false);
+    setDialerOpen(false);
     const navigation = resolveCallManagementNavigation(window.location.pathname, leadId);
     if (navigation.kind === "refresh") {
       router.refresh();
@@ -1509,7 +1413,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
     resetInCallKeypad();
     setCallError(null);
     setCallState("ringing");
-    setExpanded(true);
+    setDialerOpen(false);
     void loadIncomingContext(callAttempt);
 
     try {
@@ -1556,6 +1460,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
             incomingContextRef.current = null;
             setIncomingContext(null);
             sessionRef.current = null;
+            resetCallDisplay();
             break;
           default:
             break;
@@ -1564,7 +1469,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
 
       await invitation.accept({
         sessionDescriptionHandlerOptions: {
-          constraints: { audio: true, video: false },
+          constraints: { audio: microphoneConstraint(), video: false },
         },
       });
     } catch (err) {
@@ -1576,6 +1481,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
       incomingContextRef.current = null;
       setIncomingContext(null);
       sessionRef.current = null;
+      resetCallDisplay();
       setCallError("La central envió una llamada, pero el teléfono no pudo contestarla.");
     }
   }
@@ -1634,7 +1540,14 @@ export function CtiBar({ profile }: { profile: Profile }) {
         }
         management = result.data;
       }
-      if (management) manualManagementRef.current = management;
+      if (management) {
+        manualManagementRef.current = management;
+        setCallLeadId(management.leadId);
+        setCallCampaignName(
+          operatingMode?.campaigns.find((campaign) => campaign.id === management?.campaignId)?.name ?? null
+        );
+      }
+      setDialerOpen(false);
 
       // En llamadas manuales/híbridas la ficha se abría recién al colgar.
       // La gestión ya existe aquí, así que hacemos el screen-pop antes de
@@ -1670,7 +1583,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
 
       const inviter = new Inviter(uaRef.current, targetUri, {
         sessionDescriptionHandlerOptions: {
-          constraints: { audio: true, video: false },
+          constraints: { audio: microphoneConstraint(), video: false },
         },
       });
 
@@ -1710,6 +1623,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
             setCallState("idle");
             setCallStartedAt(null);
             sessionRef.current = null;
+            resetCallDisplay();
             break;
           default:
             break;
@@ -1725,6 +1639,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
       // Sin limpiar la referencia, el CTI creía tener una llamada viva y
       // rechazaba en silencio todas las entrantes por el resto del turno.
       sessionRef.current = null;
+      resetCallDisplay();
       setCallState("idle");
       if (management) finishManualManagement(management, "origination_failed");
       setCallError("No se pudo iniciar la llamada. Reintenta en unos segundos.");
@@ -1737,7 +1652,6 @@ export function CtiBar({ profile }: { profile: Profile }) {
    * automáticas— y aquí solo se origina y se hace screen-pop de la ficha.
    */
   async function startAgendaCallback(detail: AgentDialRequestEventDetail) {
-    setExpanded(true);
     setCallError(null);
 
     if (callState !== "idle") {
@@ -1828,6 +1742,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
       incomingContextRef.current = null;
       setIncomingContext(null);
       sessionRef.current = null;
+      resetCallDisplay();
     }
   }
 
@@ -1843,10 +1758,53 @@ export function CtiBar({ profile }: { profile: Profile }) {
     const nextMuted = !muted;
     senders.forEach((sender) => {
       if (sender.track && sender.track.kind === "audio") {
-        sender.track.enabled = !nextMuted;
+        sender.track.enabled = !nextMuted && !held;
       }
     });
     setMuted(nextMuted);
+  }
+
+  /**
+   * Espera: re-INVITE con el audio en una sola dirección; Asterisk pone música
+   * al cliente. Si la central lo rechaza, la llamada sigue como estaba.
+   */
+  async function toggleHold() {
+    const session = sessionRef.current;
+    if (!session || callState !== "in_call" || holdPending || typeof session.invite !== "function") return;
+    const nextHeld = !held;
+    const pc = session.sessionDescriptionHandler?.peerConnection as RTCPeerConnection | undefined;
+    const applyTracks = (onHold: boolean) => {
+      pc?.getSenders().forEach((sender) => {
+        if (sender.track?.kind === "audio") sender.track.enabled = !onHold && !muted;
+      });
+      pc?.getReceivers().forEach((receiver) => {
+        if (receiver.track?.kind === "audio") receiver.track.enabled = !onHold;
+      });
+    };
+    setHoldPending(true);
+    try {
+      session.sessionDescriptionHandlerOptionsReInvite = {
+        ...(session.sessionDescriptionHandlerOptionsReInvite ?? {}),
+        hold: nextHeld,
+      };
+      await session.invite({
+        requestDelegate: {
+          onAccept: () => {
+            applyTracks(nextHeld);
+            setHeld(nextHeld);
+            setHoldPending(false);
+          },
+          onReject: () => {
+            setCallError(nextHeld ? "La central no aceptó poner la llamada en espera." : "La central no aceptó retomar la llamada.");
+            setHoldPending(false);
+          },
+        },
+      });
+    } catch (err) {
+      console.error("CTI: no se pudo cambiar la espera", err);
+      setCallError("No se pudo cambiar la espera. La llamada sigue activa.");
+      setHoldPending(false);
+    }
   }
 
   function resetInCallKeypad() {
@@ -1954,19 +1912,113 @@ export function CtiBar({ profile }: { profile: Profile }) {
     []
   );
 
-  const filteredContacts = useMemo(() => {
-    const term = contactSearch.trim().toLowerCase();
-    if (!term) return contacts;
-    const digits = term.replace(/\D/g, "");
-    return contacts.filter(
-      (contact) =>
-        contact.name.toLowerCase().includes(term) ||
-        contact.rut?.toLowerCase().includes(term) ||
-        (digits && contact.phone.replace(/\D/g, "").includes(digits))
-    );
-  }, [contacts, contactSearch]);
-
   const showStatusSelector = profile.role === "agente";
+  const currentReason = statusReasons.find((reason) => reason.id === currentReasonId) ?? null;
+  const availableReasons = statusReasons.filter((reason) => !reason.is_pause && !reason.is_system);
+  const auxReasons = statusReasons.filter(
+    (reason) => reason.is_pause && !reason.is_system && reason.code !== "auxiliar"
+  );
+  const agentCanCall = profile.role !== "agente" || currentReason === null || !currentReason.is_pause;
+  const automaticMode = profile.role === "agente" && operatingMode?.mode === "automatic";
+  const automaticSessionStatus = automaticMode ? operatingMode?.session?.status ?? "offline" : null;
+  const automaticWrapUpElapsedSeconds =
+    automaticSessionStatus === "wrap_up" && operatingMode?.session?.since
+      ? Math.max(0, Math.floor((now - new Date(operatingMode.session.since).getTime()) / 1000))
+      : 0;
+  const inAutomaticWrapUp = automaticSessionStatus === "wrap_up" && agentCanCall;
+  const inLegalIntercallBreak =
+    inAutomaticWrapUp && automaticWrapUpElapsedSeconds < LEGAL_INTERCALL_BREAK_SECONDS;
+  const legalBreakRemaining = Math.max(0, LEGAL_INTERCALL_BREAK_SECONDS - automaticWrapUpElapsedSeconds);
+  const automaticOperationalAvailable =
+    regState === "registered" &&
+    agentCanCall &&
+    Boolean(operatingMode?.active_campaign_id) &&
+    automaticSessionStatus === "available";
+  const manualCampaigns =
+    operatingMode?.campaigns.filter((campaign) => campaign.manual_dial_enabled) ?? [];
+  const effectiveManualCampaignId =
+    manualCampaignId || (manualCampaigns.length === 1 ? manualCampaigns[0].id : "");
+  const effectiveManualCampaign = manualCampaigns.find((campaign) => campaign.id === effectiveManualCampaignId);
+  const hybridQueueReady = operatingMode?.hybrid_manual_status === "ready";
+  const manualDialAllowed =
+    profile.role !== "agente" || (hybridManualMode ? hybridQueueReady : agentCanCall);
+  const manualRecoveryCampaign = operatingMode?.campaigns.find(
+    (campaign) => campaign.id === manualRecoveryCampaignId
+  );
+  const campaignLocked = operatingMode?.assignment?.locked === true;
+  const automaticCampaigns = automaticMode
+    ? (operatingMode?.campaigns ?? []).filter((campaign) => campaign.dial_mode !== "manual")
+    : [];
+  const activeAutomaticCampaign = operatingMode?.campaigns.find(
+    (campaign) => campaign.id === operatingMode.active_campaign_id
+  );
+  const activeCall = callState !== "idle";
+  // En la ficha de esa misma gestión el formulario ya está a la vista.
+  const pendingElsewhere =
+    openManagement !== null &&
+    !activeCall &&
+    pathname !== `/dashboard/leads/${openManagement.leadId}`;
+  // En modo automático marcar exige salir de la cola; sin campañas manuales no hay cómo.
+  const canOpenDialer =
+    Boolean(credential) &&
+    (profile.role !== "agente" || !automaticMode || hybridManualMode || manualCampaigns.length > 0);
+
+  const dialerEntries = useMemo<DialerEntry[]>(
+    () => [
+      ...recents.map((recent) => ({
+        key: `r-${recent.phone}-${recent.calledAt}`,
+        name: recent.name,
+        phone: recent.phone,
+        source: "Reciente" as const,
+      })),
+      ...contacts.map((contact) => ({
+        key: `c-${contact.id}`,
+        name: contact.name,
+        phone: contact.phone,
+        rut: contact.rut,
+        source: "Contacto" as const,
+      })),
+    ],
+    [recents, contacts]
+  );
+
+  // Atajos: Alt D abre el marcador; en llamada Alt M silencia, Alt E pone en
+  // espera, Alt T abre el teclado y Alt X cuelga. No actúan mientras se
+  // escribe en un campo (en Mac, Opción + letra también escribe acentos).
+  const shortcutsRef = useRef({ toggleMute, toggleHold, canOpenDialer, callState });
+  useEffect(() => {
+    shortcutsRef.current = { toggleMute, toggleHold, canOpenDialer, callState };
+  });
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (!event.altKey || event.ctrlKey || event.metaKey || event.repeat) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))) return;
+      const current = shortcutsRef.current;
+      if (event.code === "KeyD" && current.callState === "idle" && current.canOpenDialer) {
+        event.preventDefault();
+        setDialerOpen((open) => !open);
+        return;
+      }
+      if (current.callState !== "in_call" && event.code !== "KeyX") return;
+      if (event.code === "KeyM") {
+        event.preventDefault();
+        current.toggleMute();
+      } else if (event.code === "KeyE") {
+        event.preventDefault();
+        void current.toggleHold();
+      } else if (event.code === "KeyT") {
+        event.preventDefault();
+        setInCallKeypadOpen((open) => !open);
+      } else if (event.code === "KeyX" && current.callState !== "idle") {
+        event.preventDefault();
+        void handleHangupRef.current();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   if (!credential && !showStatusSelector) return null;
 
   const regTone: BadgeTone =
@@ -1975,182 +2027,328 @@ export function CtiBar({ profile }: { profile: Profile }) {
     regState === "registered"
       ? "Teléfono conectado"
       : regState === "connecting"
-        ? "Conectando..."
+        ? "Conectando teléfono…"
         : phoneIssue === "microphone"
           ? "Micrófono bloqueado"
           : "Teléfono desconectado";
-  const currentReason = statusReasons.find((reason) => reason.id === currentReasonId) ?? null;
-  const availableReasons = statusReasons.filter((reason) => !reason.is_pause && !reason.is_system);
-  const auxReasons = statusReasons.filter(
-    (reason) => reason.is_pause && !reason.is_system && reason.code !== "auxiliar"
-  );
-  const agentCanCall = profile.role !== "agente" || currentReason === null || !currentReason.is_pause;
-  const automaticSessionStatus =
-    operatingMode?.mode === "automatic" ? operatingMode.session?.status ?? "offline" : null;
-  const automaticWrapUpElapsedSeconds =
-    automaticSessionStatus === "wrap_up" && operatingMode?.session?.since
-      ? Math.max(
-          0,
-          Math.floor((now - new Date(operatingMode.session.since).getTime()) / 1000)
-        )
-      : 0;
-  const inAutomaticWrapUp =
-    automaticSessionStatus === "wrap_up" && agentCanCall;
-  const inLegalIntercallBreak =
-    inAutomaticWrapUp &&
-    automaticWrapUpElapsedSeconds < LEGAL_INTERCALL_BREAK_SECONDS;
-  const legalBreakRemaining = Math.max(
-    0,
-    LEGAL_INTERCALL_BREAK_SECONDS - automaticWrapUpElapsedSeconds
-  );
-  const automaticOperationalAvailable =
-    regState === "registered" &&
-    agentCanCall &&
-    Boolean(operatingMode?.active_campaign_id) &&
-    automaticSessionStatus === "available";
-  const operationalStatusValue = inAutomaticWrapUp ? "__acw" : currentReasonId ?? "";
-  const operationalStatusLabel = inLegalIntercallBreak
-    ? `Interrupción legal · ${legalBreakRemaining}s`
-    : "Cerrando gestión · falta tipificar";
-  const validNumber = subscriber.length === MOBILE_SUBSCRIBER_DIGITS;
-  const activeCall =
-    callState === "in_call" || callState === "calling" || callState === "ringing";
-  const manualCampaigns =
-    operatingMode?.campaigns.filter((campaign) => campaign.manual_dial_enabled) ?? [];
-  const effectiveManualCampaignId =
-    manualCampaignId || (manualCampaigns.length === 1 ? manualCampaigns[0].id : "");
-  const hybridQueueReady = operatingMode?.hybrid_manual_status === "ready";
-  const manualDialAllowed =
-    profile.role !== "agente" || (hybridManualMode ? hybridQueueReady : agentCanCall);
-  const manualRecoveryCampaign = operatingMode?.campaigns.find(
-    (campaign) => campaign.id === manualRecoveryCampaignId
-  );
-  const campaignLocked = operatingMode?.assignment?.locked === true;
-  const activeAutomaticCampaign = operatingMode?.campaigns.find(
-    (campaign) => campaign.id === operatingMode.active_campaign_id
-  );
-  const incomingFields = incomingContext
-    ? leadExtraFields(incomingContext.extra, { exclude: ["source", "Source", "SOURCE"] })
-    : [];
-  const incomingContactPerson = incomingContext
-    ? leadContactPerson(incomingContext.extra, incomingContext.full_name)
-    : null;
 
-  // En la ficha de esa misma gestión el formulario ya está a la vista.
-  const pendingElsewhere =
-    openManagement !== null &&
-    callState === "idle" &&
-    pathname !== `/dashboard/leads/${openManagement.leadId}`;
-  const pendingBanner = pendingElsewhere && openManagement ? (
-    <button
-      type="button"
-      onClick={() => openManagementScreen(openManagement.leadId)}
-      className="flex w-full items-center gap-3 border-b border-warning/30 bg-warning-bg px-4 py-2.5 text-left text-warning transition hover:brightness-95"
-    >
-      <span className="min-w-0 flex-1">
-        <span className="block text-xs font-semibold uppercase tracking-wide">Gestión pendiente</span>
-        <span className="block truncate text-sm font-semibold text-foreground">
-          {openManagement.leadName ?? "Registro sin nombre"}
-          {openManagement.channel
-            ? ` · ${OFFLINE_CHANNEL_LABEL[openManagement.channel] ?? "Otro canal"}`
-            : ""}
+  const statusTone: StatusTone = hybridManualMode
+    ? "manual"
+    : inAutomaticWrapUp
+      ? "acw"
+      : !currentReason
+        ? "neutral"
+        : currentReason.is_pause
+          ? "pause"
+          : "available";
+  const statusText =
+    statusReasons.length === 0
+      ? statusLoading ? "Cargando estado…" : "Sin estados"
+      : hybridManualMode
+        ? "Llamada manual"
+        : inLegalIntercallBreak
+          ? "Interrupción legal"
+          : inAutomaticWrapUp
+            ? "Tipificando"
+            : currentReason
+              ? currentReason.is_pause ? `AUX · ${currentReason.label}` : currentReason.label
+              : "Sin estado";
+  const statusCountdown = inLegalIntercallBreak
+    ? `${legalBreakRemaining} s`
+    : inAutomaticWrapUp
+      ? formatElapsed(automaticWrapUpElapsedSeconds * 1000)
+      : null;
+  const campaignNote = switchingCampaign
+    ? "Cambiando de cola…"
+    : campaignLocked && activeAutomaticCampaign
+      ? `${operatingMode?.assignment?.assigned_by_name ?? "Tu supervisor"} te asignó a ${activeAutomaticCampaign.name}. Solo quien la asignó puede cambiarla.`
+      : activeAutomaticCampaign
+        ? operatingMode?.assignment?.source === "prioridad"
+          ? "Es la prioridad que definió tu supervisor."
+          : null
+        : "No recibirás llamadas hasta elegir una cola.";
+
+  const dialerBlockedReason =
+    regState !== "registered"
+      ? "El teléfono no está conectado."
+      : profile.role === "agente" && automaticMode && !hybridManualMode
+        ? "Primero sal de la cola automática."
+        : hybridManualMode && !hybridQueueReady
+          ? "Esperando que la central confirme la pausa…"
+          : !manualDialAllowed
+            ? "Ponte Disponible para llamar."
+            : profile.role === "agente" && !effectiveManualCampaignId
+              ? manualCampaigns.length
+                ? "Elige la campaña de la llamada."
+                : "No tienes campañas con marcación manual."
+              : openManagement
+                ? `Primero tipifica la gestión de ${openManagement.leadName ?? "otro registro"}.`
+                : null;
+
+  const dialerNotice: ReactNode =
+    profile.role === "agente" && automaticMode && !hybridManualMode ? (
+      <div className="space-y-2">
+        <p className="text-xs text-muted-foreground">
+          Para marcar sales de la cola automática. No recibirás llamadas del discador hasta volver.
+        </p>
+        {manualCampaigns.length > 1 && (
+          <select
+            value={effectiveManualCampaignId}
+            onChange={(event) => setManualCampaignId(event.target.value)}
+            disabled={hybridTransitionPending}
+            aria-label="Campaña de la llamada manual"
+            className="w-full rounded-lg border border-border bg-surface px-2 py-1.5 text-xs font-medium"
+          >
+            <option value="">Campaña…</option>
+            {manualCampaigns.map((campaign) => (
+              <option key={campaign.id} value={campaign.id}>
+                {campaign.name}
+              </option>
+            ))}
+          </select>
+        )}
+        <button
+          type="button"
+          onClick={() => void handleEnterHybridManualMode()}
+          disabled={hybridTransitionPending || regState !== "registered" || !effectiveManualCampaignId}
+          className="w-full rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+        >
+          {hybridTransitionPending ? "Saliendo de la cola…" : "Salir de la cola y marcar"}
+        </button>
+      </div>
+    ) : hybridManualMode ? (
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          Llamada manual{effectiveManualCampaign ? ` en ${effectiveManualCampaign.name}` : ""}.
+          {!hybridQueueReady && " Esperando la pausa de la central…"}
+        </p>
+        <button
+          type="button"
+          onClick={() => void handleExitHybridManualMode()}
+          disabled={hybridTransitionPending}
+          className="shrink-0 rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold disabled:opacity-50"
+        >
+          {hybridTransitionPending ? "Volviendo…" : "Volver a la cola"}
+        </button>
+      </div>
+    ) : null;
+
+  const statusControls = (
+    <>
+      {showStatusSelector && (
+        <StatusMenu
+          label={statusText}
+          tone={statusTone}
+          since={inAutomaticWrapUp ? null : statusSince}
+          countdown={statusCountdown}
+          open={statusMenuOpen}
+          onOpenChange={setStatusMenuOpen}
+          available={availableReasons.map((reason) => ({ id: reason.id, label: reason.label }))}
+          aux={auxReasons.map((reason) => ({ id: reason.id, label: reason.label }))}
+          currentId={currentReasonId}
+          disabled={savingStatus || hybridManualMode || statusLoading || statusReasons.length === 0}
+          disabledNote={hybridManualMode ? "Estás en llamada manual. Vuelve a la cola desde el marcador." : null}
+          onSelect={(id) => void handleStatusChange(id)}
+          error={statusError}
+          onRetry={() => void loadAgentStatus()}
+          campaigns={automaticCampaigns.map((campaign) => ({ id: campaign.id, name: campaign.name }))}
+          activeCampaignId={operatingMode?.active_campaign_id ?? null}
+          campaignDisabled={switchingCampaign || activeCall || inAutomaticWrapUp || campaignLocked}
+          campaignLocked={campaignLocked}
+          campaignNote={campaignNote}
+          campaignError={campaignSwitchError}
+          onCampaignChange={(id) => void handleActiveCampaignChange(id)}
+          audio={<AudioSettings value={audioPreference} onChange={changeAudioPreference} disabled={activeCall} />}
+        />
+      )}
+      {credential && (
+        <span
+          className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-muted-foreground"
+          title={connectionError ?? statusLabel}
+        >
+          <StatusDot tone={regTone} className="size-2" />
+          {regState === "registered" ? "Teléfono" : statusLabel}
         </span>
-      </span>
-      <span className="shrink-0 rounded-lg bg-warning px-3 py-1.5 text-xs font-bold text-white">
-        Tipificar
-      </span>
-    </button>
+      )}
+      {credential && regState === "error" && (
+        <button
+          type="button"
+          onClick={retryPhoneRegistration}
+          className="shrink-0 rounded-md border border-danger/40 px-2 py-1 text-xs font-semibold text-danger hover:bg-danger-bg"
+        >
+          Reintentar teléfono
+        </button>
+      )}
+      {canOpenDialer && !activeCall && (
+        <button
+          type="button"
+          onClick={() => setDialerOpen((open) => !open)}
+          aria-expanded={dialerOpen}
+          title={`Marcar (${shortcutLabel("D")})`}
+          className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 text-sm font-semibold text-foreground hover:bg-surface-muted"
+        >
+          <Phone size={14} aria-hidden />
+          Marcar
+        </button>
+      )}
+    </>
+  );
+
+  const callBar = callState !== "idle" ? (
+    <CallBar
+      phase={callState}
+      name={selectedName}
+      contactPerson={
+        incomingContext ? leadContactPerson(incomingContext.extra, incomingContext.full_name) : null
+      }
+      phoneLabel={subscriber ? `+56 9 ${formatSubscriber(subscriber)}` : null}
+      campaignName={incomingContext?.campaign_name ?? callCampaignName}
+      automatic={isIncomingCall}
+      elapsed={callState === "in_call" && callStartedAt ? formatElapsed(now - callStartedAt) : null}
+      quality={callQuality}
+      muted={muted}
+      held={held}
+      holdPending={holdPending}
+      keypadOpen={inCallKeypadOpen}
+      dtmfSent={dtmfSent}
+      leadHref={(() => {
+        const leadId = incomingContext?.lead_id ?? callLeadId;
+        return leadId && pathname !== `/dashboard/leads/${leadId}` ? `/dashboard/leads/${leadId}` : null;
+      })()}
+      onToggleMute={toggleMute}
+      onToggleHold={() => void toggleHold()}
+      onToggleKeypad={() => setInCallKeypadOpen((open) => !open)}
+      onDtmf={sendDtmf}
+      onHangup={() => void handleHangup()}
+    />
   ) : null;
 
-  if (minimized) {
-    // El <audio> tiene que seguir montado: es el destino del stream SIP y
-    // desmontarlo cortaría el audio de una llamada que entre estando minimizado.
-    return (
-      <>
-        <audio ref={audioRef} autoPlay className="hidden" />
-        <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2">
-          {pendingElsewhere && openManagement && (
-            <button
-              type="button"
-              onClick={() => openManagementScreen(openManagement.leadId)}
-              className="max-w-64 truncate rounded-lg bg-warning px-3 py-2 text-xs font-bold text-white shadow-xl"
-              title="Gestión pendiente: ciérrala para poder llamar"
-            >
-              Tipificar pendiente · {openManagement.leadName ?? "registro"}
-            </button>
-          )}
-          {showStatusSelector && (
-            <>
-              <Select
-                fieldSize="sm"
-                value={operationalStatusValue}
-                onChange={(event) => handleStatusChange(event.target.value)}
-                disabled={savingStatus || hybridManualMode || statusLoading || statusReasons.length === 0}
-                className="w-[min(17rem,calc(100vw-6rem))] border-border bg-surface font-semibold shadow-xl"
-                aria-label="Estado del agente"
-                title={statusError ?? "Disponible o AUX"}
-              >
-                {statusReasons.length === 0 && (
-                  <option value="">
-                    {statusLoading ? "Cargando Disponible / AUX..." : "AUX no disponible"}
-                  </option>
-                )}
-                {hybridManualMode && currentReason && (
-                  <option value={currentReason.id}>AUX · Llamada manual</option>
-                )}
-                {inAutomaticWrapUp && (
-                  <option value="__acw">{operationalStatusLabel}</option>
-                )}
-                {availableReasons.map((reason) => (
-                  <option key={reason.id} value={reason.id}>
-                    {reason.label}
-                  </option>
-                ))}
-                {auxReasons.length > 0 && (
-                  <optgroup label="AUX — selecciona un motivo">
-                    {auxReasons.map((reason) => (
-                      <option key={reason.id} value={reason.id}>
-                        AUX · {reason.label}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-              </Select>
-              <StatusElapsed since={statusSince} compact />
-              {statusError && !statusLoading && (
-                <button
-                  type="button"
-                  onClick={() => void loadAgentStatus()}
-                  className="rounded-lg border border-border bg-surface px-2 py-1 text-xs font-semibold shadow-xl"
-                >
-                  Reintentar AUX
-                </button>
-              )}
-            </>
-          )}
-          <button
-            type="button"
-            onClick={() => toggleMinimized(false)}
-            title="Abrir Teléfono Atlas"
-            aria-label="Abrir Teléfono Atlas"
-            className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#12333b] text-white shadow-2xl transition hover:brightness-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          >
-            <Phone size={20} />
-            <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-surface">
-              <StatusDot
-                tone={inAutomaticWrapUp ? "warning" : regTone}
-                className="h-2.5 w-2.5"
-              />
-            </span>
-          </button>
-        </div>
-      </>
-    );
-  }
+  const dock = activeCall ? null : !credential ? (
+    loadingCredential ? null : (
+      <DockPill tone="neutral" title="Avísale a tu supervisor para poder recibir y hacer llamadas.">
+        Sin extensión telefónica
+      </DockPill>
+    )
+  ) : regState !== "registered" ? (
+    <DockPill tone={regState === "connecting" ? "acw" : "pause"} title={connectionError ?? undefined}>
+      {statusLabel}
+      {regState === "error" && (
+        <DockAction onClick={retryPhoneRegistration}>Reintentar</DockAction>
+      )}
+    </DockPill>
+  ) : pendingElsewhere && openManagement ? (
+    <DockPill tone="acw" title="Ciérrala para poder llamar o recibir llamadas">
+      <span className="max-w-56 truncate">
+        Gestión pendiente · {openManagement.leadName ?? "registro"}
+        {openManagement.channel ? ` (${OFFLINE_CHANNEL_LABEL[openManagement.channel] ?? "otro canal"})` : ""}
+      </span>
+      <DockAction onClick={() => openManagementScreen(openManagement.leadId)}>Tipificar</DockAction>
+    </DockPill>
+  ) : operatingMode === undefined ? null : automaticMode && !hybridManualMode ? (
+    !agentCanCall ? null : !operatingMode.active_campaign_id ? (
+      <DockPill tone="acw">
+        Elige una cola para recibir llamadas
+        <DockAction onClick={() => setStatusMenuOpen(true)}>Elegir</DockAction>
+      </DockPill>
+    ) : inAutomaticWrapUp ? (
+      <DockPill tone="acw">
+        {inLegalIntercallBreak ? (
+          <>Interrupción legal · <span className="font-mono tabular-nums">{legalBreakRemaining} s</span></>
+        ) : (
+          <>Tipificación pendiente · <span className="font-mono tabular-nums">{statusCountdown}</span></>
+        )}
+        {!(openManagement && !pendingElsewhere) && (
+          <DockAction onClick={() => void handleOpenPendingTypification()} disabled={pendingTypificationOpening}>
+            {pendingTypificationOpening ? "Abriendo…" : "Completar"}
+          </DockAction>
+        )}
+        <DockAction onClick={openManualRecovery} subtle>
+          Registrar llamada manual
+        </DockAction>
+      </DockPill>
+    ) : automaticOperationalAvailable ? (
+      <DockPill tone="available">
+        <span className="size-2 animate-pulse rounded-full bg-success" aria-hidden />
+        En espera · {activeAutomaticCampaign?.name ?? "cola"}
+        <Elapsed since={operatingMode.session?.since ?? null} className="opacity-70" />
+        {manualCampaigns.length > 0 && (
+          <DockAction onClick={() => setDialerOpen(true)} subtle>
+            Llamada manual
+          </DockAction>
+        )}
+      </DockPill>
+    ) : (
+      <DockPill tone="neutral">Conectando con el discador…</DockPill>
+    )
+  ) : hybridManualMode ? (
+    <DockPill tone="manual">
+      Llamada manual{effectiveManualCampaign ? ` · ${effectiveManualCampaign.name}` : ""}
+      <DockAction onClick={() => setDialerOpen(true)}>Marcar</DockAction>
+      <DockAction onClick={() => void handleExitHybridManualMode()} disabled={hybridTransitionPending} subtle>
+        Volver a la cola
+      </DockAction>
+    </DockPill>
+  ) : !dialerOpen && canOpenDialer ? (
+    <DockPill tone="neutral">
+      <DockAction onClick={() => setDialerOpen(true)}>
+        <Phone size={13} aria-hidden /> Marcar
+      </DockAction>
+    </DockPill>
+  ) : null;
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-[1.75rem] border border-border bg-surface shadow-2xl">
+    <>
+      {/* El <audio> siempre montado: es el destino del stream SIP. */}
       <audio ref={audioRef} autoPlay className="hidden" />
+
+      {slots.status ? (
+        createPortal(statusControls, slots.status)
+      ) : (
+        <div className="fixed left-4 top-2 z-50 flex items-center gap-2">{statusControls}</div>
+      )}
+
+      {callBar &&
+        (slots.call ? (
+          createPortal(callBar, slots.call)
+        ) : (
+          <div className="fixed inset-x-0 top-0 z-50">{callBar}</div>
+        ))}
+
+      <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2 [&>*]:pointer-events-auto">
+        {callError && !dialerOpen && !activeCall && (
+          <div
+            role="alert"
+            className="flex max-w-sm items-start gap-2 rounded-xl border border-danger/30 bg-surface px-3 py-2 text-xs text-danger shadow-xl"
+          >
+            <span className="flex-1">{callError}</span>
+            <button type="button" onClick={() => setCallError(null)} className="font-semibold">
+              Cerrar
+            </button>
+          </div>
+        )}
+        {dialerOpen && !activeCall && (
+          <Dialer
+            subscriber={subscriber}
+            selectedName={selectedName}
+            onTarget={(next, name) => {
+              setSubscriber(next);
+              setSelectedName(name);
+              setCallError(null);
+            }}
+            entries={dialerEntries}
+            loading={contactsLoading}
+            campaigns={profile.role === "agente" ? manualCampaigns : []}
+            campaignId={effectiveManualCampaignId}
+            onCampaignChange={setManualCampaignId}
+            onCall={() => void handleCall()}
+            callBlockedReason={dialerBlockedReason}
+            error={callError}
+            notice={dialerNotice}
+            onClose={() => setDialerOpen(false)}
+          />
+        )}
+        {dock}
+      </div>
 
       <SlideOver
         open={manualRecoveryOpen}
@@ -2210,933 +2408,66 @@ export function CtiBar({ profile }: { profile: Profile }) {
           </label>
         </div>
       </SlideOver>
+    </>
+  );
+}
 
-      {showStatusSelector && (
-        <div className="flex items-center gap-3 border-b border-border bg-surface px-5 py-3">
-          <StatusDot
-            tone={
-              inAutomaticWrapUp
-                ? "warning"
-                : currentReason && !currentReason.is_pause
-                  ? "success"
-                  : "warning"
-            }
-            className="h-2.5 w-2.5"
-          />
-          <Select
-            fieldSize="sm"
-            value={operationalStatusValue}
-            onChange={(event) => handleStatusChange(event.target.value)}
-            // Nunca se bloquea del todo: aunque esté cerrando la gestión, el
-            // ejecutivo tiene que poder irse a AUX (baño, colación).
-            disabled={savingStatus || hybridManualMode || statusLoading || statusReasons.length === 0}
-            className="border-0 bg-surface-muted font-semibold"
-            aria-label="Estado del agente"
-          >
-            {statusReasons.length === 0 && (
-              <option value="">
-                {statusLoading ? "Cargando Disponible / AUX..." : "AUX no disponible"}
-              </option>
-            )}
-            {hybridManualMode && currentReason && (
-              <option value={currentReason.id}>AUX · Llamada manual</option>
-            )}
-            {inAutomaticWrapUp && (
-              <option value="__acw">{operationalStatusLabel}</option>
-            )}
-            {availableReasons.map((reason) => (
-              <option key={reason.id} value={reason.id}>
-                {reason.label}
-              </option>
-            ))}
-            {auxReasons.length > 0 && (
-              <optgroup label="AUX — selecciona un motivo">
-                {auxReasons.map((reason) => (
-                  <option key={reason.id} value={reason.id}>
-                    AUX · {reason.label}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-          </Select>
-          <StatusElapsed since={statusSince} />
+const DOCK_TONES = {
+  available: "border-success/30 bg-surface text-foreground",
+  pause: "border-danger/40 bg-danger-bg text-danger",
+  acw: "border-warning/40 bg-warning-bg text-warning",
+  manual: "border-primary/40 bg-surface text-foreground",
+  neutral: "border-border bg-surface text-muted-foreground",
+} as const;
 
-          {statusError && (
-            <div className="ml-auto flex items-center gap-2">
-              <span role="alert" className="text-xs text-danger">
-                {statusError}
-              </span>
-              {!statusLoading && (
-                <button
-                  type="button"
-                  onClick={() => void loadAgentStatus()}
-                  className="rounded-lg border border-border px-2 py-1 text-xs font-semibold"
-                >
-                  Reintentar AUX
-                </button>
-              )}
-            </div>
-          )}
-        </div>
+/** La píldora de abajo a la derecha: una línea con el estado de la cola. */
+function DockPill({
+  tone,
+  title,
+  children,
+}: {
+  tone: keyof typeof DOCK_TONES;
+  title?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      role="status"
+      title={title}
+      className={cn(
+        "flex max-w-[calc(100vw-2rem)] flex-wrap items-center gap-x-2 gap-y-1 rounded-2xl border py-1.5 pl-3.5 pr-1.5 text-sm font-semibold shadow-xl",
+        DOCK_TONES[tone]
       )}
-
-      {!credential ? (
-        // Antes esta barra simplemente no aparecía: el ejecutivo sin extensión
-        // no tenía forma de saber por qué no tiene teléfono.
-        loadingCredential ? null : (
-          <div className="border-t border-border bg-surface px-5 py-3 text-xs text-muted-foreground">
-            Aún no tienes una extensión telefónica asignada. Avísale a tu supervisor para poder
-            recibir y hacer llamadas.
-          </div>
-        )
-      ) : (
-        <>
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setExpanded((value) => !value)}
-              className="flex w-full items-center justify-between gap-3 bg-[#12333b] py-4 pl-5 pr-14 text-left text-white"
-              aria-expanded={expanded}
-            >
-              <span className="flex min-w-0 items-center gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10">
-                  <Phone size={19} />
-                </span>
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold">
-                    Teléfono Atlas · {profile.full_name.split(" ")[0]}
-                  </span>
-                  <span className="mt-0.5 flex items-center gap-1.5 text-xs text-white/70">
-                    <StatusDot tone={regTone} className="h-2 w-2" />
-                    {statusLabel}
-                  </span>
-                </span>
-              </span>
-              {expanded ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
-            </button>
-
-            {!activeCall && (
-              // Colapsar el panel no basta: la cabecera sigue cubriendo la
-              // esquina donde otras pantallas dejan sus botones de guardado.
-              <button
-                type="button"
-                onClick={() => toggleMinimized(true)}
-                title="Minimizar teléfono"
-                aria-label="Minimizar teléfono"
-                className="absolute right-4 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-white/70 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-              >
-                <Minus size={18} />
-              </button>
-            )}
-          </div>
-
-          {pendingBanner}
-
-          {inAutomaticWrapUp && !expanded && !pendingElsewhere && (
-            <div className="border-b border-warning/30 bg-warning-bg p-2.5">
-              <button
-                type="button"
-                onClick={handleOpenPendingTypification}
-                disabled={pendingTypificationOpening}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-warning px-3 py-2.5 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-60"
-              >
-                {pendingTypificationOpening ? "Abriendo gestión…" : "Completar tipificación"}
-              </button>
-            </div>
-          )}
-
-          {expanded && (
-            <div className="bg-surface">
-              {regState !== "registered" && (
-                <div
-                  className={cn(
-                    "mx-4 mt-4 flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs",
-                    regState === "error"
-                      ? "bg-danger-bg text-danger"
-                      : "bg-warning-bg text-warning"
-                  )}
-                >
-                  {regState === "error" ? (
-                    phoneIssue === "microphone" ? (
-                      <MicOff className="shrink-0" size={16} />
-                    ) : (
-                      <PhoneOff className="shrink-0" size={16} />
-                    )
-                  ) : (
-                    <LoaderCircle className="shrink-0 animate-spin" size={16} />
-                  )}
-                  <div className="flex flex-1 items-center justify-between gap-3">
-                    <span>
-                      {connectionError ?? "Conectando automáticamente el teléfono con la central..."}
-                    </span>
-                    {regState === "error" && (
-                      <button
-                        type="button"
-                        onClick={retryPhoneRegistration}
-                        className="shrink-0 rounded-lg border border-current/30 px-2.5 py-1.5 font-semibold hover:bg-black/5"
-                      >
-                        Reintentar teléfono
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {activeCall ? (
-                <div
-                  className={cn(
-                    "flex min-h-80 flex-col items-center justify-center overflow-y-auto bg-[#12333b] px-6 text-white",
-                    inCallKeypadVisible ? "max-h-[calc(100dvh-6rem)] py-5" : "py-8"
-                  )}
-                >
-                  {!inCallKeypadVisible && (
-                    <span className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-white/10">
-                      <UserRound size={28} />
-                    </span>
-                  )}
-                  {isIncomingCall && (
-                    <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-300">
-                      Llamada automática
-                      {incomingContext ? ` · ${incomingContext.campaign_name}` : ""}
-                    </p>
-                  )}
-                  <p className="text-lg font-semibold">
-                    {selectedName ??
-                      (isIncomingCall ? "Cargando datos del contacto..." : "Llamada saliente")}
-                  </p>
-                  {isIncomingCall && incomingContactPerson && (
-                    <p className="mt-0.5 text-sm font-medium text-emerald-200">
-                      Contacto: {incomingContactPerson}
-                    </p>
-                  )}
-                  <p className="mt-1 font-mono text-sm text-white/70">
-                    {subscriber
-                      ? `+56 9 ${formatSubscriber(subscriber)}`
-                      : "Identificando número..."}
-                  </p>
-                  <p className="mt-4 text-sm text-white/75">
-                    {callState === "calling" && "Marcando..."}
-                    {callState === "ringing" && "Timbrando..."}
-                    {callState === "in_call" &&
-                      (callStartedAt ? formatElapsed(now - callStartedAt) : "En llamada")}
-                  </p>
-                  {inCallKeypadVisible && (
-                    <div className="mt-5 w-full">
-                      <p
-                        className="mb-3 min-h-6 truncate text-center font-mono text-lg tracking-[0.2em] text-white"
-                        aria-live="polite"
-                      >
-                        {dtmfSent || (
-                          <span className="font-sans text-xs tracking-normal text-white/60">
-                            Marca la opción del menú
-                          </span>
-                        )}
-                      </p>
-                      <div className="grid grid-cols-3 gap-2">
-                        {IN_CALL_KEYPAD.map((key) => (
-                          <button
-                            key={key.digit}
-                            type="button"
-                            onClick={() => sendDtmf(key.digit)}
-                            aria-label={`Marcar ${key.digit}`}
-                            className="flex h-12 flex-col items-center justify-center rounded-full bg-white/10 transition hover:bg-white/20 active:scale-95"
-                          >
-                            <span className="text-lg font-semibold leading-none">{key.digit}</span>
-                            <span className="mt-0.5 min-h-2 text-[8px] font-bold tracking-[0.18em] text-white/50">
-                              {key.letters}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {!inCallKeypadVisible && isIncomingCall && incomingContext && (
-                    <div className="mt-5 w-full rounded-2xl bg-white/10 p-4 text-left">
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
-                        <ContextField label="RUT" value={incomingContext.rut ?? "No informado"} />
-                        {incomingContext.email && (
-                          <ContextField label="Email" value={incomingContext.email} />
-                        )}
-                        {incomingFields.map(([key, value], index) => (
-                          <ContextField key={`${key}-${index}`} label={key} value={value} />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  <div
-                    className={cn(
-                      "flex items-center gap-5",
-                      inCallKeypadVisible ? "mt-5" : "mt-8"
-                    )}
-                  >
-                    {callState === "in_call" && (
-                      <button
-                        type="button"
-                        onClick={toggleMute}
-                        className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10 hover:bg-white/20"
-                        title={muted ? "Reactivar micrófono" : "Silenciar"}
-                      >
-                        {muted ? <MicOff size={20} /> : <Mic size={20} />}
-                      </button>
-                    )}
-                    {callState === "in_call" && (
-                      <button
-                        type="button"
-                        onClick={() => setInCallKeypadOpen((open) => !open)}
-                        className={cn(
-                          "flex h-12 w-12 items-center justify-center rounded-full",
-                          inCallKeypadOpen
-                            ? "bg-white text-[#12333b] hover:bg-white/90"
-                            : "bg-white/10 hover:bg-white/20"
-                        )}
-                        title={inCallKeypadOpen ? "Ocultar teclado" : "Teclado (opciones del menú)"}
-                        aria-pressed={inCallKeypadOpen}
-                      >
-                        <Grid3X3 size={20} />
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={handleHangup}
-                      className="flex h-14 w-14 items-center justify-center rounded-full bg-danger text-white shadow-lg hover:opacity-90"
-                      title="Colgar"
-                    >
-                      <PhoneOff size={22} />
-                    </button>
-                  </div>
-                </div>
-              ) : operatingMode === undefined ? (
-                <div className="flex min-h-64 items-center justify-center gap-2 px-6 text-sm text-muted-foreground">
-                  <LoaderCircle className="animate-spin" size={18} />
-                  Cargando modo operativo...
-                </div>
-              ) : operatingMode.mode === "automatic" && !hybridManualMode ? (
-                <div>
-                  <div className="px-4 py-4">
-                    <div className="rounded-2xl bg-[#12333b] px-4 py-4 text-white shadow-inner">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/50">
-                            Discado automático
-                          </p>
-                          <p className="mt-1 text-base font-semibold">
-                            {regState === "error"
-                              ? statusLabel
-                              : regState !== "registered"
-                                ? "Conectando teléfono..."
-                              : !agentCanCall
-                                ? `AUX · ${currentReason?.label ?? "Pausa"}`
-                                : !operatingMode.active_campaign_id
-                                  ? "Elige una campaña"
-                                : inLegalIntercallBreak
-                                  ? `Interrupción legal · ${legalBreakRemaining}s`
-                                  : inAutomaticWrapUp
-                                    ? "ACW · tipificación pendiente"
-                                    : automaticSessionStatus === "available"
-                                      ? "Disponible"
-                                      : "Sincronizando con el discador..."}
-                          </p>
-                        </div>
-                        <span
-                          className={cn(
-                            "mt-0.5 flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold",
-                            automaticOperationalAvailable
-                              ? "bg-emerald-400/15 text-emerald-300"
-                              : inAutomaticWrapUp
-                                ? "bg-amber-300/15 text-amber-200"
-                              : "bg-white/10 text-white/65"
-                          )}
-                        >
-                          <StatusDot
-                            tone={
-                              automaticOperationalAvailable
-                                ? "success"
-                                : inAutomaticWrapUp || regState === "connecting"
-                                  ? "warning"
-                                  : "danger"
-                            }
-                            className="h-2 w-2"
-                          />
-                          {automaticOperationalAvailable
-                            ? "EN ESPERA"
-                            : inLegalIntercallBreak
-                              ? "DESCANSO"
-                              : inAutomaticWrapUp
-                                ? "ACW"
-                                : "NO DISPONIBLE"}
-                        </span>
-                      </div>
-
-                      <p className="mt-3 text-xs leading-relaxed text-white/65">
-                        {!agentCanCall
-                          ? "Mientras estés en AUX no se asignarán llamadas automáticas."
-                          : !operatingMode.active_campaign_id
-                            ? "Selecciona el skill que operarás ahora para entrar solamente a esa cola."
-                          : inLegalIntercallBreak
-                            ? "Interrupción efectiva protegida: durante estos 10 segundos no debes realizar tipificación ni otra tarea."
-                            : inAutomaticWrapUp
-                              ? "Completa y guarda la tipificación. Después quedarás Disponible para la próxima llamada."
-                              : automaticOperationalAvailable
-                                ? "El discador asignará la próxima llamada. No necesitas marcar ni confirmar manualmente."
-                                : "Validando tu disponibilidad con la cola automática."}
-                      </p>
-
-                      {manualCampaigns.length > 0 && !inAutomaticWrapUp && (
-                        <div className="mt-4 rounded-xl border border-white/15 bg-white/5 p-3">
-                          <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/55">
-                            Marcación manual
-                          </p>
-                          {manualCampaigns.length > 1 && (
-                            <select
-                              value={effectiveManualCampaignId}
-                              onChange={(event) => setManualCampaignId(event.target.value)}
-                              disabled={hybridTransitionPending}
-                              className="mt-2 w-full rounded-lg border border-white/15 bg-white/10 px-2.5 py-2 text-xs font-semibold text-white outline-none disabled:opacity-60"
-                              aria-label="Campaña para la llamada manual"
-                            >
-                              <option value="" className="text-foreground">Seleccionar campaña…</option>
-                              {manualCampaigns.map((campaign) => (
-                                <option key={campaign.id} value={campaign.id} className="text-foreground">
-                                  {campaign.name}
-                                </option>
-                              ))}
-                            </select>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => void handleEnterHybridManualMode()}
-                            disabled={
-                              hybridTransitionPending ||
-                              activeCall ||
-                              regState !== "registered" ||
-                              !effectiveManualCampaignId
-                            }
-                            className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-white px-3 py-2.5 text-xs font-bold text-[#12333b] transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {hybridTransitionPending ? (
-                              <LoaderCircle className="animate-spin" size={15} />
-                            ) : (
-                              <Phone size={15} />
-                            )}
-                            {hybridTransitionPending ? "Saliendo de la cola…" : "Hacer llamada manual"}
-                          </button>
-                        </div>
-                      )}
-
-                      {automaticSessionStatus === "wrap_up" && operatingMode.session && (
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={handleOpenPendingTypification}
-                            disabled={pendingTypificationOpening}
-                            className="rounded-xl bg-white px-3 py-2 text-xs font-bold text-[#12333b] transition hover:bg-white/90 disabled:opacity-60"
-                          >
-                            {pendingTypificationOpening ? "Abriendo gestión…" : "Completar tipificación"}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={openManualRecovery}
-                            className="rounded-xl border border-white/20 px-3 py-2 text-xs font-semibold text-white transition hover:bg-white/10"
-                          >
-                            Registrar llamada manual
-                          </button>
-                        </div>
-                      )}
-
-                      {operatingMode.campaigns.length > 0 && (
-                        <label className="mt-4 block">
-                          <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.12em] text-white/55">
-                            Campaña activa
-                          </span>
-                          <select
-                            value={operatingMode.active_campaign_id ?? ""}
-                            onChange={(event) => void handleActiveCampaignChange(event.target.value)}
-                            disabled={switchingCampaign || activeCall || inAutomaticWrapUp || campaignLocked}
-                            className="w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs font-semibold text-white outline-none disabled:cursor-not-allowed disabled:opacity-60"
-                            aria-label="Campaña activa para recibir llamadas"
-                          >
-                            <option value="" className="text-foreground">Seleccionar campaña…</option>
-                            {operatingMode.campaigns
-                              .filter((campaign) => campaign.dial_mode !== "manual")
-                              .map((campaign) => (
-                                <option key={campaign.id} value={campaign.id} className="text-foreground">
-                                  {campaign.name}
-                                </option>
-                              ))}
-                          </select>
-                          <span className="mt-1.5 block text-[10px] text-white/55">
-                            {switchingCampaign
-                              ? "Cambiando de cola…"
-                              : campaignLocked && activeAutomaticCampaign
-                                ? `${operatingMode.assignment?.assigned_by_name ?? "Tu supervisor"} te asignó a ${activeAutomaticCampaign.name}. Solo quien la asignó puede cambiarla.`
-                              : activeAutomaticCampaign
-                                ? `Recibirás llamadas de ${activeAutomaticCampaign.name}${
-                                    operatingMode.assignment?.source === "prioridad" ? ", la prioridad que definió tu supervisor" : ""
-                                  }.`
-                                : "No recibirás llamadas hasta elegir una campaña."}
-                          </span>
-                          {campaignSwitchError && (
-                            <span role="alert" className="mt-1.5 block text-[10px] font-medium text-red-200">
-                              {campaignSwitchError}
-                            </span>
-                          )}
-                        </label>
-                      )}
-                    </div>
-                  </div>
-
-                  {callError && (
-                    <p className="mx-4 mb-3 rounded-xl bg-danger-bg px-3 py-2.5 text-xs text-danger">
-                      {callError}
-                    </p>
-                  )}
-
-                  <div className="border-t border-border px-4 pb-4 pt-3">
-                    <div className="mb-2 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Clock3 size={15} className="text-muted-foreground" />
-                        <p className="text-sm font-semibold">Mi historial</p>
-                      </div>
-                      <span className="text-[10px] text-muted-foreground">
-                        Actualización automática
-                      </span>
-                    </div>
-
-                    <div className="max-h-72 space-y-1 overflow-y-auto">
-                      {automaticHistory.length === 0 ? (
-                        <EmptyDirectory
-                          icon={Clock3}
-                          title="Aún no hay llamadas"
-                          description="Tus llamadas de campaña aparecerán aquí."
-                        />
-                      ) : (
-                        automaticHistory.map((attempt) => (
-                          <a
-                            key={attempt.id}
-                            href={`/dashboard/leads/${attempt.lead_id}`}
-                            className="flex items-center gap-3 rounded-xl px-2 py-2.5 transition hover:bg-surface-muted"
-                          >
-                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-muted text-muted-foreground">
-                              <Phone size={15} />
-                            </span>
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate text-sm font-semibold">
-                                {attempt.name}
-                              </span>
-                              <span className="block truncate text-xs text-muted-foreground">
-                                {formatChileMobile(attempt.phone)} ·{" "}
-                                {formatRecentTime(attempt.started_at)}
-                              </span>
-                            </span>
-                            <span
-                              className={cn(
-                                "shrink-0 rounded-full px-2 py-1 text-[9px] font-bold",
-                                automaticAttemptTone(attempt.status)
-                              )}
-                            >
-                              {automaticAttemptLabel(attempt.status)}
-                            </span>
-                          </a>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="px-4 pt-4">
-                    {hybridManualMode && (
-                      <div className="mb-3 rounded-xl border border-primary/20 bg-primary/5 p-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-xs font-bold text-foreground">Modo llamada manual</p>
-                            <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
-                              {hybridQueueReady
-                                ? "La PBX confirmó que estás fuera de la cola automática."
-                                : "Esperando confirmación de pausa desde Asterisk…"}
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => void handleExitHybridManualMode()}
-                            disabled={hybridTransitionPending || activeCall}
-                            className="shrink-0 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-[11px] font-semibold text-foreground disabled:opacity-50"
-                          >
-                            {hybridTransitionPending ? "Saliendo…" : "Cancelar"}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                    <div className="rounded-2xl bg-[#12333b] px-4 py-4 text-white shadow-inner">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/55">
-                          Móvil Chile
-                        </span>
-                        {regState === "registered" ? (
-                          <span className="flex items-center gap-1 text-[11px] text-emerald-300">
-                            <Wifi size={12} />
-                            En línea
-                          </span>
-                        ) : null}
-                      </div>
-                      <div className="mt-2 flex items-center gap-2">
-                        <span className="shrink-0 font-mono text-2xl font-semibold text-white/65">
-                          +56 9
-                        </span>
-                        <Input
-                          type="tel"
-                          inputMode="numeric"
-                          autoComplete="tel-national"
-                          value={subscriber}
-                          onChange={(event) => {
-                            setSubscriber(subscriberFromPhone(event.target.value));
-                            setSelectedName(null);
-                            setCallError(null);
-                          }}
-                          placeholder="81406609"
-                          className="h-auto border-0 bg-transparent p-0 font-mono text-2xl font-semibold tracking-wide text-white placeholder:text-white/25 focus-visible:ring-0"
-                          aria-label="Ocho dígitos del número móvil"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSubscriber((value) => value.slice(0, -1));
-                            setSelectedName(null);
-                          }}
-                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-white/70 hover:bg-white/20"
-                          title="Borrar un dígito"
-                        >
-                          <Delete size={16} />
-                        </button>
-                      </div>
-                      <p className="mt-1 min-h-4 truncate text-xs text-white/55">
-                        {selectedName ?? "Escribe 8 dígitos o pega el número completo"}
-                      </p>
-                    </div>
-
-                    {profile.role === "agente" && (
-                      <label className="mt-3 block space-y-1.5">
-                        <span className="text-xs font-medium text-muted-foreground">
-                          Campaña de la llamada
-                        </span>
-                        {manualCampaigns.length ? (
-                          <Select
-                            value={effectiveManualCampaignId}
-                            onChange={(event) => setManualCampaignId(event.target.value)}
-                            aria-label="Campaña de la llamada manual"
-                          >
-                            <option value="">Selecciona una campaña</option>
-                            {manualCampaigns.map((campaign) => (
-                              <option key={campaign.id} value={campaign.id}>
-                                {campaign.name}
-                              </option>
-                            ))}
-                          </Select>
-                        ) : (
-                          <p className="rounded-lg bg-warning-bg px-3 py-2 text-xs text-warning">
-                            No tienes habilitado el modo híbrido en ninguna campaña activa.
-                          </p>
-                        )}
-                      </label>
-                    )}
-                  </div>
-
-                  <div className="mx-4 mt-4 grid grid-cols-3 rounded-xl bg-surface-muted p-1">
-                    {[
-                      { id: "keypad" as const, label: "Teclado", icon: Grid3X3 },
-                      { id: "recents" as const, label: "Recientes", icon: Clock3 },
-                      { id: "contacts" as const, label: "Contactos", icon: ContactRound },
-                    ].map((item) => {
-                      const Icon = item.icon;
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => setView(item.id)}
-                          className={cn(
-                            "flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-semibold transition",
-                            view === item.id
-                              ? "bg-surface text-foreground shadow-sm"
-                              : "text-muted-foreground hover:text-foreground"
-                          )}
-                        >
-                          <Icon size={14} />
-                          {item.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <div className="min-h-64 px-4 py-4">
-                    {view === "keypad" && (
-                      <div className="mx-auto grid max-w-64 grid-cols-3 gap-2.5">
-                        {KEYPAD.slice(0, 9).map((key) => (
-                          <KeypadButton
-                            key={key.digit}
-                            digit={key.digit}
-                            letters={key.letters}
-                            onClick={() => {
-                              setSelectedName(null);
-                              setSubscriber((value) =>
-                                value.length < MOBILE_SUBSCRIBER_DIGITS
-                                  ? `${value}${key.digit}`
-                                  : value
-                              );
-                            }}
-                          />
-                        ))}
-                        <span />
-                        <KeypadButton
-                          digit="0"
-                          letters="+"
-                          onClick={() => {
-                            setSelectedName(null);
-                            setSubscriber((value) =>
-                              value.length < MOBILE_SUBSCRIBER_DIGITS ? `${value}0` : value
-                            );
-                          }}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSubscriber((value) => value.slice(0, -1));
-                            setSelectedName(null);
-                          }}
-                          className="flex h-14 items-center justify-center rounded-full text-muted-foreground hover:bg-surface-muted"
-                          title="Borrar"
-                        >
-                          <Delete size={20} />
-                        </button>
-                      </div>
-                    )}
-
-                    {view === "recents" && (
-                      <div className="max-h-64 space-y-1 overflow-y-auto">
-                        {recents.length === 0 ? (
-                          <EmptyDirectory
-                            icon={Clock3}
-                            title="Aún no hay llamadas"
-                            description="Los números que marques aparecerán aquí."
-                          />
-                        ) : (
-                          recents.map((recent) => (
-                            <button
-                              key={`${recent.phone}-${recent.calledAt}`}
-                              type="button"
-                              onClick={() => selectDialTarget(recent.phone, recent.name)}
-                              className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left hover:bg-surface-muted"
-                            >
-                              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-success-bg text-success">
-                                <Phone size={15} />
-                              </span>
-                              <span className="min-w-0 flex-1">
-                                <span className="block truncate text-sm font-semibold">
-                                  {recent.name ?? formatChileMobile(recent.phone)}
-                                </span>
-                                <span className="block truncate text-xs text-muted-foreground">
-                                  {recent.name ? formatChileMobile(recent.phone) : "Llamada saliente"}
-                                </span>
-                              </span>
-                              <span className="text-[10px] text-muted-foreground">
-                                {formatRecentTime(recent.calledAt)}
-                              </span>
-                            </button>
-                          ))
-                        )}
-                      </div>
-                    )}
-
-                    {view === "contacts" && (
-                      <div>
-                        <div className="relative mb-3">
-                          <Search
-                            size={15}
-                            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                          />
-                          <Input
-                            value={contactSearch}
-                            onChange={(event) => setContactSearch(event.target.value)}
-                            placeholder="Buscar nombre, RUT o teléfono"
-                            className="pl-9"
-                          />
-                        </div>
-                        <div className="max-h-56 space-y-1 overflow-y-auto">
-                          {contactsLoading ? (
-                            <div className="flex items-center justify-center gap-2 py-10 text-xs text-muted-foreground">
-                              <LoaderCircle className="animate-spin" size={16} />
-                              Cargando contactos...
-                            </div>
-                          ) : filteredContacts.length === 0 ? (
-                            <EmptyDirectory
-                              icon={ContactRound}
-                              title="Sin contactos"
-                              description="No encontramos contactos con teléfono."
-                            />
-                          ) : (
-                            filteredContacts.map((contact) => (
-                              <button
-                                key={contact.id}
-                                type="button"
-                                onClick={() => selectDialTarget(contact.phone, contact.name)}
-                                className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left hover:bg-surface-muted"
-                              >
-                                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-muted text-xs font-bold text-foreground">
-                                  {contactInitials(contact.name) || <UserRound size={15} />}
-                                </span>
-                                <span className="min-w-0 flex-1">
-                                  <span className="block truncate text-sm font-semibold">
-                                    {contact.name}
-                                  </span>
-                                  <span className="block truncate text-xs text-muted-foreground">
-                                    {formatChileMobile(contact.phone)}
-                                  </span>
-                                </span>
-                                <Phone size={15} className="text-success" />
-                              </button>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="border-t border-border px-4 py-4">
-                    {callError && <p className="mb-2 text-center text-xs text-danger">{callError}</p>}
-                    <button
-                      type="button"
-                      onClick={() => void handleCall()}
-                      disabled={
-                        !validNumber ||
-                        regState !== "registered" ||
-                        !manualDialAllowed ||
-                        (profile.role === "agente" && !effectiveManualCampaignId)
-                      }
-                      className={cn(
-                        "flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-sm font-bold text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-40",
-                        regState === "registered"
-                          ? "bg-success hover:brightness-95"
-                          : "bg-primary hover:bg-primary-hover"
-                      )}
-                    >
-                      {regState === "connecting" ? (
-                        <LoaderCircle className="animate-spin" size={18} />
-                      ) : regState === "error" ? (
-                        phoneIssue === "microphone" ? (
-                          <MicOff size={18} />
-                        ) : (
-                          <PhoneOff size={18} />
-                        )
-                      ) : (
-                        <Phone size={18} />
-                      )}
-                      {regState === "error"
-                        ? statusLabel
-                        : regState !== "registered"
-                          ? "Preparando teléfono..."
-                        : hybridManualMode && !hybridQueueReady
-                          ? "Esperando pausa de Asterisk…"
-                        : !manualDialAllowed
-                          ? "Ponte disponible para llamar"
-                          : profile.role === "agente" && !effectiveManualCampaignId
-                            ? "Selecciona una campaña"
-                          : "Llamar"}
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-        </>
-      )}
+    >
+      {children}
     </div>
   );
 }
 
-function KeypadButton({
-  digit,
-  letters,
+function DockAction({
   onClick,
+  disabled,
+  subtle,
+  children,
 }: {
-  digit: string;
-  letters: string;
   onClick: () => void;
+  disabled?: boolean;
+  subtle?: boolean;
+  children: ReactNode;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex h-14 flex-col items-center justify-center rounded-full bg-surface-muted text-foreground transition hover:bg-border active:scale-95"
+      disabled={disabled}
+      className={cn(
+        "inline-flex items-center gap-1 rounded-xl px-2.5 py-1 text-xs font-semibold transition disabled:opacity-50",
+        subtle
+          ? "text-current underline-offset-2 hover:underline"
+          : "bg-foreground text-background hover:opacity-90"
+      )}
     >
-      <span className="text-xl font-semibold leading-none">{digit}</span>
-      <span className="mt-1 min-h-2 text-[8px] font-bold tracking-[0.18em] text-muted-foreground">
-        {letters}
-      </span>
+      {children}
     </button>
-  );
-}
-
-function EmptyDirectory({
-  icon: Icon,
-  title,
-  description,
-}: {
-  icon: typeof Clock3;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="flex flex-col items-center px-4 py-9 text-center">
-      <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-surface-muted text-muted-foreground">
-        <Icon size={19} />
-      </span>
-      <p className="text-sm font-semibold">{title}</p>
-      <p className="mt-1 text-xs text-muted-foreground">{description}</p>
-    </div>
-  );
-}
-
-function ContextField({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0">
-      <p className="truncate text-[9px] font-bold uppercase tracking-[0.12em] text-white/45">
-        {label}
-      </p>
-      <p className="mt-0.5 break-words font-medium text-white/90">{value}</p>
-    </div>
-  );
-}
-
-/**
- * Cuánto lleva el ejecutivo en su estado actual (Disponible o AUX). Tiene su
- * propio reloj para no redibujar toda la barra cada segundo.
- */
-function StatusElapsed({ since, compact = false }: { since: string | null; compact?: boolean }) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!since) return;
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, [since]);
-  if (!since) return null;
-  const started = new Date(since).getTime();
-  if (Number.isNaN(started)) return null;
-  const seconds = Math.max(0, Math.floor((now - started) / 1000));
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const rest = seconds % 60;
-  const label = hours > 0
-    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`
-    : `${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
-  return (
-    <span
-      title="Tiempo en el estado actual"
-      className={
-        compact
-          ? "rounded-lg border border-border bg-surface px-2 py-1 font-mono text-xs font-semibold tabular-nums shadow-xl"
-          : "font-mono text-xs font-semibold tabular-nums text-muted-foreground"
-      }
-    >
-      {label}
-    </span>
   );
 }

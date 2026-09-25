@@ -18,11 +18,11 @@ function formatDuration(seconds: number | null | undefined): string {
 }
 
 /**
- * Barra superior del ejecutivo con los totales de su jornada: tiempo
- * conectado, tiempo acumulado hoy en cada estado (Disponible, Descanso,
- * Baño…), gestiones y TMO. El cronómetro del teléfono vuelve a cero al
- * cambiar de estado; aquí se ve lo acumulado del día. Va arriba y no en el
- * teléfono para no recargarlo.
+ * Totales de la jornada del ejecutivo: tiempo conectado, tiempo acumulado
+ * hoy en cada estado (Disponible, Descanso, Baño…), gestiones y TMO. Va en
+ * la misma barra que el estado del teléfono: el estado muestra el tiempo
+ * desde el último cambio y aquí se ve lo acumulado del día, sin repetir cuál
+ * es el estado actual.
  *
  * Se consulta cada 20 s y entre consultas el estado actual avanza solo.
  */
@@ -63,9 +63,9 @@ export function AgentDayBar() {
     <div
       role="status"
       aria-label="Tu jornada de hoy"
-      className="flex items-center gap-1.5 overflow-x-auto border-b border-border bg-surface px-4 py-1.5 text-xs"
+      className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto text-xs [scrollbar-width:none]"
     >
-      <span className="shrink-0 font-semibold uppercase tracking-wide text-muted-foreground">Hoy</span>
+      <span className="ml-auto shrink-0 font-semibold text-muted-foreground">Hoy</span>
       <Chip label="Conectado" value={formatDuration(day.conectado_segundos + (currentCounts ? drift : 0))} strong />
       {states.map((state) => {
         const current = state.reason_id === currentId;
@@ -74,8 +74,6 @@ export function AgentDayBar() {
             key={state.reason_id}
             label={state.label}
             value={formatDuration(state.segundos + (current ? drift : 0))}
-            tone={state.is_pause ? "pause" : "available"}
-            current={current}
           />
         );
       })}
@@ -86,34 +84,11 @@ export function AgentDayBar() {
   );
 }
 
-function Chip({
-  label,
-  value,
-  tone = "neutral",
-  current = false,
-  strong = false,
-}: {
-  label: string;
-  value: string;
-  tone?: "neutral" | "available" | "pause";
-  current?: boolean;
-  strong?: boolean;
-}) {
+function Chip({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
   return (
-    <span
-      title={current ? "Estado actual" : undefined}
-      className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5",
-        current
-          ? tone === "pause"
-            ? "border-danger/40 bg-danger-bg text-danger"
-            : "border-success/40 bg-success-bg text-success"
-          : "border-border bg-surface-muted/60 text-foreground"
-      )}
-    >
-      {current && <span className="size-1.5 animate-pulse rounded-full bg-current" aria-hidden />}
-      <span className={cn(current ? "font-semibold" : "text-muted-foreground")}>{label}</span>
-      <span className={cn("font-mono tabular-nums", (strong || current) && "font-semibold")}>{value}</span>
+    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-surface-muted/60 px-2.5 py-0.5 text-foreground">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={cn("font-mono tabular-nums", strong && "font-semibold")}>{value}</span>
     </span>
   );
 }

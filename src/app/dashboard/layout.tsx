@@ -67,8 +67,14 @@ export default async function DashboardLayout({
         {canAttendCustomers && <DialerListener userId={profile.id} />}
         <Sidebar profile={profile} badges={badges} modules={modules} edicion={edicion} duenio={duenio} />
         <div className="flex flex-1 flex-col overflow-hidden">
-          {/* Totales de la jornada del ejecutivo, arriba y fuera del teléfono. */}
-          {profile.role === "agente" && <AgentDayBar />}
+          {/* Estado del agente, teléfono y totales de la jornada en una sola
+              barra. El teléfono dibuja aquí su parte (cti-status-slot). */}
+          {canAttendCustomers && (
+            <div className="flex min-h-11 items-center gap-2 border-b border-border bg-surface px-4 py-1.5">
+              <div id="cti-status-slot" className="flex shrink-0 items-center gap-2" />
+              {profile.role === "agente" && <AgentDayBar />}
+            </div>
+          )}
           {showAgendaReminder ? (
             <AgendaProvider userId={profile.id}>
               <Header
@@ -85,6 +91,8 @@ export default async function DashboardLayout({
           ) : (
             <Header profile={profile} badges={badges} demoAccounts={demoAccounts} empresas={empresas} modules={modules} edicion={edicion} duenio={duenio} />
           )}
+          {/* La llamada en curso, fija sobre el contenido (la dibuja el teléfono). */}
+          <div id="cti-callbar-slot" className="empty:hidden" />
           <main className="flex-1 overflow-y-auto p-5">{children}</main>
         </div>
         {canAttendCustomers && <CtiBar profile={profile} />}

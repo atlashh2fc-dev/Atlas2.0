@@ -249,3 +249,9 @@ body {
     display: none;
   }
 }
+
+/* Con una llamada al aire el teléfono muestra el cronómetro en su barra; la
+   ficha esconde el suyo para no tener dos relojes (ver CtiBar). */
+:root[data-cti-in-call] .cti-hide-in-call {
+  display: none;
+}

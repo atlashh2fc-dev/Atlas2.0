@@ -410,6 +410,138 @@ export default async function LeadDetailPage({
     && profile.role === "agente"
     && (lead.managed_by ?? lead.assigned_to) === profile.id;
 
+  const contactCard = (
+    <Card>
+      <h2 className="mb-3 text-sm font-semibold text-foreground">Datos de contacto</h2>
+      <dl className="space-y-2 text-sm">
+        {contactPerson && <InfoRow label="Contacto">{contactPerson}</InfoRow>}
+        <InfoRow label="RUT">{lead.rut ?? "—"}</InfoRow>
+        <InfoRow label="Teléfono">{lead.phone ?? "—"}</InfoRow>
+        <InfoRow label="Correo">{lead.email ?? "—"}</InfoRow>
+      </dl>
+
+      {/* Teléfonos en el orden en que se llaman; supervisión agrega los
+          que están fuera de base y elige el principal. */}
+      <LeadPhonesPanel
+        leadId={lead.id}
+        canManage={profile.role === "admin" || profile.role === "supervisor"}
+      />
+
+      {contacts.some((contact) => contact.contact_type !== "phone") && (
+        <div className="mt-4 space-y-2 border-t border-border pt-3 text-sm">
+          {contacts.filter((contact) => contact.contact_type !== "phone").map((contact) => (
+            <div key={contact.id} className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate text-foreground">{contact.value}</p>
+                <p className="text-xs text-muted-foreground">
+                  {contact.contact_type === "phone" ? "Teléfono" : "Correo"}
+                  {contact.label ? ` · ${contact.label}` : ""}
+                  {contact.is_primary ? " · Principal" : ""}
+                </p>
+              </div>
+              {contact.is_valid === false && <Badge tone="danger">Inválido</Badge>}
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+
+  function renderDebt(compact: boolean) {
+    if (!debt) return null;
+    return (
+      <section className="rounded-2xl border border-border bg-surface p-5">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">Estado de la deuda</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Saldo, mora y contexto del alumno con los que se negocia esta gestión.
+            </p>
+          </div>
+          {debt.estado && (
+            <span className="rounded-full bg-surface-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+              {debt.estado}
+            </span>
+          )}
+        </div>
+        <dl className={compact ? "grid grid-cols-2 gap-x-6 gap-y-3" : "grid gap-x-8 gap-y-3 sm:grid-cols-2 xl:grid-cols-4"}>
+          <div className="min-w-0 border-b border-border/70 pb-2">
+            <dt className="text-xs font-medium text-muted-foreground">Saldo pendiente</dt>
+            <dd className="mt-0.5 text-lg font-semibold tabular-nums text-foreground">
+              {formatClp(debt.monto)}
+            </dd>
+            {debt.montoUf !== null && (
+              <dd className="text-xs text-muted-foreground">{debt.montoUf} UF</dd>
+            )}
+          </div>
+          <div className="min-w-0 border-b border-border/70 pb-2">
+            <dt className="text-xs font-medium text-muted-foreground">Mora</dt>
+            <dd
+              className={`mt-0.5 text-sm font-medium ${
+                debtAgeTone(debt.diasMora) === "danger"
+                  ? "text-danger"
+                  : debtAgeTone(debt.diasMora) === "warning"
+                    ? "text-warning"
+                    : "text-foreground"
+              }`}
+            >
+              {debt.diasMora !== null ? `${debt.diasMora} días` : "Sin informar"}
+            </dd>
+            {debt.tramo && <dd className="text-xs text-muted-foreground">{debt.tramo}</dd>}
+          </div>
+          <div className="min-w-0 border-b border-border/70 pb-2">
+            <dt className="text-xs font-medium text-muted-foreground">Cuotas impagas</dt>
+            <dd className="mt-0.5 text-sm text-foreground">{debt.cuotas ?? "—"}</dd>
+            {debt.tipo && <dd className="text-xs text-muted-foreground">{debt.tipo}</dd>}
+          </div>
+          <div className="min-w-0 border-b border-border/70 pb-2">
+            <dt className="text-xs font-medium text-muted-foreground">Vencimiento más antiguo</dt>
+            <dd className="mt-0.5 text-sm text-foreground">{debt.vencimiento ?? "—"}</dd>
+          </div>
+          {debt.alumno && (
+            <div className="min-w-0 border-b border-border/70 pb-2">
+              <dt className="text-xs font-medium text-muted-foreground">Alumno</dt>
+              <dd className="mt-0.5 text-sm text-foreground">{debt.alumno}</dd>
+              {debt.curso && <dd className="text-xs text-muted-foreground">{debt.curso}</dd>}
+            </div>
+          )}
+          {debt.sede && (
+            <div className="min-w-0 border-b border-border/70 pb-2">
+              <dt className="text-xs font-medium text-muted-foreground">Sede</dt>
+              <dd className="mt-0.5 text-sm text-foreground">{debt.sede}</dd>
+            </div>
+          )}
+        </dl>
+      </section>
+    );
+  }
+
+  function renderCampaignData(compact: boolean) {
+    return (
+      <section className="rounded-2xl border border-border bg-surface p-5">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">Datos cargados de la base</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Información disponible para esta gestión.
+            </p>
+          </div>
+          <span className="rounded-full bg-surface-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+            {campaignData.length} campos
+          </span>
+        </div>
+        <dl className={compact ? "grid grid-cols-2 gap-x-6 gap-y-3" : "grid gap-x-8 gap-y-3 sm:grid-cols-2 xl:grid-cols-3"}>
+          {campaignData.map(([key, value], index) => (
+            <div key={`${key}-${index}`} className="min-w-0 border-b border-border/70 pb-2">
+              <dt className="text-xs font-medium text-muted-foreground">{key}</dt>
+              <dd className="mt-0.5 break-words text-sm text-foreground">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+    );
+  }
+
   return (
     <div className="space-y-5">
       <Link
@@ -438,7 +570,12 @@ export default async function LeadDetailPage({
         className="border-b-0 pb-0"
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            {call && <CallTimer startedAt={call.started_at} endedAt={call.ended_at} />}
+            {/* Con la llamada al aire el cronómetro está en la barra del teléfono. */}
+            {call && (
+              <span className="cti-hide-in-call">
+                <CallTimer startedAt={call.started_at} endedAt={call.ended_at} />
+              </span>
+            )}
             {/* Sin gestión abierta, un compromiso propio se puede marcar desde
                 aquí aunque la campaña sea automática: el discador solo entrega
                 el callback dentro de su ventana y después queda incallable. */}
@@ -617,27 +754,36 @@ export default async function LeadDetailPage({
       )}
 
       {call && (
-        <section
-          id="gestion-en-curso"
-          className="scroll-mt-4 rounded-2xl border-2 border-primary/20 bg-primary/[0.025] p-3 sm:p-5"
-        >
-          {/* Cierra la medición de cuánto tardó la ficha en aparecer. */}
-          {profile.role === "agente" && <ScreenPopTiming leadId={lead.id} />}
-          {call.management_channel && (
-            <p className="mb-3 inline-flex items-center gap-2 rounded-full bg-surface px-3 py-1 text-xs font-medium text-foreground">
-              Gestión sin llamada · {OFFLINE_CHANNEL_LABEL[call.management_channel] ?? "Otro canal"}
-            </p>
-          )}
-          <CallTypificationForm
-            key={call.id}
-            lead={lead}
-            call={call}
-            reasonCatalog={reasonCatalog}
-            equifaxCommercialFieldsEnabled={equifaxCommercialFieldsEnabled}
-            appointmentScheduleUrl={appointmentScheduleUrl}
-            agendaPolicy={agendaPolicy}
-          />
-        </section>
+        // Durante la gestión: el formulario a la izquierda y el cliente a la
+        // derecha, una sola vez. El teléfono ya no repite estos datos.
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(300px,360px)] xl:items-start">
+          <section
+            id="gestion-en-curso"
+            className="min-w-0 scroll-mt-4 rounded-2xl border-2 border-primary/20 bg-primary/[0.025] p-3 sm:p-5"
+          >
+            {/* Cierra la medición de cuánto tardó la ficha en aparecer. */}
+            {profile.role === "agente" && <ScreenPopTiming leadId={lead.id} />}
+            {call.management_channel && (
+              <p className="mb-3 inline-flex items-center gap-2 rounded-full bg-surface px-3 py-1 text-xs font-medium text-foreground">
+                Gestión sin llamada · {OFFLINE_CHANNEL_LABEL[call.management_channel] ?? "Otro canal"}
+              </p>
+            )}
+            <CallTypificationForm
+              key={call.id}
+              lead={lead}
+              call={call}
+              reasonCatalog={reasonCatalog}
+              equifaxCommercialFieldsEnabled={equifaxCommercialFieldsEnabled}
+              appointmentScheduleUrl={appointmentScheduleUrl}
+              agendaPolicy={agendaPolicy}
+            />
+          </section>
+          <aside className="space-y-4 xl:sticky xl:top-0" aria-label="Datos del cliente">
+            {contactCard}
+            {debt && renderDebt(true)}
+            {campaignData.length > 0 && renderCampaignData(true)}
+          </aside>
+        </div>
       )}
 
       {!call && revisableCall && correctionRequested && (
@@ -655,133 +801,14 @@ export default async function LeadDetailPage({
         </section>
       )}
 
-      {debt && (
-        <section className="rounded-2xl border border-border bg-surface p-5">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-semibold text-foreground">Estado de la deuda</h2>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Saldo, mora y contexto del alumno con los que se negocia esta gestión.
-              </p>
-            </div>
-            {debt.estado && (
-              <span className="rounded-full bg-surface-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                {debt.estado}
-              </span>
-            )}
-          </div>
-          <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="min-w-0 border-b border-border/70 pb-2">
-              <dt className="text-xs font-medium text-muted-foreground">Saldo pendiente</dt>
-              <dd className="mt-0.5 text-lg font-semibold tabular-nums text-foreground">
-                {formatClp(debt.monto)}
-              </dd>
-              {debt.montoUf !== null && (
-                <dd className="text-xs text-muted-foreground">{debt.montoUf} UF</dd>
-              )}
-            </div>
-            <div className="min-w-0 border-b border-border/70 pb-2">
-              <dt className="text-xs font-medium text-muted-foreground">Mora</dt>
-              <dd
-                className={`mt-0.5 text-sm font-medium ${
-                  debtAgeTone(debt.diasMora) === "danger"
-                    ? "text-danger"
-                    : debtAgeTone(debt.diasMora) === "warning"
-                      ? "text-warning"
-                      : "text-foreground"
-                }`}
-              >
-                {debt.diasMora !== null ? `${debt.diasMora} días` : "Sin informar"}
-              </dd>
-              {debt.tramo && <dd className="text-xs text-muted-foreground">{debt.tramo}</dd>}
-            </div>
-            <div className="min-w-0 border-b border-border/70 pb-2">
-              <dt className="text-xs font-medium text-muted-foreground">Cuotas impagas</dt>
-              <dd className="mt-0.5 text-sm text-foreground">{debt.cuotas ?? "—"}</dd>
-              {debt.tipo && <dd className="text-xs text-muted-foreground">{debt.tipo}</dd>}
-            </div>
-            <div className="min-w-0 border-b border-border/70 pb-2">
-              <dt className="text-xs font-medium text-muted-foreground">Vencimiento más antiguo</dt>
-              <dd className="mt-0.5 text-sm text-foreground">{debt.vencimiento ?? "—"}</dd>
-            </div>
-            {debt.alumno && (
-              <div className="min-w-0 border-b border-border/70 pb-2">
-                <dt className="text-xs font-medium text-muted-foreground">Alumno</dt>
-                <dd className="mt-0.5 text-sm text-foreground">{debt.alumno}</dd>
-                {debt.curso && <dd className="text-xs text-muted-foreground">{debt.curso}</dd>}
-              </div>
-            )}
-            {debt.sede && (
-              <div className="min-w-0 border-b border-border/70 pb-2">
-                <dt className="text-xs font-medium text-muted-foreground">Sede</dt>
-                <dd className="mt-0.5 text-sm text-foreground">{debt.sede}</dd>
-              </div>
-            )}
-          </dl>
-        </section>
-      )}
+      {!call && debt && renderDebt(false)}
 
-      {campaignData.length > 0 && (
-        <section className="rounded-2xl border border-border bg-surface p-5">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-semibold text-foreground">Datos cargados de la base</h2>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Información disponible para esta gestión.
-              </p>
-            </div>
-            <span className="rounded-full bg-surface-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
-              {campaignData.length} campos
-            </span>
-          </div>
-          <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
-            {campaignData.map(([key, value], index) => (
-              <div key={`${key}-${index}`} className="min-w-0 border-b border-border/70 pb-2">
-                <dt className="text-xs font-medium text-muted-foreground">{key}</dt>
-                <dd className="mt-0.5 break-words text-sm text-foreground">{value}</dd>
-              </div>
-            ))}
-          </dl>
-        </section>
-      )}
+      {!call && campaignData.length > 0 && renderCampaignData(false)}
 
       <div className="grid gap-5 lg:grid-cols-[minmax(240px,280px)_minmax(0,1fr)]">
         {/* Zona 1: identidad y contexto */}
         <aside className="space-y-4">
-          <Card>
-            <h2 className="mb-3 text-sm font-semibold text-foreground">Datos de contacto</h2>
-            <dl className="space-y-2 text-sm">
-              {contactPerson && <InfoRow label="Contacto">{contactPerson}</InfoRow>}
-              <InfoRow label="RUT">{lead.rut ?? "—"}</InfoRow>
-              <InfoRow label="Teléfono">{lead.phone ?? "—"}</InfoRow>
-              <InfoRow label="Correo">{lead.email ?? "—"}</InfoRow>
-            </dl>
-
-            {/* Teléfonos en el orden en que se llaman; supervisión agrega los
-                que están fuera de base y elige el principal. */}
-            <LeadPhonesPanel
-              leadId={lead.id}
-              canManage={profile.role === "admin" || profile.role === "supervisor"}
-            />
-
-            {contacts.some((contact) => contact.contact_type !== "phone") && (
-              <div className="mt-4 space-y-2 border-t border-border pt-3 text-sm">
-                {contacts.filter((contact) => contact.contact_type !== "phone").map((contact) => (
-                  <div key={contact.id} className="flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-foreground">{contact.value}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {contact.contact_type === "phone" ? "Teléfono" : "Correo"}
-                        {contact.label ? ` · ${contact.label}` : ""}
-                        {contact.is_primary ? " · Principal" : ""}
-                      </p>
-                    </div>
-                    {contact.is_valid === false && <Badge tone="danger">Inválido</Badge>}
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
+          {!call && contactCard}
 
           <Card>
             <h2 className="mb-3 text-sm font-semibold text-foreground">Operación</h2>
