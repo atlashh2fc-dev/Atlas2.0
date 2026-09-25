@@ -6,6 +6,8 @@ import type {
   SecretariaVirtualChannelFunnelRow,
 } from "@/lib/types";
 import { CampaignDashboardSummary, type ContactabilityHour } from "@/components/campaign-dashboard-summary";
+import { TipificationBreakdown } from "@/components/tipification-breakdown";
+import { groupTipificationsByResult } from "@/lib/tipification-breakdown";
 import {
   SupervisorAgentFocusChart,
   SupervisorDailyChart,
@@ -246,7 +248,7 @@ export default async function ReportesPage({
     // de cobranza no cierra ventas ni envía cotizaciones.
     const vertical = await fetchCampaignVertical(supabase, campaignScope || null);
     const vocabulary = getCampaignVocabulary(vertical);
-    const [{ data, error }, { data: campaignRows }] = await Promise.all([
+    const [{ data, error }, { data: campaignRows }, { data: breakdownRows }] = await Promise.all([
       supabase.rpc("get_supervisor_report_summary", {
         p_from: dashboardFrom.toISOString(),
         p_to: dashboardTo.toISOString(),
@@ -254,6 +256,14 @@ export default async function ReportesPage({
         p_campaign_id: campaignScope || null,
       }),
       supabase.rpc("get_report_scope_campaigns"),
+      // El mismo desglose por resultado que ve el admin. Es SECURITY INVOKER:
+      // la seguridad por fila de calls y leads lo acota a los equipos del
+      // supervisor. Si falla, el reporte sigue y el panel queda vacío.
+      supabase.rpc("get_campaign_tipification_breakdown", {
+        p_from: dashboardFrom.toISOString(),
+        p_to: dashboardTo.toISOString(),
+        p_campaign_id: campaignScope || null,
+      }),
     ]);
 
     // La RPC levanta excepciones de negocio legibles ("tu supervisor no tiene
@@ -277,6 +287,15 @@ export default async function ReportesPage({
     const selectedCampaign = campaigns.find((campaign) => campaign.id === campaignScope) ?? null;
     const campaignQuery = selectedCampaign ? `?campaign=${encodeURIComponent(selectedCampaign.id)}` : "";
     const kpis = report.kpis;
+    const tipificationsByResult = groupTipificationsByResult(
+      ((breakdownRows ?? []) as CampaignTipificationRow[]).map((row) => ({
+        reason: row.reason,
+        count: row.total,
+        status: row.status,
+        outcome: row.outcome,
+        declaredResult: row.declared_result,
+      })),
+    );
     const tipificationRows = report.tipifications.map((row) => ({
       Tipificación: row.label,
       Cantidad: row.count,
@@ -406,6 +425,8 @@ export default async function ReportesPage({
             vertical={vertical}
           />
         </section>
+
+        <TipificationBreakdown breakdown={tipificationsByResult} title={vocabulary.motivosTitle} />
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           <ChartPanel title={vocabulary.tipificacionesTitle} filename="tipificaciones-equipo.xlsx" rows={tipificationRows}>
