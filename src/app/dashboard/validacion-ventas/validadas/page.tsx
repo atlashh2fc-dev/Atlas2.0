@@ -1,11 +1,11 @@
 import { unstable_noStore as noStore } from "next/cache";
-import { Search } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { searchSaleValidations, type SaleValidationRow, type SaleValidationStatus } from "@/app/actions/validacion-ventas";
 import { SaleValidationsTable } from "@/components/sale-validations-table";
 import { formatUf } from "@/lib/sale-validation-format";
-import { Callout, Field, FilterBar, Input, MetricCard, SectionCard, Select } from "@/components/ui";
+import { Callout, MetricCard, SectionCard } from "@/components/ui";
 import { ValidacionVentasHeader } from "../header";
+import { SaleFilters, filterOptions, isoDate, resolveOrden, sortSales, type SaleFilterParams } from "../filters";
 
 /**
  * Buscador propio del universo de ventas ya decididas: por empresa, RUT,
@@ -19,12 +19,6 @@ const ESTADOS: { value: SaleValidationStatus; label: string }[] = [
   { value: "anulada", label: "Anuladas" },
 ];
 
-type Params = { q?: string; estado?: string; desde?: string; hasta?: string; ejecutivo?: string; producto?: string };
-
-function isoDate(value: string | undefined) {
-  return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
-}
-
 function monthRange(offset: number) {
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Santiago" }).format(new Date());
   const [year, month] = today.split("-").map(Number);
@@ -37,11 +31,12 @@ function sumUf(rows: SaleValidationRow[]) {
   return rows.reduce((sum, row) => sum + (row.ufAmount ?? 0), 0);
 }
 
-export default async function VentasValidadasPage({ searchParams }: { searchParams: Promise<Params> }) {
+export default async function VentasValidadasPage({ searchParams }: { searchParams: Promise<SaleFilterParams> }) {
   noStore();
   await requireProfile(["supervisor", "admin"]);
   const params = await searchParams;
   const status = ESTADOS.find((estado) => estado.value === params.estado)?.value ?? "aprobada";
+  const orden = resolveOrden(params.orden, "recientes");
   const filters = {
     status,
     query: params.q?.trim() || null,
@@ -52,25 +47,23 @@ export default async function VentasValidadasPage({ searchParams }: { searchPara
   };
   const filtered = Boolean(filters.query || filters.from || filters.to || filters.agent || filters.product);
 
-  let rows: SaleValidationRow[] = [];
+  let found: SaleValidationRow[] = [];
   let universe: SaleValidationRow[] = [];
   let loadError: string | null = null;
   try {
     // El universo del estado alimenta las listas de ejecutivos y productos;
     // sin filtros es la misma consulta.
-    [rows, universe] = await Promise.all([
+    [found, universe] = await Promise.all([
       searchSaleValidations(filters),
       filtered ? searchSaleValidations({ status }) : Promise.resolve<SaleValidationRow[]>([]),
     ]);
-    if (!filtered) universe = rows;
+    if (!filtered) universe = found;
   } catch (error) {
     loadError = error instanceof Error ? error.message : "No se pudieron buscar las ventas.";
   }
 
-  const agents = [...new Set(universe.map((row) => row.agentName).filter((name): name is string => Boolean(name)))].sort((a, b) =>
-    a.localeCompare(b, "es")
-  );
-  const products = [...new Set(universe.flatMap((row) => row.products))].sort((a, b) => a.localeCompare(b, "es"));
+  const rows = sortSales(found, orden);
+  const { agents, products } = filterOptions(universe);
 
   const totalUf = sumUf(rows);
   const byAgent = [...rows.reduce((map, row) => {
@@ -88,62 +81,21 @@ export default async function VentasValidadasPage({ searchParams }: { searchPara
     <div className="space-y-5">
       <ValidacionVentasHeader />
 
-      <FilterBar
+      <SaleFilters
+        params={params}
         storageKey="ventas-validadas"
-        applyLabel="Buscar"
+        agents={agents}
+        products={products}
+        dateLabel="Decidida"
+        orden={orden}
+        statusOptions={ESTADOS}
+        status={status}
         systemViews={[
           { name: "Aprobadas este mes", query: `desde=${thisMonth.desde}&hasta=${thisMonth.hasta}` },
           { name: "Aprobadas mes anterior", query: `desde=${lastMonth.desde}&hasta=${lastMonth.hasta}` },
           { name: "Rechazadas", query: "estado=rechazada" },
         ]}
-      >
-        <Field label="Buscar" className="min-w-64 flex-1">
-          <span className="relative block">
-            <Search size={15} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              name="q"
-              defaultValue={params.q ?? ""}
-              placeholder="Empresa, RUT, teléfono, ejecutivo o producto"
-              className="pl-8"
-            />
-          </span>
-        </Field>
-        <Field label="Estado" className="w-36">
-          <Select name="estado" defaultValue={status}>
-            {ESTADOS.map((estado) => (
-              <option key={estado.value} value={estado.value}>
-                {estado.label}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Ejecutivo" className="w-52">
-          <Select name="ejecutivo" defaultValue={params.ejecutivo ?? ""}>
-            <option value="">Todos</option>
-            {agents.map((agent) => (
-              <option key={agent} value={agent}>
-                {agent}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Producto" className="w-48">
-          <Select name="producto" defaultValue={params.producto ?? ""}>
-            <option value="">Todos</option>
-            {products.map((product) => (
-              <option key={product} value={product}>
-                {product}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Decidida desde" className="w-40">
-          <Input name="desde" type="date" defaultValue={filters.from ?? ""} max={filters.to ?? undefined} />
-        </Field>
-        <Field label="Hasta" className="w-40">
-          <Input name="hasta" type="date" defaultValue={filters.to ?? ""} min={filters.from ?? undefined} />
-        </Field>
-      </FilterBar>
+      />
 
       {loadError && <Callout tone="danger">{loadError}</Callout>}
 
