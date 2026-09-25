@@ -123,6 +123,28 @@ const KEYPAD = [
   { digit: "0", letters: "+" },
 ];
 
+/**
+ * Teclado de la llamada en curso. Las empresas con menú de voz ("marque 1 para
+ * ventas") necesitan los tonos DTMF; se envían dentro del audio (RFC 4733), que
+ * es lo que Asterisk acepta por defecto y reenvía a la troncal.
+ */
+const IN_CALL_KEYPAD = [
+  ...KEYPAD.slice(0, 9),
+  { digit: "*", letters: "" },
+  KEYPAD[9],
+  { digit: "#", letters: "" },
+];
+const DTMF_TONE = /^[0-9*#]$/;
+const DTMF_DURATION_MS = 160;
+const DTMF_INTER_TONE_GAP_MS = 70;
+/** Frecuencias (baja, alta) de cada tecla, para que el ejecutivo oiga lo que marca. */
+const DTMF_FREQUENCIES: Record<string, [number, number]> = {
+  "1": [697, 1209], "2": [697, 1336], "3": [697, 1477],
+  "4": [770, 1209], "5": [770, 1336], "6": [770, 1477],
+  "7": [852, 1209], "8": [852, 1336], "9": [852, 1477],
+  "*": [941, 1209], "0": [941, 1336], "#": [941, 1477],
+};
+
 function formatElapsed(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
   const m = Math.floor(total / 60);
@@ -230,6 +252,9 @@ export function CtiBar({ profile }: { profile: Profile }) {
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [callError, setCallError] = useState<string | null>(null);
   const [muted, setMuted] = useState(false);
+  const [inCallKeypadOpen, setInCallKeypadOpen] = useState(false);
+  const [dtmfSent, setDtmfSent] = useState("");
+  const dtmfFeedbackRef = useRef<AudioContext | null>(null);
   const [callStartedAt, setCallStartedAt] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [expanded, setExpanded] = useState(false);
@@ -1428,6 +1453,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
     setSelectedName(null);
     setSubscriber("");
     setMuted(false);
+    resetInCallKeypad();
     setCallError(null);
     setCallState("ringing");
     setExpanded(true);
@@ -1569,6 +1595,8 @@ export function CtiBar({ profile }: { profile: Profile }) {
       setIsIncomingCall(false);
       setIncomingContext(null);
       setCallError(null);
+      setMuted(false);
+      resetInCallKeypad();
       setCallState("calling");
       startLocalRingback();
 
@@ -1767,6 +1795,111 @@ export function CtiBar({ profile }: { profile: Profile }) {
     });
     setMuted(nextMuted);
   }
+
+  function resetInCallKeypad() {
+    setInCallKeypadOpen(false);
+    setDtmfSent("");
+  }
+
+  function playDtmfFeedback(tone: string) {
+    const frequencies = DTMF_FREQUENCIES[tone];
+    const AudioContextConstructor =
+      window.AudioContext ??
+      (window as typeof window & { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
+    if (!frequencies || !AudioContextConstructor) return;
+    try {
+      const context = dtmfFeedbackRef.current ?? new AudioContextConstructor();
+      dtmfFeedbackRef.current = context;
+      void context.resume().catch(() => undefined);
+      const start = context.currentTime;
+      const stop = start + DTMF_DURATION_MS / 1000;
+      const gain = context.createGain();
+      gain.gain.value = 0.08;
+      gain.connect(context.destination);
+      frequencies.forEach((frequency) => {
+        const oscillator = context.createOscillator();
+        oscillator.frequency.value = frequency;
+        oscillator.connect(gain);
+        oscillator.start(start);
+        oscillator.stop(stop);
+      });
+    } catch {
+      // El tono local es solo una ayuda; el DTMF ya salió por la llamada.
+    }
+  }
+
+  function sendDtmf(tone: string) {
+    if (!DTMF_TONE.test(tone) || callState !== "in_call") return;
+    const session = sessionRef.current;
+    if (!session) return;
+
+    // Primero por RTP (RFC 4733). Si el navegador o la negociación no lo
+    // permiten, SIP INFO: Asterisk también lo entiende y lo reenvía igual.
+    let sent = false;
+    try {
+      sent = Boolean(
+        session.sessionDescriptionHandler?.sendDtmf?.(tone, {
+          duration: DTMF_DURATION_MS,
+          interToneGap: DTMF_INTER_TONE_GAP_MS,
+        })
+      );
+    } catch (err) {
+      console.error("CTI: no se pudo enviar el tono por RTP", err);
+    }
+    if (!sent && typeof session.info === "function") {
+      sent = true;
+      void session
+        .info({
+          requestOptions: {
+            body: {
+              contentDisposition: "render",
+              contentType: "application/dtmf-relay",
+              content: `Signal=${tone}\r\nDuration=${DTMF_DURATION_MS}`,
+            },
+          },
+        })
+        .catch((err: unknown) => console.error("CTI: no se pudo enviar el tono por SIP INFO", err));
+    }
+    if (!sent) return;
+    playDtmfFeedback(tone);
+    setDtmfSent((current) => (current + tone).slice(-24));
+  }
+
+  const sendDtmfRef = useRef(sendDtmf);
+  useEffect(() => {
+    sendDtmfRef.current = sendDtmf;
+  });
+
+  // Con el teclado abierto, el ejecutivo también puede marcar desde su
+  // teclado físico, salvo que esté escribiendo en un campo de la gestión.
+  const inCallKeypadVisible = callState === "in_call" && inCallKeypadOpen;
+  useEffect(() => {
+    if (!inCallKeypadVisible) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return;
+      if (!DTMF_TONE.test(event.key)) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
+      ) {
+        return;
+      }
+      event.preventDefault();
+      sendDtmfRef.current(event.key);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [inCallKeypadVisible]);
+
+  useEffect(
+    () => () => {
+      void dtmfFeedbackRef.current?.close().catch(() => undefined);
+      dtmfFeedbackRef.current = null;
+    },
+    []
+  );
 
   const filteredContacts = useMemo(() => {
     const term = contactSearch.trim().toLowerCase();
@@ -2159,10 +2292,17 @@ export function CtiBar({ profile }: { profile: Profile }) {
               )}
 
               {activeCall ? (
-                <div className="flex min-h-80 flex-col items-center justify-center bg-[#12333b] px-6 py-8 text-white">
-                  <span className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-white/10">
-                    <UserRound size={28} />
-                  </span>
+                <div
+                  className={cn(
+                    "flex min-h-80 flex-col items-center justify-center overflow-y-auto bg-[#12333b] px-6 text-white",
+                    inCallKeypadVisible ? "max-h-[calc(100dvh-6rem)] py-5" : "py-8"
+                  )}
+                >
+                  {!inCallKeypadVisible && (
+                    <span className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-white/10">
+                      <UserRound size={28} />
+                    </span>
+                  )}
                   {isIncomingCall && (
                     <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-300">
                       Llamada automática
@@ -2189,7 +2329,37 @@ export function CtiBar({ profile }: { profile: Profile }) {
                     {callState === "in_call" &&
                       (callStartedAt ? formatElapsed(now - callStartedAt) : "En llamada")}
                   </p>
-                  {isIncomingCall && incomingContext && (
+                  {inCallKeypadVisible && (
+                    <div className="mt-5 w-full">
+                      <p
+                        className="mb-3 min-h-6 truncate text-center font-mono text-lg tracking-[0.2em] text-white"
+                        aria-live="polite"
+                      >
+                        {dtmfSent || (
+                          <span className="font-sans text-xs tracking-normal text-white/60">
+                            Marca la opción del menú
+                          </span>
+                        )}
+                      </p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {IN_CALL_KEYPAD.map((key) => (
+                          <button
+                            key={key.digit}
+                            type="button"
+                            onClick={() => sendDtmf(key.digit)}
+                            aria-label={`Marcar ${key.digit}`}
+                            className="flex h-12 flex-col items-center justify-center rounded-full bg-white/10 transition hover:bg-white/20 active:scale-95"
+                          >
+                            <span className="text-lg font-semibold leading-none">{key.digit}</span>
+                            <span className="mt-0.5 min-h-2 text-[8px] font-bold tracking-[0.18em] text-white/50">
+                              {key.letters}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {!inCallKeypadVisible && isIncomingCall && incomingContext && (
                     <div className="mt-5 w-full rounded-2xl bg-white/10 p-4 text-left">
                       <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
                         <ContextField label="RUT" value={incomingContext.rut ?? "No informado"} />
@@ -2202,7 +2372,12 @@ export function CtiBar({ profile }: { profile: Profile }) {
                       </div>
                     </div>
                   )}
-                  <div className="mt-8 flex items-center gap-5">
+                  <div
+                    className={cn(
+                      "flex items-center gap-5",
+                      inCallKeypadVisible ? "mt-5" : "mt-8"
+                    )}
+                  >
                     {callState === "in_call" && (
                       <button
                         type="button"
@@ -2211,6 +2386,22 @@ export function CtiBar({ profile }: { profile: Profile }) {
                         title={muted ? "Reactivar micrófono" : "Silenciar"}
                       >
                         {muted ? <MicOff size={20} /> : <Mic size={20} />}
+                      </button>
+                    )}
+                    {callState === "in_call" && (
+                      <button
+                        type="button"
+                        onClick={() => setInCallKeypadOpen((open) => !open)}
+                        className={cn(
+                          "flex h-12 w-12 items-center justify-center rounded-full",
+                          inCallKeypadOpen
+                            ? "bg-white text-[#12333b] hover:bg-white/90"
+                            : "bg-white/10 hover:bg-white/20"
+                        )}
+                        title={inCallKeypadOpen ? "Ocultar teclado" : "Teclado (opciones del menú)"}
+                        aria-pressed={inCallKeypadOpen}
+                      >
+                        <Grid3X3 size={20} />
                       </button>
                     )}
                     <button
