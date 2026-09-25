@@ -2,7 +2,8 @@ import { unstable_noStore as noStore } from "next/cache";
 import { Search } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { searchSaleValidations, type SaleValidationRow, type SaleValidationStatus } from "@/app/actions/validacion-ventas";
-import { SaleValidationsTable, formatUf } from "@/components/sale-validations-table";
+import { SaleValidationsTable } from "@/components/sale-validations-table";
+import { formatUf } from "@/lib/sale-validation-format";
 import { Callout, Field, FilterBar, Input, MetricCard, SectionCard, Select } from "@/components/ui";
 import { ValidacionVentasHeader } from "../header";
 

@@ -1,7 +1,8 @@
 import { unstable_noStore as noStore } from "next/cache";
 import { requireProfile } from "@/lib/auth";
 import { listSaleValidations, searchSaleValidations, type SaleValidationRow } from "@/app/actions/validacion-ventas";
-import { SaleValidationsTable, formatUf } from "@/components/sale-validations-table";
+import { SaleValidationsTable } from "@/components/sale-validations-table";
+import { formatUf } from "@/lib/sale-validation-format";
 import { Callout, MetricCard } from "@/components/ui";
 import { ValidacionVentasHeader } from "./header";
 
