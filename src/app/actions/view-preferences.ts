@@ -12,7 +12,7 @@ import { createClient } from "@/lib/supabase/server";
  * necesitan filtrar por perfil más allá de identificarlo.
  */
 
-export type ViewKey = "live-monitor";
+export type ViewKey = "live-monitor" | "sidebar";
 
 export async function getMyViewPreference<T>(viewKey: ViewKey): Promise<T | null> {
   const profile = await requireProfile();

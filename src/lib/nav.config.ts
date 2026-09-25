@@ -37,8 +37,10 @@ import { getWorkspacePermissions } from "./workspace-permissions";
  * Fuente única de la arquitectura de navegación (ver docs/arquitectura-navegacion.md).
  *
  * Reglas que este archivo hace cumplir:
- *  1. Tres experiencias diarias: Control, Supervisión y Atención. Administración
- *     es un espacio de configuración separado; no concede funciones de agente.
+ *  1. Tres experiencias diarias: Control, Supervisión y Atención. Cada perfil
+ *     con algo que configurar tiene además un espacio «Configuración», como el
+ *     Setup de Salesforce o el engranaje de HubSpot: se entra por el ⚙ del pie
+ *     del menú, siempre visible, y se vuelve con «Volver a la operación».
  *  2. Profundidad máxima 2: sección → ítem. El tercer nivel son `tabs` de página.
  *  3. El menú son sustantivos. Las acciones (crear, importar) son botones en la página.
  *  4. La tarea y el alcance determinan el nombre; no se simula un cambio de rol.
@@ -232,7 +234,7 @@ const CONSOLE: NavSpace = {
         },
         {
           id: "usuarios-equipo",
-          label: "Usuarios",
+          label: "Usuarios y skills",
           href: "/dashboard/team/usuarios",
           icon: UserCog,
           roles: ["supervisor"],
@@ -365,26 +367,47 @@ const CONSOLE: NavSpace = {
 };
 
 /**
- * Estructura explícita por responsabilidad: no es el mismo árbol con botones
- * ocultos. Los ítems comparten definición para que móvil, búsqueda y sidebar
- * mantengan las mismas rutas, etiquetas y permisos.
+ * Estructura explícita por perfil y por espacio: no es el mismo árbol con
+ * botones ocultos. Los ítems comparten definición para que móvil, búsqueda y
+ * sidebar mantengan las mismas rutas, etiquetas y permisos.
+ *
+ * `console` es la operación diaria, agrupada por tarea (en vivo, gestión,
+ * análisis). `admin` es la configuración de ese perfil: lo que cambia cómo
+ * funciona la operación, no el trabajo del día.
  */
-const WORKSPACE_SECTIONS: Record<AppRole, { id: string; label?: string; itemIds: string[] }[]> = {
-  admin: [
-    { id: "control-home", itemIds: ["inicio"] },
-    { id: "control-operation", label: "Control diario", itemIds: ["operacion", "agenda-clinica", "pacientes", "caja", "recordatorios", "campanas-clinica", "ventas", "correo", "registros"] },
-    { id: "control-results", label: "Revisión", itemIds: ["validacion-ventas", "conversaciones", "conversaciones-clinica", "reportes", "reportes-clinica", "calidad"] },
-    { id: "admin-operation", label: "Configuración", itemIds: ["aranceles", "insumos", "correo-clinica", "campanas", "colas", "flujos", "estados-agente", "cargas"] },
-    { id: "admin-platform", label: "Plataforma", itemIds: ["empresas", "usuarios", "extensiones", "integraciones"] },
-  ],
-  supervisor: [
-    { id: "supervision-home", itemIds: ["inicio"] },
-    { id: "supervision-operation", label: "Supervisión", itemIds: ["operacion", "agenda-clinica", "pacientes", "caja", "recordatorios", "campanas-clinica", "ventas", "correo", "equipo", "usuarios-equipo", "campanas-operativas", "registros"] },
-    { id: "supervision-review", label: "Revisión y resultados", itemIds: ["validacion-ventas", "conversaciones", "conversaciones-clinica", "calidad", "reportes", "reportes-clinica"] },
-  ],
-  agente: [
-    { id: "attention-workspace", itemIds: ["inicio", "conversaciones", "registros", "agenda"] },
-  ],
+type SectionSpec = { id: string; label?: string; itemIds: string[] };
+
+const WORKSPACE_SECTIONS: Record<AppRole, Record<NavSpaceId, SectionSpec[]>> = {
+  admin: {
+    console: [
+      { id: "control-home", itemIds: ["inicio"] },
+      { id: "control-live", label: "Operación en vivo", itemIds: ["operacion", "agenda-clinica", "recordatorios", "correo"] },
+      { id: "control-work", label: "Gestión", itemIds: ["pacientes", "caja", "campanas-clinica", "ventas", "registros", "validacion-ventas"] },
+      { id: "control-analysis", label: "Análisis y calidad", itemIds: ["conversaciones", "conversaciones-clinica", "reportes", "reportes-clinica", "calidad"] },
+    ],
+    admin: [
+      { id: "setup-contact-center", label: "Contact center", itemIds: ["campanas", "colas", "flujos", "estados-agente", "cargas"] },
+      { id: "setup-clinic", label: "Clínica", itemIds: ["aranceles", "insumos", "correo-clinica"] },
+      { id: "setup-platform", label: "Plataforma", itemIds: ["empresas", "usuarios", "extensiones", "integraciones"] },
+    ],
+  },
+  supervisor: {
+    console: [
+      { id: "supervision-home", itemIds: ["inicio"] },
+      { id: "supervision-live", label: "Operación en vivo", itemIds: ["operacion", "equipo", "agenda-clinica", "recordatorios", "correo"] },
+      { id: "supervision-work", label: "Gestión", itemIds: ["pacientes", "caja", "campanas-clinica", "campanas-operativas", "ventas", "registros", "validacion-ventas"] },
+      { id: "supervision-analysis", label: "Análisis y calidad", itemIds: ["conversaciones", "conversaciones-clinica", "reportes", "reportes-clinica", "calidad"] },
+    ],
+    admin: [
+      { id: "setup-team", label: "Mi equipo", itemIds: ["usuarios-equipo"] },
+    ],
+  },
+  agente: {
+    console: [
+      { id: "attention-workspace", itemIds: ["inicio", "conversaciones", "registros", "agenda"] },
+    ],
+    admin: [],
+  },
 };
 
 /** Espacio 2 — Administración: configuración de la plataforma. Solo admin. */
@@ -540,9 +563,25 @@ export function navLabel(item: NavItem, role: AppRole): string {
   return typeof item.label === "string" ? item.label : item.label[role] ?? item.label.default;
 }
 
-/** Espacio al que pertenece una ruta. */
-export function spaceForPath(pathname: string): NavSpaceId {
-  return pathname.startsWith("/dashboard/admin") ? "admin" : "console";
+const INVENTORY = new Map(
+  [...CONSOLE.sections, ...ADMIN.sections].flatMap((section) => section.items).map((item) => [item.id, item]),
+);
+
+/**
+ * Espacio al que pertenece una ruta. Todo /dashboard/admin es configuración;
+ * además, cada perfil declara sus propios ítems de configuración (el
+ * supervisor configura a su equipo en /dashboard/team/usuarios).
+ */
+export function spaceForPath(pathname: string, role?: AppRole): NavSpaceId {
+  if (pathname.startsWith("/dashboard/admin")) return "admin";
+  if (!role) return "console";
+  const setupItems = WORKSPACE_SECTIONS[role].admin.flatMap((section) => section.itemIds);
+  return setupItems.some((id) => {
+    const item = INVENTORY.get(id);
+    return item ? isItemActive(item, pathname) : false;
+  })
+    ? "admin"
+    : "console";
 }
 
 export function getSpace(id: NavSpaceId): NavSpace {
@@ -550,8 +589,8 @@ export function getSpace(id: NavSpaceId): NavSpace {
 }
 
 /** Etiqueta del espacio real, no un selector que permita asumir otro rol. */
-export function workspaceLabel(role: AppRole): string {
-  if (role === "admin") return "Administración";
+export function workspaceLabel(role: AppRole, space: NavSpaceId = "console"): string {
+  if (space === "admin") return "Configuración";
   return getWorkspacePermissions(role).workspaceLabel;
 }
 
@@ -582,51 +621,31 @@ export function visibleSections(
   edicion?: Edicion,
 ): NavSection[] {
   const permitido = (item: NavItem) => item.roles.includes(role) || (duenio && item.duenio === true);
-  if (role === "admin") {
-    const inventory = new Map(
-      [...CONSOLE.sections, ...ADMIN.sections]
-        .flatMap((section) => section.items)
-        .map((item) => [item.id, item])
-    );
-    return WORKSPACE_SECTIONS.admin
-      .map(({ id, label, itemIds }) => ({
-        id,
-        label,
-        items: itemIds.flatMap((itemId) => {
-          const item = inventory.get(itemId);
-          return item && permitido(item) && enLosModulos(item, modules) && enLaEdicion(item, edicion) ? [item] : [];
-        }),
-      }))
-      .filter((section) => section.items.length > 0);
-  }
-  const space = getSpace(spaceId);
-  if (!space.roles.includes(role)) return [];
-  if (spaceId === "console") {
-    const inventory = new Map(space.sections.flatMap((section) => section.items).map((item) => [item.id, item]));
-    return WORKSPACE_SECTIONS[role].map(({ id, label, itemIds }) => ({
+  return WORKSPACE_SECTIONS[role][spaceId]
+    .map(({ id, label, itemIds }) => ({
       id,
       label,
       items: itemIds.flatMap((itemId) => {
-        const item = inventory.get(itemId);
+        const item = INVENTORY.get(itemId);
         return item && permitido(item) && enLosModulos(item, modules) && enLaEdicion(item, edicion) ? [item] : [];
       }),
-    })).filter((section) => section.items.length > 0);
-  }
-  return space
-    .sections.map((section) => ({
-      ...section,
-      items: section.items.filter((item) => permitido(item) && enLosModulos(item, modules) && enLaEdicion(item, edicion)),
     }))
     .filter((section) => section.items.length > 0);
 }
 
+/**
+ * Entrada al espacio de configuración del perfil: su primer destino visible.
+ * `null` cuando el perfil no tiene nada que configurar (el agente).
+ */
+export function setupEntryHref(role: AppRole, modules?: AppModule[], edicion?: Edicion): string | null {
+  return visibleSections("admin", role, modules, false, edicion)[0]?.items[0]?.href ?? null;
+}
+
 /** Todos los ítems accesibles por un rol, en orden de menú (usado por la búsqueda global). */
 export function allItemsForRole(role: AppRole, modules?: AppModule[], edicion?: Edicion): NavItem[] {
-  const items = role === "admin"
-    ? visibleSections("console", role, modules, false, edicion).flatMap((section) => section.items)
-    : NAV_SPACES.filter((space) => space.roles.includes(role)).flatMap((space) =>
-        visibleSections(space.id, role, modules, false, edicion).flatMap((section) => section.items)
-      );
+  const items = (["console", "admin"] as const).flatMap((space) =>
+    visibleSections(space, role, modules, false, edicion).flatMap((section) => section.items),
+  );
   return [...items, HELP_ITEM];
 }
 

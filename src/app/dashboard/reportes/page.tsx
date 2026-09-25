@@ -276,7 +276,7 @@ export default async function ReportesPage({
           <p className="mt-1">{error.message}</p>
           <p className="mt-2 text-xs">
             Si el mensaje habla de equipos, un administrador tiene que asignarte equipos en
-            Administración → Usuarios y equipos.
+            ⚙ Configuración → Usuarios y equipos.
           </p>
         </Callout>
       );
