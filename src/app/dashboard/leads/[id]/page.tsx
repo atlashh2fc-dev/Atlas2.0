@@ -22,7 +22,7 @@ import {
   formatClp,
   readDebtSnapshot,
 } from "@/lib/campaign-vertical";
-import { leadContactPerson, leadExtraFields } from "@/lib/lead-extra";
+import { isOutsideBaseLead, leadContactPerson, leadExtraFields } from "@/lib/lead-extra";
 import { metricDefinition } from "@/lib/metric-definitions";
 import { completeKovacsDemoAssignment } from "@/app/actions/lead-orchestrator";
 import type { Call, Campaign, Lead, Profile, Team, Workflow, WorkflowStep, WorkflowStepBranch } from "@/lib/types";
@@ -434,6 +434,7 @@ export default async function LeadDetailPage({
               <span className="text-sm font-semibold text-foreground">Contacto: {contactPerson}</span>
             )}
             <Badge tone="neutral">{statusLabel}</Badge>
+            {isOutsideBaseLead(lead.extra) && <Badge tone="info">Fuera de base</Badge>}
             {campaign?.name && <span className="text-sm text-muted-foreground">{campaign.name}</span>}
             {lead.tipificacion_actual && (
               <span className="text-sm text-muted-foreground">· {lead.tipificacion_actual}</span>

@@ -61,9 +61,9 @@ export default async function NewLeadRecordPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-foreground">Nuevo registro</h1>
+          <h1 className="text-xl font-semibold text-foreground">Ingresar fuera de base</h1>
           <p className="text-sm text-muted-foreground">
-            Crea un registro manual fuera de una carga de base y asígnalo a un ejecutivo cuando corresponda.
+            Agrega a la campaña un cliente que no venía en la carga. Si el RUT ya está en esa base, se abre su ficha en vez de duplicarlo.
           </p>
         </div>
         <Link

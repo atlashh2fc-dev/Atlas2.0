@@ -6,6 +6,9 @@
  * Vocalcom el rubro, la comuna y el último resultado en `extra.base_discado`.
  * La ficha mostraba solo los valores simples del primer nivel, así que el
  * ejecutivo veía la razón social sin saber por quién preguntar.
+ *
+ * Lo que el supervisor ingresa fuera de base (contacto, comuna, región,
+ * producto) queda en `extra.ingreso_manual`.
  */
 
 type Primitive = string | number | boolean;
@@ -14,10 +17,24 @@ type Primitive = string | number | boolean;
 const CONTACT_KEYS = ["contact_name", "nombre_contacto", "nombre_cliente"];
 
 /** Grupos anidados que se muestran aplanados, en este orden. */
-const NESTED_GROUPS = ["base_discado", "atlas1"];
+const NESTED_GROUPS = ["ingreso_manual", "base_discado", "atlas1"];
 
 /** Datos internos de la carga que no le sirven al ejecutivo. */
-const HIDDEN_TOP_LEVEL = new Set(["origen"]);
+const HIDDEN_TOP_LEVEL = new Set([
+  "origen",
+  // Marcas del ingreso fuera de base: la ficha lo dice con una etiqueta.
+  "source",
+  "fuera_de_base",
+  "created_by_role",
+  "created_from",
+  "last_manual_duplicate_attempt_at",
+  "last_manual_duplicate_attempt_by",
+]);
+
+/** Etiquetas del primer nivel: solo lo que escribe Atlas, no lo que trae cada base. */
+const TOP_LEVEL_LABELS: Record<string, string> = {
+  notes: "Observación inicial",
+};
 const HIDDEN_NESTED = new Set(["base", "campana", "legacy_lead_ids"]);
 
 const LABELS: Record<string, string> = {
@@ -26,6 +43,7 @@ const LABELS: Record<string, string> = {
   actividad: "Actividad",
   comuna: "Comuna",
   region: "Región",
+  producto: "Producto o plan",
   intentos: "Intentos en Atlas 1",
   vocalcom_resultado: "Último resultado Vocalcom",
   vocalcom_ultimo_intento: "Último intento Vocalcom",
@@ -107,7 +125,7 @@ export function leadExtraFields(
 
   for (const [key, value] of Object.entries(extra)) {
     if (skip(key) || HIDDEN_TOP_LEVEL.has(key) || !isPrimitive(value)) continue;
-    fields.push([key, String(value)]);
+    fields.push([TOP_LEVEL_LABELS[key] ?? key, String(value)]);
   }
   for (const group of NESTED_GROUPS) {
     const nested = extra[group];
@@ -118,4 +136,10 @@ export function leadExtraFields(
     }
   }
   return fields;
+}
+
+/** Registro creado a mano por supervisión, no por una carga de base. */
+export function isOutsideBaseLead(extra: Record<string, unknown> | null | undefined): boolean {
+  if (!extra) return false;
+  return extra.fuera_de_base === true || extra.source === "manual_supervisor_record";
 }

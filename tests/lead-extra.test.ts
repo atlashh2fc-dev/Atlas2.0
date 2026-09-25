@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { leadContactPerson, leadExtraFields } from "../src/lib/lead-extra.ts";
+import { isOutsideBaseLead, leadContactPerson, leadExtraFields } from "../src/lib/lead-extra.ts";
 
 // Formas reales de `leads.extra` en Equifax (25-09-2026).
 const atlas1 = {
@@ -61,4 +61,27 @@ test("sin persona en la base se usa la que completó Bigdata, con su cargo", () 
     "Manuela Chicharro Vargas · Representante legal"
   );
   assert.equal("contacto" in Object.fromEntries(leadExtraFields(extra)), false);
+});
+
+test("lo ingresado fuera de base se ve con etiqueta y sin las marcas internas", () => {
+  const extra = {
+    source: "manual_supervisor_record",
+    fuera_de_base: true,
+    notes: "Llamó por su cuenta",
+    created_by_role: "supervisor",
+    created_from: "dashboard.leads.new",
+    ingreso_manual: { nombre_contacto: "Ana Pérez", comuna: "Ñuñoa", region: "Metropolitana de Santiago", producto: "Plan Pyme" },
+  };
+  const fields = Object.fromEntries(leadExtraFields(extra));
+  assert.deepEqual(fields, {
+    "Observación inicial": "Llamó por su cuenta",
+    Comuna: "Ñuñoa",
+    Región: "Metropolitana de Santiago",
+    "Producto o plan": "Plan Pyme",
+  });
+  assert.equal(leadContactPerson(extra, "EMPRESA SPA"), "Ana Pérez");
+  assert.equal(isOutsideBaseLead(extra), true);
+  assert.equal(isOutsideBaseLead({ source: "manual_supervisor_record" }), true);
+  assert.equal(isOutsideBaseLead(atlas1), false);
+  assert.equal(isOutsideBaseLead(null), false);
 });

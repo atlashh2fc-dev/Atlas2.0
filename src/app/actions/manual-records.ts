@@ -2,17 +2,24 @@
 
 import { revalidatePath } from "next/cache";
 import { requireProfile } from "@/lib/auth";
+import { normalizeChilePhone } from "@/lib/chile-phone";
+import { formatRut } from "@/lib/rut";
 import { createClient } from "@/lib/supabase/server";
 
 type ManualRecordInput = {
   fullName: string;
   rut?: string;
   phone?: string;
+  phoneAlt?: string;
   email?: string;
   teamId?: string;
   campaignId?: string;
   assignedTo?: string;
   notes?: string;
+  contactName?: string;
+  comuna?: string;
+  region?: string;
+  product?: string;
 };
 
 type ManualRecordResult = {
@@ -27,26 +34,53 @@ function blankToNull(value: string | undefined): string | null {
   return trimmed || null;
 }
 
+function phoneOrNull(value: string | undefined, label: string): string | null {
+  const phone = blankToNull(value);
+  if (!phone) return null;
+  try {
+    return normalizeChilePhone(phone);
+  } catch {
+    throw new Error(`${label}: ingresa un número chileno válido, por ejemplo +56 9 1234 5678.`);
+  }
+}
+
+/**
+ * Ingreso fuera de base (Atlas 1: "Nuevo contacto"). El supervisor crea en la
+ * campaña un cliente que no venía en la carga; si el RUT ya está en esa
+ * campaña, se abre el registro existente en vez de duplicarlo.
+ */
 export async function createManualLeadRecord(input: ManualRecordInput): Promise<ManualRecordResult> {
   try {
     await requireProfile(["supervisor", "admin"]);
     const fullName = blankToNull(input.fullName);
-    const rut = blankToNull(input.rut);
-    const phone = blankToNull(input.phone);
+    const rutInput = blankToNull(input.rut);
+    const campaignId = blankToNull(input.campaignId);
 
     if (!fullName) return { ok: false, message: "Indica el nombre o razón social." };
-    if (!rut && !phone) return { ok: false, message: "Indica al menos RUT o teléfono." };
+    if (!rutInput) return { ok: false, message: "Indica el RUT." };
+    if (!campaignId) return { ok: false, message: "Elige la campaña a la que entra el registro." };
+
+    const rut = formatRut(rutInput);
+    const phone = phoneOrNull(input.phone, "Teléfono");
+    const phoneAlt = phoneOrNull(input.phoneAlt, "Teléfono adicional");
 
     const supabase = await createClient();
-    const { data, error } = await supabase.rpc("create_manual_lead_record", {
+    const { data, error } = await supabase.rpc("ingresar_lead_fuera_de_base", {
+      p_campaign_id: campaignId,
       p_full_name: fullName,
       p_rut: rut,
       p_phone: phone,
+      p_phone_alt: phoneAlt,
       p_email: blankToNull(input.email),
       p_team_id: blankToNull(input.teamId),
-      p_campaign_id: blankToNull(input.campaignId),
       p_assigned_to: blankToNull(input.assignedTo),
       p_notes: blankToNull(input.notes),
+      p_detalle: {
+        nombre_contacto: blankToNull(input.contactName),
+        comuna: blankToNull(input.comuna),
+        region: blankToNull(input.region),
+        producto: blankToNull(input.product),
+      },
     });
 
     if (error) return { ok: false, message: error.message };

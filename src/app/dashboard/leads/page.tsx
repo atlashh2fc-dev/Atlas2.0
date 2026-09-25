@@ -152,7 +152,7 @@ export default async function LeadsPage({
               )}
               <Link href="/dashboard/leads/nuevo" className={buttonClasses()}>
                 <Plus size={16} />
-                Nuevo registro
+                Ingresar fuera de base
               </Link>
             </div>
           ) : undefined
