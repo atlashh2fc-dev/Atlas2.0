@@ -24,7 +24,8 @@ const claim = latestDefinition("claim_due_personal_callbacks");
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
 test("la entrega de agendas vive en la migración que la corrige", () => {
-  assert.equal(claim.name, "20260924182000_agendas_personales_una_a_la_vez.sql");
+  // 20260925090000 la redefine para respetar el AUX sin soltar estas reglas.
+  assert.equal(claim.name, "20260925090000_agenda_personal_respeta_aux.sql");
   const migration = migrations.find((m) => m.name === claim.name)!.sql;
   // Sigue siendo exclusiva del motor.
   assert.match(claim.body, /auth\.uid\(\)[\s\S]*solo puede ser llamada por el motor/);

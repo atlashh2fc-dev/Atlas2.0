@@ -19,6 +19,16 @@ export function notifyAgentManagementClosed() {
   window.dispatchEvent(new Event(AGENT_MANAGEMENT_CLOSED_EVENT));
 }
 
+/**
+ * La ficha pide cortar la llamada en curso ("Colgar y cerrar") al mismo
+ * teléfono del layout, que es el único dueño de la sesión SIP.
+ */
+export const AGENT_HANGUP_REQUEST_EVENT = "atlas:agent-hangup-request";
+
+export function requestAgentHangup() {
+  window.dispatchEvent(new Event(AGENT_HANGUP_REQUEST_EVENT));
+}
+
 export type AgentDialRequestEventDetail = {
   leadId: string;
   source?: "agenda" | "assigned_lead";

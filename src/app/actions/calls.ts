@@ -395,10 +395,36 @@ export async function beginAssignedLeadCall(
  */
 export type CallActionResult<T = null> =
   | { ok: true; data: T }
-  | { ok: false; error: string };
+  | {
+      ok: false;
+      error: string;
+      /**
+       * Estados esperables que la ficha resuelve sola: `call_in_progress`
+       * deja la tipificación lista para cerrarse al colgar y `legal_break`
+       * reintenta cuando termina la interrupción legal.
+       */
+      code?: CallActionErrorCode;
+      retryAfterSeconds?: number;
+    };
+
+export type CallActionErrorCode = "call_in_progress" | "legal_break";
+
+class CallActionError extends Error {
+  constructor(
+    message: string,
+    readonly code: CallActionErrorCode,
+    readonly retryAfterSeconds?: number
+  ) {
+    super(message);
+  }
+}
 
 function callActionError<T>(context: string, error: unknown, metadata: Record<string, unknown>): CallActionResult<T> {
   const message = error instanceof Error ? error.message : "Ocurrió un error inesperado.";
+  if (error instanceof CallActionError) {
+    // No son fallas: la ficha los reintenta sola.
+    return { ok: false, error: message, code: error.code, retryAfterSeconds: error.retryAfterSeconds };
+  }
   console.error(`[calls.${context}] failed`, { ...metadata, error: message });
   return { ok: false, error: message };
 }
@@ -475,8 +501,10 @@ async function assertIntercallBreakCompleted(params: {
     : 0;
   if (breakUntil > Date.now()) {
     const remaining = Math.max(1, Math.ceil((breakUntil - Date.now()) / 1000));
-    throw new Error(
-      `Interrupción legal en curso. Espera ${remaining} segundo${remaining === 1 ? "" : "s"} antes de continuar.`
+    throw new CallActionError(
+      `Interrupción legal en curso. Espera ${remaining} segundo${remaining === 1 ? "" : "s"} antes de continuar.`,
+      "legal_break",
+      remaining
     );
   }
 
@@ -496,7 +524,7 @@ async function assertIntercallBreakCompleted(params: {
     requireCallEnded &&
     (session.status === "ringing" || session.status === "on_call")
   ) {
-    throw new Error("Finaliza la llamada antes de cerrar la gestión.");
+    throw new CallActionError("Finaliza la llamada antes de cerrar la gestión.", "call_in_progress");
   }
 
   if (session.status !== "wrap_up") return;
@@ -507,8 +535,10 @@ async function assertIntercallBreakCompleted(params: {
     1,
     Math.ceil((LEGAL_INTERCALL_BREAK_MS - elapsedMs) / 1000)
   );
-  throw new Error(
-    `Interrupción legal en curso. Espera ${remaining} segundo${remaining === 1 ? "" : "s"} antes de continuar la tipificación.`
+  throw new CallActionError(
+    `Interrupción legal en curso. Espera ${remaining} segundo${remaining === 1 ? "" : "s"} antes de continuar la tipificación.`,
+    "legal_break",
+    remaining
   );
 }
 
@@ -872,11 +902,6 @@ export async function closeCall(input: {
       .eq("id", leadId)
       .single();
     if (leadFetchError) throw new Error(leadFetchError.message);
-    await assertIntercallBreakCompleted({
-      userId,
-      campaignId: lead.campaign_id,
-      requireCallEnded: true,
-    });
     const [reasonCatalog, agendaPolicy] = await Promise.all([
       getLeadCallReasonCatalog({ supabase, lead }),
       fetchCampaignAgendaPolicy(supabase, lead.campaign_id),
@@ -901,6 +926,15 @@ export async function closeCall(input: {
     if (errors.length > 0) {
       throw new Error(errors.join(" "));
     }
+    // Se valida antes de mirar la llamada: así el ejecutivo puede tipificar
+    // mientras conversa y enterarse de lo que falta sin esperar el corte. Si
+    // la llamada sigue viva, la ficha deja la gestión lista y cierra sola al
+    // colgar (como el "wrap-up" anticipado de Genesys o Five9).
+    await assertIntercallBreakCompleted({
+      userId,
+      campaignId: lead.campaign_id,
+      requireCallEnded: true,
+    });
 
     const { error: closeError } = await supabase.rpc("save_call_management", {
       p_call_id: callId,

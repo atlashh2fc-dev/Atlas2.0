@@ -29,9 +29,10 @@ function fixture(options: {
   let cursor = 0;
   const submissions: Record<string, unknown>[] = [];
   const navigations: string[] = [];
-  let release: ((result: { ok: boolean; error?: string }) => void) | undefined;
+  let release: ((result: { ok: boolean; error?: string; code?: string; retryAfterSeconds?: number }) => void) | undefined;
   let revisionCount = 0;
   let closedEvents = 0;
+  let hangupRequests = 0;
   const slot = (initial: unknown) => {
     const index = cursor++;
     if (!(index in slots)) slots[index] = typeof initial === "function" ? initial() : initial;
@@ -43,7 +44,7 @@ function fixture(options: {
     react: { ...React, useState: slot, useRef: (initial: unknown) => slot({ current: initial })[0], useMemo: (fn: () => unknown) => fn(), useEffect: () => {}, useId: () => "fixture" },
     "next/navigation": { useRouter: () => ({ push: (url: string) => navigations.push(url), refresh: () => {} }) },
     "@/lib/call-typification": typification,
-    "@/lib/agent-control": { notifyAgentManagementClosed: () => { closedEvents++; } },
+    "@/lib/agent-control": { notifyAgentManagementClosed: () => { closedEvents++; }, requestAgentHangup: () => { hangupRequests++; } },
     "@/lib/intercall-break": { readLegalIntercallBreakUntil: () => options.breakActive ? Date.now() + 10000 : 0 },
     "@/components/appointment-schedule-embed": { AppointmentScheduleEmbed: "calendar-fixture" },
     "@/app/actions/calls": {
@@ -115,7 +116,9 @@ function fixture(options: {
   return { all, one, button, click, change, flush, submissions, navigations, render,
     get root() { return tree; },
     get closedEvents() { return closedEvents; }, get revisionCount() { return revisionCount; },
+    get hangupRequests() { return hangupRequests; },
     finish(ok = true) { assert.ok(release); release({ ok, error: ok ? undefined : "Finaliza la llamada antes de cerrar la gestión." }); },
+    finishWith(result: { ok: boolean; error?: string; code?: string; retryAfterSeconds?: number }) { assert.ok(release); release(result); },
   };
 }
 
@@ -381,3 +384,40 @@ test("Equifax: SE ENVIA INFORMACION sin agenda pide nota y la agenda respeta la 
   assert.equal(callback.submissions.length, 1);
   callback.finish(); await callback.flush();
 });
+
+test("tipificar durante la llamada: queda lista, se puede colgar desde la ficha y volver a editar", async () => {
+  const f = fixture({ legal: false });
+  f.click("Volver a llamar");
+  f.change("datetime-local", "2026-09-03T11:00");
+  f.click("Guardar y cerrar");
+  assert.equal(f.submissions.length, 1);
+  f.finishWith({ ok: false, error: "Finaliza la llamada antes de cerrar la gestión.", code: "call_in_progress" });
+  await f.flush();
+  // No es un error: la gestión queda lista y fija hasta que termine la llamada.
+  assert.equal(f.all((e) => e.props.role === "alert").length, 0);
+  assert.equal(f.one((e) => e.props.role === "status").props.children !== undefined, true);
+  assert.equal(f.one((e) => e.type === "fieldset").props.disabled, true);
+  assert.deepEqual(f.navigations, []);
+  (f.one((e) => matchesText(e, "Colgar y cerrar")).props.onClick as () => void)();
+  f.render();
+  assert.equal(f.hangupRequests, 1);
+  f.click("Seguir editando");
+  assert.equal(f.one((e) => e.type === "fieldset").props.disabled, false);
+  assert.equal(f.all((e) => matchesText(e, "Colgar y cerrar")).length, 0);
+});
+
+test("un error real al cerrar sigue mostrándose y no deja la gestión armada", async () => {
+  const f = fixture({ legal: false });
+  f.click("Volver a llamar");
+  f.change("datetime-local", "2026-09-03T11:00");
+  f.click("Guardar y cerrar");
+  f.finishWith({ ok: false, error: "Ya existe una agenda a esa hora." });
+  await f.flush();
+  assert.equal(f.all((e) => e.props.role === "alert").length, 1);
+  assert.equal(f.one((e) => e.type === "fieldset").props.disabled, false);
+});
+
+function matchesText(element: React.ReactElement<Record<string, unknown>>, text: string) {
+  const children = element.props.children;
+  return element.type === "button" && (Array.isArray(children) ? children.includes(text) : children === text);
+}

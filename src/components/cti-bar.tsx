@@ -70,6 +70,7 @@ import {
 import {
   AGENT_DIAL_REQUEST_EVENT,
   AGENT_FORCE_LOGOUT_EVENT,
+  AGENT_HANGUP_REQUEST_EVENT,
   AGENT_MANAGEMENT_CLOSED_EVENT,
   type AgentDialRequestEventDetail,
   type AgentForceLogoutEventDetail,
@@ -417,6 +418,21 @@ export function CtiBar({ profile }: { profile: Profile }) {
 
     window.addEventListener(AGENT_DIAL_REQUEST_EVENT, onDialRequest);
     return () => window.removeEventListener(AGENT_DIAL_REQUEST_EVENT, onDialRequest);
+  }, []);
+
+  // Igual que la marcación: colgar depende de la sesión viva, así que se toma
+  // por ref y el listener se suscribe una sola vez.
+  const handleHangupRef = useRef<() => Promise<void>>(async () => {});
+
+  useEffect(() => {
+    const onHangupRequest = () => {
+      void handleHangupRef.current().catch((err) =>
+        console.error("CTI: no se pudo colgar a pedido de la ficha", err)
+      );
+    };
+
+    window.addEventListener(AGENT_HANGUP_REQUEST_EVENT, onHangupRequest);
+    return () => window.removeEventListener(AGENT_HANGUP_REQUEST_EVENT, onHangupRequest);
   }, []);
 
   useEffect(() => {
@@ -1732,6 +1748,10 @@ export function CtiBar({ profile }: { profile: Profile }) {
       sessionRef.current = null;
     }
   }
+
+  useEffect(() => {
+    handleHangupRef.current = handleHangup;
+  });
 
   function toggleMute() {
     const session = sessionRef.current;

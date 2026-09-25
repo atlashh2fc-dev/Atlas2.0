@@ -2,9 +2,9 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { AlertCircle, CalendarClock, CheckCircle2, Clock3, MessageSquare } from "lucide-react";
+import { AlertCircle, CalendarClock, CheckCircle2, Clock3, MessageSquare, PhoneOff } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { notifyAgentManagementClosed } from "@/lib/agent-control";
+import { notifyAgentManagementClosed, requestAgentHangup } from "@/lib/agent-control";
 import type { Call, Lead } from "@/lib/types";
 import {
   EQUIFAX_PRODUCTS,
@@ -147,12 +147,23 @@ export function CallTypificationForm({
     readLegalIntercallBreakUntil()
   );
   const [clockNow, setClockNow] = useState(() => Date.now());
+  // Tipificación anticipada: el ejecutivo la deja lista durante la llamada y
+  // la gestión se cierra sola al colgar, pasada la interrupción legal.
+  const [armed, setArmed] = useState(false);
+  const [hungUp, setHungUp] = useState(false);
+  const [retryAt, setRetryAt] = useState(0);
+  const [autoAttempt, setAutoAttempt] = useState(0);
   const closeInFlightRef = useRef(false);
+  const handleCloseRef = useRef<(selectedReason?: CallReasonConfig, auto?: boolean) => Promise<void>>(
+    async () => {}
+  );
 
   useEffect(() => {
+    // Cada interrupción legal nace de una llamada que acaba de terminar.
     function handleBreak(event: Event) {
       setLegalBreakUntil((event as CustomEvent<number>).detail);
       setClockNow(Date.now());
+      setHungUp(true);
     }
 
     function handleStorage(event: StorageEvent) {
@@ -160,6 +171,7 @@ export function CallTypificationForm({
       const until = Number(event.newValue);
       setLegalBreakUntil(Number.isFinite(until) ? until : 0);
       setClockNow(Date.now());
+      if (Number.isFinite(until) && until > Date.now()) setHungUp(true);
     }
 
     window.addEventListener(INTERCALL_BREAK_EVENT, handleBreak);
@@ -247,8 +259,9 @@ export function CallTypificationForm({
     setEquifaxProducts((prev) => (prev.includes(product) ? prev.filter((p) => p !== product) : [...prev, product]));
   }
 
-  async function handleClose(selectedReason?: CallReasonConfig) {
-    if (closeInFlightRef.current || pending !== null || legalBreakActive || catalog.length === 0) return;
+  async function handleClose(selectedReason?: CallReasonConfig, auto = false) {
+    if (closeInFlightRef.current || pending !== null || catalog.length === 0) return;
+    if (!auto && (armed || legalBreakActive)) return;
     // El cierre directo usa la opción pulsada, no el estado del render anterior.
     // Las mismas validaciones y la misma acción del servidor protegen ambos caminos.
     const payload = {
@@ -271,6 +284,7 @@ export function CallTypificationForm({
       closureOptions
     );
     if (issues.length > 0) {
+      setArmed(false);
       setMessage({ type: "error", text: "Completa los campos marcados antes de cerrar." });
       return;
     }
@@ -284,8 +298,12 @@ export function CallTypificationForm({
     }
 
     closeInFlightRef.current = true;
-    setPending("close");
-    setMessage(null);
+    // El intento automático no bloquea la pantalla: el aviso de "lista" ya
+    // muestra el estado y el formulario sigue fijo mientras está armada.
+    if (!auto) {
+      setPending("close");
+      setMessage(null);
+    }
     let completed = false;
     try {
       const result = supervision
@@ -299,6 +317,22 @@ export function CallTypificationForm({
           ? await reviseCallManagement(payload)
           : await closeCall(payload);
       if (!result.ok) {
+        if (!revision && result.code === "call_in_progress") {
+          // Válida pero con la llamada viva: queda lista y se cierra al colgar.
+          setArmed(true);
+          setMessage(null);
+          if (auto) setAutoAttempt((n) => n + 1);
+          return;
+        }
+        if (!revision && result.code === "legal_break") {
+          setArmed(true);
+          setHungUp(true);
+          setMessage(null);
+          setRetryAt(Date.now() + (result.retryAfterSeconds ?? 1) * 1000);
+          if (auto) setAutoAttempt((n) => n + 1);
+          return;
+        }
+        setArmed(false);
         setMessage({ type: "error", text: result.error });
         return;
       }
@@ -312,6 +346,7 @@ export function CallTypificationForm({
       window.location.assign(revision ? `/dashboard/leads/${lead.id}` : "/dashboard/leads");
     } catch (e) {
       console.error("No se pudo completar la acción de gestión", e);
+      setArmed(false);
       setMessage({
         type: "error",
         text: revision
@@ -325,6 +360,21 @@ export function CallTypificationForm({
       }
     }
   }
+
+  useEffect(() => {
+    handleCloseRef.current = handleClose;
+  });
+
+  // Mientras la llamada sigue, se revisa cada 5 s por si terminó sin que este
+  // navegador lo viera; al colgar, se intenta apenas pasa la interrupción legal.
+  useEffect(() => {
+    if (!armed) return;
+    const waitMs = hungUp
+      ? Math.max(legalBreakUntil - Date.now(), retryAt - Date.now(), 0) + (autoAttempt > 0 ? 2000 : 500)
+      : 5000;
+    const id = setTimeout(() => void handleCloseRef.current(undefined, true), waitMs);
+    return () => clearTimeout(id);
+  }, [armed, hungUp, legalBreakUntil, retryAt, autoAttempt]);
 
   async function handleDiscard() {
     if (closeInFlightRef.current || pending !== null || legalBreakActive) return;
@@ -554,7 +604,46 @@ export function CallTypificationForm({
           </div>
         </div>
       )}
-      {legalBreakActive && (
+      {armed && (
+        <div
+          role="status"
+          className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/30 bg-primary/[0.06] px-4 py-3"
+        >
+          <CheckCircle2 className="shrink-0 text-primary" size={20} />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-foreground">
+              {!hungUp
+                ? "Tipificación lista. Se guarda sola al colgar."
+                : legalBreakActive
+                  ? `Llamada terminada. Se guarda en ${legalBreakRemaining}s`
+                  : "Guardando tipificación…"}
+            </p>
+            {reasonConfig && <p className="mt-0.5 text-xs text-muted-foreground">{reasonConfig.label}</p>}
+          </div>
+          {!hungUp && (
+            <button
+              type="button"
+              onClick={() => requestAgentHangup()}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-danger px-3 py-2 text-xs font-semibold text-white hover:opacity-90"
+            >
+              <PhoneOff size={14} aria-hidden="true" />
+              Colgar y cerrar
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              setArmed(false);
+              setAutoAttempt(0);
+            }}
+            className="rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground"
+          >
+            Seguir editando
+          </button>
+        </div>
+      )}
+
+      {legalBreakActive && !armed && (
         <div className="flex items-center gap-3 rounded-xl border border-warning/30 bg-warning-bg px-4 py-3 text-warning">
           <Clock3 className="shrink-0" size={20} />
           <p className="text-sm font-semibold">Disponible en {legalBreakRemaining}s</p>
@@ -572,7 +661,7 @@ export function CallTypificationForm({
       )}
 
       <fieldset
-        disabled={pending !== null || legalBreakActive || catalog.length === 0}
+        disabled={pending !== null || legalBreakActive || armed || catalog.length === 0}
         className="flex flex-col gap-4 border-0 p-0 disabled:cursor-not-allowed disabled:opacity-60"
       >
         <div className="sticky top-2 z-10 rounded-2xl border border-border bg-surface p-3 shadow-lg">
