@@ -66,6 +66,20 @@ test("la causa Q.850 separa número inexistente, rechazo y falla de red", () => 
   assert.match(migracion, /now\(\) \+ interval '90 days'/);
 });
 
+test("un número que el carrier nunca cursa sale de la cola 30 días, no se reintenta para siempre", () => {
+  const sinRuta = migracion("20260926120000_numero_sin_ruta_sale_de_la_cola.sql");
+  const disparador = funcion(sinRuta, "dialer_suppress_unroutable_number");
+  // Solo fallas de red del pool, y solo con la troncal cursando otras llamadas.
+  assert.match(sinRuta, /new\.attempt_kind = 'pool'\s+and btrim\(coalesce\(new\.hangup_cause, ''\)\) in \('27', '34', '38'\)/);
+  assert.match(funcion(sinRuta, "dialer_phone_unroutable_failures"), /working\.originated_at between failure\.ended_at - interval '5 minutes'/);
+  // Si el carrier alguna vez respondió por el número, no se descarta.
+  assert.match(disparador, /if public\.dialer_phone_carrier_responded\(v_phone, v_since\) then\s+return null;/);
+  assert.match(disparador, /dialer_phone_unroutable_failures\(v_phone, v_since\) < 2 then\s+return null;/);
+  assert.match(disparador, /'fuera_de_servicio', 'discador'/);
+  assert.match(disparador, /now\(\) \+ interval '30 days'/);
+  assert.match(leer("scripts/probar-discador-sql.sh"), /20260926120000_numero_sin_ruta_sale_de_la_cola\.sql/);
+});
+
 test("la base clasifica cada intento terminado como real, técnico o ignorado", () => {
   const clase = funcion(POLITICA, "dialer_attempt_result_class");
   assert.match(clase, /p_attempt_kind = 'personal_callback' and p_originated_at is null then 'ignorado'/);

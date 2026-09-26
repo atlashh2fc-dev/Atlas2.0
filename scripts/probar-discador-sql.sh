@@ -21,6 +21,8 @@ MIGRACIONES=(
   20260924181200_espera_por_lead_y_por_telefono.sql
   20260924181300_claim_respeta_horario_esperas_y_no_llamar.sql
   20260924181400_voz_ia_respeta_no_llamar.sql
+  20260924230000_causa_q850_clasifica_intentos.sql
+  20260926120000_numero_sin_ruta_sale_de_la_cola.sql
 )
 
 TEMPORAL=""

@@ -119,7 +119,9 @@ select pg_temp.check(dialer_backoff_minutes('{30,120,1440}', 1) = 30 and dialer_
 
 select pg_temp.check(dialer_attempt_result_class('failed', 'pool', null, null) = 'tecnico', 'Originate fallido = técnico');
 select pg_temp.check(dialer_attempt_result_class('failed', 'pool', now(), '34') = 'tecnico', 'congestión Q.850 34 = técnico');
-select pg_temp.check(dialer_attempt_result_class('failed', 'pool', now(), '1') = 'real', 'número no asignado sí sonó en la red = real');
+select pg_temp.check(dialer_attempt_result_class('failed', 'pool', null, '1') = 'invalido', 'número no asignado Q.850 1 = inválido');
+select pg_temp.check(dialer_attempt_result_class('failed', 'pool', null, '21') = 'real', 'rechazo del destino Q.850 21 = real');
+select pg_temp.check(dialer_attempt_result_class('failed', 'pool', null, '34') = 'tecnico', 'sin circuito Q.850 34 sin contestar = técnico');
 select pg_temp.check(dialer_attempt_result_class('no_answer', 'pool', null, null) = 'real', 'Originate que sonó (reason 3 -> no_answer) = real');
 select pg_temp.check(dialer_attempt_result_class('completed', 'pool', now(), '16') = 'real', 'completed sin contestar = real');
 select pg_temp.check(dialer_attempt_result_class('no_answer', 'personal_callback', null, null) = 'ignorado', 'agenda: el ejecutivo no contestó = ignorado');
@@ -393,5 +395,64 @@ select dialer_enqueue_retry_recompute('00000000-0000-0000-0000-000000000172', 'e
 select pg_temp.check(exists (select 1 from dialer_retry_recompute_queue where lead_id = '00000000-0000-0000-0000-000000000172' and last_error = 'prueba'), 'el error queda registrado');
 select dialer_process_retry_recompute();
 select pg_temp.check(not exists (select 1 from dialer_retry_recompute_queue), 'el cron lo reintenta y vacía la cola');
+
+-- ===========================================================================
+-- 14. Número sin ruta: dos fallas de red con la troncal cursando => fuera 30 días
+-- ===========================================================================
+create function pg_temp.falla(p_lead uuid, p_campaign uuid, p_phone text, p_cause text) returns void language plpgsql as $$
+declare v_id uuid;
+begin
+  insert into dial_attempts (lead_id, campaign_id, phone, status) values (p_lead, p_campaign, p_phone, 'queued') returning id into v_id;
+  update dial_attempts set status = 'failed', ended_at = now(), hangup_cause = p_cause where id = v_id;
+end $$;
+create function pg_temp.sin_ruta(p_phone text) returns bigint language sql as $$
+  select count(*) from dialer_phone_suppressions
+  where phone = canonical_chile_phone(p_phone) and reason = 'fuera_de_servicio' and source = 'discador' and lifted_at is null $$;
+
+insert into campaigns (id, name, organization_id) values
+  ('00000000-0000-0000-0000-0000000001f1', 'Troncal sana', 'e64a8fa5-2f38-4460-97d8-f6b19634dccd'),
+  ('00000000-0000-0000-0000-0000000001f2', 'Troncal muda', 'e64a8fa5-2f38-4460-97d8-f6b19634dccd');
+insert into leads (id, phone, campaign_id, organization_id) values
+  ('00000000-0000-0000-0000-000000000191', '+56412000001', '00000000-0000-0000-0000-0000000001f1', 'e64a8fa5-2f38-4460-97d8-f6b19634dccd'),
+  ('00000000-0000-0000-0000-000000000192', '+56412000002', '00000000-0000-0000-0000-0000000001f1', 'e64a8fa5-2f38-4460-97d8-f6b19634dccd'),
+  ('00000000-0000-0000-0000-000000000193', '+56412000003', '00000000-0000-0000-0000-0000000001f2', 'e64a8fa5-2f38-4460-97d8-f6b19634dccd'),
+  ('00000000-0000-0000-0000-000000000194', '+56412000004', '00000000-0000-0000-0000-0000000001f1', 'e64a8fa5-2f38-4460-97d8-f6b19634dccd'),
+  ('00000000-0000-0000-0000-000000000199', '+56912000009', '00000000-0000-0000-0000-0000000001f1', 'e64a8fa5-2f38-4460-97d8-f6b19634dccd');
+-- La troncal de "Troncal sana" cursa: otra llamada contestó hace un minuto.
+insert into dial_attempts (lead_id, campaign_id, phone, status, originated_at, answered_at, ended_at, hangup_cause) values
+  ('00000000-0000-0000-0000-000000000199', '00000000-0000-0000-0000-0000000001f1', '+56912000009', 'completed',
+   now() - interval '1 minute', now() - interval '1 minute', now(), '16');
+
+select pg_temp.falla('00000000-0000-0000-0000-000000000191', '00000000-0000-0000-0000-0000000001f1', '+56412000001', '34');
+select pg_temp.check(pg_temp.sin_ruta('+56412000001') = 0, 'una falla de red no descarta el número');
+select pg_temp.check(dialer_phone_unroutable_failures('+56412000001', now() - interval '7 days') = 1, 'cuenta la falla con la troncal cursando');
+select pg_temp.falla('00000000-0000-0000-0000-000000000191', '00000000-0000-0000-0000-0000000001f1', '+56412000001', '34');
+select pg_temp.check(pg_temp.sin_ruta('+56412000001') = 1, 'segunda falla de red sin otra respuesta: fuera de servicio');
+select pg_temp.check((select source_reason = 'Q.850 34' and campaign_id is null and client_key is null
+    and pg_temp.near(expires_at, now() + interval '30 days')
+  from dialer_phone_suppressions where phone = '56412000001' and source = 'discador'), 'toda la empresa, 30 días, con la causa');
+select pg_temp.check(pg_temp.near(pg_temp.retry('00000000-0000-0000-0000-000000000191'), now() + interval '30 days')
+  and pg_temp.hold('00000000-0000-0000-0000-000000000191') = 'no_llamar', 'el lead queda retenido 30 días como no llamar');
+select pg_temp.falla('00000000-0000-0000-0000-000000000191', '00000000-0000-0000-0000-0000000001f1', '+56412000001', '27');
+select pg_temp.check(pg_temp.sin_ruta('+56412000001') = 1, 'una tercera falla no duplica la fila');
+
+-- Si el carrier alguna vez respondió por el número, la red falló de a ratos.
+insert into dial_attempts (lead_id, campaign_id, phone, status, ended_at, hangup_cause) values
+  ('00000000-0000-0000-0000-000000000192', '00000000-0000-0000-0000-0000000001f1', '+56412000002', 'no_answer', now() - interval '2 hours', '19');
+select pg_temp.falla('00000000-0000-0000-0000-000000000192', '00000000-0000-0000-0000-0000000001f1', '+56412000002', '34');
+select pg_temp.falla('00000000-0000-0000-0000-000000000192', '00000000-0000-0000-0000-0000000001f1', '+56412000002', '34');
+select pg_temp.check(pg_temp.sin_ruta('+56412000002') = 0, 'número que alguna vez sonó no se descarta por fallas de red');
+
+-- Con la troncal sin cursar nada, la culpa no es del número.
+select pg_temp.falla('00000000-0000-0000-0000-000000000193', '00000000-0000-0000-0000-0000000001f2', '+56412000003', '34');
+select pg_temp.falla('00000000-0000-0000-0000-000000000193', '00000000-0000-0000-0000-0000000001f2', '+56412000003', '34');
+select pg_temp.check(pg_temp.sin_ruta('+56412000003') = 0, 'troncal muda: no se descarta a nadie');
+
+-- Una falla sin causa no dice nada del número: ni lo salva ni lo condena.
+select pg_temp.falla('00000000-0000-0000-0000-000000000194', '00000000-0000-0000-0000-0000000001f1', '+56412000004', null);
+select pg_temp.falla('00000000-0000-0000-0000-000000000194', '00000000-0000-0000-0000-0000000001f1', '+56412000004', '34');
+select pg_temp.check(pg_temp.sin_ruta('+56412000004') = 0, 'una falla sin causa no cuenta como falla de red');
+select pg_temp.falla('00000000-0000-0000-0000-000000000194', '00000000-0000-0000-0000-0000000001f1', '+56412000004', '38');
+select pg_temp.check(pg_temp.sin_ruta('+56412000004') = 1, 'ni impide descartarlo');
 
 select 'ESCENARIOS COMPLETOS' as resultado;
