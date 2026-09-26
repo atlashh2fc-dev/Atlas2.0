@@ -6,6 +6,7 @@ import { originatePersonalCallback } from "../ami/originatePersonalCallback";
 import { forgetPersonalCallback, trackPersonalCallback } from "../ami/personalCallbacks";
 import { ensureQueue, syncQueueMembers } from "../asterisk/configSync";
 import { syncAgentPauseStates } from "./agentPause";
+import { callerIdPool, pickCallerId } from "./callerId";
 import {
   claimDuePersonalCallbacks,
   claimNextDialTargets,
@@ -17,6 +18,7 @@ import {
   getCampaignAgentExtensions,
   getRecentAbandonmentRate,
   getRecentContactRate,
+  recordDialAttemptCallerIds,
   registerDialEvent,
 } from "../supabaseClient";
 
@@ -35,6 +37,8 @@ type CampaignConfig = {
   dial_mode: string;
   max_dial_ratio: number;
   caller_id: string | null;
+  /** Números a rotar; vacío o null => caller_id. Ver callerId.ts. */
+  caller_ids: string[] | null;
   trunk_context: string;
   queue_name: string;
   wrapup_seconds: number;
@@ -78,6 +82,24 @@ export type CampaignTickOptions = {
 // campañas activas contra un AMI remoto).
 let lastFullTickConfigs: CampaignConfig[] = [];
 const lastFullTickReadyCampaignIds = new Set<string>();
+
+/**
+ * Anota el número mostrado en cada intento sin frenar el discado: corre en
+ * paralelo con los Originate y, si falla (o la migración aún no está), la
+ * llamada sale igual y solo se pierde el dato para el informe por número.
+ */
+function recordCallerIds(
+  campaignId: string,
+  assignments: Array<{ dialAttemptId: string; callerId: string | null }>
+): Promise<void> {
+  const items = assignments.flatMap(({ dialAttemptId, callerId }) =>
+    callerId ? [{ dialAttemptId, callerId }] : []
+  );
+  return recordDialAttemptCallerIds(items).then(
+    () => undefined,
+    (err) => logger.error({ err, campaignId, attempts: items.length }, "No se pudo registrar el número mostrado")
+  );
+}
 
 export async function runCampaignTick(
   ami: AmiClient,
@@ -184,7 +206,15 @@ export async function runCampaignTick(
       if (!pacingOnly && cfg.personal_callback_enabled !== false) {
         try {
           const callbacks = await claimDuePersonalCallbacks(cfg.campaign_id, MAX_CALLBACKS_PER_TICK);
-          for (const callback of callbacks) {
+          // Misma regla que el pool: el cliente que pidió la llamada la
+          // recibe desde el número con que se le venía llamando.
+          const callbackPool = callerIdPool(cfg);
+          const callbackCallerIds = callbacks.map((callback) => ({
+            dialAttemptId: callback.dial_attempt_id,
+            callerId: pickCallerId(callbackPool, callback.lead_id),
+          }));
+          const callbackCallerIdsRecorded = recordCallerIds(cfg.campaign_id, callbackCallerIds);
+          for (const [index, callback] of callbacks.entries()) {
             // Antes del Originate: los eventos AMI de esta llamada necesitan
             // saber que es una agenda para registrar la conexión al contestar.
             trackPersonalCallback(callback.dial_attempt_id, {
@@ -196,7 +226,7 @@ export async function runCampaignTick(
               await originatePersonalCallback({
                 ami,
                 target: callback,
-                callerId: cfg.caller_id,
+                callerId: callbackCallerIds[index].callerId,
                 trunkContext: cfg.trunk_context,
               });
             } catch (err) {
@@ -215,6 +245,7 @@ export async function runCampaignTick(
               );
             }
           }
+          await callbackCallerIdsRecorded;
 
           const released = await expirePersonalCallbacks(cfg.campaign_id);
           if (released > 0) {
@@ -291,14 +322,21 @@ export async function runCampaignTick(
         "Originando lote de discado"
       );
 
-      for (const target of targets) {
+      const pool = callerIdPool(cfg);
+      const assignments = targets.map((target) => ({
+        dialAttemptId: target.dial_attempt_id,
+        callerId: pickCallerId(pool, target.lead_id),
+      }));
+      const callerIdsRecorded = recordCallerIds(cfg.campaign_id, assignments);
+
+      for (const [index, target] of targets.entries()) {
         try {
           await originateCall({
             ami,
             target,
             campaignId: cfg.campaign_id,
             queueName: cfg.queue_name,
-            callerId: cfg.caller_id,
+            callerId: assignments[index].callerId,
             trunkContext: cfg.trunk_context,
             abandonTimeoutSeconds: cfg.abandon_timeout_seconds,
             amdEnabled: cfg.amd_enabled,
@@ -318,6 +356,7 @@ export async function runCampaignTick(
           );
         }
       }
+      await callerIdsRecorded;
     } catch (err) {
       campaignFailures += 1;
       logger.error({ err, campaignId: cfg.campaign_id }, "Tick de campaña falló");

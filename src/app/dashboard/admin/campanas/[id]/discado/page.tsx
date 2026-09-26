@@ -2,6 +2,7 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { upsertDialerCampaignConfig } from "@/app/actions/dialer-config";
 import type { DialerCampaignConfig } from "@/lib/types";
+import { MAX_CALLER_IDS } from "@/lib/caller-ids";
 import { DialModeSelect } from "@/components/dial-mode-select";
 import { ActionForm, ActionSubmit, Callout, Field, InfoTooltip, Input, SectionCard, Select } from "@/components/ui";
 
@@ -28,6 +29,9 @@ export default async function CampaignDialerPage({ params }: { params: Promise<{
   const config = dialerConfig as DialerCampaignConfig | null;
   const usesSiptel = config?.trunk_context === "siptel";
   const mode = config?.dial_mode ?? "manual";
+  // La columna llega con la migración 20260926160000; antes de eso el campo no
+  // se muestra y guardar no la toca.
+  const callerIdsSupported = config !== null && "caller_ids" in config;
 
   return (
     <div className="space-y-5">
@@ -115,6 +119,37 @@ export default async function CampaignDialerPage({ params }: { params: Promise<{
           >
             <Input type="text" name="caller_id" placeholder="+16507062614" defaultValue={config?.caller_id ?? ""} />
           </Field>
+
+          {callerIdsSupported ? (
+            <Field
+              className="sm:col-span-2"
+              label={
+                <LabelWithHelp
+                  label="Números a rotar (opcional)"
+                  help="Si agregas números, el discador los reparte entre los registros y deja de usar el identificador de arriba en las llamadas automáticas: inclúyelo aquí si quieres que siga en la rotación. Cada registro sale siempre con el mismo número, para que el cliente lo reconozca si devuelve la llamada. Si un número queda marcado como spam, basta con quitarlo: solo cambian de número los registros que tenía. Todos deben estar habilitados en Siptel."
+                />
+              }
+            >
+              <input type="hidden" name="caller_ids_supported" value="true" />
+              <textarea
+                name="caller_ids"
+                rows={3}
+                placeholder={"56 9 6590 6926\n56 2 2345 6789"}
+                defaultValue={(config?.caller_ids ?? []).join("\n")}
+                className="w-full rounded-md border border-border bg-background px-3 py-1.5 font-mono text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+              <span className="text-xs text-muted-foreground">
+                Uno por línea, números chilenos (hasta {MAX_CALLER_IDS}). Vacío: se usa solo el identificador de arriba.
+                Cada intento guarda el número que se mostró, para medir la contactabilidad de cada uno.
+              </span>
+            </Field>
+          ) : (
+            !config && (
+              <p className="text-xs text-muted-foreground sm:col-span-2">
+                Guarda la configuración para poder agregar números a rotar.
+              </p>
+            )
+          )}
 
           <Field
             label={

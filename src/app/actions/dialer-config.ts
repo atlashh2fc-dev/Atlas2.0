@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { requireProfile } from "@/lib/auth";
 import type { DialMode } from "@/lib/types";
+import { parseCallerIdList } from "@/lib/caller-ids";
 
 const VALID_DIAL_MODES: DialMode[] = ["manual", "preview", "progressive", "predictive"];
 
@@ -36,6 +37,11 @@ export async function upsertDialerCampaignConfig(formData: FormData) {
   }
 
   const callerId = (formData.get("caller_id") as string)?.trim() || null;
+  // Vacía => null: el motor sigue usando caller_id, como antes de la rotación.
+  // Solo se escribe si la pantalla vio la columna: así guardar no se rompe si
+  // el deploy llega antes que la migración 20260926160000.
+  const callerIdsSupported = formData.get("caller_ids_supported") === "true";
+  const callerIds = parseCallerIdList(String(formData.get("caller_ids") ?? ""));
 
   const queueName = (formData.get("queue_name") as string)?.trim();
   if (!queueName) throw new Error("El nombre de la cola es obligatorio");
@@ -98,6 +104,7 @@ export async function upsertDialerCampaignConfig(formData: FormData) {
       dial_mode: dialMode,
       max_dial_ratio: maxDialRatio,
       caller_id: callerId,
+      ...(callerIdsSupported ? { caller_ids: callerIds.length > 0 ? callerIds : null } : {}),
       trunk_context: trunkContext,
       queue_name: queueName,
       wrapup_seconds: wrapupSeconds,

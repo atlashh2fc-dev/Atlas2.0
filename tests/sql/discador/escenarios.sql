@@ -479,4 +479,117 @@ select pg_temp.check(pg_temp.sin_ruta('+56412000004') = 0, 'una falla sin causa 
 select pg_temp.falla('00000000-0000-0000-0000-000000000194', '00000000-0000-0000-0000-0000000001f1', '+56412000004', '38');
 select pg_temp.check(pg_temp.sin_ruta('+56412000004') = 1, 'ni impide descartarlo');
 
+-- ===========================================================================
+-- 15. Rotación de caller ID: lista normalizada, número por intento e informe
+-- ===========================================================================
+-- Sin lista la campaña queda como estaba.
+select pg_temp.check((select caller_ids is null from dialer_campaign_configs where campaign_id = '00000000-0000-0000-0000-0000000000f1'), 'sin lista: caller_ids null, se usa caller_id');
+update dialer_campaign_configs set caller_ids = array['+56 9 6590 6926', '912345678', '56965906926', '', null, '(2) 2345 6789']
+where campaign_id = '00000000-0000-0000-0000-0000000000f1';
+select pg_temp.check((select caller_ids = '{56965906926,56912345678,56223456789}' from dialer_campaign_configs where campaign_id = '00000000-0000-0000-0000-0000000000f1'),
+  'la lista queda en formato Siptel, sin vacíos ni repetidos y en el orden escrito');
+update dialer_campaign_configs set caller_ids = array['', '  '] where campaign_id = '00000000-0000-0000-0000-0000000000f2';
+select pg_temp.check((select caller_ids is null from dialer_campaign_configs where campaign_id = '00000000-0000-0000-0000-0000000000f2'), 'una lista vacía queda null');
+do $$ begin
+  update dialer_campaign_configs set caller_ids = array['56965906926', '+16507062614'] where campaign_id = '00000000-0000-0000-0000-0000000000f2';
+  raise exception 'un número extranjero no debería aceptarse en la rotación';
+exception when check_violation then null;
+end $$;
+do $$ begin
+  update dialer_campaign_configs set caller_ids = array['5696590'] where campaign_id = '00000000-0000-0000-0000-0000000000f2';
+  raise exception 'un número incompleto no debería aceptarse';
+exception when check_violation then null;
+end $$;
+do $$ begin
+  update dialer_campaign_configs set caller_ids = array(select '5691' || lpad(g::text, 7, '0') from generate_series(1, 51) g)
+  where campaign_id = '00000000-0000-0000-0000-0000000000f2';
+  raise exception 'más de 50 números no debería aceptarse';
+exception when check_violation then null;
+end $$;
+-- La lista no es política de reintentos: no pide recálculo de esperas.
+select pg_temp.check(not exists (select 1 from dialer_retry_recompute_campaigns), 'cambiar la lista no pide recálculo de esperas');
+
+insert into campaigns (id, name, organization_id) values
+  ('00000000-0000-0000-0000-0000000002f1', 'Rotación', 'e64a8fa5-2f38-4460-97d8-f6b19634dccd'),
+  ('00000000-0000-0000-0000-0000000002f2', 'Rotación ajena', '00000000-0000-0000-0000-00000000000b');
+insert into stub_supervisor_campaigns values ('00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000002f1');
+insert into leads (id, phone, campaign_id, organization_id) values
+  ('00000000-0000-0000-0000-000000000301', '+56913000001', '00000000-0000-0000-0000-0000000002f1', 'e64a8fa5-2f38-4460-97d8-f6b19634dccd'),
+  ('00000000-0000-0000-0000-000000000302', '+56913000002', '00000000-0000-0000-0000-0000000002f1', 'e64a8fa5-2f38-4460-97d8-f6b19634dccd'),
+  ('00000000-0000-0000-0000-000000000303', '+56913000003', '00000000-0000-0000-0000-0000000002f1', 'e64a8fa5-2f38-4460-97d8-f6b19634dccd'),
+  ('00000000-0000-0000-0000-000000000304', '+56913000004', '00000000-0000-0000-0000-0000000002f2', '00000000-0000-0000-0000-00000000000b');
+-- Hoy en hora Chile: dos por el número A (una conectó), una por B que solo
+-- contestó, dos sin número registrado y una agenda que no cuenta; ayer, una
+-- por A; la de la otra empresa no se ve.
+insert into dial_attempts (id, lead_id, campaign_id, phone, status, attempt_kind, originated_at, bridged_at, ended_at, created_at) values
+  ('00000000-0000-0000-0000-00000000d201', '00000000-0000-0000-0000-000000000301', '00000000-0000-0000-0000-0000000002f1', '+56913000001', 'completed', 'pool', now(), now(), now(), now()),
+  ('00000000-0000-0000-0000-00000000d202', '00000000-0000-0000-0000-000000000302', '00000000-0000-0000-0000-0000000002f1', '+56913000002', 'no_answer', 'pool', null, null, now(), now()),
+  ('00000000-0000-0000-0000-00000000d203', '00000000-0000-0000-0000-000000000303', '00000000-0000-0000-0000-0000000002f1', '+56913000003', 'abandoned', 'pool', now(), null, now(), now()),
+  ('00000000-0000-0000-0000-00000000d204', '00000000-0000-0000-0000-000000000301', '00000000-0000-0000-0000-0000000002f1', '+56913000001', 'no_answer', 'pool', null, null, now(), now()),
+  ('00000000-0000-0000-0000-00000000d205', '00000000-0000-0000-0000-000000000302', '00000000-0000-0000-0000-0000000002f1', '+56913000002', 'completed', 'personal_callback', now(), now(), now(), now()),
+  ('00000000-0000-0000-0000-00000000d206', '00000000-0000-0000-0000-000000000303', '00000000-0000-0000-0000-0000000002f1', '+56913000003', 'completed', 'pool', now(), now(), now(), now() - interval '1 day'),
+  ('00000000-0000-0000-0000-00000000d207', '00000000-0000-0000-0000-000000000302', '00000000-0000-0000-0000-0000000002f1', '+56913000002', 'no_answer', 'pool', null, null, now(), now()),
+  ('00000000-0000-0000-0000-00000000d208', '00000000-0000-0000-0000-000000000304', '00000000-0000-0000-0000-0000000002f2', '+56913000004', 'completed', 'pool', now(), now(), now(), now());
+
+select pg_temp.check(record_dial_attempt_caller_ids(
+  array['00000000-0000-0000-0000-00000000d201', '00000000-0000-0000-0000-00000000d202', '00000000-0000-0000-0000-00000000d203',
+        '00000000-0000-0000-0000-00000000d205', '00000000-0000-0000-0000-00000000d206', '00000000-0000-0000-0000-00000000d208',
+        '00000000-0000-0000-0000-00000000d207']::uuid[],
+  array['56911111111', '56911111111', '56922222222', '56911111111', '56911111111', '56911111111', ' ']) = 6,
+  'el motor registra el número de cada intento en un viaje, sin números en blanco');
+select pg_temp.check(record_dial_attempt_caller_ids(array['00000000-0000-0000-0000-00000000d201']::uuid[], array['56999999999']) = 0
+  and (select caller_id = '56911111111' from dial_attempts where id = '00000000-0000-0000-0000-00000000d201'), 'el primer número registrado no se pisa');
+select pg_temp.check((select status = 'completed' and hangup_cause is null from dial_attempts where id = '00000000-0000-0000-0000-00000000d201'), 'registrar el número no toca el estado');
+do $$ begin
+  perform record_dial_attempt_caller_ids(array['00000000-0000-0000-0000-00000000d204']::uuid[], array[]::text[]);
+  raise exception 'listas de distinto largo deberían rechazarse';
+exception when invalid_parameter_value then null;
+end $$;
+select pg_temp.check(not has_function_privilege('authenticated', 'public.record_dial_attempt_caller_ids(uuid[], text[])', 'execute')
+  and not has_function_privilege('anon', 'public.record_dial_attempt_caller_ids(uuid[], text[])', 'execute')
+  and has_function_privilege('service_role', 'public.record_dial_attempt_caller_ids(uuid[], text[])', 'execute'), 'solo el motor registra números');
+select pg_temp.check(not has_function_privilege('anon', 'public.get_caller_id_contactability(date, date, uuid)', 'execute'), 'el informe no se abre a visitantes');
+
+create function pg_temp.hoy() returns date language sql as $$ select (now() at time zone 'America/Santiago')::date $$;
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000c1';
+select pg_temp.check((select count(*) = 4 from get_caller_id_contactability(pg_temp.hoy() - 1, pg_temp.hoy(), '00000000-0000-0000-0000-0000000002f1')),
+  'admin: 4 filas (ayer A; hoy A, B y sin número)');
+select pg_temp.check((select intentos = 2 and contestadas = 1 and conectadas = 1 and tasa_contestadas = 50.0 and tasa_conexion = 50.0
+  from get_caller_id_contactability(pg_temp.hoy(), pg_temp.hoy(), '00000000-0000-0000-0000-0000000002f1') where caller_id = '56911111111'),
+  'número A hoy: 2 intentos del pool, la agenda no cuenta');
+select pg_temp.check((select intentos = 1 and contestadas = 1 and conectadas = 0 and tasa_conexion = 0
+  from get_caller_id_contactability(pg_temp.hoy(), pg_temp.hoy(), '00000000-0000-0000-0000-0000000002f1') where caller_id = '56922222222'),
+  'número B: contestó pero no llegó a un ejecutivo');
+select pg_temp.check((select intentos = 2 and contestadas = 0
+  from get_caller_id_contactability(pg_temp.hoy(), pg_temp.hoy(), '00000000-0000-0000-0000-0000000002f1') where caller_id is null),
+  'los intentos sin número salen aparte');
+select pg_temp.check((select dia = pg_temp.hoy() - 1 and intentos = 1
+  from get_caller_id_contactability(pg_temp.hoy() - 1, pg_temp.hoy() - 1, '00000000-0000-0000-0000-0000000002f1')), 'el día se corta en hora Chile');
+select pg_temp.check(not exists (select 1 from get_caller_id_contactability(pg_temp.hoy() - 1, pg_temp.hoy()) where campaign_id = '00000000-0000-0000-0000-0000000002f2'),
+  'sin filtro, la campaña de otra empresa no aparece');
+do $$ begin
+  perform get_caller_id_contactability(pg_temp.hoy(), pg_temp.hoy(), '00000000-0000-0000-0000-0000000002f2');
+  raise exception 'un admin no debería consultar otra empresa';
+exception when insufficient_privilege then null;
+end $$;
+do $$ begin
+  perform get_caller_id_contactability(pg_temp.hoy(), pg_temp.hoy() - 1);
+  raise exception 'un rango invertido debería rechazarse';
+exception when invalid_parameter_value then null;
+end $$;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b1';
+select pg_temp.check((select count(*) >= 4 and bool_and(campaign_id in ('00000000-0000-0000-0000-0000000002f1', '00000000-0000-0000-0000-0000000000f1'))
+  from get_caller_id_contactability(pg_temp.hoy() - 1, pg_temp.hoy())), 'el supervisor ve solo las campañas de su alcance');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b2';
+select pg_temp.check((select count(*) = 0 from get_caller_id_contactability(pg_temp.hoy() - 1, pg_temp.hoy())), 'el supervisor sin alcance no ve nada');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000a1';
+do $$ begin
+  perform get_caller_id_contactability(pg_temp.hoy(), pg_temp.hoy());
+  raise exception 'un ejecutivo no debería ver el informe';
+exception when insufficient_privilege then null;
+end $$;
+reset role;
+reset request.jwt.claim.sub;
+
 select 'ESCENARIOS COMPLETOS' as resultado;

@@ -229,6 +229,22 @@ export async function registerDialEvent(params: {
 }
 
 /**
+ * Deja en dial_attempts.caller_id el número que se mostró en cada intento,
+ * para medir la contactabilidad por número. Un solo viaje por lote.
+ */
+export async function recordDialAttemptCallerIds(
+  items: Array<{ dialAttemptId: string; callerId: string }>
+): Promise<number> {
+  if (items.length === 0) return 0;
+  const { data, error } = await supabase.rpc("record_dial_attempt_caller_ids", {
+    p_attempt_ids: items.map((item) => item.dialAttemptId),
+    p_caller_ids: items.map((item) => item.callerId),
+  });
+  if (error) throw new Error(`record_dial_attempt_caller_ids: ${error.message}`);
+  return typeof data === "number" ? data : 0;
+}
+
+/**
  * Recupera reservas que nunca recibieron respuesta AMI. Solo toca `queued`:
  * una llamada que ya tiene canal/originated_at necesita reconciliación con
  * Asterisk y no se puede expirar por tiempo a ciegas.

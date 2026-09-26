@@ -252,6 +252,8 @@ export interface DialerCampaignConfig {
   dial_mode: DialMode;
   max_dial_ratio: number;
   caller_id: string | null;
+  /** Números que el discador rota (56 + nacional, sin +). null => caller_id. */
+  caller_ids?: string[] | null;
   trunk_context: string;
   queue_name: string;
   wrapup_seconds: number;
