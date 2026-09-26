@@ -91,7 +91,7 @@ test("la migración llena topes solo donde no hay y con los minutos acordados", 
   assert.match(MIGRACION, /where reason\.max_seconds is null/);
   assert.match(MIGRACION, /and reason\.is_pause/);
   const esperados: Record<string, number> = {
-    bano: 10, descanso: 15, almuerzo: 45, trabajo_administrativo: 10, reunion: 30,
+    bano: 10, descanso: 15, almuerzo: 60, trabajo_administrativo: 10, reunion: 30,
     capacitacion: 60, retroalimentacion: 20, soporte_tecnico: 15, desconectado: 10,
   };
   for (const [codigo, minutos] of Object.entries(esperados)) {

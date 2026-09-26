@@ -481,9 +481,8 @@ select pg_temp.check(pg_temp.sin_ruta('+56412000004') = 1, 'ni impide descartarl
 
 -- ===========================================================================
 -- 15. Rotación de caller ID: lista normalizada, número por intento e informe
--- ====================================================================
 -- ===========================================================================
--- 16. -- Sin lista la campaña queda como estaba.
+-- Sin lista la campaña queda como estaba.
 select pg_temp.check((select caller_ids is null from dialer_campaign_configs where campaign_id = '00000000-0000-0000-0000-0000000000f1'), 'sin lista: caller_ids null, se usa caller_id');
 update dialer_campaign_configs set caller_ids = array['+56 9 6590 6926', '912345678', '56965906926', '', null, '(2) 2345 6789']
 where campaign_id = '00000000-0000-0000-0000-0000000000f1';
@@ -592,8 +591,9 @@ exception when insufficient_privilege then null;
 end $$;
 reset role;
 reset request.jwt.claim.sub;
-=======
--- Cierre automático de conexiones cortas (20260926150000)
+
+-- ===========================================================================
+-- 16. Cierre automático de conexiones cortas (20260926150000)
 -- ===========================================================================
 select pg_temp.check((select count(*) = 0 from dialer_campaign_configs
   where short_call_seconds is not null or short_call_disposition is not null), 'conexiones cortas: apagado en todas las campañas');

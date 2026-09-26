@@ -22,12 +22,14 @@
 -- se acepta para que el mismo motivo reciba el mismo tope en cada empresa.
 -- Al 26-09: Geimser tiene todos los códigos sin tope; Andes ya traía descanso
 -- 15, almuerzo 45 y gestión posterior 10, y le faltaban capacitación, reunión
--- y desconectado.
+-- y desconectado. Colación 60 y no 45: es lo que da el turno de Equifax
+-- (campaign_agent_schedules.lunch_minutes); con menos, cada colación normal
+-- saltaría como excedida.
 with topes (code, minutos) as (
   values
     ('bano', 10),
     ('descanso', 15),
-    ('almuerzo', 45),
+    ('almuerzo', 60),
     ('trabajo_administrativo', 10),
     ('reunion', 30),
     ('capacitacion', 60),
