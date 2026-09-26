@@ -2058,6 +2058,10 @@ export function CtiBar({ profile }: { profile: Profile }) {
     : inAutomaticWrapUp
       ? formatElapsed(automaticWrapUpElapsedSeconds * 1000)
       : null;
+  // Tope de la pausa actual: el menú muestra lo que queda y avisa al pasarse,
+  // sin sacarla de la pausa. En llamada manual o tipificando no corre.
+  const pauseCapSeconds =
+    !hybridManualMode && !inAutomaticWrapUp && currentReason?.is_pause ? currentReason.max_seconds : null;
   const campaignNote = switchingCampaign
     ? "Cambiando de cola…"
     : campaignLocked && activeAutomaticCampaign
@@ -2141,6 +2145,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
           tone={statusTone}
           since={inAutomaticWrapUp ? null : statusSince}
           countdown={statusCountdown}
+          pauseCapSeconds={pauseCapSeconds}
           open={statusMenuOpen}
           onOpenChange={setStatusMenuOpen}
           available={availableReasons.map((reason) => ({ id: reason.id, label: reason.label }))}

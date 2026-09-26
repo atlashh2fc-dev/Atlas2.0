@@ -19,6 +19,26 @@ export async function getAgentLiveStatus(): Promise<AgentLiveStatus[]> {
   return (data ?? []) as AgentLiveStatus[];
 }
 
+export type StatusReasonCap = { id: string; max_seconds: number };
+
+/**
+ * Topes de las pausas para marcar en el monitor a quien se pasó. El monitor ya
+ * trae reason_id y reason_since de cada ejecutivo; esto es el catálogo de la
+ * empresa (la RLS de agent_status_reasons lo acota) y no una consulta por
+ * ejecutivo.
+ */
+export async function getStatusReasonCaps(): Promise<StatusReasonCap[]> {
+  await requireProfile(["admin", "supervisor"]);
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("agent_status_reasons")
+    .select("id, max_seconds")
+    .eq("is_pause", true)
+    .not("max_seconds", "is", null);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as StatusReasonCap[];
+}
+
 /**
  * Salud de cola por campaña activa (llamadas en curso + contadores del día).
  * get_queue_health ya valida admin/supervisor internamente (SECURITY

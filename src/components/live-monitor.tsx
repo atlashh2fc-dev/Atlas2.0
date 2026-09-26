@@ -4,9 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type 
 import { Bar, BarChart, Cell, Label, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import ReactGridLayout, { useContainerWidth, verticalCompactor, type Layout, type LayoutItem } from "react-grid-layout";
 import { LogOut, Plus, RotateCcw, X } from "lucide-react";
-import { forceAgentLogout, getAgentLiveStatus, getLiveWallboard, getQueueHealth, type ConectadosSinAlo, type EmbudoCopc, type LiveWallboard } from "@/app/actions/supervision";
+import { forceAgentLogout, getAgentLiveStatus, getLiveWallboard, getQueueHealth, getStatusReasonCaps, type ConectadosSinAlo, type EmbudoCopc, type LiveWallboard } from "@/app/actions/supervision";
 import type { AgentLiveStatus, QueueHealth } from "@/lib/types";
 import { LEGAL_INTERCALL_BREAK_SECONDS } from "@/lib/intercall-break";
+import { avisoParaSupervisor, estadoDeTope } from "@/lib/tope-de-pausa";
 import { useViewPreference } from "@/lib/use-view-preference";
 import type { MetricId } from "@/lib/metric-definitions";
 import { SavedViewsBar } from "@/components/saved-views-bar";
@@ -31,7 +32,10 @@ const POLL_MS = 2000;
 /** Las métricas del día cambian por minuto, no por segundo. */
 const WALLBOARD_POLL_MS = 15000;
 
-/** Umbrales operativos: sobre estos valores el estado se marca en rojo. */
+/**
+ * Umbrales operativos: sobre estos valores el estado se marca en rojo. La
+ * pausa usa el tope de su motivo; los 15 minutos quedan para motivos sin tope.
+ */
 const THRESHOLDS = {
   pauseSeconds: 15 * 60,
   wrapUpSeconds: 120,
@@ -215,7 +219,19 @@ function groupOf(agent: AgentLiveStatus): AgentGroup {
   return "offline";
 }
 
-function agentDisplay(agent: AgentLiveStatus, now: number): { label: string; tone: BadgeTone; since: string | null; alert: boolean } {
+/** Tope en segundos por motivo de pausa (reason_id). */
+type PauseCaps = ReadonlyMap<string, number>;
+
+type AgentDisplay = {
+  label: string;
+  tone: BadgeTone;
+  since: string | null;
+  alert: boolean;
+  /** "excedida por X min" cuando la pausa pasó el tope de su motivo. */
+  exceeded?: string | null;
+};
+
+function agentDisplay(agent: AgentLiveStatus, now: number, caps: PauseCaps): AgentDisplay {
   if (agent.phone_status === "on_call") return { label: "En llamada", tone: "info", since: agent.phone_status_since, alert: false };
   if (agent.phone_status === "ringing") return { label: "Timbrando", tone: "warning", since: agent.phone_status_since, alert: false };
   // Desconectado es ausencia, no una pausa/AUX. Fuera del horario no acumula
@@ -224,6 +240,17 @@ function agentDisplay(agent: AgentLiveStatus, now: number): { label: string; ton
     return { label: "Desconectado", tone: "neutral", since: null, alert: false };
   }
   if (agent.is_pause && agent.reason_label) {
+    const cap = agent.reason_id ? caps.get(agent.reason_id) : undefined;
+    if (cap != null) {
+      const estado = estadoDeTope({ since: agent.reason_since, maxSeconds: cap, isPause: true, now });
+      return {
+        label: agent.reason_label,
+        tone: "danger",
+        since: agent.reason_since,
+        alert: estado.tipo === "excedida",
+        exceeded: avisoParaSupervisor(estado),
+      };
+    }
     const seconds = elapsedSeconds(agent.reason_since, now);
     return { label: agent.reason_label, tone: "danger", since: agent.reason_since, alert: seconds != null && seconds > THRESHOLDS.pauseSeconds };
   }
@@ -326,6 +353,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
   const [agents, setAgents] = useState<AgentLiveStatus[]>([]);
   const [queues, setQueues] = useState<QueueHealth[]>([]);
   const [wallboard, setWallboard] = useState<LiveWallboard | null>(null);
+  const [pauseCaps, setPauseCaps] = useState<PauseCaps>(() => new Map());
   const [now, setNow] = useState(() => new Date().getTime());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -423,6 +451,14 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
       } catch (err) {
         console.error("Monitor: no se pudo leer el tablero del día", err);
       }
+      // Los topes cambian solo cuando el admin los edita: basta con el ritmo
+      // del tablero y son veinte filas del catálogo, no otra consulta en vivo.
+      try {
+        const caps = await getStatusReasonCaps();
+        if (!disposed) setPauseCaps(new Map(caps.map((cap) => [cap.id, cap.max_seconds])));
+      } catch (err) {
+        console.error("Monitor: no se pudieron leer los topes de pausa", err);
+      }
     }
     pollWallboard();
     const id = setInterval(pollWallboard, WALLBOARD_POLL_MS);
@@ -441,7 +477,8 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
   }, [agents]);
   const connected = agents.length - groups.offline;
   const occupancy = connected > 0 ? Math.round(((groups.on_call + groups.wrap_up) / connected) * 100) : 0;
-  const alerts = agents.filter((agent) => agentDisplay(agent, now).alert).length;
+  const alerts = agents.filter((agent) => agentDisplay(agent, now, pauseCaps).alert).length;
+  const exceededPauses = agents.filter((agent) => agentDisplay(agent, now, pauseCaps).exceeded).length;
   const totals = useMemo(() => queues.reduce((all, queue) => ({ inFlight: all.inFlight + queue.in_flight, answered: all.answered + queue.answered_today, completed: all.completed + queue.completed_today, abandoned: all.abandoned + queue.abandoned_today, noAnswer: all.noAnswer + queue.no_answer_today }), { inFlight: 0, answered: 0, completed: 0, abandoned: 0, noAnswer: 0 }), [queues]);
   const abandonRate = totals.answered + totals.abandoned > 0 ? Math.round((totals.abandoned / (totals.answered + totals.abandoned)) * 100) : 0;
   const noAnswerRate = totals.answered + totals.noAnswer > 0 ? Math.round((totals.noAnswer / (totals.answered + totals.noAnswer)) * 100) : 0;
@@ -493,11 +530,11 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
     { id: "ejecutivo", header: "Ejecutivo", value: (row) => row.full_name },
     { id: "extension", header: "Extensión", value: (row) => row.extension, className: "text-muted-foreground" },
     { id: "campana", header: "Campaña", value: (row) => row.campaign_name ?? "", cell: (row) => row.campaign_name ?? "—", className: "text-muted-foreground" },
-    { id: "estado", header: "Estado", value: (row) => agentDisplay(row, now).label, cell: (row) => { const { label, tone } = agentDisplay(row, now); return <span className="inline-flex items-center gap-2"><StatusDot tone={tone} />{label}</span>; } },
+    { id: "estado", header: "Estado", value: (row) => agentDisplay(row, now, pauseCaps).label, cell: (row) => { const { label, tone, exceeded } = agentDisplay(row, now, pauseCaps); return <span className="inline-flex flex-wrap items-center gap-2"><StatusDot tone={tone} />{label}{exceeded && <span className="rounded-md border border-danger bg-danger-bg px-1.5 py-0.5 text-[11px] font-semibold text-danger">{exceeded}</span>}</span>; } },
     { id: "gestiones-hoy", header: "Gestiones hoy", align: "right", value: (row) => todayByAgent.get(row.profile_id)?.gestiones ?? 0, cell: (row) => { const today = todayByAgent.get(row.profile_id); return <span className="tabular-nums">{today ? `${today.gestiones} · ${today.contactos} ctc` : "—"}</span>; } },
     { id: "tmo-hoy", header: "TMO hoy", align: "right", value: (row) => todayByAgent.get(row.profile_id)?.tmo_segundos ?? -1, cell: (row) => <span className="tabular-nums">{formatElapsed(todayByAgent.get(row.profile_id)?.tmo_segundos ?? null)}</span> },
     { id: "pausa-hoy", header: "Pausa hoy", align: "right", value: (row) => todayByAgent.get(row.profile_id)?.pausa_segundos ?? 0, cell: (row) => { const today = todayByAgent.get(row.profile_id); const detail = (today?.pausa_por_motivo ?? []).map((item) => `${item.motivo}: ${formatElapsed(item.segundos)}`).join(" · "); return <span className="tabular-nums" title={detail || undefined}>{today && today.pausa_segundos > 0 ? formatElapsed(today.pausa_segundos) : "—"}</span>; } },
-    { id: "tiempo", header: "Tiempo en estado", align: "right", value: (row) => elapsedSeconds(agentDisplay(row, now).since, now) ?? -1, cell: (row) => { const { since, alert } = agentDisplay(row, now); return <span className={alert ? "font-medium text-danger" : "tabular-nums"}>{formatElapsed(elapsedSeconds(since, now))}{alert && " ⚠"}</span>; } },
+    { id: "tiempo", header: "Tiempo en estado", align: "right", value: (row) => elapsedSeconds(agentDisplay(row, now, pauseCaps).since, now) ?? -1, cell: (row) => { const { since, alert } = agentDisplay(row, now, pauseCaps); return <span className={alert ? "font-medium text-danger" : "tabular-nums"}>{formatElapsed(elapsedSeconds(since, now))}{alert && " ⚠"}</span>; } },
     ...(canForceLogout ? [{
       id: "acciones",
       header: "",
@@ -532,7 +569,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
         );
       },
     }] : []),
-  ], [now, canForceLogout, openLogoutDialog, todayByAgent]);
+  ], [now, canForceLogout, openLogoutDialog, todayByAgent, pauseCaps]);
 
 
   const today = wallboard?.hoy ?? null;
@@ -544,7 +581,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
     available: <MetricWidget kicker={WIDGET_KICKER.available} label="Disponibles" value={groups.available} hint={connected ? `${Math.round((groups.available / connected) * 100)}% del equipo conectado` : "Sin equipo conectado"} tone={groups.available === 0 && connected > 0 ? "warn" : "good"} />,
     "on-call": <MetricWidget kicker={WIDGET_KICKER["on-call"]} label="En llamada" value={groups.on_call} hint={`${groups.on_call + groups.wrap_up} trabajando llamadas`} />,
     "wrap-up": <MetricWidget kicker={WIDGET_KICKER["wrap-up"]} label="En cierre" value={groups.wrap_up} hint="Incluye interrupción legal y ACW" tone={groups.wrap_up > 0 ? "warn" : "default"} />,
-    paused: <MetricWidget kicker={WIDGET_KICKER.paused} label="En pausa" value={groups.paused} hint="Fuera de la cola por AUX" tone={groups.paused > 0 ? "warn" : "default"} />,
+    paused: <MetricWidget kicker={WIDGET_KICKER.paused} label="En pausa" value={groups.paused} hint={exceededPauses ? `${exceededPauses} ${exceededPauses === 1 ? "excedió" : "excedieron"} el tope de su pausa` : "Fuera de la cola por AUX"} tone={exceededPauses ? "danger" : groups.paused > 0 ? "warn" : "default"} />,
     alerts: <MetricWidget kicker={WIDGET_KICKER.alerts} label="Alertas operativas" value={alerts} hint={alerts ? "Pausa o cierre fuera de umbral" : "Todo dentro de los umbrales"} tone={alerts ? "danger" : "good"} />,
     campaigns: <MetricWidget kicker={WIDGET_KICKER.campaigns} label="Campañas activas" value={queues.length} hint={`${totals.inFlight} llamadas en curso`} />,
     answered: <MetricWidget kicker={WIDGET_KICKER.answered} label="Conectados hoy" metric="conectados" value={funnel ? formatInt(funnel.conectados) : "—"} hint={funnel ? (funnel.conectados ? `${formatPercent(funnel.tasa_conexion)} de ${formatInt(funnel.recorridos)} recorridos únicos · ${formatInt(funnel.contactados)} con aló (${formatPercent(funnel.alo_de_conectados)})` : "Nadie ha contestado todavía") : "Calculando…"} />,
@@ -707,7 +744,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
       </SectionCard>
     ),
     agents: (
-      <SectionCard className="rounded-xl border-border" title={<span className="text-base tracking-tight">Ejecutivos <span className="font-mono text-sm font-medium text-muted-foreground">({filteredAgents.length})</span></span>} description={alerts > 0 ? `${alerts} sobre el umbral: pausa mayor a ${THRESHOLDS.pauseSeconds / 60} minutos o cierre de llamada sobre ${THRESHOLDS.wrapUpSeconds} segundos.` : `Se sincroniza cada ${POLL_MS / 1000} segundos.`}>
+      <SectionCard className="rounded-xl border-border" title={<span className="text-base tracking-tight">Ejecutivos <span className="font-mono text-sm font-medium text-muted-foreground">({filteredAgents.length})</span></span>} description={alerts > 0 ? `${alerts} sobre el umbral${exceededPauses ? ` (${exceededPauses} ${exceededPauses === 1 ? "pausa excedida" : "pausas excedidas"})` : ""}: pausa sobre el tope de su motivo (${THRESHOLDS.pauseSeconds / 60} minutos si no tiene) o cierre de llamada sobre ${THRESHOLDS.wrapUpSeconds} segundos.` : `Se sincroniza cada ${POLL_MS / 1000} segundos.`}>
         <div className="space-y-4 p-4">
           <div className="flex flex-wrap items-end gap-3 rounded-xl bg-surface-muted/45 p-3">
             <Field label="Estado" className="w-44"><Select value={group} onChange={(event) => setGroup(event.target.value as AgentGroup | "")}><option value="">Todos</option>{(Object.keys(GROUP_LABEL) as AgentGroup[]).map((key) => <option key={key} value={key}>{GROUP_LABEL[key]}</option>)}</Select></Field>

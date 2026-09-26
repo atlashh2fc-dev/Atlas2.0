@@ -1,5 +1,11 @@
 import { requireProfile } from "@/lib/auth";
-import { listAllStatusReasons, createStatusReason, toggleStatusReasonActive } from "@/app/actions/agent-status";
+import {
+  listAllStatusReasons,
+  createStatusReason,
+  toggleStatusReasonActive,
+  updateStatusReasonCap,
+} from "@/app/actions/agent-status";
+import { TOPE_MAXIMO_MINUTOS, TOPE_MINIMO_MINUTOS } from "@/lib/tope-de-pausa";
 import { CreatePanel } from "@/components/create-panel";
 import {
   ActionForm,
@@ -46,6 +52,17 @@ export default async function EstadosAgentePage() {
             <Field label="Orden en el CTI">
               <Input name="sort_order" type="number" defaultValue={reasons.length} />
             </Field>
+            <Field label="Tope en minutos (opcional)">
+              <Input
+                name="max_minutes"
+                type="number"
+                inputMode="numeric"
+                min={TOPE_MINIMO_MINUTOS}
+                max={TOPE_MAXIMO_MINUTOS}
+                step={1}
+                placeholder="10"
+              />
+            </Field>
           </CreatePanel>
         }
       />
@@ -73,11 +90,20 @@ export default async function EstadosAgentePage() {
                 />
               </span>
             </Th>
+            <Th>
+              <span className="inline-flex items-center gap-1">
+                Tope
+                <InfoTooltip
+                  text="Minutos que puede durar la pausa. No la corta: al pasarse, el teléfono le avisa a la ejecutiva y el monitor en vivo la marca como excedida. Vacío = sin tope."
+                  align="right"
+                />
+              </span>
+            </Th>
             <Th>Disponibilidad</Th>
             <Th />
           </Thead>
           <Tbody>
-            {reasons.length === 0 && <TableEmpty colSpan={6}>No hay motivos configurados.</TableEmpty>}
+            {reasons.length === 0 && <TableEmpty colSpan={7}>No hay motivos configurados.</TableEmpty>}
             {reasons.map((reason) => (
               <Tr key={reason.id}>
                 <Td strong>
@@ -106,10 +132,33 @@ export default async function EstadosAgentePage() {
                       : reason.is_pause
                         ? "Resta adherencia · no es tiempo productivo"
                         : "Cuenta como tiempo disponible"}
-                  {reason.max_seconds != null && (
-                    <span className="mt-0.5 block text-xs">
-                      Tope sugerido: {Math.round(reason.max_seconds / 60)} min
-                    </span>
+                </Td>
+                <Td>
+                  {reason.is_pause ? (
+                    <ActionForm action={updateStatusReasonCap} success="Tope guardado" className="flex items-center gap-1.5">
+                      <input type="hidden" name="id" value={reason.id} />
+                      {/* cn() no fusiona clases: el ancho va en el contenedor, no contra el w-full del Input. */}
+                      <div className="w-20">
+                        <Input
+                          name="max_minutes"
+                          type="number"
+                          inputMode="numeric"
+                          min={TOPE_MINIMO_MINUTOS}
+                          max={TOPE_MAXIMO_MINUTOS}
+                          step={1}
+                          fieldSize="sm"
+                          placeholder="Sin tope"
+                          defaultValue={reason.max_seconds != null ? Math.round(reason.max_seconds / 60) : ""}
+                          aria-label={`Tope en minutos de ${reason.label}`}
+                        />
+                      </div>
+                      <span className="text-xs text-muted-foreground">min</span>
+                      <ActionSubmit variant="secondary" size="sm" pendingLabel="…">
+                        Guardar
+                      </ActionSubmit>
+                    </ActionForm>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
                   )}
                 </Td>
                 <Td>

@@ -5,6 +5,7 @@ import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
 import type { AppRole } from "../src/lib/types.ts";
+import * as topeDePausa from "../src/lib/tope-de-pausa.ts";
 
 const nodeRequire = createRequire(import.meta.url);
 const agentId = "agent-own";
@@ -40,6 +41,7 @@ function harness(role: AppRole, owner: string | null = agentId, manager: string 
     "@/lib/supabase/server": { createClient: async () => { connections++; return client; } },
     "@/lib/supabase/admin": { createAdminClient: () => { connections++; return client; } },
     "next/cache": { revalidatePath() {} },
+    "@/lib/tope-de-pausa": topeDePausa,
   };
   function load(path: string) {
     const source = readFileSync(new URL(path, import.meta.url), "utf8");

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, ChevronDown, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { avisoParaEjecutiva, estadoDeTope, formatearMinutos, formatearRestante } from "@/lib/tope-de-pausa";
 import { formatElapsed } from "./format";
 import { useDismiss } from "./use-dismiss";
 
@@ -30,6 +31,7 @@ export function StatusMenu({
   tone,
   since,
   countdown,
+  pauseCapSeconds,
   open,
   onOpenChange,
   available,
@@ -55,6 +57,8 @@ export function StatusMenu({
   since: string | null;
   /** Reemplaza el cronómetro, por ejemplo la interrupción legal. */
   countdown?: string | null;
+  /** Tope de la pausa actual en segundos; nulo si no está en una pausa con tope. */
+  pauseCapSeconds?: number | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   available: StatusOption[];
@@ -79,7 +83,7 @@ export function StatusMenu({
   useDismiss(open, ref, dismiss);
 
   return (
-    <div ref={ref} className="relative shrink-0">
+    <div ref={ref} className="relative flex shrink-0 items-center gap-2">
       <button
         type="button"
         onClick={() => onOpenChange(!open)}
@@ -99,6 +103,7 @@ export function StatusMenu({
         )}
         <ChevronDown size={14} aria-hidden />
       </button>
+      {!countdown && pauseCapSeconds ? <PauseCap since={since} maxSeconds={pauseCapSeconds} /> : null}
 
       {open && (
         <div
@@ -242,6 +247,52 @@ export function Elapsed({ since, className }: { since: string | null; className?
   return (
     <span title="Tiempo en el estado actual" className={cn("font-mono text-xs tabular-nums", className)}>
       {formatElapsed(now - started)}
+    </span>
+  );
+}
+
+/**
+ * Lo que le queda de pausa y, al pasarse, el aviso. No bloquea nada: la
+ * ejecutiva decide cuándo volver y su supervisor ve lo mismo en el monitor.
+ *
+ * La cuenta regresiva cambia cada segundo y por eso queda fuera de la región
+ * aria-live: solo se anuncia el aviso de exceso, que cambia una vez por minuto.
+ */
+export function PauseCap({ since, maxSeconds }: { since: string | null; maxSeconds: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!since) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [since]);
+  const estado = estadoDeTope({ since, maxSeconds, isPause: true, now });
+  if (estado.tipo === "sin_tope") return null;
+  const aviso = avisoParaEjecutiva(estado);
+  return (
+    <span className="inline-flex items-center gap-2 text-xs">
+      {estado.tipo === "dentro" && (
+        <span
+          title={`Tope de esta pausa: ${formatearMinutos(estado.topeSegundos)}`}
+          className={cn(
+            "whitespace-nowrap",
+            // El último minuto se anticipa en ámbar para que alcance a volver.
+            estado.restanteSegundos <= 60 ? "font-semibold text-warning" : "text-muted-foreground"
+          )}
+        >
+          Quedan <span className="font-mono tabular-nums">{formatearRestante(estado.restanteSegundos)}</span>
+        </span>
+      )}
+      <span
+        role="status"
+        aria-live="polite"
+        className={cn(
+          aviso
+            ? "whitespace-nowrap rounded-md border border-danger bg-danger-bg px-2 py-1 font-semibold text-danger ring-2 ring-danger/30"
+            : "sr-only"
+        )}
+      >
+        {aviso}
+      </span>
     </span>
   );
 }

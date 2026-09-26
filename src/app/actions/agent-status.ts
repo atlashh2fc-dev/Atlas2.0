@@ -4,6 +4,9 @@ import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { requireProfile, getCurrentProfile } from "@/lib/auth";
 import type { AgentStatusReason } from "@/lib/types";
+import { validarTopeEnMinutos } from "@/lib/tope-de-pausa";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
  * Motivos de pausa/disponibilidad activos, para el selector de la barra CTI.
@@ -171,6 +174,8 @@ export async function createStatusReason(formData: FormData) {
   const label = (formData.get("label") as string)?.trim();
   const sortOrder = Number(formData.get("sort_order") ?? 0);
   if (!code || !label) throw new Error("Falta código o etiqueta");
+  const tope = validarTopeEnMinutos(formData.get("max_minutes"));
+  if (!tope.ok) throw new Error(tope.error);
 
   const supabase = await createClient();
   const { error } = await supabase.from("agent_status_reasons").insert({
@@ -178,6 +183,7 @@ export async function createStatusReason(formData: FormData) {
     label,
     is_pause: true,
     sort_order: Number.isFinite(sortOrder) ? sortOrder : 0,
+    max_seconds: tope.segundos,
   });
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/admin/estados-agente");
@@ -194,6 +200,31 @@ export async function toggleStatusReasonActive(formData: FormData) {
     .update({ is_active: !active })
     .eq("id", id);
   if (error) throw new Error(error.message);
+  revalidatePath("/dashboard/admin/estados-agente");
+}
+
+/**
+ * Tope de una pausa, en minutos (vacío = sin tope). No corta la pausa: el
+ * teléfono avisa a la ejecutiva al pasarse y el monitor la resalta. La RLS
+ * deja actualizar solo al admin y solo motivos de su empresa; si la fila no
+ * vuelve es porque no era suya, y lo decimos en vez de fingir que se guardó.
+ */
+export async function updateStatusReasonCap(formData: FormData) {
+  await requireProfile(["admin"]);
+  const id = String(formData.get("id") ?? "");
+  if (!UUID.test(id)) throw new Error("Motivo inválido.");
+  const tope = validarTopeEnMinutos(formData.get("max_minutes"));
+  if (!tope.ok) throw new Error(tope.error);
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("agent_status_reasons")
+    .update({ max_seconds: tope.segundos })
+    .eq("id", id)
+    .eq("is_pause", true)
+    .select("id");
+  if (error) throw new Error(error.message);
+  if (!data?.length) throw new Error("No se encontró la pausa o no es de tu empresa.");
   revalidatePath("/dashboard/admin/estados-agente");
 }
 
