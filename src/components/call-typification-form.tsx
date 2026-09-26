@@ -22,6 +22,7 @@ import {
 import {
   closeCall,
   discardCallTechnicalError,
+  getShortCallFacts,
   reviseCallManagement,
   superviseCallManagement,
 } from "@/app/actions/calls";
@@ -30,6 +31,7 @@ import {
   INTERCALL_BREAK_STORAGE_KEY,
   readLegalIntercallBreakUntil,
 } from "@/lib/intercall-break";
+import { decideShortCallClosure, shortCallNotice } from "@/lib/short-call-closure";
 import { AppointmentScheduleEmbed } from "@/components/appointment-schedule-embed";
 
 function isoToLocalInput(iso: string | null): string {
@@ -156,6 +158,11 @@ export function CallTypificationForm({
   const [hungUp, setHungUp] = useState(false);
   const [retryAt, setRetryAt] = useState(0);
   const [autoAttempt, setAutoAttempt] = useState(0);
+  // Conexión corta: la ficha arma sola el motivo de la campaña. Guarda el
+  // motivo que armó para marcar el cierre solo si la ejecutiva no lo cambió.
+  const [shortClosure, setShortClosure] = useState<{ talkSeconds: number; reason: string } | null>(null);
+  const [shortCheckAttempt, setShortCheckAttempt] = useState(0);
+  const [shortCheckDone, setShortCheckDone] = useState(false);
   const closeInFlightRef = useRef(false);
   const handleCloseRef = useRef<(selectedReason?: CallReasonConfig, auto?: boolean) => Promise<void>>(
     async () => {}
@@ -266,6 +273,8 @@ export function CallTypificationForm({
   async function handleClose(selectedReason?: CallReasonConfig, auto = false) {
     if (closeInFlightRef.current || pending !== null || catalog.length === 0) return;
     if (!auto && (armed || legalBreakActive)) return;
+    // Un cierre a mano nunca cuenta como automático por conexión corta.
+    if (!auto) setShortClosure(null);
     // El cierre directo usa la opción pulsada, no el estado del render anterior.
     // Las mismas validaciones y la misma acción del servidor protegen ambos caminos.
     const payload = {
@@ -322,7 +331,11 @@ export function CallTypificationForm({
           })
         : revision
           ? await reviseCallManagement(payload)
-          : await closeCall(payload);
+          : await closeCall({
+              ...payload,
+              short_call_auto_close:
+                auto && shortClosure !== null && payload.reason === shortClosure.reason ? true : undefined,
+            });
       if (!result.ok) {
         if (!revision && result.code === "call_in_progress") {
           // Válida pero con la llamada viva: queda lista y se cierra al colgar.
@@ -371,6 +384,76 @@ export function CallTypificationForm({
   useEffect(() => {
     handleCloseRef.current = handleClose;
   });
+
+  // Lo que la ejecutiva lleva hecho, leído cuando responde el servidor y no
+  // cuando se pidió: si armó o eligió algo mientras tanto, manda lo suyo.
+  const shortDecisionInputRef = useRef({ armed, reason, pending });
+  useEffect(() => {
+    shortDecisionInputRef.current = { armed, reason, pending };
+  });
+
+  // Conexión corta: se pregunta una vez al abrir la ficha (puede abrirse
+  // recién después del corte) y de nuevo al colgar, hasta que el motor
+  // escriba el fin de la conexión (~12 s como máximo).
+  const shortCheckEligible = !revision && !call.management_channel && catalog.length > 0;
+  const callEnded = hungUp || legalBreakActive;
+  const shortCheckWaiting = shortCheckAttempt > 0 && !callEnded;
+  useEffect(() => {
+    if (!shortCheckEligible || shortCheckDone || shortCheckWaiting) return;
+    let cancelled = false;
+    const id = setTimeout(async () => {
+      try {
+        const result = await getShortCallFacts({ callId: call.id });
+        if (cancelled) return;
+        if (!result.ok) {
+          setShortCheckDone(true);
+          return;
+        }
+        if (result.data.state === "off") {
+          // Con la llamada viva puede que el motor aún no asocie el intento
+          // a esta gestión: la respuesta definitiva es la de después del corte.
+          if (callEnded) setShortCheckDone(true);
+          else setShortCheckAttempt((n) => Math.max(n, 1));
+          return;
+        }
+        if (result.data.state === "live") {
+          if (shortCheckAttempt >= 8) setShortCheckDone(true);
+          else setShortCheckAttempt((n) => n + 1);
+          return;
+        }
+        setShortCheckDone(true);
+        const current = shortDecisionInputRef.current;
+        if (current.pending !== null || closeInFlightRef.current) return;
+        const decision = decideShortCallClosure({
+          facts: result.data,
+          catalog,
+          armed: current.armed,
+          selectedReason: current.reason || null,
+        });
+        if (!decision) return;
+        setReason(decision.option.value);
+        setStatus(decision.option.status);
+        setOutcome(decision.option.outcome);
+        setNextActionAt("");
+        setReasonPath([decision.option.stateLabel, ...(decision.option.groupPath ?? [])]);
+        setShortClosure({ talkSeconds: decision.talkSeconds, reason: decision.option.value });
+        setMessage(null);
+        setAttemptedClose(false);
+        // El corte ya ocurrió: se guarda apenas termina la interrupción legal.
+        setHungUp(true);
+        setAutoAttempt(0);
+        setArmed(true);
+      } catch (e) {
+        // Sin respuesta la ficha queda como siempre: la ejecutiva tipifica.
+        console.error("No se pudo revisar si la conexión fue corta", e);
+        if (!cancelled) setShortCheckDone(true);
+      }
+    }, shortCheckAttempt === 0 ? 0 : 1500);
+    return () => {
+      cancelled = true;
+      clearTimeout(id);
+    };
+  }, [shortCheckEligible, shortCheckDone, shortCheckWaiting, shortCheckAttempt, callEnded, call.id, catalog]);
 
   // Mientras la llamada sigue, se revisa cada 5 s por si terminó sin que este
   // navegador lo viera; al colgar, se intenta apenas pasa la interrupción legal.
@@ -623,7 +706,37 @@ export function CallTypificationForm({
           </div>
         </div>
       )}
-      {armed && (
+      {armed && shortClosure && (
+        <div
+          role="status"
+          className="flex flex-wrap items-center gap-3 rounded-xl border border-warning/30 bg-warning-bg px-4 py-3"
+        >
+          <Clock3 className="shrink-0 text-warning" size={20} />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-foreground">
+              {shortCallNotice(shortClosure.talkSeconds, reasonConfig?.label ?? shortClosure.reason)}
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {legalBreakActive
+                ? `Se guarda sola en ${legalBreakRemaining}s. Si era una persona, cámbiala.`
+                : "Guardando tipificación…"}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setArmed(false);
+              setAutoAttempt(0);
+              setShortClosure(null);
+            }}
+            className="rounded-lg border border-border bg-surface px-3 py-2 text-xs font-semibold text-foreground hover:border-primary hover:text-primary"
+          >
+            Cambiar tipificación
+          </button>
+        </div>
+      )}
+
+      {armed && !shortClosure && (
         <div
           role="status"
           className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/30 bg-primary/[0.06] px-4 py-3"

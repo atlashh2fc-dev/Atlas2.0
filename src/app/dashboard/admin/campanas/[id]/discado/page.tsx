@@ -4,6 +4,8 @@ import { upsertDialerCampaignConfig } from "@/app/actions/dialer-config";
 import type { DialerCampaignConfig } from "@/lib/types";
 import { MAX_CALLER_IDS } from "@/lib/caller-ids";
 import { DialModeSelect } from "@/components/dial-mode-select";
+import { fetchCampaignReasonCatalog } from "@/lib/campaign-reason-catalog";
+import { shortCallDispositionOptions } from "@/lib/short-call-closure";
 import { ActionForm, ActionSubmit, Callout, Field, InfoTooltip, Input, SectionCard, Select } from "@/components/ui";
 
 /** Etiqueta con la explicación al lado: esta es la pantalla más técnica del producto. */
@@ -27,6 +29,15 @@ export default async function CampaignDialerPage({ params }: { params: Promise<{
   ]);
 
   const config = dialerConfig as DialerCampaignConfig | null;
+  // Sin la migración 20260926150000 la fila no trae las columnas y los campos
+  // no se muestran: la acción solo toca lo que el formulario envía.
+  const shortCallAvailable = !config || "short_call_seconds" in config;
+  const shortCallOptions = shortCallAvailable && campaign?.workflow_id
+    ? shortCallDispositionOptions(await fetchCampaignReasonCatalog(supabase, id))
+    : [];
+  const shortCallDisposition = config?.short_call_disposition ?? "";
+  const shortCallDispositionMissing =
+    shortCallDisposition !== "" && !shortCallOptions.some((option) => option.value === shortCallDisposition);
   const usesSiptel = config?.trunk_context === "siptel";
   const mode = config?.dial_mode ?? "manual";
   // La columna llega con la migración 20260926160000; antes de eso el campo no
@@ -233,6 +244,63 @@ export default async function CampaignDialerPage({ params }: { params: Promise<{
             Detectar contestador automático
             <InfoTooltip text="Descarta las llamadas que caen en un buzón de voz, para no entregarle una grabación a un ejecutivo." />
           </label>
+
+          {shortCallAvailable && (
+            <>
+              <div className="sm:col-span-2 border-t border-border pt-4">
+                <p className="text-sm font-medium text-foreground">Conexiones cortas</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Una conexión del discador que dura menos que el umbral (buzón, centralita, cuelgan al tiro) se
+                  cierra sola con el motivo elegido al terminar la interrupción legal. El ejecutivo ve el aviso y
+                  puede cambiarla antes; si ya había armado otra tipificación, manda la suya.
+                </p>
+              </div>
+
+              {shortCallDispositionMissing && (
+                <Callout tone="warning" className="sm:col-span-2">
+                  El motivo guardado ({shortCallDisposition}) ya no está en el flujo de la campaña o pide agenda o
+                  datos: no se está aplicando. Elige otro.
+                </Callout>
+              )}
+
+              <Field
+                label={
+                  <LabelWithHelp
+                    label="Umbral de conversación (segundos)"
+                    help="Se mide desde que el cliente queda conectado con el ejecutivo hasta el corte. Vacío = apagado. Referencia Equifax 25-09: el 31 % de las conexiones duró menos de 10 segundos."
+                  />
+                }
+              >
+                <Input
+                  type="number"
+                  name="short_call_seconds"
+                  min="1"
+                  max="60"
+                  step="1"
+                  placeholder="Apagado"
+                  defaultValue={config?.short_call_seconds ?? ""}
+                />
+              </Field>
+
+              <Field
+                label={
+                  <LabelWithHelp
+                    label="Motivo con que se cierran"
+                    help="Solo aparecen motivos del flujo de la campaña que no piden agenda, datos comerciales ni nota."
+                  />
+                }
+              >
+                <Select name="short_call_disposition" defaultValue={shortCallDispositionMissing ? "" : shortCallDisposition}>
+                  <option value="">{shortCallOptions.length === 0 ? "El flujo no tiene motivos elegibles" : "Sin motivo (apagado)"}</option>
+                  {shortCallOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.stateLabel} · {option.label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </>
+          )}
 
           <label className="flex items-center gap-2 text-sm text-foreground sm:col-span-2">
             <input type="checkbox" name="is_active" value="true" defaultChecked={config?.is_active ?? false} className="accent-primary" />

@@ -6,6 +6,7 @@ import vm from "node:vm";
 import * as React from "react";
 import ts from "typescript";
 import * as typification from "../src/lib/call-typification.ts";
+import * as shortCallClosure from "../src/lib/short-call-closure.ts";
 
 const require = createRequire(import.meta.url);
 const catalog = [
@@ -44,6 +45,7 @@ function fixture(options: {
     react: { ...React, useState: slot, useRef: (initial: unknown) => slot({ current: initial })[0], useMemo: (fn: () => unknown) => fn(), useEffect: () => {}, useId: () => "fixture" },
     "next/navigation": { useRouter: () => ({ push: (url: string) => navigations.push(url), refresh: () => {} }) },
     "@/lib/call-typification": typification,
+    "@/lib/short-call-closure": shortCallClosure,
     "@/lib/agent-control": { notifyAgentManagementClosed: () => { closedEvents++; }, requestAgentHangup: () => { hangupRequests++; } },
     "@/lib/intercall-break": { readLegalIntercallBreakUntil: () => options.breakActive ? Date.now() + 10000 : 0 },
     "@/components/appointment-schedule-embed": { AppointmentScheduleEmbed: "calendar-fixture" },

@@ -285,6 +285,10 @@ export interface DialerCampaignConfig {
   max_technical_failures?: number | null;
   /** Fracción de fallas técnicas (20+ intentos en 10 min) que detiene el claim. null = apagado. */
   technical_breaker_ratio?: number | null;
+  /** Conversación (s) bajo la cual una conexión del pool se cierra sola. null = apagado. */
+  short_call_seconds?: number | null;
+  /** Motivo (calls.reason) que se aplica a esas conexiones. null = apagado. */
+  short_call_disposition?: string | null;
   created_at: string;
   updated_at: string;
 }

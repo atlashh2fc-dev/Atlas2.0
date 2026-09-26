@@ -481,8 +481,9 @@ select pg_temp.check(pg_temp.sin_ruta('+56412000004') = 1, 'ni impide descartarl
 
 -- ===========================================================================
 -- 15. Rotación de caller ID: lista normalizada, número por intento e informe
+-- ====================================================================
 -- ===========================================================================
--- Sin lista la campaña queda como estaba.
+-- 16. -- Sin lista la campaña queda como estaba.
 select pg_temp.check((select caller_ids is null from dialer_campaign_configs where campaign_id = '00000000-0000-0000-0000-0000000000f1'), 'sin lista: caller_ids null, se usa caller_id');
 update dialer_campaign_configs set caller_ids = array['+56 9 6590 6926', '912345678', '56965906926', '', null, '(2) 2345 6789']
 where campaign_id = '00000000-0000-0000-0000-0000000000f1';
@@ -591,5 +592,32 @@ exception when insufficient_privilege then null;
 end $$;
 reset role;
 reset request.jwt.claim.sub;
+=======
+-- Cierre automático de conexiones cortas (20260926150000)
+-- ===========================================================================
+select pg_temp.check((select count(*) = 0 from dialer_campaign_configs
+  where short_call_seconds is not null or short_call_disposition is not null), 'conexiones cortas: apagado en todas las campañas');
+update dialer_campaign_configs set short_call_seconds = 10, short_call_disposition = 'NO CONTESTA'
+  where campaign_id = '318cf37a-da42-4cbd-934d-bdc47753d7bd';
+select pg_temp.check((select short_call_seconds = 10 and short_call_disposition = 'NO CONTESTA'
+  from dialer_campaign_configs where campaign_id = '318cf37a-da42-4cbd-934d-bdc47753d7bd'), 'conexiones cortas: se activa por campaña');
+do $$ begin
+  update dialer_campaign_configs set short_call_seconds = 0 where campaign_id = '318cf37a-da42-4cbd-934d-bdc47753d7bd';
+  raise exception 'un umbral de 0 s no debería aceptarse';
+exception when check_violation then null;
+end $$;
+do $$ begin
+  update dialer_campaign_configs set short_call_seconds = 61 where campaign_id = '318cf37a-da42-4cbd-934d-bdc47753d7bd';
+  raise exception 'un umbral sobre 60 s no debería aceptarse';
+exception when check_violation then null;
+end $$;
+do $$ begin
+  update dialer_campaign_configs set short_call_disposition = '  ' where campaign_id = '318cf37a-da42-4cbd-934d-bdc47753d7bd';
+  raise exception 'un motivo en blanco no debería aceptarse';
+exception when check_violation then null;
+end $$;
+select pg_temp.check(true, 'conexiones cortas: umbral fuera de 1-60 y motivo en blanco se rechazan');
+update dialer_campaign_configs set short_call_seconds = null, short_call_disposition = null
+  where campaign_id = '318cf37a-da42-4cbd-934d-bdc47753d7bd';
 
 select 'ESCENARIOS COMPLETOS' as resultado;

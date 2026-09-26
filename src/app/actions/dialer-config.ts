@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { requireProfile } from "@/lib/auth";
 import type { DialMode } from "@/lib/types";
 import { parseCallerIdList } from "@/lib/caller-ids";
+import { fetchCampaignReasonCatalog } from "@/lib/campaign-reason-catalog";
+import { parseShortCallSettings } from "@/lib/short-call-closure";
 
 const VALID_DIAL_MODES: DialMode[] = ["manual", "preview", "progressive", "predictive"];
 
@@ -97,6 +99,20 @@ export async function upsertDialerCampaignConfig(formData: FormData) {
   }
 
   const supabase = await createClient();
+
+  // Cierre automático de conexiones cortas: el motivo se valida contra el
+  // mismo catálogo que ve la ficha, para no guardar uno que nunca se aplique.
+  // La pantalla no muestra los campos mientras falte la migración
+  // 20260926150000; sin ellos en el formulario, las columnas no se tocan.
+  const rawShortDisposition = formData.get("short_call_disposition") as string | null;
+  const shortCall = formData.has("short_call_seconds")
+    ? parseShortCallSettings(
+        formData.get("short_call_seconds") as string | null,
+        rawShortDisposition,
+        rawShortDisposition?.trim() ? await fetchCampaignReasonCatalog(supabase, campaignId) : []
+      )
+    : {};
+
   const { error } = await supabase.from("dialer_campaign_configs").upsert(
     {
       campaign_id: campaignId,
@@ -117,6 +133,7 @@ export async function upsertDialerCampaignConfig(formData: FormData) {
       personal_callback_window_minutes: Number.isFinite(personalCallbackWindow) ? personalCallbackWindow : 30,
       personal_callback_retry_seconds: Number.isFinite(personalCallbackRetry) ? personalCallbackRetry : 120,
       personal_callback_on_expiry: personalCallbackOnExpiry,
+      ...shortCall,
       updated_at: new Date().toISOString(),
     },
     { onConflict: "campaign_id" }

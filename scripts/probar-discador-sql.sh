@@ -24,6 +24,7 @@ MIGRACIONES=(
   20260924230000_causa_q850_clasifica_intentos.sql
   20260926120000_numero_sin_ruta_sale_de_la_cola.sql
   20260926130000_abandono_real_y_meta_en_porcentaje.sql
+  20260926150000_cierre_automatico_conexiones_cortas.sql
   20260926160000_rotacion_de_caller_id.sql
 )
 

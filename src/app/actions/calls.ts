@@ -17,6 +17,13 @@ import { dialerSuppressionMessage } from "@/lib/dialer-suppression";
 import type { Call, WorkflowStep, WorkflowStepBranch } from "@/lib/types";
 import { requireProfile } from "@/lib/auth";
 import { fetchCampaignAgendaPolicy } from "@/lib/campaign-agenda-policy";
+import {
+  SHORT_CALL_AUTO_CLOSED_EVENT,
+  measureShortCall,
+  readShortCallConfig,
+  shortCallClosureQualifies,
+  type ShortCallFacts,
+} from "@/lib/short-call-closure";
 
 async function requireAgent() {
   const profile = await requireProfile(["agente"]);
@@ -913,6 +920,89 @@ export async function saveCallAgenda(input: CallAgendaPayload): Promise<CallActi
   }
 }
 
+/**
+ * Mide la conexión de una gestión propia contra la regla de conexión corta de
+ * la campaña que la discó. Lee lo que el ejecutivo ya puede ver (sus intentos
+ * y la config de discado), sin cliente de servicio.
+ */
+async function readShortCallFacts(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  callId: string
+): Promise<ShortCallFacts> {
+  const { data: attempt, error: attemptError } = await supabase
+    .from("dial_attempts")
+    .select("id, campaign_id, attempt_kind, bridged_at, ended_at")
+    .eq("call_id", callId)
+    .eq("agent_id", userId)
+    .not("bridged_at", "is", null)
+    .order("bridged_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (attemptError) throw new Error(attemptError.message);
+  if (!attempt) return { state: "off" };
+
+  const { data: config, error: configError } = await supabase
+    .from("dialer_campaign_configs")
+    .select("short_call_seconds, short_call_disposition")
+    .eq("campaign_id", attempt.campaign_id)
+    .maybeSingle();
+  if (configError) {
+    // La web puede publicarse antes que la migración 20260926150000: sin las
+    // columnas no hay regla que aplicar y la ficha sigue como siempre.
+    if (configError.code === "42703") return { state: "off" };
+    throw new Error(configError.message);
+  }
+  return measureShortCall(readShortCallConfig(config), attempt);
+}
+
+/**
+ * La ficha pregunta al colgar si la conexión fue corta. `live` significa que
+ * el motor todavía no escribe el corte y conviene volver a preguntar.
+ */
+export async function getShortCallFacts(input: { callId: string }): Promise<CallActionResult<ShortCallFacts>> {
+  try {
+    const { supabase, userId } = await requireAgent();
+    return { ok: true, data: await readShortCallFacts(supabase, userId, input.callId) };
+  } catch (error) {
+    return callActionError("getShortCallFacts", error, { callId: input.callId });
+  }
+}
+
+/**
+ * Deja trazable el cierre automático para auditar cuántos hubo y escuchar si
+ * alguno era una persona (dial_attempt_id lleva a la grabación). Se vuelve a
+ * medir en el servidor: si la conexión no califica, no se marca.
+ */
+async function recordShortCallAutoClose(params: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  userId: string;
+  callId: string;
+  leadId: string;
+  reason: string | null;
+}) {
+  const { supabase, userId, callId, leadId, reason } = params;
+  const facts = await readShortCallFacts(supabase, userId, callId);
+  if (facts.state !== "ended" || !shortCallClosureQualifies(facts, reason)) {
+    console.warn("[calls.closeCall] cierre corto sin respaldo en la base; no se marca", { callId, leadId, reason, facts });
+    return;
+  }
+  const { error } = await supabase.from("call_events").insert({
+    call_id: callId,
+    lead_id: leadId,
+    agent_id: userId,
+    event_type: SHORT_CALL_AUTO_CLOSED_EVENT,
+    payload: {
+      reason,
+      talk_seconds: Math.round(facts.talkSeconds * 10) / 10,
+      threshold_seconds: facts.thresholdSeconds,
+      dial_attempt_id: facts.dialAttemptId,
+      source: "dial_attempts.bridged_at-ended_at",
+    },
+  });
+  if (error) throw new Error(error.message);
+}
+
 /** Cerrar la gestión ("Guardar y terminar"): valida todo y persiste el cierre. */
 export async function closeCall(input: {
   callId: string;
@@ -926,6 +1016,11 @@ export async function closeCall(input: {
   equifax_uf_amount: number | null;
   equifax_q_consultas?: number | null;
   equifax_recipient_email: string | null;
+  /**
+   * La ficha lo manda cuando la tipificación la armó sola por conexión corta
+   * y la ejecutiva no la cambió. Solo marca la gestión; el cierre es el mismo.
+   */
+  short_call_auto_close?: boolean;
 }): Promise<CallActionResult> {
   try {
     const { supabase, userId } = await requireAgent();
@@ -1020,19 +1115,19 @@ export async function closeCall(input: {
       clearLegalIntercallBreak(userId),
       releaseAgentFromWrapUp(userId),
       restoreAgentFromHybridManualMode(supabase),
+      // En una repetición la primera solicitud ya dejó la marca.
+      input.short_call_auto_close && !closeError
+        ? recordShortCallAutoClose({ supabase, userId, callId, leadId, reason })
+        : Promise.resolve(),
     ]);
+    const cleanupNames = ["intercall_break", "wrap_up", "hybrid_manual_mode", "short_call_mark"];
     cleanupResults.forEach((result, index) => {
       if (result.status === "rejected") {
         console.error("[calls.closeCall] post-close cleanup failed", {
           callId,
           leadId,
           userId,
-          cleanup:
-            index === 0
-              ? "intercall_break"
-              : index === 1
-                ? "wrap_up"
-                : "hybrid_manual_mode",
+          cleanup: cleanupNames[index],
           error: result.reason instanceof Error ? result.reason.message : String(result.reason),
         });
       }
