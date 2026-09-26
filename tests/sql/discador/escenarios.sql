@@ -32,6 +32,30 @@ select pg_temp.check(pg_temp.retry('00000000-0000-0000-0000-000000000020') = 'in
 select pg_temp.check(pg_temp.retry('00000000-0000-0000-0000-000000000021') is null, 'carterizado de Equifax no vale para Abogado');
 select pg_temp.check((select count(*) = 1 from dialer_phone_suppressions where phone = '56910000009' and client_key = 'equifax' and campaign_id is null), 'fila con alcance de cliente');
 
+-- Abandono real y meta en porcentaje (20260926130000)
+create function pg_temp.meta(p uuid) returns numeric language sql as $$
+  select target_abandonment_rate from dialer_campaign_configs where campaign_id = p $$;
+create function pg_temp.estado(p uuid) returns text language sql as $$ select status from dial_attempts where id = p $$;
+create function pg_temp.rechaza_meta(p numeric) returns boolean language plpgsql as $$
+begin
+  update dialer_campaign_configs set target_abandonment_rate = p where campaign_id = '00000000-0000-0000-0000-0000000000e8';
+  return false;
+exception when check_violation then return true;
+end $$;
+select pg_temp.check(pg_temp.meta('318cf37a-da42-4cbd-934d-bdc47753d7bd') = 3, 'meta ya en porcentaje no cambia');
+select pg_temp.check(pg_temp.meta('00000000-0000-0000-0000-0000000000e2') = 3, 'meta 0,03 pasa a 3 %');
+select pg_temp.check(pg_temp.meta('00000000-0000-0000-0000-0000000000e3') = 5, 'meta 0,05 pasa a 5 %');
+select pg_temp.check(pg_temp.meta('00000000-0000-0000-0000-0000000000e8') = 3, 'meta 0 pasa a 3 %');
+select pg_temp.check(pg_temp.rechaza_meta(0.03) and pg_temp.rechaza_meta(0) and pg_temp.rechaza_meta(150), 'la base rechaza fracciones, cero y más de 100');
+select pg_temp.check(not pg_temp.rechaza_meta(2.5) and pg_temp.meta('00000000-0000-0000-0000-0000000000e8') = 2.5, 'acepta 2,5 %');
+update dialer_campaign_configs set target_abandonment_rate = 3 where campaign_id = '00000000-0000-0000-0000-0000000000e8';
+select pg_temp.check(pg_temp.estado('00000000-0000-0000-0000-00000000d031') = 'abandoned', 'contestado sin ejecutiva que quedó completed pasa a abandoned');
+select pg_temp.check(pg_temp.near(pg_temp.retry('00000000-0000-0000-0000-000000000031'), now() + interval '1430 minutes'), 'el abandono cuenta como "habló": espera el último escalón');
+select pg_temp.check(pg_temp.estado('00000000-0000-0000-0000-00000000d032') = 'completed', 'con bridge sigue completed');
+select pg_temp.check(pg_temp.estado('00000000-0000-0000-0000-00000000d033') = 'completed', 'con AgentConnect confirmado (agent_id) sigue completed aunque falte el bridge');
+select pg_temp.check(pg_temp.estado('00000000-0000-0000-0000-00000000d034') = 'completed', 'sin originated_at no se sabe si contestó: sigue completed');
+select pg_temp.check((select status = 'completed' from dial_attempts where lead_id = '00000000-0000-0000-0000-000000000016'), 'una agenda personal no se reclasifica');
+
 -- ===========================================================================
 -- Datos de los escenarios
 -- ===========================================================================

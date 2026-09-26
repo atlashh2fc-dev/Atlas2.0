@@ -258,6 +258,7 @@ export interface DialerCampaignConfig {
   is_active: boolean;
   max_redial_attempts: number;
   abandon_timeout_seconds: number;
+  /** Porcentaje (3 = 3 %), entre 1 y 100; lo lee el pacing predictivo del motor. */
   target_abandonment_rate: number;
   amd_enabled: boolean;
   /** Entregar los compromisos agendados a su ejecutivo a la hora acordada. */

@@ -90,7 +90,13 @@ test("el motor registra la conexión de la agenda cuando el cliente contesta", (
   assert.match(connect, /recording\.start/);
 
   const hangup = router.slice(router.indexOf('case "hangup"'), router.indexOf('case "userevent"'));
-  assert.match(hangup, /personalCallbackHangupEvent/);
+  // La decisión vive en outboundHangupEvent, que resuelve la agenda con
+  // personalCallbackHangupEvent antes de mirar el abandono del pool.
+  assert.match(hangup, /outboundHangupEvent\(\{[\s\S]*personalCallback: callback/);
+  const semantics = read("dialer-engine/src/ami/eventSemantics.ts");
+  const decision = semantics.slice(semantics.indexOf("export function outboundHangupEvent"));
+  assert.ok(decision.indexOf("return personalCallbackHangupEvent(") !== -1);
+  assert.ok(decision.indexOf("return personalCallbackHangupEvent(") < decision.indexOf('return "abandoned"'));
   assert.match(hangup, /pauseAgentForWrapUp\(ami, callback\.extension\)/);
 });
 

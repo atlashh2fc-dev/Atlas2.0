@@ -179,7 +179,7 @@ export default async function CampaignDialerPage({ params }: { params: Promise<{
             label={
               <LabelWithHelp
                 label="Abandono objetivo (%)"
-                help="Solo en modo predictivo: el motor ajusta el ratio para mantener el abandono cerca de este valor, sin pasar el ratio máximo."
+                help="Solo en modo predictivo: el motor ajusta el ratio para mantener el abandono cerca de este valor, sin pasar el ratio máximo. Es porcentaje: 3 = 3 % de las llamadas contestadas que cuelgan sin ejecutiva."
               />
             }
           >
@@ -187,7 +187,7 @@ export default async function CampaignDialerPage({ params }: { params: Promise<{
               type="number"
               name="target_abandonment_rate"
               step="0.5"
-              min="0"
+              min="1"
               max="100"
               defaultValue={config?.target_abandonment_rate ?? 6.0}
             />

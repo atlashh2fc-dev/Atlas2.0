@@ -97,6 +97,69 @@ export function personalCallbackHangupEvent(params: {
   return "failed";
 }
 
+export type OutboundTerminalEvent =
+  | PersonalCallbackTerminalEvent
+  | "abandoned"
+  | "voicemail";
+
+/** Causa Q.850 del Hangup a estado terminal cuando no hay nada mejor que decir. */
+export function hangupCauseToStatus(cause: unknown): "no_answer" | "busy" | "failed" | "completed" {
+  const code = Number(cause);
+  // Causas AQ.733 más comunes en troncales SIP.
+  if (code === 17) return "busy";
+  if (code === 19 || code === 18) return "no_answer";
+  if (code === 16) return "completed"; // normal clearing (colgó alguien tras contestar)
+  return "failed";
+}
+
+/**
+ * true si un OriginateResponse significa que el CLIENTE contestó.
+ *
+ * El pool origina con Async=true hacia Queue (o el contexto de AMD), y con
+ * Async Asterisk solo manda Success cuando la pata saliente contesta: esa
+ * pata es el cliente. Antes el motor esperaba un DialEnd ANSWER sobre el
+ * uniqueid del cliente, que en Originate→Queue casi nunca llega; el intento
+ * contestado sin ejecutiva quedaba 'completed' causa 16 y el abandono medía
+ * cero (Equifax: 26 así, ningún 'abandoned').
+ *
+ * En una agenda personal la pata originada es la del EJECUTIVO: su Success
+ * solo dice que él contestó; lo del cliente llega después por DialEnd.
+ */
+export function originateResponseMeansCustomerAnswered(params: {
+  success: boolean;
+  personalCallback: boolean;
+}): boolean {
+  return params.success && !params.personalCallback;
+}
+
+/**
+ * Estado terminal de un intento saliente al primer Hangup. Prioridad:
+ *
+ * 1. AMD ya dijo que era contestador: 'voicemail'. No es abandono ni una
+ *    causa SIP real; el propio motor cortó al detectar la máquina.
+ * 2. Agenda personal: lo que pasó con el cliente (personalCallbackHangupEvent).
+ * 3. El cliente contestó y nunca llegó a una ejecutiva: 'abandoned', sea cual
+ *    sea la causa SIP. Es el KPI que frena al predictivo.
+ * 4. Si no, la causa SIP manda como siempre.
+ */
+export function outboundHangupEvent(params: {
+  voicemail: boolean;
+  personalCallback: { customerDialStatus?: string | null } | null | undefined;
+  answered: boolean;
+  bridged: boolean;
+  cause: unknown;
+}): OutboundTerminalEvent {
+  if (params.voicemail) return "voicemail";
+  if (params.personalCallback) {
+    return personalCallbackHangupEvent({
+      bridged: params.bridged,
+      customerDialStatus: params.personalCallback.customerDialStatus,
+    });
+  }
+  if (params.answered && !params.bridged) return "abandoned";
+  return hangupCauseToStatus(params.cause);
+}
+
 /** Segundos de conversación desde que el cliente contestó, o null si no hubo. */
 export function secondsSince(startMs: number | undefined, nowMs: number): number | null {
   if (startMs === undefined || !Number.isFinite(startMs) || nowMs < startMs) return null;

@@ -56,9 +56,12 @@ export async function upsertDialerCampaignConfig(formData: FormData) {
     throw new Error("El timeout de cola debe ser un entero entre 10 y 600 segundos");
   }
 
+  // Porcentaje (3 = 3 %), como lo lee el motor. El piso es 1 para que una
+  // fracción (0,03) no entre como meta 100 veces más estricta; la base tiene
+  // el mismo CHECK.
   const targetAbandonmentRate = Number(formData.get("target_abandonment_rate"));
-  if (!Number.isFinite(targetAbandonmentRate) || targetAbandonmentRate < 0 || targetAbandonmentRate > 100) {
-    throw new Error("La tasa de abandono objetivo debe ser un número entre 0 y 100");
+  if (!Number.isFinite(targetAbandonmentRate) || targetAbandonmentRate < 1 || targetAbandonmentRate > 100) {
+    throw new Error("El abandono objetivo es un porcentaje entre 1 y 100 (3 = 3 %)");
   }
 
   const amdEnabled = formData.get("amd_enabled") === "true";

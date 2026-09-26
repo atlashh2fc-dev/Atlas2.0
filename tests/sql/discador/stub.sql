@@ -46,7 +46,8 @@ create table public.calls (
 );
 create table public.dialer_campaign_configs (
   campaign_id uuid primary key references public.campaigns(id), max_dial_ratio numeric default 1,
-  is_active boolean default true, max_redial_attempts integer not null default 4, updated_at timestamptz default now()
+  is_active boolean default true, max_redial_attempts integer not null default 4,
+  target_abandonment_rate numeric not null default 6.0, updated_at timestamptz default now()
 );
 create table public.dialer_agent_sessions (id uuid primary key default gen_random_uuid(), profile_id uuid, campaign_id uuid, status text);
 create table public.dial_attempts (

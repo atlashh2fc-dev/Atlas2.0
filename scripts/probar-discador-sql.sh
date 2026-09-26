@@ -23,6 +23,7 @@ MIGRACIONES=(
   20260924181400_voz_ia_respeta_no_llamar.sql
   20260924230000_causa_q850_clasifica_intentos.sql
   20260926120000_numero_sin_ruta_sale_de_la_cola.sql
+  20260926130000_abandono_real_y_meta_en_porcentaje.sql
 )
 
 TEMPORAL=""

@@ -227,9 +227,9 @@ begin
      wrapup_seconds, max_redial_attempts, abandon_timeout_seconds, target_abandonment_rate, amd_enabled,
      personal_callback_enabled, personal_callback_window_minutes)
   values
-    (v_hogar,    'progressive', 1.0, '+56 2 0000 1001', 'from-dialer-outbound', 'andes_ventas',   true, 45, 4, 25, 0.03, true,  true, 120),
-    (v_movil,    'preview',     1.0, '+56 2 0000 1002', 'from-dialer-outbound', 'andes_ventas',   true, 60, 3, 25, 0.03, false, true, 180),
-    (v_cobranza, 'predictive',  1.6, '+56 2 0000 1003', 'from-dialer-outbound', 'andes_cobranza', true, 30, 6, 20, 0.05, true,  false, 60)
+    (v_hogar,    'progressive', 1.0, '+56 2 0000 1001', 'from-dialer-outbound', 'andes_ventas',   true, 45, 4, 25, 3, true,  true, 120),
+    (v_movil,    'preview',     1.0, '+56 2 0000 1002', 'from-dialer-outbound', 'andes_ventas',   true, 60, 3, 25, 3, false, true, 180),
+    (v_cobranza, 'predictive',  1.6, '+56 2 0000 1003', 'from-dialer-outbound', 'andes_cobranza', true, 30, 6, 20, 5, true,  false, 60)
   on conflict (campaign_id) do update
     set dial_mode = excluded.dial_mode, max_dial_ratio = excluded.max_dial_ratio,
         caller_id = excluded.caller_id, queue_name = excluded.queue_name,

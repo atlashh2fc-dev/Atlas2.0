@@ -13,7 +13,8 @@ import {
   normalizeAmiUniqueId,
   normalizeCallDisconnectParty,
   normalizeQueueTalkSeconds,
-  personalCallbackHangupEvent,
+  originateResponseMeansCustomerAnswered,
+  outboundHangupEvent,
   queueMemberDialerStatus,
   secondsSince,
 } from "./eventSemantics";
@@ -34,8 +35,10 @@ const attemptByAgentExtension = new Map<string, string>();
 // dial_attempt_id -> si el cliente contestó y si llegó a bridgearse con un
 // agente. Si contestó pero nunca hubo bridge antes del hangup, es un
 // abandono real (el discador dejó a alguien esperando sin agente
-// disponible) — el KPI más vigilado en marcado predictivo/asistido. Se
-// limpia en Hangup junto con attemptByUniqueId.
+// disponible) — el KPI más vigilado en marcado predictivo/asistido. En el
+// pool "contestó" lo marca el OriginateResponse Success; en una agenda
+// personal, el DialEnd ANSWER de la pata del cliente. Se limpia en Hangup
+// junto con attemptByUniqueId.
 const answerStateByAttemptId = new Map<string, { answered: boolean; bridged: boolean }>();
 
 // dial_attempt_id de llamadas que AMD marcó como contestador/voicemail
@@ -149,15 +152,6 @@ function attemptIdFromEvent(evt: Record<string, unknown>): string | undefined {
   return undefined;
 }
 
-function hangupCauseToStatus(cause: unknown): "no_answer" | "busy" | "failed" | "completed" {
-  const code = Number(cause);
-  // Causas AQ.733 más comunes en troncales SIP.
-  if (code === 17) return "busy";
-  if (code === 19 || code === 18) return "no_answer";
-  if (code === 16) return "completed"; // normal clearing (colgó alguien tras contestar)
-  return "failed";
-}
-
 /**
  * Registra los listeners de AMI y traduce eventos crudos a las RPCs de
  * Supabase. Cualquier evento sin dial_attempt_id conocido se ignora (por
@@ -243,6 +237,19 @@ export function registerEventRouter(
         if (uniqueId) attemptByUniqueId.set(uniqueId, actionId);
 
         const success = String(evt.response ?? "").toLowerCase() === "success";
+        // Con Async, Success en el pool es que el cliente contestó (ver
+        // originateResponseMeansCustomerAnswered). Se marca aquí, de forma
+        // síncrona, para que el Hangup que venga detrás ya lo sepa aunque
+        // nunca llegue AgentConnect: eso es justamente el abandono.
+        const customerAnswered = originateResponseMeansCustomerAnswered({
+          success,
+          personalCallback: getPersonalCallback(actionId) !== undefined,
+        });
+        if (customerAnswered) {
+          const state = answerStateByAttemptId.get(actionId) ?? { answered: false, bridged: false };
+          state.answered = true;
+          answerStateByAttemptId.set(actionId, state);
+        }
         // Una agenda cuyo ejecutivo no contestó no genera Hangup correlacionable:
         // se suelta aquí para no acumularla en memoria.
         if (!success) forgetPersonalCallback(actionId);
@@ -263,6 +270,13 @@ export function registerEventRouter(
             payload: { raw_response: evt.response ?? null, reason: evt.reason ?? null, q850_cause: cause },
           });
         });
+        if (customerAnswered) {
+          // Misma cola que 'originating', y detrás de él: llena answered_at,
+          // que es lo que miran los reportes y la espera entre reintentos.
+          enqueueAttemptTask(actionId, "register_dial_event (answered)", () =>
+            registerDialEvent({ dialAttemptId: actionId, eventType: "answered", payload: { signal: "originate_response" } })
+          );
+        }
         return;
       }
 
@@ -284,6 +298,11 @@ export function registerEventRouter(
         const callback = getPersonalCallback(dialAttemptId);
         if (status === "ANSWER") {
           const state = answerStateByAttemptId.get(dialAttemptId) ?? { answered: false, bridged: false };
+          // En el pool el OriginateResponse ya registró 'answered'. Un DialEnd
+          // ANSWER tardío (la Queue marcando a la ejecutiva) no lo repite:
+          // register_dial_event solo descarta rangos MENORES, así que un
+          // segundo 'answered' reescribiría answered_at y duplicaría el evento.
+          const alreadyAnswered = state.answered;
           state.answered = true;
           if (callback) {
             // En una agenda personal el ejecutivo ya está en la línea cuando se
@@ -299,9 +318,11 @@ export function registerEventRouter(
           }
           answerStateByAttemptId.set(dialAttemptId, state);
 
-          enqueueAttemptTask(dialAttemptId, "register_dial_event (answered)", () =>
-            registerDialEvent({ dialAttemptId, eventType: "answered" })
-          );
+          if (!alreadyAnswered) {
+            enqueueAttemptTask(dialAttemptId, "register_dial_event (answered)", () =>
+              registerDialEvent({ dialAttemptId, eventType: "answered" })
+            );
+          }
           if (callback) {
             // DialEnd.Channel es la pata del ejecutivo (quien ejecuta Dial):
             // MixMonitor sobre ella graba la conversación completa.
@@ -463,24 +484,16 @@ export function registerEventRouter(
         const wasVoicemail = voicemailAttemptIds.delete(dialAttemptId);
         const callback = getPersonalCallback(dialAttemptId);
 
-        // Prioridad: AMD ya determinó que era contestador/voicemail (no es
-        // ni abandono ni un no_answer/busy/failed real — es que el propio
-        // motor cortó tras detectar la máquina). Una agenda personal se
-        // resuelve con lo que pasó con el cliente (ver
-        // personalCallbackHangupEvent). Si no, el cliente contestó
-        // pero nunca llegó a bridgearse con un agente: abandono real del
-        // discador, independiente de la causa SIP. Si no, la causa SIP
-        // manda como siempre.
-        const eventType = wasVoicemail
-          ? "voicemail"
-          : callback
-            ? personalCallbackHangupEvent({
-                bridged: state?.bridged === true,
-                customerDialStatus: callback.customerDialStatus,
-              })
-            : state?.answered && !state.bridged
-              ? "abandoned"
-              : hangupCauseToStatus(evt.cause);
+        // Prioridad (ver outboundHangupEvent): buzón detectado por AMD,
+        // agenda personal según el cliente, abandono si el cliente contestó
+        // y no llegó a una ejecutiva, y si no la causa SIP.
+        const eventType = outboundHangupEvent({
+          voicemail: wasVoicemail,
+          personalCallback: callback,
+          answered: state?.answered === true,
+          bridged: state?.bridged === true,
+          cause: evt.cause,
+        });
 
         // Terminó sin conversación (buzón, abandono, corte antes del bridge):
         // hay una línea libre y ningún ejecutivo ocupado por ella.

@@ -481,33 +481,43 @@ export async function getCampaignAgentExtensions(campaignId: string): Promise<st
 }
 
 /**
- * Tasa de abandono medida en los últimos `windowMinutes` (contestadas por el
- * cliente vs. abandonadas — cliente contestó y nunca llegó a bridgearse con
- * un agente). Devuelve null si no hay volumen suficiente todavía (campaña
+ * Tasa de abandono (porcentaje: 3 = 3 %) de los intentos del pool en los
+ * últimos `windowMinutes`: de los que el cliente contestó, cuántos nunca
+ * llegaron a una ejecutiva. Devuelve null si no hay volumen todavía (campaña
  * recién arrancada), para que el ajuste de ratio predictivo sepa que no debe
- * confiar en el número y arranque conservador.
+ * confiar en el número.
+ *
+ * "Contestó" es originated_at no nulo: el pool origina con Async y Asterisk
+ * solo manda OriginateResponse Success (que es lo que llena originated_at)
+ * cuando la pata del cliente contesta. Antes el denominador era answered_at,
+ * que casi nunca se llenaba: la función devolvía null y el predictivo crecía
+ * "sin señal" aunque estuviera dejando gente colgada. Solo el pool: en una
+ * agenda personal originated_at es el ejecutivo contestando, y las agendas no
+ * las regula el ratio.
  */
 export async function getRecentAbandonmentRate(campaignId: string, windowMinutes: number): Promise<number | null> {
   const since = new Date(Date.now() - windowMinutes * 60_000).toISOString();
-
-  const { count: answeredCount, error: answeredError } = await supabase
-    .from("dial_attempts")
-    .select("id", { count: "exact", head: true })
-    .eq("campaign_id", campaignId)
-    .not("answered_at", "is", null)
-    .gte("originated_at", since);
-  if (answeredError) throw new Error(`dial_attempts (answered): ${answeredError.message}`);
-  if (!answeredCount || answeredCount === 0) return null;
-
-  const { count: abandonedCount, error: abandonedError } = await supabase
-    .from("dial_attempts")
-    .select("id", { count: "exact", head: true })
-    .eq("campaign_id", campaignId)
-    .eq("status", "abandoned")
-    .gte("originated_at", since);
-  if (abandonedError) throw new Error(`dial_attempts (abandoned): ${abandonedError.message}`);
-
-  return ((abandonedCount ?? 0) / answeredCount) * 100;
+  const [answered, abandoned] = await Promise.all([
+    supabase
+      .from("dial_attempts")
+      .select("id", { count: "exact", head: true })
+      .eq("campaign_id", campaignId)
+      .eq("attempt_kind", "pool")
+      .not("originated_at", "is", null)
+      .gte("originated_at", since),
+    supabase
+      .from("dial_attempts")
+      .select("id", { count: "exact", head: true })
+      .eq("campaign_id", campaignId)
+      .eq("attempt_kind", "pool")
+      .eq("status", "abandoned")
+      .gte("originated_at", since),
+  ]);
+  if (answered.error) throw new Error(`dial_attempts (contestados): ${answered.error.message}`);
+  if (abandoned.error) throw new Error(`dial_attempts (abandonados): ${abandoned.error.message}`);
+  const answeredCount = answered.count ?? 0;
+  if (answeredCount === 0) return null;
+  return ((abandoned.count ?? 0) / answeredCount) * 100;
 }
 
 /** Intentos terminados mínimos para que la tasa de contacto sea una señal y no ruido. */
