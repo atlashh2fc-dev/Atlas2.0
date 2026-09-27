@@ -41,7 +41,7 @@ export async function InicioComercial({ profile, edicion, empresa }: { profile: 
   const finHoy = instanteEnChile(sumarDias(hoy, 1), "00:00");
   const inicioMes = instanteEnChile(`${hoy.slice(0, 7)}-01`, "00:00");
 
-  const [{ data: negociosData }, { data: actividades }, { data: personas }, { count: prospectos }] = await Promise.all([
+  const [{ data: negociosData }, { data: actividades }, { data: personas }, { count: prospectos }, { data: correoData }, { data: campanasData }] = await Promise.all([
     supabase
       .from("sales_opportunities")
       .select("id, name, status, monthly_amount, one_time_amount, next_action_at, next_action_note, stage_id, owner_id, source, created_at, closed_at, sales_companies(name), sales_stages(key, name, is_won, is_lost)")
@@ -50,6 +50,8 @@ export async function InicioComercial({ profile, edicion, empresa }: { profile: 
     supabase.from("sales_activities").select("opportunity_id, kind, occurred_at").in("kind", ["llamada", "correo", "whatsapp", "reunion", "nota"]).order("occurred_at", { ascending: false }).limit(4000),
     supabase.from("profiles").select("id, full_name").eq("active", true),
     supabase.from("leads").select("id", { count: "exact", head: true }),
+    supabase.from("lead_mail_status").select("campaign_id, sent_count, opened, clicked, bounced, unsubscribed").limit(5000),
+    supabase.from("campaigns").select("id, name"),
   ]);
   const negocios = (negociosData ?? []) as unknown as Negocio[];
   const nombres = new Map((personas ?? []).map((persona) => [persona.id as string, persona.full_name as string]));
@@ -64,7 +66,28 @@ export async function InicioComercial({ profile, edicion, empresa }: { profile: 
     const etapa = primero(negocio.sales_stages);
     return etapa && /propuesta|negociaci/i.test(etapa.name) && negocio.next_action_at && ahora.getTime() - new Date(negocio.next_action_at).getTime() > 7 * DIA;
   });
-  const ganadosMes = negocios.filter((negocio) => negocio.status === "ganada" && negocio.closed_at && new Date(negocio.closed_at) >= inicioMes);
+  // Quien abrió el correo de la campaña: la secuencia le sigue escribiendo
+  // sola, así que no es tarea ni cuenta como "sin contactar", pero es lo más
+  // tibio que hay y tiene que verse.
+  const abrieronCorreo = abiertos
+    .filter((negocio) => negocio.source === "agente_calificador" && !negocio.next_action_at)
+    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const nombreCampana = new Map((campanasData ?? []).map((campana) => [campana.id as string, campana.name as string]));
+  const porCampana = new Map<string, { personas: number; correos: number; abrieron: number; clic: number; rebotes: number; bajas: number }>();
+  for (const fila of correoData ?? []) {
+    const id = fila.campaign_id as string;
+    const cuenta = porCampana.get(id) ?? { personas: 0, correos: 0, abrieron: 0, clic: 0, rebotes: 0, bajas: 0 };
+    cuenta.personas += 1;
+    cuenta.correos += Number(fila.sent_count ?? 0);
+    if (fila.opened) cuenta.abrieron += 1;
+    if (fila.clicked) cuenta.clic += 1;
+    if (fila.bounced) cuenta.rebotes += 1;
+    if (fila.unsubscribed) cuenta.bajas += 1;
+    porCampana.set(id, cuenta);
+  }
+  const campanasCorreo = [...porCampana.entries()].sort((a, b) => b[1].personas - a[1].personas);
+  const porciento = (parte: number, total: number) => (total > 0 ? `${Math.round((parte / total) * 100)} %` : "—");
+  const ganadosMes =negocios.filter((negocio) => negocio.status === "ganada" && negocio.closed_at && new Date(negocio.closed_at) >= inicioMes);
   const horasDesde = (desde: string) => Math.floor((ahora.getTime() - new Date(desde).getTime()) / (60 * 60 * 1000));
 
   const Fila = ({ negocio, detalle, tono }: { negocio: Negocio; detalle: string; tono?: "danger" | "warning" | "neutral" | "info" }) => (
@@ -116,7 +139,7 @@ export async function InicioComercial({ profile, edicion, empresa }: { profile: 
 
       <div className="grid gap-4 xl:grid-cols-2">
         <SectionCard title={`Sin contactar · ${sinContactar.length}`} description="Llegaron y nadie los ha gestionado. Lo que viene de la web debería contactarse en menos de una hora.">
-          {sinContactar.length === 0 ? <EmptyState title="Todo contactado" description="Cada negocio abierto tiene al menos una gestión." /> : (
+          {sinContactar.length === 0 ? <EmptyState title="Todo contactado" description="Cada negocio abierto tiene al menos una gestión. Los que solo abrieron el correo están más abajo." /> : (
             <ul className="divide-y divide-border">
               {sinContactar.slice(0, 10).map((negocio) => {
                 const horas = horasDesde(negocio.created_at);
@@ -156,6 +179,39 @@ export async function InicioComercial({ profile, edicion, empresa }: { profile: 
                 <Fila key={negocio.id} negocio={negocio} detalle={`desde ${fechaCorta.format(new Date(negocio.next_action_at as string))}`} tono="warning" />
               ))}
             </ul>
+          )}
+        </SectionCard>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <SectionCard title="Campaña de correo" description="Lo que va enviando Atlas Lead: a cuántos les llegó, cuántos abrieron y cuántos hicieron clic.">
+          {campanasCorreo.length === 0 ? <EmptyState title="Sin campañas de correo" description="Cuando Atlas Lead envíe, el avance aparece acá." /> : (
+            <ul className="divide-y divide-border">
+              {campanasCorreo.map(([id, cuenta]) => (
+                <li key={id} className="space-y-2 px-4 py-3">
+                  <p className="truncate text-sm font-medium text-foreground">{nombreCampana.get(id) ?? "Campaña"}</p>
+                  <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                    <div><p className="text-lg font-semibold tabular-nums text-foreground">{cuenta.personas}</p><p className="text-muted-foreground">personas · {cuenta.correos} correos</p></div>
+                    <div><p className="text-lg font-semibold tabular-nums text-foreground">{cuenta.abrieron}</p><p className="text-muted-foreground">abrieron · {porciento(cuenta.abrieron, cuenta.personas)}</p></div>
+                    <div><p className="text-lg font-semibold tabular-nums text-foreground">{cuenta.clic}</p><p className="text-muted-foreground">hicieron clic · {porciento(cuenta.clic, cuenta.personas)}</p></div>
+                    <div><p className="text-lg font-semibold tabular-nums text-foreground">{cuenta.rebotes + cuenta.bajas}</p><p className="text-muted-foreground">rebotes y bajas</p></div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </SectionCard>
+        <SectionCard title={`Abrieron el correo · ${abrieronCorreo.length}`} description="La secuencia les sigue escribiendo sola. No son tarea todavía, pero son lo más tibio: si alguno te suena, escríbele tú.">
+          {abrieronCorreo.length === 0 ? <EmptyState title="Nadie ha abierto aún" description="Cuando alguien abra un correo de la campaña, aparece acá." /> : (
+            <ul className="divide-y divide-border">
+              {abrieronCorreo.slice(0, 10).map((negocio) => {
+                const horas = horasDesde(negocio.created_at);
+                return <Fila key={negocio.id} negocio={negocio} detalle={horas < 24 ? `hace ${horas} h` : `hace ${Math.floor(horas / 24)} d`} tono="info" />;
+              })}
+            </ul>
+          )}
+          {abrieronCorreo.length > 10 && (
+            <p className="border-t border-border px-4 py-2 text-xs"><Link href="/dashboard/pipeline?origen=agente_calificador" className="text-primary hover:underline">Ver los {abrieronCorreo.length} en el pipeline</Link></p>
           )}
         </SectionCard>
       </div>
