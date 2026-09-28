@@ -196,6 +196,13 @@
   --color-danger: var(--danger);
   --color-danger-bg: var(--danger-bg);
   --color-ring: var(--ring);
+  --color-tone-blue: var(--tone-blue);
+  --color-tone-teal: var(--tone-teal);
+  --color-tone-green: var(--tone-green);
+  --color-tone-amber: var(--tone-amber);
+  --color-tone-violet: var(--tone-violet);
+  --color-tone-rose: var(--tone-rose);
+  --color-tone-slate: var(--tone-slate);
   --color-auth-panel: var(--auth-panel);
   --color-auth-panel-foreground: var(--auth-panel-foreground);
   --font-sans: "Outfit", var(--font-plus-jakarta), ui-sans-serif, system-ui, sans-serif;
@@ -253,6 +260,26 @@ body {
    de Atlas Suite. */
 .dark :is(.rounded-lg, .rounded-xl, .rounded-2xl).border.bg-surface {
   background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.055), transparent 45%);
+}
+
+/* Velo detrás de modales y paneles: desenfoca lo de atrás, como Atlas Suite.
+   En oscuro `bg-foreground/40` daba un velo blanco; pasa a negro. */
+.inset-0:is(.bg-foreground\/40, .bg-black\/30, .bg-black\/40, .bg-black\/45, .bg-black\/55) {
+  backdrop-filter: blur(6px);
+}
+
+.dark .inset-0.bg-foreground\/40 {
+  background-color: rgba(0, 0, 0, 0.6);
+}
+
+/* Barra de llamada: invierte los colores para destacar. En oscuro eso la
+   volvía una franja blanca; se mantiene azul noche con brillo de marca y texto
+   claro, igual que en claro. */
+.dark .atlas-callbar {
+  --foreground: #0b1a2b;
+  --background: #f8fafc;
+  background-image: linear-gradient(90deg, color-mix(in srgb, var(--primary) 30%, transparent), transparent 60%);
+  box-shadow: 0 8px 24px -12px color-mix(in srgb, var(--primary) 60%, transparent);
 }
 
 /* Menú lateral de Atlas Suite: vidrio con un brillo arriba a la izquierda. */

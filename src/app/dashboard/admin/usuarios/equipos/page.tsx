@@ -1,9 +1,10 @@
+import { UsersRound } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { unstable_noStore as noStore } from "next/cache";
 import { createTeam, updateTeamSupervisors } from "@/app/actions/admin";
 import { CreatePanel } from "@/components/create-panel";
-import { ActionForm, ActionSubmit, Field, Input, SectionCard, Select, Table, Tbody, Td, Th, Thead, TableEmpty, Tr } from "@/components/ui";
+import { ActionForm, ActionSubmit, EmptyState, Field, Input, SectionCard, Table, Tbody, Td, Th, Thead, TableEmpty, Tr } from "@/components/ui";
 
 export default async function TeamsAdminPage() {
   noStore();
@@ -32,6 +33,8 @@ export default async function TeamsAdminPage() {
   return (
     <div className="space-y-5">
       <SectionCard
+        icon={UsersRound}
+        tone="blue"
         title="Equipos"
         description="Un equipo puede tener varios supervisores y cada supervisor puede participar en varios equipos."
         actions={
@@ -50,8 +53,8 @@ export default async function TeamsAdminPage() {
               <legend className="text-xs font-medium text-foreground">Supervisores</legend>
               <div className="mt-2 grid gap-2">
                 {supervisors.map((supervisor) => (
-                  <label key={supervisor.id} className="flex items-start gap-2 rounded-md border border-border px-3 py-2 text-sm">
-                    <input type="checkbox" name="supervisor_ids" value={supervisor.id} className="mt-1" />
+                  <label key={supervisor.id} className="flex cursor-pointer items-start gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm transition-colors hover:border-border-strong has-[:checked]:border-primary has-[:checked]:bg-primary/5">
+                    <input type="checkbox" name="supervisor_ids" value={supervisor.id} className="mt-1 accent-primary" />
                     <span>
                       <span className="block font-medium">{supervisor.full_name}</span>
                       <span className="block text-xs text-muted-foreground">{supervisor.email}</span>
@@ -70,10 +73,21 @@ export default async function TeamsAdminPage() {
             <Th>Supervisores</Th>
           </Thead>
           <Tbody>
-            {(teams ?? []).length === 0 && <TableEmpty colSpan={3}>No hay equipos creados.</TableEmpty>}
+            {(teams ?? []).length === 0 && (
+              <TableEmpty colSpan={3}>
+                <EmptyState icon={UsersRound} title="No hay equipos creados." className="py-6" />
+              </TableEmpty>
+            )}
             {(teams ?? []).map((team) => (
               <Tr key={team.id}>
-                <Td strong>{team.name}</Td>
+                <Td strong>
+                  <span className="flex items-center gap-3">
+                    <span className="icon-chip size-8 rounded-lg" data-tone="blue" aria-hidden="true">
+                      <UsersRound size={15} />
+                    </span>
+                    {team.name}
+                  </span>
+                </Td>
                 <Td align="right" muted>
                   {agentsByTeam.get(team.id) ?? 0}
                 </Td>
@@ -83,12 +97,13 @@ export default async function TeamsAdminPage() {
                     <fieldset className="flex flex-wrap gap-2">
                       <legend className="sr-only">Supervisores de {team.name}</legend>
                       {supervisors.map((supervisor) => (
-                        <label key={supervisor.id} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-xs">
+                        <label key={supervisor.id} className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-xs transition-colors hover:border-border-strong has-[:checked]:border-primary has-[:checked]:bg-primary/10 has-[:checked]:text-primary">
                           <input
                             type="checkbox"
                             name="supervisor_ids"
                             value={supervisor.id}
                             defaultChecked={supervisorIdsByTeam.get(team.id)?.has(supervisor.id) ?? false}
+                            className="accent-primary"
                           />
                           {supervisor.full_name}
                         </label>

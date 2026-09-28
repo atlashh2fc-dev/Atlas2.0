@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { unstable_noStore as noStore } from "next/cache";
-import { Mail, MessageCircle, Send } from "lucide-react";
+import { Inbox, Mail, MessageCircle, MessagesSquare, Send, UserRound } from "lucide-react";
 
 import { marcarConversacionLeida, responderConversacion, responderCorreo } from "@/app/actions/conversaciones-clinica";
 import { WhatsAppAutoRefresh } from "@/components/whatsapp-auto-refresh";
@@ -157,10 +157,10 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
         </Callout>
       )}
 
-      {error && <p className="rounded-lg border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger">No se pudieron leer las conversaciones. Vuelve a cargar para reintentar.</p>}
+      {error && <Callout tone="danger">No se pudieron leer las conversaciones. Vuelve a cargar para reintentar.</Callout>}
 
       <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
-        <SectionCard title={`Conversaciones · ${conversaciones.length + hilosCorreo.length}`} description={`WhatsApp y correo, las más recientes primero.${correoSinLeer ? ` ${correoSinLeer} correos sin leer.` : ""}`}>
+        <SectionCard icon={MessagesSquare} tone="teal" title={`Conversaciones · ${conversaciones.length + hilosCorreo.length}`} description={`WhatsApp y correo, las más recientes primero.${correoSinLeer ? ` ${correoSinLeer} correos sin leer.` : ""}`}>
           {hilosCorreo.length > 0 && (
             <ul className="divide-y divide-border border-b border-border">
               {hilosCorreo.map((hilo) => (
@@ -168,7 +168,10 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
                   <Link href={`/dashboard/mensajes?e=${hilo.company_id}`} className={`block px-4 py-3 transition-colors hover:bg-surface-muted/60 ${hiloActual?.company_id === hilo.company_id ? "bg-primary/5" : ""}`}>
                     <div className="flex items-center justify-between gap-2">
                       <span className={`flex min-w-0 items-center gap-1.5 truncate text-sm ${hilo.sinLeer > 0 ? "font-semibold" : "font-medium"} text-foreground`}>
-                        <Mail size={13} className="flex-shrink-0 text-muted-foreground" aria-hidden="true" /> {hilo.nombre}
+                        <span className="icon-chip size-6 rounded-md" data-tone="teal" aria-hidden="true">
+                          <Mail size={12} />
+                        </span>
+                        <span className="truncate">{hilo.nombre}</span>
                       </span>
                       <span className="flex-shrink-0 text-xs text-muted-foreground">{horaCorta.format(new Date(hilo.ultimo))}</span>
                     </div>
@@ -182,7 +185,7 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
             </ul>
           )}
           {conversaciones.length === 0 && hilosCorreo.length === 0 ? (
-            <EmptyState title="Todavía nadie escribe" description="Cuando Atlas mande un recordatorio o alguien escriba al WhatsApp de la clínica, aparece acá." />
+            <EmptyState icon={Inbox} title="Todavía nadie escribe" description="Cuando Atlas mande un recordatorio o alguien escriba al WhatsApp de la clínica, aparece acá." />
           ) : (
             <ul className="divide-y divide-border">
               {conversaciones.map((conversacion) => {
@@ -193,7 +196,10 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
                     <Link href={`/dashboard/mensajes?c=${conversacion.id}`} className={`block px-4 py-3 transition-colors hover:bg-surface-muted/60 ${activa ? "bg-primary/5" : ""}`}>
                       <div className="flex items-center justify-between gap-2">
                         <span className={`flex min-w-0 items-center gap-1.5 truncate text-sm ${conversacion.unread_count > 0 ? "font-semibold text-foreground" : "font-medium text-foreground"}`}>
-                          <MessageCircle size={13} className="flex-shrink-0 text-muted-foreground" aria-hidden="true" /> {nombreDe(conversacion)}
+                          <span className="icon-chip size-6 rounded-md" data-tone="green" aria-hidden="true">
+                            <MessageCircle size={12} />
+                          </span>
+                          <span className="truncate">{nombreDe(conversacion)}</span>
                         </span>
                         <span className="flex-shrink-0 text-xs text-muted-foreground">{horaCorta.format(new Date(conversacion.last_message_at))}</span>
                       </div>
@@ -212,17 +218,17 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
         </SectionCard>
 
         {hiloActual ? (
-          <SectionCard title={hiloActual.nombre} description={`${hiloActual.direccion} · correo${buzon ? ` · desde ${buzon.address}` : " · la clínica todavía no tiene buzón: los envíos se simulan en la demostración"}`}>
+          <SectionCard icon={Mail} tone="teal" title={hiloActual.nombre} description={`${hiloActual.direccion} · correo${buzon ? ` · desde ${buzon.address}` : " · la clínica todavía no tiene buzón: los envíos se simulan en la demostración"}`}>
             <div className="flex max-h-[60vh] flex-col gap-3 overflow-y-auto px-4 py-3">
               {[...hiloActual.entrantes.map((correo) => ({ id: correo.id, saliente: false, cuando: correo.received_at, asunto: correo.subject, texto: correo.body_text, estado: "", messageId: correo.message_id })),
                 ...hiloActual.salientes.map((correo) => ({ id: correo.id, saliente: true, cuando: correo.enviado_at ?? correo.created_at, asunto: correo.asunto ?? "", texto: correo.cuerpo ?? "", estado: correo.proveedor === "simulado" ? "simulado" : correo.estado, messageId: null }))]
                 .sort((a, b) => a.cuando.localeCompare(b.cuando))
                 .map((correo) => (
                   <div key={correo.id} className={`flex ${correo.saliente ? "justify-end" : "justify-start"}`}>
-                    <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${correo.saliente ? "bg-primary text-primary-foreground" : "bg-surface-muted text-foreground"}`}>
+                    <div className={`max-w-[85%] rounded-2xl border px-3 py-2 text-sm text-foreground shadow-sm ${correo.saliente ? "rounded-br-md border-primary/30 bg-primary/15" : "rounded-bl-md border-border bg-surface-muted"}`}>
                       {correo.asunto && <p className="font-medium">{correo.asunto}</p>}
                       <p className="whitespace-pre-wrap">{correo.texto.length > 1500 ? `${correo.texto.slice(0, 1500)}…` : correo.texto}</p>
-                      <p className={`mt-1 text-[11px] ${correo.saliente ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
+                      <p className="mt-1 text-[11px] text-muted-foreground">
                         {cuando.format(new Date(correo.cuando))}
                         {correo.estado ? ` · ${correo.estado}` : ""}
                       </p>
@@ -250,7 +256,7 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
           </SectionCard>
         ) : actual ? (
           <div className="grid gap-4 lg:grid-cols-[1fr_260px]">
-            <SectionCard title={nombreDe(actual)} description={`${actual.contact_phone}${actual.last_inbound_at ? ` · última respuesta ${cuando.format(new Date(actual.last_inbound_at))}` : " · todavía no responde"}`}>
+            <SectionCard icon={MessageCircle} tone="green" title={nombreDe(actual)} description={`${actual.contact_phone}${actual.last_inbound_at ? ` · última respuesta ${cuando.format(new Date(actual.last_inbound_at))}` : " · todavía no responde"}`}>
               <div className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto px-4 py-3">
                 {hilo.length === 0 && <p className="text-sm text-muted-foreground">Sin mensajes todavía.</p>}
                 {hilo.map((mensaje) => {
@@ -258,9 +264,9 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
                   const simulado = mensaje.provider_payload?.provider === "simulado";
                   return (
                     <div key={mensaje.id} className={`flex ${saliente ? "justify-end" : "justify-start"}`}>
-                      <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${saliente ? "bg-primary text-primary-foreground" : "bg-surface-muted text-foreground"}`}>
+                      <div className={`max-w-[80%] rounded-2xl border px-3 py-2 text-sm text-foreground shadow-sm ${saliente ? "rounded-br-md border-primary/30 bg-primary/15" : "rounded-bl-md border-border bg-surface-muted"}`}>
                         <p className="whitespace-pre-wrap">{mensaje.text_body ?? `[${mensaje.message_type}]`}</p>
-                        <p className={`mt-1 text-[11px] ${saliente ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
                           {cuando.format(new Date(mensaje.provider_timestamp ?? mensaje.created_at))}
                           {saliente && ESTADO_MENSAJE[mensaje.status] ? ` · ${ESTADO_MENSAJE[mensaje.status]}` : ""}
                           {simulado ? " · simulado" : ""}
@@ -286,10 +292,10 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
               </form>
             </SectionCard>
 
-            <SectionCard title={voc.singular}>
+            <SectionCard icon={UserRound} tone="blue" title={voc.singular}>
               <div className="space-y-3 px-4 py-3 text-sm">
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Ficha</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Ficha</p>
                   <Link href={`/dashboard/pacientes/${actual.company_id}`} className="font-medium text-foreground hover:text-primary hover:underline">
                     {nombreDe(actual)}
                   </Link>
@@ -298,7 +304,7 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
                 </div>
                 {esVet && (
                   <div>
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Mascotas</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Mascotas</p>
                     {ficha.mascotas.length === 0 ? (
                       <p className="text-muted-foreground">Sin mascotas registradas</p>
                     ) : (
@@ -313,7 +319,7 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
                   </div>
                 )}
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Por cobrar</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Por cobrar</p>
                   <p className={`tabular-nums ${ficha.saldo > 0 ? "text-foreground" : "text-muted-foreground"}`}>{pesos.format(ficha.saldo)}</p>
                 </div>
                 <div className="flex flex-wrap gap-1.5 pt-1">
@@ -334,8 +340,8 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
             </SectionCard>
           </div>
         ) : (
-          <SectionCard title="Elige una conversación" description="A la izquierda están las más recientes. Lo que Atlas envió y lo que respondieron va en el mismo hilo.">
-            <EmptyState title="Nada seleccionado" description="Toca una conversación para leerla y responder desde acá." />
+          <SectionCard icon={MessagesSquare} tone="teal" title="Elige una conversación" description="A la izquierda están las más recientes. Lo que Atlas envió y lo que respondieron va en el mismo hilo.">
+            <EmptyState icon={MessagesSquare} title="Nada seleccionado" description="Toca una conversación para leerla y responder desde acá." />
           </SectionCard>
         )}
       </div>

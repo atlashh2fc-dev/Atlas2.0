@@ -2,6 +2,7 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { Briefcase, ClipboardCheck, Database, Mail, PhoneCall, Users, Workflow } from "lucide-react";
 import { mapAtlasLeadMailCampaign, setCampaignVertical, setCampaignWorkflow } from "@/app/actions/campaigns";
 import { CAMPAIGN_VERTICALS, parseCampaignVertical } from "@/lib/campaign-vertical";
 import { CampaignDashboardSummary, type ContactabilityHour } from "@/components/campaign-dashboard-summary";
@@ -11,7 +12,7 @@ import type {
   DialerCampaignConfig,
   SecretariaVirtualChannelFunnelRow,
 } from "@/lib/types";
-import { ActionForm, ActionSubmit, Badge, Card, Field, Input, SectionCard, Select } from "@/components/ui";
+import { ActionForm, ActionSubmit, Badge, Callout, Field, Input, SectionCard, Select } from "@/components/ui";
 import { isSecretariaVirtualAuditCampaign } from "@/lib/secretaria-virtual-quality-rubric";
 
 const DASHBOARD_WINDOW_DAYS = 30;
@@ -118,18 +119,24 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
   const setupItems = [
     {
       label: "Flujo de gestión",
+      icon: Workflow,
+      tone: "rose",
       detail: aiVoice ? "El guion vive en el agente ElevenLabs" : campaign.workflow_id ? "Asignado" : "Asigna el guion que verán los ejecutivos",
       done: aiVoice ? true : Boolean(campaign.workflow_id),
       href: aiVoice ? `${base}/ia` : `${base}#flujo`,
     },
     {
       label: "Ejecutivos",
+      icon: Users,
+      tone: "blue",
       detail: aiVoice ? ((memberCount ?? 0) === 0 ? "No aplica · campaña solo IA" : "Retira los ejecutivos asignados") : (memberCount ?? 0) > 0 ? `${memberCount} asignados` : "Asigna al menos un ejecutivo",
       done: aiVoice ? (memberCount ?? 0) === 0 : (memberCount ?? 0) > 0,
       href: aiVoice ? `${base}/ia` : `${base}/ejecutivos`,
     },
     {
       label: "Base de registros",
+      icon: Database,
+      tone: "blue",
       detail:
         (leadCount ?? 0) > 0
           ? `${(leadCount ?? 0).toLocaleString("es-CL")} registros`
@@ -139,6 +146,8 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
     },
     {
       label: "Discador",
+      icon: PhoneCall,
+      tone: "primary",
       detail: aiVoice
         ? aiVoice.is_active
           ? "Agente ElevenLabs activo"
@@ -164,16 +173,14 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
         Loop IA · revisar y configurar observación
       </Link>
       <SectionCard
+        icon={ClipboardCheck}
+        tone="rose"
         title="Preparación de la campaña"
         description="Estos cuatro puntos definen si la campaña puede operar."
         actions={
-          <span
-            className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-              pending === 0 ? "bg-success-bg text-success" : "bg-warning-bg text-warning"
-            }`}
-          >
+          <Badge tone={pending === 0 ? "success" : "warning"}>
             {pending === 0 ? "Lista para operar" : `${pending} pendiente${pending === 1 ? "" : "s"}`}
-          </span>
+          </Badge>
         }
       >
         <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -181,15 +188,18 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
             <Link
               key={item.label}
               href={item.href}
-              className="rounded-lg border border-border bg-background p-3 transition-colors hover:border-primary"
+              className={`rounded-lg border border-border border-l-2 bg-background p-3 transition-[border-color,box-shadow] hover:border-border-strong hover:shadow-sm ${
+                item.done ? "border-l-success" : "border-l-warning"
+              }`}
             >
-              <span
-                className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                  item.done ? "bg-success-bg text-success" : "bg-warning-bg text-warning"
-                }`}
-              >
-                {item.done ? "Listo" : "Pendiente"}
-              </span>
+              <div className="flex items-start justify-between gap-2">
+                <span className="icon-chip size-8 rounded-lg" data-tone={item.tone} aria-hidden="true">
+                  <item.icon size={15} />
+                </span>
+                <Badge tone={item.done ? "success" : "warning"} className="text-[11px]">
+                  {item.done ? "Listo" : "Pendiente"}
+                </Badge>
+              </div>
               <p className="mt-2 text-sm font-medium text-foreground">{item.label}</p>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.detail}</p>
             </Link>
@@ -198,6 +208,8 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
       </SectionCard>
 
       <SectionCard
+        icon={Mail}
+        tone="teal"
         title="Atlas Lead"
         description="Conecta campañas de correo existentes con esta campaña CRM mediante su clave estable. Atlas Lead conserva el envío y tracking; Atlas CRM conserva la asignación y gestión."
         actions={
@@ -228,7 +240,7 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
           <ActionForm
             action={mapAtlasLeadMailCampaign}
             success="Vínculo Atlas Lead registrado"
-            className="grid gap-3 rounded-lg border border-border bg-background p-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.8fr)_auto] xl:items-end"
+            className="grid gap-3 rounded-xl border border-border bg-background p-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.8fr)_auto] xl:items-end"
           >
             <input type="hidden" name="campaign_id" value={id} />
             <Field label="Clave externa de Atlas Lead">
@@ -253,6 +265,8 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
 
       {!aiVoice && <div id="flujo" />}
       <SectionCard
+        icon={Briefcase}
+        tone="slate"
         title="Vertical de negocio"
         description="Define el vocabulario y los KPI de la campaña: una cartera de cobranza mide recuperación, no ventas."
       >
@@ -279,6 +293,8 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
       </SectionCard>
 
       {!aiVoice && <SectionCard
+        icon={Workflow}
+        tone="rose"
         title="Flujo de gestión"
         description="Es el guion que los ejecutivos siguen al atender los registros de esta campaña."
       >
@@ -309,7 +325,7 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
       </SectionCard>}
 
       {summaryError ? (
-        <Card className="text-sm text-danger">No se pudo cargar el resumen: {summaryError.message}</Card>
+        <Callout tone="danger">No se pudo cargar el resumen: {summaryError.message}</Callout>
       ) : (
         <CampaignDashboardSummary
           summary={summary as CampaignDashboardSummaryData}

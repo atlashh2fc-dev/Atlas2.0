@@ -1,5 +1,6 @@
+import { Users } from "lucide-react";
 import { saveContactCenterQueueMembers } from "@/app/actions/contact-center-queues";
-import { ActionForm, ActionSubmit, SectionCard } from "@/components/ui";
+import { ActionForm, ActionSubmit, EmptyState, SectionCard } from "@/components/ui";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
@@ -14,18 +15,18 @@ export default async function QueueMembersPage({ params }: { params: Promise<{ i
   const selected = new Set((members ?? []).map((member) => member.profile_id));
 
   return (
-    <SectionCard title={`Miembros ACD de WhatsApp (${selected.size})`} description="Este roster recibe el enrutamiento automático de WhatsApp. Los ejecutivos de voz y correo se administran en la campaña correspondiente.">
+    <SectionCard icon={Users} tone="blue" title={`Miembros ACD de WhatsApp (${selected.size})`} description="Este roster recibe el enrutamiento automático de WhatsApp. Los ejecutivos de voz y correo se administran en la campaña correspondiente.">
       <ActionForm action={saveContactCenterQueueMembers} success="Miembros actualizados" className="p-4">
         <input type="hidden" name="queue_id" value={id} />
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {(agents ?? []).map((agent) => (
-            <label key={agent.id} className="flex cursor-pointer items-center gap-3 rounded-lg border border-border p-3 hover:bg-surface-muted">
+            <label key={agent.id} className="flex cursor-pointer items-center gap-3 rounded-lg border border-border bg-background p-3 transition-colors hover:border-border-strong has-[:checked]:border-primary has-[:checked]:bg-primary/5">
               <input type="checkbox" name="profile_ids" value={agent.id} defaultChecked={selected.has(agent.id)} className="accent-primary" />
               <span className="min-w-0"><span className="block truncate text-sm font-medium text-foreground">{agent.full_name}</span><span className="block truncate text-xs text-muted-foreground">{agent.email}</span></span>
             </label>
           ))}
         </div>
-        {(agents ?? []).length === 0 && <p className="text-sm text-muted-foreground">No hay agentes activos disponibles.</p>}
+        {(agents ?? []).length === 0 && <EmptyState icon={Users} title="No hay agentes activos disponibles." className="py-6" />}
         <ActionSubmit className="mt-4" pendingLabel="Guardando…">Guardar miembros</ActionSubmit>
       </ActionForm>
     </SectionCard>

@@ -203,14 +203,14 @@ export function ManualLeadRecordForm({
         event.preventDefault();
         handleSubmit(new FormData(event.currentTarget));
       }}
-      className="space-y-5 rounded-xl border border-border bg-surface p-5"
+      className="space-y-5 rounded-xl border border-border bg-surface p-5 shadow-sm"
     >
       {message && (
         <div
           className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${
             message.type === "error"
               ? "border-danger/30 bg-danger-bg text-danger"
-              : "border-success/30 bg-success/10 text-success"
+              : "border-success/30 bg-success-bg text-success"
           }`}
         >
           {message.type === "error" ? <AlertCircle size={16} /> : <CheckCircle2 size={16} />}
@@ -315,7 +315,7 @@ export function ManualLeadRecordForm({
           )}
 
           {!searching && lookup?.bigdata.estado === "encontrado" && (
-            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-success/30 bg-success-bg px-3 py-2 text-sm text-success">
               <Database size={15} />
               <span>
                 {fromBigdata.size > 0
@@ -323,13 +323,13 @@ export function ManualLeadRecordForm({
                   : "Encontrado en Bigdata. Los campos ya tenían datos, no se cambió nada."}
               </span>
               {lookup.bigdata.ficha.clienteEquifax && (
-                <span className="rounded bg-surface px-1.5 py-0.5 text-xs font-medium text-foreground">Ya es cliente Equifax</span>
+                <span className="rounded-full border border-border-strong bg-surface px-2 py-0.5 text-xs font-medium text-foreground">Ya es cliente Equifax</span>
               )}
               {lookup.bigdata.ficha.activaSii === false && (
-                <span className="rounded bg-surface px-1.5 py-0.5 text-xs font-medium text-warning">Con término de giro en SII</span>
+                <span className="rounded-full border border-warning/35 bg-surface px-2 py-0.5 text-xs font-medium text-warning">Con término de giro en SII</span>
               )}
               {lookup.bigdata.ficha.noContactar && (
-                <span className="rounded bg-surface px-1.5 py-0.5 text-xs font-medium text-danger">Marcado no contactar</span>
+                <span className="rounded-full border border-danger/35 bg-surface px-2 py-0.5 text-xs font-medium text-danger">Marcado no contactar</span>
               )}
             </div>
           )}

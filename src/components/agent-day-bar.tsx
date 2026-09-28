@@ -66,7 +66,7 @@ export function AgentDayBar() {
       className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto text-xs [scrollbar-width:none]"
     >
       <span className="ml-auto shrink-0 font-semibold text-muted-foreground">Hoy</span>
-      <Chip label="Conectado" value={formatDuration(day.conectado_segundos + (currentCounts ? drift : 0))} strong />
+      <Chip label="Conectado" value={formatDuration(day.conectado_segundos + (currentCounts ? drift : 0))} strong dot="var(--success)" />
       {states.map((state) => {
         const current = state.reason_id === currentId;
         return (
@@ -74,19 +74,22 @@ export function AgentDayBar() {
             key={state.reason_id}
             label={state.label}
             value={formatDuration(state.segundos + (current ? drift : 0))}
+            dot={current ? "var(--primary)" : undefined}
           />
         );
       })}
       <span className="mx-1 h-4 w-px shrink-0 bg-border" aria-hidden />
-      <Chip label="Gestiones" value={String(day.gestiones)} />
-      <Chip label="TMO" value={formatDuration(day.tmo_segundos)} />
+      <Chip label="Gestiones" value={String(day.gestiones)} dot="var(--tone-violet)" />
+      <Chip label="TMO" value={formatDuration(day.tmo_segundos)} dot="var(--tone-amber)" />
     </div>
   );
 }
 
-function Chip({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
+/** `dot` marca el tipo de cifra con un punto de color (verde conectado, violeta gestiones, ámbar tiempos). */
+function Chip({ label, value, strong = false, dot }: { label: string; value: string; strong?: boolean; dot?: string }) {
   return (
     <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-surface-muted/60 px-2.5 py-0.5 text-foreground">
+      {dot && <span className="size-1.5 rounded-full" style={{ backgroundColor: dot }} aria-hidden="true" />}
       <span className="text-muted-foreground">{label}</span>
       <span className={cn("font-mono tabular-nums", strong && "font-semibold")}>{value}</span>
     </span>

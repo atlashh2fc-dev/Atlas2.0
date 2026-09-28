@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { unstable_noStore as noStore } from "next/cache";
-import { Send } from "lucide-react";
+import { AlertTriangle, CalendarClock, CheckCheck, Clock, HandCoins, MessageSquareReply, MessagesSquare, Send, Syringe, UserRoundX } from "lucide-react";
 
 import { cambiarEstadoCita } from "@/app/actions/citas";
 import { cancelarMensaje, despacharAhora, enviarMensaje, reintentarMensaje } from "@/app/actions/mensajes";
-import { Badge, Callout, EmptyState, PageHeader, SectionCard, SubmitButton, buttonClasses } from "@/components/ui";
+import { Badge, Callout, EmptyState, MetricCard, PageHeader, SectionCard, SubmitButton, buttonClasses } from "@/components/ui";
 import { ZONA_CLINICA, fechaEnChile, instanteEnChile, primero, sumarDias, type Cita } from "@/lib/citas";
 import { PACIENTES_POR_EDICION, VENTAS_POR_EDICION } from "@/lib/ediciones";
 import { estadoVacuna } from "@/lib/mascotas";
@@ -211,29 +211,29 @@ export default async function RecordatoriosPage() {
       )}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {[
-          { label: "Programados", valor: programados, detalle: "Salen en el próximo despacho" },
-          { label: "Entregados", valor: entregados, detalle: "Últimos 14 días" },
-          { label: "Respondieron", valor: respondidos, detalle: "Cayeron en Conversaciones", href: "/dashboard/mensajes" },
-          { label: "Fallidos", valor: fallidos, detalle: "Revisa el número o el canal" },
-        ].map((metrica: { label: string; valor: number; detalle: string; href?: string }) => (
-          <div key={metrica.label} className="rounded-xl border border-border bg-surface px-4 py-3">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">{metrica.label}</p>
-            <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{metrica.valor}</p>
-            {metrica.href ? (
-              <Link href={metrica.href} className="text-xs text-primary hover:underline">
-                {metrica.detalle}
-              </Link>
-            ) : (
-              <p className="text-xs text-muted-foreground">{metrica.detalle}</p>
-            )}
-          </div>
-        ))}
+        <MetricCard label="Programados" value={programados} hint="Salen en el próximo despacho" icon={Clock} iconTone="amber" />
+        <MetricCard label="Entregados" value={entregados} hint="Últimos 14 días" icon={CheckCheck} iconTone="teal" />
+        <MetricCard
+          label="Respondieron"
+          value={respondidos}
+          href="/dashboard/mensajes"
+          hrefLabel="Cayeron en Conversaciones"
+          icon={MessageSquareReply}
+          iconTone="teal"
+        />
+        <MetricCard
+          label="Fallidos"
+          value={fallidos}
+          hint="Revisa el número o el canal"
+          icon={AlertTriangle}
+          iconTone="rose"
+          tone={fallidos > 0 ? "danger" : "default"}
+        />
       </div>
 
-      <SectionCard title={`Citas de mañana · ${citas.length}`} description="A las sin confirmar se les pide confirmación; a las confirmadas, se les recuerda. El mensaje sale solo en la mañana; puedes adelantarlo.">
+      <SectionCard icon={CalendarClock} tone="amber" title={`Citas de mañana · ${citas.length}`} description="A las sin confirmar se les pide confirmación; a las confirmadas, se les recuerda. El mensaje sale solo en la mañana; puedes adelantarlo.">
         {citas.length === 0 ? (
-          <EmptyState title="Sin citas mañana" description="No hay citas reservadas ni confirmadas para mañana." />
+          <EmptyState icon={CalendarClock} title="Sin citas mañana" description="No hay citas reservadas ni confirmadas para mañana." />
         ) : (
           <ul className="divide-y divide-border">
             {citas.map((cita) => {
@@ -272,9 +272,9 @@ export default async function RecordatoriosPage() {
       </SectionCard>
 
       {esVet && (
-        <SectionCard title={`Vacunas vencidas o por vencer · ${vacunas.length}`} description="Las de los próximos 30 días y las que ya vencieron. Una vez al mes por mascota, o cuando lo adelantes.">
+        <SectionCard icon={Syringe} tone="amber" title={`Vacunas vencidas o por vencer · ${vacunas.length}`} description="Las de los próximos 30 días y las que ya vencieron. Una vez al mes por mascota, o cuando lo adelantes.">
           {vacunas.length === 0 ? (
-            <EmptyState title="Vacunas al día" description="Ninguna mascota tiene la vacuna vencida ni por vencer en 30 días." />
+            <EmptyState icon={Syringe} title="Vacunas al día" description="Ninguna mascota tiene la vacuna vencida ni por vencer en 30 días." />
           ) : (
             <ul className="divide-y divide-border">
               {vacunas.map((mascota) => {
@@ -304,9 +304,9 @@ export default async function RecordatoriosPage() {
         </SectionCard>
       )}
 
-      <SectionCard title={`${ventas.negocios} sin respuesta hace más de 7 días · ${presupuestos.length}`} description={`${ventas.negocios} abiertos cuya próxima acción ya venció. Un mensaje a la semana hasta que respondan.`}>
+      <SectionCard icon={HandCoins} tone="green" title={`${ventas.negocios} sin respuesta hace más de 7 días · ${presupuestos.length}`} description={`${ventas.negocios} abiertos cuya próxima acción ya venció. Un mensaje a la semana hasta que respondan.`}>
         {presupuestos.length === 0 ? (
-          <EmptyState title="Nada vencido" description={`Todos los ${ventas.negocios.toLowerCase()} abiertos tienen su próxima acción al día.`} />
+          <EmptyState icon={HandCoins} title="Nada vencido" description={`Todos los ${ventas.negocios.toLowerCase()} abiertos tienen su próxima acción al día.`} />
         ) : (
           <ul className="divide-y divide-border">
             {presupuestos.map((presupuesto) => {
@@ -331,9 +331,9 @@ export default async function RecordatoriosPage() {
         )}
       </SectionCard>
 
-      <SectionCard title={`${voc.titulo} que no vuelven hace más de ${mesesSinVenir} meses · ${inactivos.length}`} description={esVet ? "Un control anual es la visita que más se olvida y la que más recompra trae. Una vez al mes." : "El control semestral: la visita que mantiene la boca sana y la agenda llena. Una vez al mes."}>
+      <SectionCard icon={UserRoundX} tone="blue" title={`${voc.titulo} que no vuelven hace más de ${mesesSinVenir} meses · ${inactivos.length}`} description={esVet ? "Un control anual es la visita que más se olvida y la que más recompra trae. Una vez al mes." : "El control semestral: la visita que mantiene la boca sana y la agenda llena. Una vez al mes."}>
         {inactivos.length === 0 ? (
-          <EmptyState title="Nadie fuera de plazo" description="Todas las fichas con atenciones han vuelto dentro del plazo." />
+          <EmptyState icon={UserRoundX} title="Nadie fuera de plazo" description="Todas las fichas con atenciones han vuelto dentro del plazo." />
         ) : (
           <ul className="divide-y divide-border">
             {inactivos.map((ficha) => {
@@ -354,9 +354,9 @@ export default async function RecordatoriosPage() {
         )}
       </SectionCard>
 
-      <SectionCard title="Lo que Atlas escribió" description="Los últimos 14 días, del más reciente al más antiguo. Lo fallido se puede reintentar; lo programado, cancelar.">
+      <SectionCard icon={MessagesSquare} tone="teal" title="Lo que Atlas escribió" description="Los últimos 14 días, del más reciente al más antiguo. Lo fallido se puede reintentar; lo programado, cancelar.">
         {mensajes.length === 0 ? (
-          <EmptyState title="Todavía no sale nada" description="Los mensajes aparecen acá en cuanto una regla los programa o alguien los envía." />
+          <EmptyState icon={MessagesSquare} title="Todavía no sale nada" description="Los mensajes aparecen acá en cuanto una regla los programa o alguien los envía." />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

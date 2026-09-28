@@ -17,7 +17,40 @@ import {
 import { SupervisorAgentMetricsTable } from "@/components/supervisor-agent-metrics-table";
 import { ChartDownloadButton } from "@/components/chart-download-button";
 import Link from "next/link";
-import { Button, buttonClasses, Callout, Card, InfoTooltip, Select } from "@/components/ui";
+import {
+  ArrowRight,
+  BarChart3,
+  CalendarClock,
+  CalendarX2,
+  ClipboardList,
+  Coins,
+  Database,
+  FileSpreadsheet,
+  Funnel,
+  Megaphone,
+  PhoneMissed,
+  Route,
+  Target,
+  Timer,
+  Trophy,
+  TrendingUp,
+  UserCheck,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
+import {
+  Button,
+  buttonClasses,
+  Callout,
+  Card,
+  EmptyState,
+  InfoTooltip,
+  MetricIconChip,
+  SectionCard,
+  Select,
+  type IconTone,
+  type SectionTone,
+} from "@/components/ui";
 import { metricDefinition, type MetricId } from "@/lib/metric-definitions";
 import { resolveCampaignScope } from "@/lib/campaign-scope";
 import {
@@ -149,6 +182,8 @@ function MetricCard({
   progress,
   metric,
   href,
+  icon,
+  iconTone,
 }: {
   label: string;
   value: string;
@@ -157,6 +192,8 @@ function MetricCard({
   progress?: number;
   metric?: MetricId;
   href?: string;
+  icon: LucideIcon;
+  iconTone: IconTone;
 }) {
   const toneClass =
     tone === "good"
@@ -166,6 +203,10 @@ function MetricCard({
         : tone === "danger"
           ? "border-danger/30"
           : "border-border";
+  const valueClass =
+    tone === "good" ? "text-success" : tone === "warn" ? "text-warning" : tone === "danger" ? "text-danger" : "text-foreground";
+  // Con alerta el chip toma el color del estado, igual que la tarjeta del sistema.
+  const chipTone: IconTone = tone === "warn" ? "amber" : tone === "danger" ? "rose" : iconTone;
   const clampedProgress =
     typeof progress === "number" ? Math.min(100, Math.max(0, progress)) : null;
   const barClass =
@@ -180,11 +221,14 @@ function MetricCard({
   const definition = metric ? metricDefinition(metric) : null;
   const body = (
     <>
-      <p className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-        {definition && <InfoTooltip text={definition.definition} formula={definition.formula} />}
-      </p>
-      <p className="mt-1.5 text-2xl font-semibold tabular-nums text-foreground">{value}</p>
+      <div className="flex items-start justify-between gap-2">
+        <p className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          {label}
+          {definition && <InfoTooltip text={definition.definition} formula={definition.formula} />}
+        </p>
+        <MetricIconChip icon={icon} tone={chipTone} />
+      </div>
+      <p className={`mt-1.5 text-2xl font-semibold tabular-nums tracking-tight ${valueClass}`}>{value}</p>
       {detail && <p className="mt-1.5 text-xs text-muted-foreground">{detail}</p>}
       {clampedProgress !== null && (
         <div className="mt-3 h-1 overflow-hidden rounded-full bg-surface-muted">
@@ -192,15 +236,21 @@ function MetricCard({
         </div>
       )}
       {href && (
-        <span className="mt-2 block text-xs font-medium text-primary">Ver detalle →</span>
+        <span className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary">
+          Ver detalle
+          <ArrowRight size={13} aria-hidden="true" />
+        </span>
       )}
     </>
   );
 
-  const base = `block rounded-lg border ${toneClass} bg-surface p-4 shadow-sm`;
+  const base = `block rounded-xl border ${toneClass} bg-surface p-4 shadow-sm`;
   if (!href) return <div className={base}>{body}</div>;
   return (
-    <Link href={href} className={`${base} transition-colors hover:bg-surface-muted/50`}>
+    <Link
+      href={href}
+      className={`${base} transition-[border-color,box-shadow,transform] hover:-translate-y-0.5 hover:border-border-strong hover:shadow-md`}
+    >
       {body}
     </Link>
   );
@@ -210,21 +260,26 @@ function ChartPanel({
   title,
   filename,
   rows,
+  icon,
+  tone,
   children,
 }: {
   title: string;
   filename: string;
   rows: Record<string, string | number | null | undefined>[];
+  icon: LucideIcon;
+  tone: SectionTone;
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-lg border border-border bg-surface p-4 shadow-sm">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-        <ChartDownloadButton filename={filename} rows={rows} />
-      </div>
-      {children}
-    </section>
+    <SectionCard
+      title={title}
+      icon={icon}
+      tone={tone}
+      actions={<ChartDownloadButton filename={filename} rows={rows} />}
+    >
+      <div className="p-4">{children}</div>
+    </SectionCard>
   );
 }
 
@@ -253,6 +308,7 @@ function EquifaxNegociosDownload({
       className={buttonClasses({ variant: "secondary" })}
       title="Una fila por negocio con cotización o venta: las columnas de la hoja Data de operación"
     >
+      <FileSpreadsheet size={15} className="text-[color:var(--tone-green)]" aria-hidden="true" />
       Descargar negocios Equifax (Excel)
     </a>
   );
@@ -425,12 +481,16 @@ export default async function ReportesPage({
             value={formatNumber(kpis.base_total)}
             detail={`${formatNumber(kpis.asignados)} asignados`}
             progress={percent(kpis.asignados, kpis.base_total)}
+            icon={Database}
+            iconTone="blue"
           />
           <MetricCard
             label="Recorridos"
             value={formatNumber(kpis.recorridos)}
             detail={`${formatNumber(kpis.vocalcom_recorridos)} desde Vocalcom`}
             progress={percent(kpis.recorridos, kpis.base_total)}
+            icon={Route}
+            iconTone="primary"
           />
           <MetricCard
             label="Contactados"
@@ -440,6 +500,8 @@ export default async function ReportesPage({
             detail={`Contactabilidad ${formatPercent(kpis.contactabilidad)} · ${formatNumber(kpis.vocalcom_contactados)} Vocalcom`}
             tone="good"
             progress={kpis.contactabilidad ?? 0}
+            icon={UserCheck}
+            iconTone="teal"
           />
           <MetricCard
             label={vocabulary.kpi.gestiones}
@@ -450,6 +512,8 @@ export default async function ReportesPage({
                 : `${formatNumber(kpis.llamadas_cerradas)} llamadas cerradas`
             }
             progress={percent(kpis.crm_gestiones, kpis.llamadas_cerradas)}
+            icon={ClipboardList}
+            iconTone="violet"
           />
           <MetricCard
             label="No contacto"
@@ -457,6 +521,8 @@ export default async function ReportesPage({
             detail="No contesta, ocupado, buzón o fuera de servicio"
             progress={percent(kpis.no_contacto, kpis.llamadas_cerradas)}
             tone="warn"
+            icon={PhoneMissed}
+            iconTone="amber"
           />
           <MetricCard
             label={vocabulary.kpi.agendas}
@@ -464,6 +530,8 @@ export default async function ReportesPage({
             value={formatNumber(kpis.agendas_creadas)}
             detail={`${formatNumber(kpis.agendas_pendientes)} pendientes`}
             progress={percent(kpis.agendas_pendientes, kpis.agendas_creadas)}
+            icon={CalendarClock}
+            iconTone="amber"
           />
           <MetricCard
             label={vocabulary.kpi.agendasVencidas}
@@ -472,34 +540,54 @@ export default async function ReportesPage({
             detail={vocabulary.kpi.agendasVencidasDetalle}
             tone={kpis.agendas_vencidas > 0 ? "danger" : "default"}
             progress={percent(kpis.agendas_vencidas, kpis.agendas_creadas)}
+            icon={CalendarX2}
+            iconTone="amber"
           />
           <MetricCard
             label="TMO"
             metric="tmo"
             value={formatDuration(kpis.tmo_seconds)}
             detail="Promedio de llamadas cerradas"
+            icon={Timer}
+            iconTone="amber"
           />
           <MetricCard
             label={vocabulary.kpi.intermedio}
             value={formatNumber(kpis.cotizaciones)}
             progress={percent(kpis.cotizaciones, kpis.contactados)}
+            icon={Target}
+            iconTone="green"
           />
           <MetricCard
             label={vocabulary.kpi.cierre}
             value={formatNumber(kpis.ventas)}
             tone="good"
             progress={percent(kpis.ventas, kpis.cotizaciones)}
+            icon={Trophy}
+            iconTone="green"
           />
           <MetricCard
             label={vertical === "cobranza" ? vocabulary.kpi.monto : "UF comercial"}
             metric="uf"
             value={formatUf(kpis.uf)}
+            icon={Coins}
+            iconTone="green"
           />
-          <MetricCard label="Ejecutivos reportados" value={formatNumber(report.agents.length)} />
+          <MetricCard
+            label="Ejecutivos reportados"
+            value={formatNumber(report.agents.length)}
+            icon={Users}
+            iconTone="blue"
+          />
         </section>
 
         <section>
-          <h2 className="mb-3 text-sm font-semibold text-foreground">Métricas por ejecutivo</h2>
+          <h2 className="mb-3 flex items-center gap-2.5 text-sm font-semibold text-foreground">
+            <span className="icon-chip size-7 rounded-lg" data-tone="blue" aria-hidden="true">
+              <Users size={14} />
+            </span>
+            Métricas por ejecutivo
+          </h2>
           <SupervisorAgentMetricsTable
             agents={report.agents}
             rangeFrom={report.range.from}
@@ -512,11 +600,23 @@ export default async function ReportesPage({
         <TipificationBreakdown breakdown={tipificationsByResult} title={vocabulary.motivosTitle} />
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          <ChartPanel title={vocabulary.tipificacionesTitle} filename="tipificaciones-equipo.xlsx" rows={tipificationRows}>
+          <ChartPanel
+            title={vocabulary.tipificacionesTitle}
+            filename="tipificaciones-equipo.xlsx"
+            rows={tipificationRows}
+            icon={BarChart3}
+            tone="violet"
+          >
             <SupervisorTipificationsChart tipifications={report.tipifications} />
           </ChartPanel>
 
-          <ChartPanel title="Movimiento diario" filename="movimiento-diario-equipo.xlsx" rows={dailyRows}>
+          <ChartPanel
+            title="Movimiento diario"
+            filename="movimiento-diario-equipo.xlsx"
+            rows={dailyRows}
+            icon={TrendingUp}
+            tone="violet"
+          >
             <SupervisorDailyChart daily={report.daily} />
           </ChartPanel>
 
@@ -524,11 +624,19 @@ export default async function ReportesPage({
             title={vertical === "cobranza" ? "Embudo de recuperación" : "Embudo operativo"}
             filename="embudo-operativo-equipo.xlsx"
             rows={pipelineRows}
+            icon={Funnel}
+            tone="violet"
           >
             <SupervisorPipelineChart kpis={kpis} />
           </ChartPanel>
 
-          <ChartPanel title="Foco por ejecutivo · top 10" filename="foco-ejecutivo-equipo.xlsx" rows={agentFocusRows}>
+          <ChartPanel
+            title="Foco por ejecutivo · top 10"
+            filename="foco-ejecutivo-equipo.xlsx"
+            rows={agentFocusRows}
+            icon={Users}
+            tone="blue"
+          >
             <SupervisorAgentFocusChart agents={report.agents} />
           </ChartPanel>
         </div>
@@ -610,8 +718,8 @@ export default async function ReportesPage({
       </div>
 
       {campaigns.length === 0 && (
-        <Card className="p-6 text-center text-sm text-muted-foreground">
-          No hay campañas configuradas.
+        <Card className="p-0">
+          <EmptyState icon={Megaphone} title="No hay campañas configuradas." />
         </Card>
       )}
 

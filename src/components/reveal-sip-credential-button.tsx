@@ -28,13 +28,13 @@ export function RevealSipCredentialButton({ profileId }: { profileId: string }) 
         type="button"
         onClick={handleClick}
         disabled={loading}
-        className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-foreground hover:bg-surface-muted disabled:opacity-40"
+        className="flex items-center gap-1 rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-medium text-foreground shadow-sm transition-colors hover:border-border-strong hover:bg-surface-muted disabled:opacity-40"
       >
         {credential ? <EyeOff size={12} /> : <Eye size={12} />}
         {credential ? "Ocultar clave" : "Ver clave"}
       </button>
       {credential && (
-        <code className="rounded bg-surface-muted px-2 py-1 text-xs text-foreground">
+        <code className="rounded-md border border-border bg-surface-muted px-2 py-1 text-xs text-foreground">
           {credential.extension} / {credential.sip_password}
         </code>
       )}

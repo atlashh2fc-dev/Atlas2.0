@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { unstable_noStore as noStore } from "next/cache";
-import { Check, CheckCheck, ChevronLeft, ChevronRight, Clock, XCircle } from "lucide-react";
+import { CalendarDays, CalendarX2, Check, CheckCheck, ChevronLeft, ChevronRight, Clock, ListChecks, Stethoscope, XCircle } from "lucide-react";
 
 import { agendarCita, cambiarEstadoCita } from "@/app/actions/citas";
 import { CreatePanel } from "@/components/create-panel";
-import { Badge, EmptyState, Field, Input, PageHeader, SectionCard, Select, SubmitButton, buttonClasses } from "@/components/ui";
+import { Badge, Callout, EmptyState, Field, Input, PageHeader, SectionCard, Select, SubmitButton, buttonClasses } from "@/components/ui";
 import {
   ETIQUETA_ESTADO,
   ZONA_CLINICA,
@@ -214,12 +214,14 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
         }
       />
 
-      {error && <p className="rounded-lg border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger">No se pudo leer la agenda. Vuelve a cargar para reintentar.</p>}
+      {error && <Callout tone="danger">No se pudo leer la agenda. Vuelve a cargar para reintentar.</Callout>}
 
       {profesionales.length === 0 ? (
-        <EmptyState title="Todavía no hay profesionales" description="La agenda se arma por profesional. Registra la primera atención y aparecerá acá, o pídenos que los carguemos." />
+        <EmptyState icon={Stethoscope} title="Todavía no hay profesionales" description="La agenda se arma por profesional. Registra la primera atención y aparecerá acá, o pídenos que los carguemos." />
       ) : (
         <SectionCard
+          icon={CalendarDays}
+          tone="amber"
           title="Por profesional"
           description={`${profesionales.length} ${profesionales.length === 1 ? "agenda" : "agendas"} · ${HORA_APERTURA}:00 a ${HORA_CIERRE}:00. Lo cancelado y quien no vino quedan en gris y liberan la hora.`}
         >
@@ -320,11 +322,13 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       )}
 
       <SectionCard
+        icon={ListChecks}
+        tone="amber"
         title="Citas del día"
         description={`${atendidas} ${atendidas === 1 ? "atendida" : "atendidas"} de ${activas.length}. Confirmar, pasar a sala y dar por atendida se hace desde acá.`}
       >
         {citas.length === 0 ? (
-          <EmptyState title="Sin citas este día" description='Agenda la primera con "Nueva cita".' />
+          <EmptyState icon={CalendarX2} title="Sin citas este día" description='Agenda la primera con "Nueva cita".' />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

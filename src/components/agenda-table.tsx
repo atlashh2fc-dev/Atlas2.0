@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { MessageCircle, Video } from "lucide-react";
+import { MapPin, MessageCircle, Phone, Video } from "lucide-react";
 import { Badge, DataTable, buttonClasses, type Column } from "@/components/ui";
 import { AgendaCallButton } from "@/components/agenda-call-button";
 import { cn } from "@/lib/utils";
@@ -29,6 +29,26 @@ function formatDateTime(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+/** Chip de color por canal: voz = primario, WhatsApp = verde, reunión = teal. */
+const CHANNEL_CHIP: Record<AgendaRow["channel"], { icon: typeof Phone; tone: string }> = {
+  phone: { icon: Phone, tone: "primary" },
+  whatsapp: { icon: MessageCircle, tone: "green" },
+  video_meeting: { icon: Video, tone: "teal" },
+  in_person: { icon: MapPin, tone: "amber" },
+};
+
+function ChannelCell({ channel }: { channel: AgendaRow["channel"] }) {
+  const { icon: Icon, tone } = CHANNEL_CHIP[channel];
+  return (
+    <span className="inline-flex items-center gap-2 text-sm text-foreground">
+      <span className="icon-chip size-6 rounded-md" data-tone={tone} aria-hidden="true">
+        <Icon size={13} />
+      </span>
+      {channelLabel(channel)}
+    </span>
+  );
 }
 
 function channelLabel(channel: AgendaRow["channel"]): string {
@@ -63,7 +83,7 @@ const COLUMNS: Column<AgendaRow>[] = [
     id: "canal",
     header: "Canal",
     value: (row) => channelLabel(row.channel),
-    cell: (row) => <Badge tone={row.channel === "whatsapp" ? "success" : "neutral"}>{channelLabel(row.channel)}</Badge>,
+    cell: (row) => <ChannelCell channel={row.channel} />,
   },
   {
     id: "entrega",

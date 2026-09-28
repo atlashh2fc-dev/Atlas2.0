@@ -38,7 +38,7 @@ export function WorkflowCreatePanel({
         width="lg"
       >
         {duplicateName && (
-          <p role="alert" className="mb-4 rounded-lg bg-danger-bg px-3 py-2 text-sm text-danger">
+          <p role="alert" className="mb-4 rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-sm text-danger">
             Ya existe un flujo con ese nombre.
           </p>
         )}
@@ -64,7 +64,7 @@ export function WorkflowCreatePanel({
             {selectedCampaign ? (
               <>
                 <input type="hidden" name="campaign_id" value={selectedCampaign.id} />
-                <p className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground">
+                <p className="rounded-lg border border-border border-l-2 border-l-[var(--tone-rose)] bg-background px-3 py-2 text-sm text-foreground">
                   Se conectará a <span className="font-medium">{selectedCampaign.name}</span>.
                 </p>
               </>
@@ -104,13 +104,15 @@ export function WorkflowCreatePanel({
               <form
                 key={template.id}
                 action={createWorkflowFromTemplate}
-                className="flex flex-col rounded-lg border border-border bg-background p-3"
+                className="flex flex-col rounded-xl border border-border bg-background p-3 transition-colors hover:border-border-strong"
               >
                 <input type="hidden" name="template_id" value={template.id} />
-                <span className="text-lg">{template.icon}</span>
+                <span className="icon-chip size-9 rounded-lg text-lg" data-tone="rose" aria-hidden="true">
+                  {template.icon}
+                </span>
                 <span className="mt-1 text-sm font-medium text-foreground">{template.name}</span>
                 <span className="mt-0.5 flex-1 text-xs text-muted-foreground">{template.description}</span>
-                <span className="mt-1 text-[11px] text-muted-foreground">{template.steps.length} pasos</span>
+                <span className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{template.steps.length} pasos</span>
                 <SubmitButton variant="secondary" size="sm" className="mt-2" pendingLabel="Creando…">
                   Usar plantilla
                 </SubmitButton>

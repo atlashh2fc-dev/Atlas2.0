@@ -1,7 +1,9 @@
+import { FileUp } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { BulkUploadForm } from "@/components/bulk-upload-form";
 import {
+  EmptyState,
   PageHeader,
   SectionCard,
   Table,
@@ -32,7 +34,7 @@ function one<T>(value: T | T[] | null): T | null {
 }
 
 function formatDateTime(value: string): string {
-  return new Date(value).toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short" });
+  return new Date(value).toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short", timeZone: "America/Santiago" });
 }
 
 export default async function BulkUploadPage({
@@ -80,6 +82,8 @@ export default async function BulkUploadPage({
       />
 
       <SectionCard
+        icon={FileUp}
+        tone="blue"
         title="Historial de cargas"
         description="Últimos 25 archivos procesados, con lo que entró y lo que se descartó en cada uno."
       >
@@ -97,7 +101,12 @@ export default async function BulkUploadPage({
           <Tbody>
             {history.length === 0 && (
               <TableEmpty colSpan={8}>
-                Todavía no hay cargas registradas. La próxima que hagas quedará acá con su resultado.
+                <EmptyState
+                  icon={FileUp}
+                  title="Todavía no hay cargas registradas."
+                  description="La próxima que hagas quedará acá con su resultado."
+                  className="py-6"
+                />
               </TableEmpty>
             )}
             {history.map((upload) => (

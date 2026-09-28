@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, Radio, SlidersHorizontal, Users } from "lucide-react";
 import { notFound } from "next/navigation";
 
 import {
   Badge,
   Callout,
+  EmptyState,
   SectionCard,
   Table,
   TableEmpty,
@@ -48,6 +49,19 @@ const CHANNEL_LABELS: Record<string, string> = {
   chat: "Chat",
   instagram: "Instagram",
 };
+
+/** Color del canal, igual que en el menú: voz en marca, WhatsApp verde, texto en turquesa. */
+const CHANNEL_TONES: Record<string, string> = {
+  voice: "primary",
+  whatsapp: "green",
+  email: "teal",
+  chat: "teal",
+  instagram: "rose",
+};
+
+/** Baldosa de regla: como las cifras de Operación, con el estado en el borde izquierdo. */
+const RULE_TILE = "rounded-lg border border-border border-l-2 bg-background px-3 py-2.5";
+const RULE_LABEL = "text-[11px] font-semibold uppercase tracking-wider text-muted-foreground";
 
 export default async function ContactCenterQueuePage({
   params,
@@ -126,6 +140,8 @@ export default async function ContactCenterQueuePage({
       </Callout>
 
       <SectionCard
+        icon={SlidersHorizontal}
+        tone="rose"
         title="Reglas configuradas"
         description="Valores administrativos; no son mediciones de ocupación, disponibilidad ni cumplimiento de SLA."
         actions={
@@ -137,39 +153,39 @@ export default async function ContactCenterQueuePage({
           </Link>
         }
       >
-        <dl className="grid gap-5 p-5 sm:grid-cols-2 xl:grid-cols-4">
-          <div>
-            <dt className="text-xs text-muted-foreground">Estado de cola</dt>
+        <dl className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className={`${RULE_TILE} ${queue.is_active ? "border-l-success" : "border-l-warning"}`}>
+            <dt className={RULE_LABEL}>Estado de cola</dt>
             <dd className="mt-2">
               <Badge tone={queue.is_active ? "neutral" : "warning"}>
                 {queue.is_active ? "Activa" : "Inactiva"}
               </Badge>
             </dd>
           </div>
-          <div>
-            <dt className="text-xs text-muted-foreground">
+          <div className={`${RULE_TILE} border-l-border-strong`}>
+            <dt className={RULE_LABEL}>
               Estrategia de asignación
             </dt>
-            <dd className="mt-2 text-sm font-medium">
+            <dd className="mt-2 text-base font-semibold tracking-tight">
               {queue.routing_mode === "manual" ? "Manual" : "Menor carga"}
             </dd>
           </div>
-          <div>
-            <dt className="text-xs text-muted-foreground">
+          <div className={`${RULE_TILE} border-l-border-strong`}>
+            <dt className={RULE_LABEL}>
               Límite configurado por agente
             </dt>
-            <dd className="mt-2 text-sm font-medium">
+            <dd className="mt-2 text-base font-semibold tracking-tight tabular-nums">
               {queue.max_concurrent_per_agent ?? "Sin límite de cola"}
             </dd>
             <p className="mt-1 text-xs text-muted-foreground">
               Un límite individual puede sobrescribirlo.
             </p>
           </div>
-          <div>
-            <dt className="text-xs text-muted-foreground">
+          <div className={`${RULE_TILE} border-l-border-strong`}>
+            <dt className={RULE_LABEL}>
               Objetivo de respuesta configurado
             </dt>
-            <dd className="mt-2 text-sm font-medium">
+            <dd className="mt-2 text-base font-semibold tracking-tight tabular-nums">
               {Math.round(queue.service_level_seconds / 60)} min
             </dd>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -180,6 +196,8 @@ export default async function ContactCenterQueuePage({
       </SectionCard>
 
       <SectionCard
+        icon={Radio}
+        tone="teal"
         title="Fuentes y canales"
         description="Relación entre campañas, canales y esta cola; incluye fuentes inactivas para revisar su configuración."
         actions={
@@ -203,12 +221,16 @@ export default async function ContactCenterQueuePage({
             <Tbody>
               {sourcesUnavailable ? (
                 <TableEmpty colSpan={5}>
-                  No se pudo obtener la lista completa de fuentes. No se
-                  interpreta como ausencia de canales.
+                  <EmptyState
+                    icon={Radio}
+                    title="No se pudo obtener la lista completa de fuentes."
+                    description="No se interpreta como ausencia de canales."
+                    className="py-6"
+                  />
                 </TableEmpty>
               ) : sources.length === 0 ? (
                 <TableEmpty colSpan={5}>
-                  Esta cola no tiene fuentes configuradas.
+                  <EmptyState icon={Radio} title="Esta cola no tiene fuentes configuradas." className="py-6" />
                 </TableEmpty>
               ) : (
                 sources.map((source) => {
@@ -217,8 +239,13 @@ export default async function ContactCenterQueuePage({
                   return (
                     <Tr key={source.id}>
                       <Td>
-                        {CHANNEL_LABELS[source.channel_type] ??
-                          source.channel_type}
+                        <span
+                          className="icon-chip rounded-full px-2 py-0.5 text-xs font-medium"
+                          data-tone={CHANNEL_TONES[source.channel_type] ?? "slate"}
+                        >
+                          {CHANNEL_LABELS[source.channel_type] ??
+                            source.channel_type}
+                        </span>
                       </Td>
                       <Td>
                         {source.campaign_id ? (
@@ -240,13 +267,21 @@ export default async function ContactCenterQueuePage({
                           </p>
                         )}
                       </Td>
-                      <Td>{source.is_active ? "Habilitada" : "Inactiva"}</Td>
                       <Td>
-                        {channel
-                          ? channel.status === "active"
-                            ? "Activo"
-                            : "Requiere revisión"
-                          : "No aplica"}
+                        <Badge tone={source.is_active ? "success" : "neutral"}>
+                          {source.is_active ? "Habilitada" : "Inactiva"}
+                        </Badge>
+                      </Td>
+                      <Td>
+                        {channel ? (
+                          <Badge tone={channel.status === "active" ? "success" : "warning"}>
+                            {channel.status === "active"
+                              ? "Activo"
+                              : "Requiere revisión"}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground">No aplica</span>
+                        )}
                       </Td>
                     </Tr>
                   );
@@ -258,6 +293,8 @@ export default async function ContactCenterQueuePage({
       </SectionCard>
 
       <SectionCard
+        icon={Users}
+        tone="blue"
         title="Membresía ACD de WhatsApp"
         description="Este roster gobierna el enrutamiento automático de WhatsApp. Voz y correo usan los ejecutivos habilitados en su campaña."
         actions={
@@ -280,12 +317,16 @@ export default async function ContactCenterQueuePage({
             <Tbody>
               {membersUnavailable ? (
                 <TableEmpty colSpan={4}>
-                  No fue posible consultar la membresía completa. Revisa la
-                  configuración antes de editarla.
+                  <EmptyState
+                    icon={Users}
+                    title="No fue posible consultar la membresía completa."
+                    description="Revisa la configuración antes de editarla."
+                    className="py-6"
+                  />
                 </TableEmpty>
               ) : members.length === 0 ? (
                 <TableEmpty colSpan={4}>
-                  No hay miembros configurados en esta cola.
+                  <EmptyState icon={Users} title="No hay miembros configurados en esta cola." className="py-6" />
                 </TableEmpty>
               ) : (
                 members.map((member) => {
@@ -295,13 +336,19 @@ export default async function ContactCenterQueuePage({
                       <Td strong>
                         {profile?.full_name ?? "Usuario no disponible"}
                       </Td>
-                      <Td>{member.is_active ? "Habilitada" : "Inactiva"}</Td>
                       <Td>
-                        {profile
-                          ? profile.active
-                            ? "Habilitada"
-                            : "Deshabilitada"
-                          : "No disponible"}
+                        <Badge tone={member.is_active ? "success" : "neutral"}>
+                          {member.is_active ? "Habilitada" : "Inactiva"}
+                        </Badge>
+                      </Td>
+                      <Td>
+                        {profile ? (
+                          <Badge tone={profile.active ? "success" : "danger"}>
+                            {profile.active ? "Habilitada" : "Deshabilitada"}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground">No disponible</span>
+                        )}
                       </Td>
                       <Td>
                         {member.max_concurrent !== null

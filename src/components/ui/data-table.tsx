@@ -11,6 +11,7 @@ import {
   ChevronUp,
   Columns3,
   FileSpreadsheet,
+  Inbox,
   RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -442,6 +443,9 @@ export function DataTable<T>({
             {!loading && !error && pageRows.length === 0 && (
               <tr>
                 <td colSpan={columnSpan} className="px-5 py-10 text-center">
+                  <span className="icon-chip mx-auto mb-3 size-12 rounded-2xl" data-tone="slate" aria-hidden="true">
+                    <Inbox size={22} />
+                  </span>
                   <p className="text-sm font-medium text-foreground">{emptyTitle}</p>
                   {emptyDescription && <p className="mt-1 text-sm text-muted-foreground">{emptyDescription}</p>}
                   {emptyAction && <div className="mt-3 flex justify-center">{emptyAction}</div>}

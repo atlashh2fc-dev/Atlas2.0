@@ -104,7 +104,7 @@ export function WhatsAppComposer({
         onChange={(event) => setAttachment(event.target.files?.[0] ?? null)}
         aria-label="Adjuntar imagen o audio"
       />
-      <div className="relative min-w-0 flex-1 rounded-md border border-border bg-background focus-within:ring-2 focus-within:ring-ring">
+      <div className="relative min-w-0 flex-1 rounded-lg border border-border bg-background shadow-sm focus-within:ring-2 focus-within:ring-ring">
         {attachment && (
           <div className="flex items-center gap-2 border-b border-border px-3 py-2">
             {previewUrl && attachment.type.startsWith("image/") ? (
@@ -164,7 +164,7 @@ export function WhatsAppComposer({
             <SmilePlus size={18} />
           </Button>
         {showEmojis && (
-          <div className="absolute bottom-[calc(100%+0.5rem)] left-0 z-20 grid w-56 grid-cols-8 gap-1 rounded-lg border border-border bg-surface p-2 shadow-lg">
+          <div className="absolute bottom-[calc(100%+0.5rem)] left-0 z-20 grid w-56 grid-cols-8 gap-1 rounded-lg border border-border bg-surface-solid p-2 shadow-lg">
             {EMOJIS.map((emoji) => (
               <button
                 key={emoji}

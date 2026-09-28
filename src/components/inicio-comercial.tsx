@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { AlertTriangle, Clock, Handshake, Inbox, Plus } from "lucide-react";
+import { AlarmClock, AlertTriangle, BadgeDollarSign, CalendarCheck, Clock, FileClock, Handshake, Inbox, Mail, Plus, Trophy, UserX } from "lucide-react";
 
-import { Badge, EmptyState, PageHeader, SectionCard, buttonClasses } from "@/components/ui";
+import { Badge, EmptyState, MetricCard, PageHeader, SectionCard, buttonClasses } from "@/components/ui";
 import { ZONA_CLINICA, fechaEnChile, instanteEnChile, sumarDias } from "@/lib/citas";
 import { VENTAS_POR_EDICION, type Edicion } from "@/lib/ediciones";
 import { haceCuanto, senalDe, type Prospecto } from "@/lib/prospeccion";
@@ -124,24 +124,30 @@ export async function InicioComercial({ profile, edicion, empresa }: { profile: 
 
       <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-6">
         {[
-          { label: "Por contactar", valor: porContactar.length, detalle: "Mostraron interés en la campaña", href: "/dashboard/ventas/prospeccion" },
-          { label: "Sin contactar", valor: sinContactar.length, detalle: "Negocios sin ninguna gestión", href: "/dashboard/pipeline?responsable=nadie" },
-          { label: "Vencidos", valor: vencidos.length, detalle: "Próxima acción pasada", href: "/dashboard/pipeline?vencidas=1" },
-          { label: "Hoy", valor: reunionesHoy.length, detalle: "Reuniones y acciones de hoy", href: "/dashboard/pipeline" },
-          { label: "En juego", valor: pesos.format(abiertos.reduce((total, negocio) => total + monto(negocio), 0)), detalle: `${mensual ? "mensual" : "único"} de lo abierto`, href: "/dashboard/pipeline" },
-          { label: "Ganado este mes", valor: pesos.format(ganadosMes.reduce((total, negocio) => total + monto(negocio), 0)), detalle: `${ganadosMes.length} ${ganadosMes.length === 1 ? "negocio" : "negocios"}`, href: "/dashboard/pipeline" },
+          { label: "Por contactar", valor: porContactar.length, detalle: "Mostraron interés en la campaña", href: "/dashboard/ventas/prospeccion", icon: Inbox, iconTone: "teal" as const, tone: porContactar.length > 0 ? ("warn" as const) : ("good" as const) },
+          { label: "Sin contactar", valor: sinContactar.length, detalle: "Negocios sin ninguna gestión", href: "/dashboard/pipeline?responsable=nadie", icon: UserX, iconTone: "blue" as const, tone: sinContactar.length > 0 ? ("warn" as const) : ("good" as const) },
+          { label: "Vencidos", valor: vencidos.length, detalle: "Próxima acción pasada", href: "/dashboard/pipeline?vencidas=1", icon: AlarmClock, iconTone: "amber" as const, tone: vencidos.length > 0 ? ("danger" as const) : ("good" as const) },
+          { label: "Hoy", valor: reunionesHoy.length, detalle: "Reuniones y acciones de hoy", href: "/dashboard/pipeline", icon: CalendarCheck, iconTone: "amber" as const, tone: "default" as const },
+          { label: "En juego", valor: pesos.format(abiertos.reduce((total, negocio) => total + monto(negocio), 0)), detalle: `${mensual ? "mensual" : "único"} de lo abierto`, href: "/dashboard/pipeline", icon: BadgeDollarSign, iconTone: "green" as const, tone: "default" as const },
+          { label: "Ganado este mes", valor: pesos.format(ganadosMes.reduce((total, negocio) => total + monto(negocio), 0)), detalle: `${ganadosMes.length} ${ganadosMes.length === 1 ? "negocio" : "negocios"}`, href: "/dashboard/pipeline", icon: Trophy, iconTone: "green" as const, tone: "default" as const },
         ].map((metrica) => (
-          <Link key={metrica.label} href={metrica.href} className="rounded-xl border border-border bg-surface px-4 py-3 transition-colors hover:border-primary/40">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">{metrica.label}</p>
-            <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{metrica.valor}</p>
-            <p className="text-xs text-muted-foreground">{metrica.detalle}</p>
-          </Link>
+          <MetricCard
+            key={metrica.label}
+            label={metrica.label}
+            value={metrica.valor}
+            hint={metrica.detalle}
+            href={metrica.href}
+            hrefLabel="Abrir"
+            icon={metrica.icon}
+            iconTone={metrica.iconTone}
+            tone={metrica.tone}
+          />
         ))}
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <SectionCard title={`Sin contactar · ${sinContactar.length}`} description="Llegaron y nadie los ha gestionado. Lo que viene de la web debería contactarse en menos de una hora.">
-          {sinContactar.length === 0 ? <EmptyState title="Todo contactado" description="Cada negocio abierto tiene al menos una gestión. Los que solo abrieron el correo están en Prospección." /> : (
+        <SectionCard title={`Sin contactar · ${sinContactar.length}`} description="Llegaron y nadie los ha gestionado. Lo que viene de la web debería contactarse en menos de una hora." icon={UserX} tone="blue">
+          {sinContactar.length === 0 ? <EmptyState icon={UserX} title="Todo contactado" description="Cada negocio abierto tiene al menos una gestión. Los que solo abrieron el correo están en Prospección." /> : (
             <ul className="divide-y divide-border">
               {sinContactar.slice(0, 10).map((negocio) => {
                 const horas = horasDesde(negocio.created_at);
@@ -150,8 +156,8 @@ export async function InicioComercial({ profile, edicion, empresa }: { profile: 
             </ul>
           )}
         </SectionCard>
-        <SectionCard title={`Vencidos · ${vencidos.length}`} description="Negocios con la próxima acción ya pasada, del más atrasado al más reciente.">
-          {vencidos.length === 0 ? <EmptyState title="Nada vencido" description="Todas las próximas acciones están al día." /> : (
+        <SectionCard title={`Vencidos · ${vencidos.length}`} description="Negocios con la próxima acción ya pasada, del más atrasado al más reciente." icon={AlarmClock} tone="amber">
+          {vencidos.length === 0 ? <EmptyState icon={AlarmClock} title="Nada vencido" description="Todas las próximas acciones están al día." /> : (
             <ul className="divide-y divide-border">
               {vencidos.slice(0, 10).map((negocio) => (
                 <Fila key={negocio.id} negocio={negocio} detalle={`${Math.floor((ahora.getTime() - new Date(negocio.next_action_at as string).getTime()) / DIA)} d`} tono="danger" />
@@ -159,12 +165,12 @@ export async function InicioComercial({ profile, edicion, empresa }: { profile: 
             </ul>
           )}
         </SectionCard>
-        <SectionCard title={`Hoy · ${reunionesHoy.length}`} description="Reuniones y acciones comprometidas para hoy, en orden.">
-          {reunionesHoy.length === 0 ? <EmptyState title="Sin compromisos hoy" description="Nada agendado para hoy." /> : (
+        <SectionCard title={`Hoy · ${reunionesHoy.length}`} description="Reuniones y acciones comprometidas para hoy, en orden." icon={CalendarCheck} tone="amber">
+          {reunionesHoy.length === 0 ? <EmptyState icon={CalendarCheck} title="Sin compromisos hoy" description="Nada agendado para hoy." /> : (
             <ul className="divide-y divide-border">
               {reunionesHoy.map((negocio) => (
                 <li key={negocio.id} className="flex items-center gap-3 px-4 py-2.5">
-                  <span className="w-12 tabular-nums text-sm text-foreground"><Clock size={12} className="mr-1 inline" aria-hidden="true" />{hora.format(new Date(negocio.next_action_at as string))}</span>
+                  <span className="inline-flex w-16 shrink-0 items-center gap-1 tabular-nums text-sm font-medium text-foreground"><Clock size={12} className="text-[var(--tone-amber)]" aria-hidden="true" />{hora.format(new Date(negocio.next_action_at as string))}</span>
                   <div className="min-w-0 flex-1">
                     <Link href={`/dashboard/ventas/${negocio.id}`} className="block truncate text-sm font-medium text-foreground hover:text-primary hover:underline">{primero(negocio.sales_companies)?.name ?? negocio.name}</Link>
                     <p className="truncate text-xs text-muted-foreground">{negocio.next_action_note ?? negocio.name}</p>
@@ -174,8 +180,8 @@ export async function InicioComercial({ profile, edicion, empresa }: { profile: 
             </ul>
           )}
         </SectionCard>
-        <SectionCard title={`Propuestas sin respuesta · ${propuestasSinRespuesta.length}`} description="En propuesta o negociación con más de 7 días sin avance. Un mensaje corto suele destrabarlas.">
-          {propuestasSinRespuesta.length === 0 ? <EmptyState title="Nada detenido" description="Ninguna propuesta lleva más de una semana sin respuesta." /> : (
+        <SectionCard title={`Propuestas sin respuesta · ${propuestasSinRespuesta.length}`} description="En propuesta o negociación con más de 7 días sin avance. Un mensaje corto suele destrabarlas." icon={FileClock} tone="green">
+          {propuestasSinRespuesta.length === 0 ? <EmptyState icon={FileClock} title="Nada detenido" description="Ninguna propuesta lleva más de una semana sin respuesta." /> : (
             <ul className="divide-y divide-border">
               {propuestasSinRespuesta.slice(0, 10).map((negocio) => (
                 <Fila key={negocio.id} negocio={negocio} detalle={`desde ${fechaCorta.format(new Date(negocio.next_action_at as string))}`} tono="warning" />
@@ -186,25 +192,25 @@ export async function InicioComercial({ profile, edicion, empresa }: { profile: 
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <SectionCard title="Campaña de correo" description="Lo que va enviando Atlas Lead: a cuántos les llegó, cuántos abrieron y cuántos hicieron clic.">
-          {campanasCorreo.length === 0 ? <EmptyState title="Sin campañas de correo" description="Cuando Atlas Lead envíe, el avance aparece acá." /> : (
+        <SectionCard title="Campaña de correo" description="Lo que va enviando Atlas Lead: a cuántos les llegó, cuántos abrieron y cuántos hicieron clic." icon={Mail} tone="teal">
+          {campanasCorreo.length === 0 ? <EmptyState icon={Mail} title="Sin campañas de correo" description="Cuando Atlas Lead envíe, el avance aparece acá." /> : (
             <ul className="divide-y divide-border">
               {campanasCorreo.map(([id, cuenta]) => (
                 <li key={id} className="space-y-2 px-4 py-3">
                   <p className="truncate text-sm font-medium text-foreground">{nombreCampana.get(id) ?? "Campaña"}</p>
                   <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
-                    <div><p className="text-lg font-semibold tabular-nums text-foreground">{cuenta.personas}</p><p className="text-muted-foreground">personas · {cuenta.correos} correos</p></div>
-                    <div><p className="text-lg font-semibold tabular-nums text-foreground">{cuenta.abrieron}</p><p className="text-muted-foreground">abrieron · {porciento(cuenta.abrieron, cuenta.personas)}</p></div>
-                    <div><p className="text-lg font-semibold tabular-nums text-foreground">{cuenta.clic}</p><p className="text-muted-foreground">hicieron clic · {porciento(cuenta.clic, cuenta.personas)}</p></div>
-                    <div><p className="text-lg font-semibold tabular-nums text-foreground">{cuenta.rebotes + cuenta.bajas}</p><p className="text-muted-foreground">rebotes y bajas</p></div>
+                    <div className="rounded-lg border border-border border-l-2 border-l-border-strong bg-background px-3 py-2"><p className="text-lg font-semibold tabular-nums text-foreground">{cuenta.personas}</p><p className="text-muted-foreground">personas · {cuenta.correos} correos</p></div>
+                    <div className="rounded-lg border border-border border-l-2 border-l-[var(--tone-teal)] bg-background px-3 py-2"><p className="text-lg font-semibold tabular-nums text-foreground">{cuenta.abrieron}</p><p className="text-muted-foreground">abrieron · {porciento(cuenta.abrieron, cuenta.personas)}</p></div>
+                    <div className="rounded-lg border border-border border-l-2 border-l-success bg-background px-3 py-2"><p className="text-lg font-semibold tabular-nums text-success">{cuenta.clic}</p><p className="text-muted-foreground">hicieron clic · {porciento(cuenta.clic, cuenta.personas)}</p></div>
+                    <div className={`rounded-lg border border-border border-l-2 bg-background px-3 py-2 ${cuenta.rebotes + cuenta.bajas > 0 ? "border-l-warning" : "border-l-border-strong"}`}><p className={`text-lg font-semibold tabular-nums ${cuenta.rebotes + cuenta.bajas > 0 ? "text-warning" : "text-foreground"}`}>{cuenta.rebotes + cuenta.bajas}</p><p className="text-muted-foreground">rebotes y bajas</p></div>
                   </div>
                 </li>
               ))}
             </ul>
           )}
         </SectionCard>
-        <SectionCard title={`Por contactar · ${porContactar.length}`} description="Abrieron, hicieron clic o respondieron la campaña y esperan que les escribas. Los más calientes primero.">
-          {porContactar.length === 0 ? <EmptyState title="Bandeja al día" description="Nadie con interés espera gestión." /> : (
+        <SectionCard title={`Por contactar · ${porContactar.length}`} description="Abrieron, hicieron clic o respondieron la campaña y esperan que les escribas. Los más calientes primero." icon={Inbox} tone="teal">
+          {porContactar.length === 0 ? <EmptyState icon={Inbox} title="Bandeja al día" description="Nadie con interés espera gestión." /> : (
             <ul className="divide-y divide-border">
               {porContactar.slice(0, 8).map((p) => (
                 <li key={p.lead_id} className="flex items-center gap-3 px-4 py-2.5">

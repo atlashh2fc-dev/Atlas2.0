@@ -1,7 +1,7 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { LiveDashboard } from "@/components/live-dashboard";
-import { MetricCard, PageHeader, SectionCard, buttonClasses } from "@/components/ui";
+import { Callout, EmptyState, MetricCard, PageHeader, SectionCard, buttonClasses } from "@/components/ui";
 import Link from "next/link";
 import type { AgentPerformance, HomeDashboardSummary, Profile } from "@/lib/types";
 import { endOfDay, REPORT_TIME_ZONE, startOfDay } from "@/lib/report-range";
@@ -11,9 +11,13 @@ import {
   BarChart3,
   CalendarClock,
   CalendarX2,
+  CircleCheck,
+  Clock,
   Database,
   Megaphone,
   Settings2,
+  ShieldCheck,
+  TrendingUp,
   UserPlus,
   UserRoundX,
   Users,
@@ -31,7 +35,10 @@ function countValue(result: { count: number | null; error?: unknown }): string {
 function SnapshotContext({ scope, at }: { scope: string; at: Date }) {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-      <span>{scope}</span>
+      <span className="inline-flex items-center gap-1.5">
+        <Clock size={13} className="text-[color:var(--tone-amber)]" aria-hidden="true" />
+        {scope}
+      </span>
       <span>Consulta al {at.toLocaleString("es-CL", { timeZone: REPORT_TIME_ZONE })} · Chile</span>
       <span>Estado al cargar · Operación contiene el monitoreo</span>
     </div>
@@ -155,15 +162,17 @@ export default async function DashboardPage() {
         <SnapshotContext scope="Alcance: tus equipos supervisados · Agendas de hoy y vencidas" at={loadedAt} />
 
         {hasDataError && (
-          <div role="status" className="rounded-lg border border-warning/30 bg-warning-bg px-4 py-3 text-sm text-warning">
-            No se pudieron consultar todos los indicadores. Los datos no disponibles no representan cero; vuelve a cargar para reintentar.
+          <div role="status">
+            <Callout tone="warning" className="px-4 py-3">
+              No se pudieron consultar todos los indicadores. Los datos no disponibles no representan cero; vuelve a cargar para reintentar.
+            </Callout>
           </div>
         )}
 
         {!teamsError && teamIds.length === 0 && (
-          <div className="rounded-lg border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger">
+          <Callout tone="danger" className="px-4 py-3">
             Tu usuario supervisor no tiene equipos asignados. Un administrador debe asociarte al menos uno.
-          </div>
+          </Callout>
         )}
 
         {/* Cada número abre la lista que lo compone. */}
@@ -171,7 +180,7 @@ export default async function DashboardPage() {
           <MetricCard
             label="Agendas vencidas"
             icon={CalendarX2}
-            iconTone="rose"
+            iconTone="amber"
             value={countValue(overdueResult)}
             hint="Compromisos vencidos a esta hora"
             href="/dashboard/leads?view=vencidas"
@@ -190,7 +199,7 @@ export default async function DashboardPage() {
           <MetricCard
             label="Sin asignar"
             icon={UserPlus}
-            iconTone="teal"
+            iconTone="blue"
             value={countValue(unassignedResult)}
             hint="Listo para repartir"
             href="/dashboard/team"
@@ -208,7 +217,7 @@ export default async function DashboardPage() {
           <MetricCard
             label="Ejecutivos"
             icon={Users}
-            iconTone="violet"
+            iconTone="blue"
             value={countValue(agentsResult)}
             href="/dashboard/team"
             hrefLabel="Ver carga"
@@ -218,18 +227,34 @@ export default async function DashboardPage() {
         <SectionCard
           title="Rendimiento del equipo"
           description="Acumulado de gestiones disponible, no solo de hoy. Los cinco con más gestiones; abre su cartera para revisar."
+          icon={TrendingUp}
+          tone="blue"
         >
+          {topAgents.length === 0 && (
+            <EmptyState
+              icon={TrendingUp}
+              title={performanceResult.error ? "Rendimiento no disponible en esta consulta." : "Sin gestiones registradas."}
+              className="py-8"
+            />
+          )}
           <ul className="divide-y divide-border">
-            {topAgents.length === 0 && (
-              <li className="px-5 py-4 text-sm text-muted-foreground">{performanceResult.error ? "Rendimiento no disponible en esta consulta." : "Sin gestiones registradas."}</li>
-            )}
-            {topAgents.map((agent) => (
-              <li key={agent.agent_id} className="flex items-center justify-between gap-3 px-5 py-3">
+            {topAgents.map((agent, index) => (
+              <li key={agent.agent_id} className="flex items-center justify-between gap-3 px-5 py-3 transition-colors hover:bg-surface-muted/50">
+                <div className="flex min-w-0 items-center gap-3">
+                <span
+                  className="icon-chip size-7 rounded-full text-xs font-semibold tabular-nums"
+                  data-tone={index === 0 ? "green" : "blue"}
+                  data-active={index === 0 ? "true" : undefined}
+                  aria-hidden="true"
+                >
+                  {index + 1}
+                </span>
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-foreground">{agent.full_name}</p>
                   <p className="text-xs text-muted-foreground">
                     {agent.leads_managed} registros gestionados · {agent.total_interactions} gestiones
                   </p>
+                </div>
                 </div>
                 <Link
                   href={`/dashboard/leads?agent=${agent.agent_id}`}
@@ -305,12 +330,15 @@ export default async function DashboardPage() {
 
         <div className="grid gap-3 lg:grid-cols-3">
           {[
-            { href: "/dashboard/operacion", title: "Operación", description: "Colas de Voice y WhatsApp, carga de ejecutivos y excepciones. Sin abrir conversaciones.", icon: Activity },
-            { href: "/dashboard/admin/colas", title: "Configuración", description: "Enrutamiento, capacidad y miembros. Revisa las reglas que organizan la atención.", icon: Settings2 },
-            { href: "/dashboard/reportes", title: "Resultados", description: "Indicadores de gestión y discador, con período y filtros explícitos.", icon: BarChart3 },
-          ].map(({ href, title, description, icon: Icon }) => (
-            <Link key={href} href={href} className="group rounded-xl border border-border bg-surface p-5 transition-colors hover:bg-surface-muted/50">
-              <div className="flex items-center justify-between text-primary"><Icon size={20} aria-hidden="true" /><ArrowUpRight size={16} aria-hidden="true" /></div>
+            { href: "/dashboard/operacion", title: "Operación", description: "Colas de Voice y WhatsApp, carga de ejecutivos y excepciones. Sin abrir conversaciones.", icon: Activity, tone: "teal" },
+            { href: "/dashboard/admin/colas", title: "Configuración", description: "Enrutamiento, capacidad y miembros. Revisa las reglas que organizan la atención.", icon: Settings2, tone: "slate" },
+            { href: "/dashboard/reportes", title: "Resultados", description: "Indicadores de gestión y discador, con período y filtros explícitos.", icon: BarChart3, tone: "violet" },
+          ].map(({ href, title, description, icon: Icon, tone }) => (
+            <Link key={href} href={href} className="group rounded-xl border border-border bg-surface p-5 shadow-sm transition-[border-color,box-shadow,transform] hover:-translate-y-0.5 hover:border-border-strong hover:shadow-md">
+              <div className="flex items-center justify-between">
+                <span className="icon-chip size-9 rounded-lg" data-tone={tone} aria-hidden="true"><Icon size={18} /></span>
+                <ArrowUpRight size={16} className="text-muted-foreground transition-colors group-hover:text-primary" aria-hidden="true" />
+              </div>
               <h2 className="mt-3 text-sm font-semibold text-foreground">{title}</h2>
               <p className="mt-1 text-sm text-muted-foreground">{description}</p>
             </Link>
@@ -318,8 +346,10 @@ export default async function DashboardPage() {
         </div>
 
         {hasDataError && (
-          <div role="status" className="rounded-lg border border-warning/30 bg-warning-bg px-4 py-3 text-sm text-warning">
-            Hay indicadores no disponibles. No equivalen a cero ni confirman una configuración correcta; vuelve a cargar para reintentar.
+          <div role="status">
+            <Callout tone="warning" className="px-4 py-3">
+              Hay indicadores no disponibles. No equivalen a cero ni confirman una configuración correcta; vuelve a cargar para reintentar.
+            </Callout>
           </div>
         )}
 
@@ -327,7 +357,7 @@ export default async function DashboardPage() {
           <MetricCard
             label="Campañas sin flujo"
             icon={Workflow}
-            iconTone="teal"
+            iconTone="rose"
             value={campaignsResult.error ? "Sin datos" : campaignsWithoutWorkflow.length}
             hint="Activas sin guion; revisar según su canal"
             href="/dashboard/admin/campanas"
@@ -337,7 +367,7 @@ export default async function DashboardPage() {
           <MetricCard
             label="Campañas sin ejecutivos"
             icon={UserRoundX}
-            iconTone="violet"
+            iconTone="rose"
             value={configurationAvailable ? campaignsWithoutAgents.length : "Sin datos"}
             hint="Sin ejecutivos de campaña; revisar miembros ACD"
             href="/dashboard/admin/campanas"
@@ -364,7 +394,7 @@ export default async function DashboardPage() {
           <MetricCard
             label="Usuarios activos"
             icon={Users}
-            iconTone="green"
+            iconTone="blue"
             value={countValue(activeUsersResult)}
             href="/dashboard/admin/usuarios?active=si"
             hrefLabel="Ver usuarios"
@@ -374,21 +404,27 @@ export default async function DashboardPage() {
         <SectionCard
           title="Revisión de configuración"
           description="Señales de campañas activas. No sustituyen la salud de canales ni la configuración de miembros de cada cola ACD."
+          icon={ShieldCheck}
+          tone="slate"
         >
+          {!configurationAvailable && (
+            <EmptyState icon={ShieldCheck} title="No fue posible completar la revisión de configuración." className="py-8" />
+          )}
+          {configurationAvailable && campaignsWithoutWorkflow.length === 0 && campaignsWithoutAgents.length === 0 && (
+            <div className="flex items-center gap-3 px-5 py-4 text-sm text-success">
+              <span className="icon-chip size-7 rounded-full" data-tone="green" aria-hidden="true"><CircleCheck size={14} /></span>
+              Todas las campañas activas tienen flujo y ejecutivos asignados.
+            </div>
+          )}
           <ul className="divide-y divide-border">
-            {!configurationAvailable && (
-              <li className="px-5 py-4 text-sm text-muted-foreground">No fue posible completar la revisión de configuración.</li>
-            )}
-            {configurationAvailable && campaignsWithoutWorkflow.length === 0 && campaignsWithoutAgents.length === 0 && (
-              <li className="px-5 py-4 text-sm text-muted-foreground">
-                Todas las campañas activas tienen flujo y ejecutivos asignados.
-              </li>
-            )}
             {!campaignsResult.error && campaignsWithoutWorkflow.map((campaign) => (
-              <li key={`wf-${campaign.id}`} className="flex items-center justify-between gap-3 px-5 py-3">
+              <li key={`wf-${campaign.id}`} className="flex items-center justify-between gap-3 border-l-2 border-l-warning px-5 py-3">
+                <div className="flex min-w-0 items-center gap-3">
+                <span className="icon-chip size-7 rounded-lg" data-tone="amber" aria-hidden="true"><Workflow size={14} /></span>
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-foreground">{campaign.name}</p>
                   <p className="text-xs text-warning">Sin flujo de gestión: revisa si este canal requiere un guion.</p>
+                </div>
                 </div>
                 <Link
                   href={`/dashboard/admin/campanas/${campaign.id}#flujo`}
@@ -399,10 +435,13 @@ export default async function DashboardPage() {
               </li>
             ))}
             {configurationAvailable && campaignsWithoutAgents.map((campaign) => (
-              <li key={`ag-${campaign.id}`} className="flex items-center justify-between gap-3 px-5 py-3">
+              <li key={`ag-${campaign.id}`} className="flex items-center justify-between gap-3 border-l-2 border-l-warning px-5 py-3">
+                <div className="flex min-w-0 items-center gap-3">
+                <span className="icon-chip size-7 rounded-lg" data-tone="amber" aria-hidden="true"><UserRoundX size={14} /></span>
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-foreground">{campaign.name}</p>
                   <p className="text-xs text-warning">Sin ejecutivos de campaña: revisa su asignación y los miembros de la cola ACD.</p>
+                </div>
                 </div>
                 <Link
                   href={`/dashboard/admin/campanas/${campaign.id}/ejecutivos`}
@@ -415,16 +454,21 @@ export default async function DashboardPage() {
           </ul>
         </SectionCard>
 
-        <SectionCard title="Campañas recientes" description="Las ocho últimas creadas.">
+        <SectionCard title="Campañas recientes" description="Las ocho últimas creadas." icon={Megaphone} tone="rose">
+          {campaigns.length === 0 && (
+            <EmptyState
+              icon={Megaphone}
+              title={campaignsResult.error ? "Campañas no disponibles en esta consulta." : "No hay campañas configuradas."}
+              className="py-8"
+            />
+          )}
           <ul className="divide-y divide-border">
-            {campaigns.length === 0 && (
-              <li className="px-5 py-4 text-sm text-muted-foreground">{campaignsResult.error ? "Campañas no disponibles en esta consulta." : "No hay campañas configuradas."}</li>
-            )}
             {campaigns.slice(0, 8).map((campaign) => (
-              <li key={campaign.id} className="flex items-center justify-between gap-3 px-5 py-3">
+              <li key={campaign.id} className="flex items-center justify-between gap-3 px-5 py-3 transition-colors hover:bg-surface-muted/50">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-foreground">{campaign.name}</p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <span className={`inline-block size-1.5 rounded-full ${campaign.is_active ? "bg-success" : "bg-muted-foreground"}`} aria-hidden="true" />
                     {campaign.is_active ? "Activa" : "Inactiva"} ·{" "}
                     {campaign.workflow_id ? "Con flujo" : "Sin flujo"}
                   </p>

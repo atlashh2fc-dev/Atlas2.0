@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, Layers } from "lucide-react";
 
 import {
   Badge,
   Callout,
+  EmptyState,
   PageHeader,
   SectionCard,
   Table,
@@ -31,6 +32,15 @@ const CHANNEL_LABELS: Record<string, string> = {
   email: "Correo",
   chat: "Chat",
   instagram: "Instagram",
+};
+
+/** Color del canal, igual que en el menú: voz en marca, WhatsApp verde, texto en turquesa. */
+const CHANNEL_TONES: Record<string, string> = {
+  voice: "primary",
+  whatsapp: "green",
+  email: "teal",
+  chat: "teal",
+  instagram: "rose",
 };
 
 export default async function ContactCenterQueuesPage() {
@@ -145,7 +155,12 @@ export default async function ContactCenterQueuesPage() {
         </Callout>
       )}
 
-      <SectionCard>
+      <SectionCard
+        icon={Layers}
+        tone="rose"
+        title="Colas"
+        description="Fuentes, estrategia y stock de WhatsApp de cada cola."
+      >
         <div className="overflow-x-auto">
           <Table>
             <Thead>
@@ -161,12 +176,12 @@ export default async function ContactCenterQueuesPage() {
             <Tbody>
               {queuesUnavailable ? (
                 <TableEmpty colSpan={8}>
-                  Configuración de colas no disponible.
+                  <EmptyState icon={Layers} title="Configuración de colas no disponible." className="py-6" />
                 </TableEmpty>
               ) : (
                 (queuesResult.data ?? []).length === 0 && (
                   <TableEmpty colSpan={8}>
-                    Aún no hay colas configuradas.
+                    <EmptyState icon={Layers} title="Aún no hay colas configuradas." className="py-6" />
                   </TableEmpty>
                 )
               )}
@@ -176,17 +191,28 @@ export default async function ContactCenterQueuesPage() {
                   return (
                     <Tr key={queue.id}>
                       <Td strong className="min-w-64">
-                        <Link
-                          href={`/dashboard/admin/colas/${queue.id}`}
-                          className="hover:text-primary hover:underline"
-                        >
-                          {queue.name}
-                        </Link>
-                        {queue.description && (
-                          <p className="mt-0.5 text-xs font-normal text-muted-foreground">
-                            {queue.description}
-                          </p>
-                        )}
+                        <div className="flex items-start gap-3">
+                          <span
+                            className={`icon-chip mt-0.5 size-8 rounded-lg ${queue.is_active ? "" : "opacity-50"}`}
+                            data-tone="rose"
+                            aria-hidden="true"
+                          >
+                            <Layers size={15} />
+                          </span>
+                          <div className="min-w-0">
+                            <Link
+                              href={`/dashboard/admin/colas/${queue.id}`}
+                              className="hover:text-primary hover:underline"
+                            >
+                              {queue.name}
+                            </Link>
+                            {queue.description && (
+                              <p className="mt-0.5 text-xs font-normal text-muted-foreground">
+                                {queue.description}
+                              </p>
+                            )}
+                          </div>
+                        </div>
                       </Td>
                       <Td className="min-w-64">
                         <div className="flex flex-wrap gap-1">
@@ -214,9 +240,12 @@ export default async function ContactCenterQueuesPage() {
                                 ? one(route.whatsapp_channels)
                                 : null;
                               return (
-                                <Badge
+                                <span
                                   key={`${source.channel_type}-${index}`}
-                                  tone="info"
+                                  className="icon-chip rounded-full px-2 py-0.5 text-xs font-medium"
+                                  data-tone={
+                                    CHANNEL_TONES[source.channel_type] ?? "slate"
+                                  }
                                 >
                                   {CHANNEL_LABELS[source.channel_type] ??
                                     source.channel_type}{" "}
@@ -224,7 +253,7 @@ export default async function ContactCenterQueuesPage() {
                                   {campaign?.name ??
                                     channel?.display_phone_number ??
                                     "Sin origen"}
-                                </Badge>
+                                </span>
                               );
                             })
                           )}

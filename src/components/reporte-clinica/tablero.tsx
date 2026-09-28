@@ -2,9 +2,55 @@
 
 import Link from "next/link";
 import { Suspense, useCallback, useMemo, useState, useTransition } from "react";
-import { ChevronRight, Download, Lightbulb, Loader2, SlidersHorizontal, TrendingDown, TrendingUp } from "lucide-react";
+import {
+  Banknote,
+  CalendarCheck,
+  CalendarClock,
+  CalendarDays,
+  CalendarRange,
+  CalendarX2,
+  ChartBarStacked,
+  ChartLine,
+  CheckCheck,
+  ChevronRight,
+  ClipboardList,
+  CreditCard,
+  Download,
+  FileCheck2,
+  FilePlus2,
+  FileX2,
+  Funnel,
+  Grid3x3,
+  HandCoins,
+  Hourglass,
+  IdCard,
+  Layers,
+  Lightbulb,
+  Link2,
+  ListChecks,
+  Loader2,
+  MapPin,
+  Megaphone,
+  PawPrint,
+  Percent,
+  Receipt,
+  Repeat,
+  SlidersHorizontal,
+  Stethoscope,
+  Syringe,
+  Table2,
+  Timer,
+  TrendingDown,
+  TrendingUp,
+  UserPlus,
+  UserRound,
+  UserX,
+  Users,
+  Wallet,
+} from "lucide-react";
 
 import { ReportRangePicker } from "@/components/report-range-picker";
+import { PageHeader } from "@/components/ui";
 import { CLINIC_PRESETS } from "@/lib/report-range";
 import { cn } from "@/lib/utils";
 import {
@@ -102,9 +148,9 @@ const ESTADOS_CITA: SegmentoEstado[] = [
   { clave: "atendida", etiqueta: "Atendida", color: "var(--success)" },
   { clave: "en_sala", etiqueta: "En sala", color: "var(--warning)" },
   { clave: "confirmada", etiqueta: "Confirmada", color: "var(--primary)" },
-  { clave: "reservada", etiqueta: "Reservada", color: "color-mix(in oklab, var(--primary) 38%, var(--surface))" },
+  { clave: "reservada", etiqueta: "Reservada", color: "color-mix(in oklab, var(--primary) 38%, var(--surface-solid))" },
   { clave: "no_vino", etiqueta: "No vino", color: "var(--danger)" },
-  { clave: "cancelada", etiqueta: "Cancelada", color: "color-mix(in oklab, var(--muted-foreground) 45%, var(--surface))" },
+  { clave: "cancelada", etiqueta: "Cancelada", color: "color-mix(in oklab, var(--muted-foreground) 45%, var(--surface-solid))" },
 ];
 
 const ETIQUETA_MEDIO: Record<string, string> = {
@@ -245,29 +291,27 @@ export function TableroClinica({
   return (
     <div className="space-y-4">
       {/* Cabecera: período, comparación y descarga */}
-      <div className="flex flex-col gap-3 border-b border-border pb-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight text-foreground">Reportes</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            De lo general a lo particular: cuánto produjo la clínica, qué lo explica y el detalle de cada atención. Haz clic en cualquier barra para filtrar.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Suspense fallback={null}>
-            <ReportRangePicker presets={CLINIC_PRESETS} />
-          </Suspense>
-          <button
-            type="button"
-            onClick={exportarTodo}
-            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-sm transition hover:bg-primary-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <Download className="size-3.5" aria-hidden="true" /> Descargar Excel
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Reportes"
+        description="De lo general a lo particular: cuánto produjo la clínica, qué lo explica y el detalle de cada atención. Haz clic en cualquier barra para filtrar."
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Suspense fallback={null}>
+              <ReportRangePicker presets={CLINIC_PRESETS} />
+            </Suspense>
+            <button
+              type="button"
+              onClick={exportarTodo}
+              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-sm transition hover:bg-primary-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Download className="size-3.5" aria-hidden="true" /> Descargar Excel
+            </button>
+          </div>
+        }
+      />
 
       {/* Segmentadores */}
-      <div className="z-20 -mx-1 rounded-xl lg:sticky lg:top-0 border border-border bg-surface/95 px-3 py-2.5 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-surface/80">
+      <div className="z-20 -mx-1 rounded-xl lg:sticky lg:top-0 border border-border bg-surface-solid/95 px-3 py-2.5 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-surface-solid/80">
         <div className="flex flex-wrap items-center gap-2">
           <span className="flex items-center gap-1.5 pr-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             <SlidersHorizontal className="size-3.5" aria-hidden="true" /> Filtros
@@ -479,28 +523,28 @@ function VistaResumen({
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Kpi destacado etiqueta="Producción" valor={clp.format(kpis.produccion)} anterior={clp.format(kpisAntes.produccion)} delta={variacion(kpis.produccion, kpisAntes.produccion)} puntos={chispa((a) => a.monto)} />
-        <Kpi destacado etiqueta="Atenciones" valor={entero.format(kpis.atenciones)} anterior={entero.format(kpisAntes.atenciones)} delta={variacion(kpis.atenciones, kpisAntes.atenciones)} puntos={chispa(() => 1)} />
-        <Kpi destacado etiqueta="Ticket por visita" valor={kpis.ticket === null ? "—" : clp.format(kpis.ticket)} anterior={kpisAntes.ticket === null ? "—" : clp.format(kpisAntes.ticket)} delta={variacion(kpis.ticket, kpisAntes.ticket)} detalle={`${entero.format(kpis.visitas)} visitas`} />
-        <Kpi destacado etiqueta={`${voc.personas} atendidos`} valor={entero.format(kpis.pacientes)} anterior={entero.format(kpisAntes.pacientes)} delta={variacion(kpis.pacientes, kpisAntes.pacientes)} puntos={pacientesPorTramo} />
+        <Kpi destacado icono={Banknote} tono="green" etiqueta="Producción" valor={clp.format(kpis.produccion)} anterior={clp.format(kpisAntes.produccion)} delta={variacion(kpis.produccion, kpisAntes.produccion)} puntos={chispa((a) => a.monto)} />
+        <Kpi destacado icono={Stethoscope} tono="blue" etiqueta="Atenciones" valor={entero.format(kpis.atenciones)} anterior={entero.format(kpisAntes.atenciones)} delta={variacion(kpis.atenciones, kpisAntes.atenciones)} puntos={chispa(() => 1)} />
+        <Kpi destacado icono={Receipt} tono="green" etiqueta="Ticket por visita" valor={kpis.ticket === null ? "—" : clp.format(kpis.ticket)} anterior={kpisAntes.ticket === null ? "—" : clp.format(kpisAntes.ticket)} delta={variacion(kpis.ticket, kpisAntes.ticket)} detalle={`${entero.format(kpis.visitas)} visitas`} />
+        <Kpi destacado icono={Users} tono="blue" etiqueta={`${voc.personas} atendidos`} valor={entero.format(kpis.pacientes)} anterior={entero.format(kpisAntes.pacientes)} delta={variacion(kpis.pacientes, kpisAntes.pacientes)} puntos={pacientesPorTramo} />
       </div>
       <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-6">
-        <Kpi etiqueta="Margen" valor={formatoPct(kpis.margenPct)} delta={variacion(kpis.margenPct, kpisAntes.margenPct)} detalle={`${formatoClpCorto(kpis.margen)} sobre materiales`} />
-        <Kpi etiqueta="Cobrado" valor={formatoPct(kpis.cobradoPct)} delta={variacion(kpis.cobradoPct, kpisAntes.cobradoPct)} detalle="de lo producido" />
-        <Kpi etiqueta="Primera visita" valor={entero.format(kpis.nuevos)} delta={variacion(kpis.nuevos, kpisAntes.nuevos)} detalle={`${voc.personas.toLowerCase()} nuevos`} />
-        <Kpi etiqueta="Asistencia" valor={formatoPct(kpis.asistenciaPct)} delta={variacion(kpis.asistenciaPct, kpisAntes.asistenciaPct)} detalle={ignora(filtros, "citas") ?? `${kpis.noVino} no vinieron`} />
-        <Kpi etiqueta="Aceptación" valor={formatoPct(kpis.conversionPct)} delta={variacion(kpis.conversionPct, kpisAntes.conversionPct)} detalle={ignora(filtros, "planes") ?? `${kpis.planesGanados} de ${kpis.planesCreados}`} />
-        <Kpi etiqueta="Por cobrar hoy" valor={formatoClpCorto(saldoTotal)} detalle={ignora(filtros, "saldos") ?? "saldo total, toda la historia"} />
+        <Kpi icono={Percent} tono="green" etiqueta="Margen" valor={formatoPct(kpis.margenPct)} delta={variacion(kpis.margenPct, kpisAntes.margenPct)} detalle={`${formatoClpCorto(kpis.margen)} sobre materiales`} />
+        <Kpi icono={HandCoins} tono="green" etiqueta="Cobrado" valor={formatoPct(kpis.cobradoPct)} delta={variacion(kpis.cobradoPct, kpisAntes.cobradoPct)} detalle="de lo producido" />
+        <Kpi icono={UserPlus} tono="blue" etiqueta="Primera visita" valor={entero.format(kpis.nuevos)} delta={variacion(kpis.nuevos, kpisAntes.nuevos)} detalle={`${voc.personas.toLowerCase()} nuevos`} />
+        <Kpi icono={CalendarCheck} tono="amber" etiqueta="Asistencia" valor={formatoPct(kpis.asistenciaPct)} delta={variacion(kpis.asistenciaPct, kpisAntes.asistenciaPct)} detalle={ignora(filtros, "citas") ?? `${kpis.noVino} no vinieron`} />
+        <Kpi icono={FileCheck2} tono="green" etiqueta="Aceptación" valor={formatoPct(kpis.conversionPct)} delta={variacion(kpis.conversionPct, kpisAntes.conversionPct)} detalle={ignora(filtros, "planes") ?? `${kpis.planesGanados} de ${kpis.planesCreados}`} />
+        <Kpi icono={Wallet} tono="green" etiqueta="Por cobrar hoy" valor={formatoClpCorto(saldoTotal)} detalle={ignora(filtros, "saldos") ?? "saldo total, toda la historia"} />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-3">
-        <Panel titulo="Lectura del período" descripcion="Lo que explica el número, en orden. Haz clic para bajar al detalle." className="xl:col-span-1">
+        <Panel icono={Lightbulb} tono="violet" titulo="Lectura del período" descripcion="Lo que explica el número, en orden. Haz clic para bajar al detalle." className="xl:col-span-1">
           <ul className="space-y-2.5">
             {lectura.map((h, i) => {
               const Icono = h.tono === "positivo" ? TrendingUp : h.tono === "negativo" ? TrendingDown : Lightbulb;
               const contenido = (
                 <>
-                  <span className={cn("mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full", h.tono === "positivo" ? "bg-success-bg text-success" : h.tono === "negativo" ? "bg-danger-bg text-danger" : "bg-surface-muted text-muted-foreground")}>
+                  <span className="icon-chip mt-0.5 size-6 rounded-full" data-tone={h.tono === "positivo" ? "green" : h.tono === "negativo" ? "rose" : "amber"} aria-hidden="true">
                     <Icono className="size-3.5" aria-hidden="true" />
                   </span>
                   <span className="text-xs leading-5 text-foreground">{h.texto}</span>
@@ -522,6 +566,7 @@ function VistaResumen({
           </ul>
         </Panel>
         <Panel
+          icono={ChartLine} tono="green"
           titulo="Producción en el tiempo"
           descripcion={`Por ${grano === "dia" ? "día" : grano}; la línea gris es ${contra === "Año pasado" ? "el mismo período del año pasado" : "el período anterior"}, alineado.`}
           acciones={<LeyendaTendencia comparar={comparar} contra={contra} />}
@@ -533,22 +578,22 @@ function VistaResumen({
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Panel titulo="Por categoría" descripcion="Producción y variación" exportar={exportarGrupos("Por categoría", "Categoría", categorias)}>
+        <Panel icono={Layers} tono="violet" titulo="Por categoría" descripcion="Producción y variación" exportar={exportarGrupos("Por categoría", "Categoría", categorias)}>
           <BarrasRanking items={aItems(categorias)} formato="clp" activo={filtros.categoria} onElegir={alternar("categoria")} />
         </Panel>
-        <Panel titulo="Por profesional" descripcion="Producción y variación" exportar={exportarGrupos("Por profesional", "Profesional", profesionales)}>
+        <Panel icono={UserRound} tono="blue" titulo="Por profesional" descripcion="Producción y variación" exportar={exportarGrupos("Por profesional", "Profesional", profesionales)}>
           <BarrasRanking items={aItems(profesionales, (g) => `${g.cantidad} at.`)} formato="clp" activo={filtros.profesional} onElegir={alternar("profesional")} />
         </Panel>
-        <Panel titulo="Por canal de origen" descripcion={`Cómo llegó cada ${voc.persona.toLowerCase()} que se atendió`} exportar={exportarGrupos("Por canal", "Canal", canales)}>
+        <Panel icono={Megaphone} tono="rose" titulo="Por canal de origen" descripcion={`Cómo llegó cada ${voc.persona.toLowerCase()} que se atendió`} exportar={exportarGrupos("Por canal", "Canal", canales)}>
           <BarrasRanking items={aItems(canales)} formato="clp" activo={filtros.origen} onElegir={alternar("origen")} />
         </Panel>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Panel titulo="Carga de la agenda" descripcion="Citas por día y hora (sin canceladas)" className="lg:col-span-2">
+        <Panel icono={CalendarRange} tono="amber" titulo="Carga de la agenda" descripcion="Citas por día y hora (sin canceladas)" className="lg:col-span-2">
           <MapaCalor filas={DIAS_SEMANA} columnas={calor.horas.map(String)} celdas={calor.celdas} maximo={calor.maximo} activaFila={filtros.dia} onElegirFila={alternar("dia")} />
         </Panel>
-        <Panel titulo="Por día de la semana" descripcion="Producción">
+        <Panel icono={CalendarDays} tono="amber" titulo="Por día de la semana" descripcion="Producción">
           <BarrasRanking items={aItems(porDia)} formato="clp" activo={filtros.dia} onElegir={alternar("dia")} maximo={7} />
         </Panel>
       </div>
@@ -653,13 +698,14 @@ function VistaProduccion({
 
       <div className="grid gap-4 xl:grid-cols-5">
         <Panel
+          icono={ChartLine} tono="green"
           titulo={nivel === "detalle" ? "Evolución del procedimiento" : nivel === "procedimiento" ? `Evolución de ${filtros.categoria}` : "Evolución de la producción"}
           acciones={<LeyendaTendencia comparar={comparar} contra={contra} />}
           className="xl:col-span-3"
         >
           <Tendencia puntos={serieProduccion} formato="clp" comparar={comparar} contra={contra} alto={220} />
         </Panel>
-        <Panel titulo="Dónde produce cada profesional" descripcion="Producción por profesional y categoría. Clic en un nombre para filtrar." className="xl:col-span-2">
+        <Panel icono={Grid3x3} tono="blue" titulo="Dónde produce cada profesional" descripcion="Producción por profesional y categoría. Clic en un nombre para filtrar." className="xl:col-span-2">
           <MapaCalor
             filas={matriz.profesionales}
             columnas={matriz.categorias}
@@ -676,6 +722,7 @@ function VistaProduccion({
 
       {nivel !== "detalle" ? (
         <Panel
+          icono={Layers} tono="violet"
           titulo={nivel === "categoria" ? "Categorías" : `Procedimientos de ${filtros.categoria}`}
           descripcion="Clic en una fila para bajar un nivel."
           exportar={exportarGrupos(nivel === "categoria" ? "Categorías" : `Procedimientos ${filtros.categoria}`, nivel === "categoria" ? "Categoría" : "Procedimiento", grupos)}
@@ -691,6 +738,7 @@ function VistaProduccion({
       ) : null}
 
       <Panel
+        icono={ClipboardList} tono="blue"
         titulo={`Atenciones${filtros.procedimiento ? ` · ${filtros.procedimiento}` : filtros.categoria ? ` · ${filtros.categoria}` : ""}`}
         descripcion={`${entero.format(atenciones.length)} atenciones con los filtros actuales. El nombre abre la ficha.`}
         exportar={{ nombre: "Atenciones", filas: filasAtenciones(atenciones, hechos, voc, esVet), formatos: FORMATOS_ATENCIONES }}
@@ -788,17 +836,18 @@ function VistaProfesionales({ hechos, periodo, previo, filtros, hoy, alternar }:
   return (
     <div className="space-y-4">
       <div className="grid gap-4 lg:grid-cols-3">
-        <Panel titulo="Producción" descripcion="Con variación frente al período anterior">
+        <Panel icono={Banknote} tono="green" titulo="Producción" descripcion="Con variación frente al período anterior">
           <BarrasRanking items={filas.map((f) => ({ clave: f.profesional, valor: f.produccion, anterior: f.anterior }))} formato="clp" activo={filtros.profesional} onElegir={alternar("profesional")} />
         </Panel>
-        <Panel titulo="Ticket por visita" descripcion="Cuánto deja en promedio cada visita">
+        <Panel icono={Receipt} tono="green" titulo="Ticket por visita" descripcion="Cuánto deja en promedio cada visita">
           <BarrasRanking items={ticket} formato="clp" activo={filtros.profesional} onElegir={alternar("profesional")} mostrarVariacion={false} />
         </Panel>
-        <Panel titulo="Asistencia a sus citas" descripcion="Atendidas sobre atendidas + no vino">
+        <Panel icono={CalendarCheck} tono="amber" titulo="Asistencia a sus citas" descripcion="Atendidas sobre atendidas + no vino">
           <BarrasRanking items={asistencia} formato="pct" activo={filtros.profesional} onElegir={alternar("profesional")} mostrarVariacion={false} />
         </Panel>
       </div>
       <Panel
+        icono={Table2} tono="blue"
         titulo="Cuadro por profesional"
         descripcion="Clic en una fila para filtrar todo el tablero por esa persona."
         exportar={{
@@ -854,23 +903,24 @@ function VistaAgenda({
     <div className="space-y-4">
       <AvisoNoAplica filtros={filtros} conjunto="citas" nombre="las citas" />
       <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-6">
-        <Kpi etiqueta="Citas" valor={entero.format(kpis.citas)} delta={variacion(kpis.citas, kpisAntes.citas)} anterior={entero.format(kpisAntes.citas)} />
-        <Kpi etiqueta="Atendidas" valor={entero.format(kpis.atendidas)} delta={variacion(kpis.atendidas, kpisAntes.atendidas)} detalle={`${entero.format(horas)} h de sillón`} />
-        <Kpi etiqueta="Asistencia" valor={formatoPct(kpis.asistenciaPct)} delta={variacion(kpis.asistenciaPct, kpisAntes.asistenciaPct)} />
-        <Kpi etiqueta="No vinieron" valor={entero.format(kpis.noVino)} delta={variacion(kpis.noVino, kpisAntes.noVino)} inverso />
-        <Kpi etiqueta="Canceladas" valor={entero.format(kpis.canceladas)} delta={variacion(kpis.canceladas, kpisAntes.canceladas)} inverso />
-        <Kpi etiqueta="Por venir" valor={entero.format(proximas)} detalle="reservadas o confirmadas" />
+        <Kpi icono={CalendarDays} tono="amber" etiqueta="Citas" valor={entero.format(kpis.citas)} delta={variacion(kpis.citas, kpisAntes.citas)} anterior={entero.format(kpisAntes.citas)} />
+        <Kpi icono={CheckCheck} tono="amber" etiqueta="Atendidas" valor={entero.format(kpis.atendidas)} delta={variacion(kpis.atendidas, kpisAntes.atendidas)} detalle={`${entero.format(horas)} h de sillón`} />
+        <Kpi icono={CalendarCheck} tono="amber" etiqueta="Asistencia" valor={formatoPct(kpis.asistenciaPct)} delta={variacion(kpis.asistenciaPct, kpisAntes.asistenciaPct)} />
+        <Kpi icono={UserX} tono="rose" etiqueta="No vinieron" valor={entero.format(kpis.noVino)} delta={variacion(kpis.noVino, kpisAntes.noVino)} inverso />
+        <Kpi icono={CalendarX2} tono="slate" etiqueta="Canceladas" valor={entero.format(kpis.canceladas)} delta={variacion(kpis.canceladas, kpisAntes.canceladas)} inverso />
+        <Kpi icono={CalendarClock} tono="amber" etiqueta="Por venir" valor={entero.format(proximas)} detalle="reservadas o confirmadas" />
       </div>
       <div className="grid gap-4 xl:grid-cols-2">
-        <Panel titulo="Citas en el tiempo" descripcion="Sin canceladas" acciones={<LeyendaTendencia comparar={comparar} contra={contra} />}>
+        <Panel icono={ChartLine} tono="amber" titulo="Citas en el tiempo" descripcion="Sin canceladas" acciones={<LeyendaTendencia comparar={comparar} contra={contra} />}>
           <Tendencia puntos={citasSerie} formato="int" comparar={comparar} contra={contra} alto={200} />
         </Panel>
-        <Panel titulo="No vinieron" descripcion="Citas sin asistencia en el tiempo" acciones={<LeyendaTendencia comparar={comparar} contra={contra} />}>
+        <Panel icono={UserX} tono="rose" titulo="No vinieron" descripcion="Citas sin asistencia en el tiempo" acciones={<LeyendaTendencia comparar={comparar} contra={contra} />}>
           <Tendencia puntos={noVinoSerie} formato="int" comparar={comparar} contra={contra} alto={200} />
         </Panel>
       </div>
       <div className="grid gap-4 xl:grid-cols-5">
         <Panel
+          icono={ChartBarStacked} tono="amber"
           titulo="Estado de las citas por profesional"
           descripcion="Clic en una fila para filtrar"
           className="xl:col-span-2"
@@ -878,15 +928,15 @@ function VistaAgenda({
         >
           <BarrasEstado filas={porProfesional} segmentos={ESTADOS_CITA} activo={filtros.profesional} onElegir={alternar("profesional")} />
         </Panel>
-        <Panel titulo="Carga por día y hora" descripcion="Dónde se llena y dónde sobra agenda. Clic en un día para filtrar." className="xl:col-span-3">
+        <Panel icono={CalendarRange} tono="amber" titulo="Carga por día y hora" descripcion="Dónde se llena y dónde sobra agenda. Clic en un día para filtrar." className="xl:col-span-3">
           <MapaCalor filas={DIAS_SEMANA} columnas={calor.horas.map(String)} celdas={calor.celdas} maximo={calor.maximo} activaFila={filtros.dia} onElegirFila={alternar("dia")} />
         </Panel>
       </div>
       <div className="grid gap-4 xl:grid-cols-3">
-        <Panel titulo="Motivos de consulta" descripcion="Cantidad de citas" exportar={{ nombre: "Motivos", filas: motivos.map((m) => ({ Motivo: m.clave, Citas: m.cantidad, "Período anterior": m.anterior })) }}>
+        <Panel icono={Stethoscope} tono="violet" titulo="Motivos de consulta" descripcion="Cantidad de citas" exportar={{ nombre: "Motivos", filas: motivos.map((m) => ({ Motivo: m.clave, Citas: m.cantidad, "Período anterior": m.anterior })) }}>
           <BarrasRanking items={motivos.map((m) => ({ clave: m.clave, valor: m.cantidad, anterior: m.anterior }))} formato="int" />
         </Panel>
-        <Panel titulo="Citas del período" className="xl:col-span-2" exportar={{ nombre: "Citas", filas: citas.map((c) => ({ Fecha: c.fecha, Hora: c.inicio.slice(11, 16), Ficha: nombreDe(c.cuentaId), Profesional: c.profesional, Motivo: c.motivo, Estado: ESTADOS_CITA.find((e) => e.clave === c.estado)?.etiqueta ?? c.estado, Minutos: c.minutos })), formatos: { Fecha: "fecha" } }}>
+        <Panel icono={ListChecks} tono="amber" titulo="Citas del período" className="xl:col-span-2" exportar={{ nombre: "Citas", filas: citas.map((c) => ({ Fecha: c.fecha, Hora: c.inicio.slice(11, 16), Ficha: nombreDe(c.cuentaId), Profesional: c.profesional, Motivo: c.motivo, Estado: ESTADOS_CITA.find((e) => e.clave === c.estado)?.etiqueta ?? c.estado, Minutos: c.minutos })), formatos: { Fecha: "fecha" } }}>
           <Tabla filas={citas} columnas={columnas} ordenInicial={{ clave: "inicio", desc: true }} porPagina={10} />
         </Panel>
       </div>
@@ -934,15 +984,15 @@ function VistaPlanes({
     <div className="space-y-4">
       <AvisoNoAplica filtros={filtros} conjunto="planes" nombre={`los ${voc.planes.toLowerCase()}`} />
       <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-6">
-        <Kpi etiqueta={`${voc.planes} creados`} valor={entero.format(kpis.planesCreados)} delta={variacion(kpis.planesCreados, kpisAntes.planesCreados)} anterior={entero.format(kpisAntes.planesCreados)} />
-        <Kpi etiqueta="Valor presupuestado" valor={formatoClpCorto(kpis.valorPresupuestado)} delta={variacion(kpis.valorPresupuestado, kpisAntes.valorPresupuestado)} />
-        <Kpi etiqueta={voc.aceptados} valor={entero.format(kpis.planesGanados)} delta={variacion(kpis.planesGanados, kpisAntes.planesGanados)} />
-        <Kpi etiqueta="Valor aceptado" valor={formatoClpCorto(kpis.valorAceptado)} delta={variacion(kpis.valorAceptado, kpisAntes.valorAceptado)} />
-        <Kpi etiqueta="Conversión" valor={formatoPct(kpis.conversionPct)} delta={variacion(kpis.conversionPct, kpisAntes.conversionPct)} detalle={`${kpis.planesAbiertos} siguen abiertos`} />
-        <Kpi etiqueta="Días a la decisión" valor={diasCierre === null ? "—" : entero.format(diasCierre)} detalle="promedio, de creado a cerrado" />
+        <Kpi icono={FilePlus2} tono="green" etiqueta={`${voc.planes} creados`} valor={entero.format(kpis.planesCreados)} delta={variacion(kpis.planesCreados, kpisAntes.planesCreados)} anterior={entero.format(kpisAntes.planesCreados)} />
+        <Kpi icono={Banknote} tono="green" etiqueta="Valor presupuestado" valor={formatoClpCorto(kpis.valorPresupuestado)} delta={variacion(kpis.valorPresupuestado, kpisAntes.valorPresupuestado)} />
+        <Kpi icono={FileCheck2} tono="green" etiqueta={voc.aceptados} valor={entero.format(kpis.planesGanados)} delta={variacion(kpis.planesGanados, kpisAntes.planesGanados)} />
+        <Kpi icono={HandCoins} tono="green" etiqueta="Valor aceptado" valor={formatoClpCorto(kpis.valorAceptado)} delta={variacion(kpis.valorAceptado, kpisAntes.valorAceptado)} />
+        <Kpi icono={Percent} tono="violet" etiqueta="Conversión" valor={formatoPct(kpis.conversionPct)} delta={variacion(kpis.conversionPct, kpisAntes.conversionPct)} detalle={`${kpis.planesAbiertos} siguen abiertos`} />
+        <Kpi icono={Timer} tono="amber" etiqueta="Días a la decisión" valor={diasCierre === null ? "—" : entero.format(diasCierre)} detalle="promedio, de creado a cerrado" />
       </div>
       <div className="grid gap-4 xl:grid-cols-5">
-        <Panel titulo="Embudo" descripcion={`De ${voc.planes.toLowerCase()} creados a aceptados, en cantidad y valor`} className="xl:col-span-2">
+        <Panel icono={Funnel} tono="green" titulo="Embudo" descripcion={`De ${voc.planes.toLowerCase()} creados a aceptados, en cantidad y valor`} className="xl:col-span-2">
           <Embudo
             pasos={[
               { etiqueta: "Creados", cantidad: kpis.planesCreados, valor: kpis.valorPresupuestado },
@@ -951,12 +1001,13 @@ function VistaPlanes({
             ]}
           />
         </Panel>
-        <Panel titulo="Valor presupuestado en el tiempo" acciones={<LeyendaTendencia comparar={comparar} contra={contra} />} className="xl:col-span-3">
+        <Panel icono={ChartLine} tono="green" titulo="Valor presupuestado en el tiempo" acciones={<LeyendaTendencia comparar={comparar} contra={contra} />} className="xl:col-span-3">
           <Tendencia puntos={valorSerie} formato="clp" comparar={comparar} contra={contra} alto={200} />
         </Panel>
       </div>
       <div className="grid gap-4 xl:grid-cols-3">
         <Panel
+          icono={Megaphone} tono="rose"
           titulo="Conversión por canal de origen"
           descripcion="Clic en un canal para filtrar"
           className="xl:col-span-2"
@@ -979,15 +1030,16 @@ function VistaPlanes({
           />
         </Panel>
         <div className="space-y-4">
-          <Panel titulo="Por qué se pierden" descripcion="Motivos declarados">
+          <Panel icono={FileX2} tono="rose" titulo="Por qué se pierden" descripcion="Motivos declarados">
             <BarrasRanking items={motivos.map((m) => ({ clave: m.clave, valor: m.cantidad, anterior: m.anterior }))} formato="int" inverso />
           </Panel>
-          <Panel titulo="Abiertos por etapa" descripcion="Valor en juego">
+          <Panel icono={Layers} tono="green" titulo="Abiertos por etapa" descripcion="Valor en juego">
             <BarrasRanking items={aItems(etapas, (g) => `${g.cantidad}`)} formato="clp" mostrarVariacion={false} />
           </Panel>
         </div>
       </div>
       <Panel
+        icono={ClipboardList} tono="green"
         titulo={`${voc.planes} del período`}
         exportar={{ nombre: voc.planes, filas: planes.map((p) => ({ Creado: p.creado, [voc.persona]: nombreDe(p.cuentaId), [voc.plan]: p.nombre, Monto: p.monto, Estado: p.estado === "ganada" ? "Aceptado" : p.estado === "perdida" ? "Perdido" : "Abierto", Etapa: p.etapa ?? "", Cerrado: p.cerrado ?? "", "Motivo de pérdida": p.motivoPerdida ?? "", Canal: origenDe(p) })), formatos: { Creado: "fecha", Cerrado: "fecha", Monto: "clp" } }}
       >
@@ -1028,32 +1080,32 @@ function VistaPacientes({
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Kpi etiqueta={`${voc.personas} atendidos`} valor={entero.format(kpis.pacientes)} delta={variacion(kpis.pacientes, kpisAntes.pacientes)} anterior={entero.format(kpisAntes.pacientes)} />
-        <Kpi etiqueta="Primera visita" valor={entero.format(kpis.nuevos)} delta={variacion(kpis.nuevos, kpisAntes.nuevos)} anterior={entero.format(kpisAntes.nuevos)} detalle="primera atención en la historia" />
-        <Kpi etiqueta="Fichas creadas" valor={entero.format(fichasNuevas)} detalle="altas en el período" />
-        <Kpi etiqueta="Volvieron" valor={formatoPct(totalRec ? (conDosOMas / totalRec) * 100 : null)} detalle="con dos o más visitas en el período" />
+        <Kpi icono={Users} tono="blue" etiqueta={`${voc.personas} atendidos`} valor={entero.format(kpis.pacientes)} delta={variacion(kpis.pacientes, kpisAntes.pacientes)} anterior={entero.format(kpisAntes.pacientes)} />
+        <Kpi icono={UserPlus} tono="blue" etiqueta="Primera visita" valor={entero.format(kpis.nuevos)} delta={variacion(kpis.nuevos, kpisAntes.nuevos)} anterior={entero.format(kpisAntes.nuevos)} detalle="primera atención en la historia" />
+        <Kpi icono={IdCard} tono="blue" etiqueta="Fichas creadas" valor={entero.format(fichasNuevas)} detalle="altas en el período" />
+        <Kpi icono={Repeat} tono="blue" etiqueta="Volvieron" valor={formatoPct(totalRec ? (conDosOMas / totalRec) * 100 : null)} detalle="con dos o más visitas en el período" />
       </div>
       <div className="grid gap-4 xl:grid-cols-5">
-        <Panel titulo={`${voc.personas} nuevos en el tiempo`} descripcion="Primera atención" acciones={<LeyendaTendencia comparar={comparar} contra={contra} />} className="xl:col-span-3">
+        <Panel icono={ChartLine} tono="blue" titulo={`${voc.personas} nuevos en el tiempo`} descripcion="Primera atención" acciones={<LeyendaTendencia comparar={comparar} contra={contra} />} className="xl:col-span-3">
           <Tendencia puntos={nuevosSerie} formato="int" comparar={comparar} contra={contra} alto={220} />
         </Panel>
-        <Panel titulo="De dónde llegan los nuevos" descripcion="Canal de origen" className="xl:col-span-2" exportar={{ nombre: "Nuevos por canal", filas: nuevosPorOrigen.map((g) => ({ Canal: g.clave, Nuevos: g.cantidad, "Período anterior": g.anterior })) }}>
+        <Panel icono={Megaphone} tono="rose" titulo="De dónde llegan los nuevos" descripcion="Canal de origen" className="xl:col-span-2" exportar={{ nombre: "Nuevos por canal", filas: nuevosPorOrigen.map((g) => ({ Canal: g.clave, Nuevos: g.cantidad, "Período anterior": g.anterior })) }}>
           <BarrasRanking items={nuevosPorOrigen.filter((g) => g.valor > 0).map((g) => ({ clave: g.clave, valor: g.valor, anterior: g.anterior }))} formato="int" activo={filtros.origen} onElegir={alternar("origen")} />
         </Panel>
       </div>
       <div className="grid gap-4 xl:grid-cols-3">
-        <Panel titulo="Por comuna" descripcion={`${voc.personas} atendidos`} exportar={{ nombre: "Por comuna", filas: comunas.map((c) => ({ Comuna: c.clave, [voc.personas]: c.valor })) }}>
+        <Panel icono={MapPin} tono="blue" titulo="Por comuna" descripcion={`${voc.personas} atendidos`} exportar={{ nombre: "Por comuna", filas: comunas.map((c) => ({ Comuna: c.clave, [voc.personas]: c.valor })) }}>
           <BarrasRanking items={comunas} formato="int" activo={filtros.comuna} onElegir={alternar("comuna")} />
         </Panel>
-        <Panel titulo="Frecuencia de visita" descripcion="Cuántas veces vino cada persona en el período">
+        <Panel icono={Repeat} tono="blue" titulo="Frecuencia de visita" descripcion="Cuántas veces vino cada persona en el período">
           <BarrasRanking items={recurrentes.map((r) => ({ clave: r.etiqueta, valor: r.personas }))} formato="int" mostrarVariacion={false} />
         </Panel>
         {esVet ? (
-          <Panel titulo="Por especie" descripcion="Producción">
+          <Panel icono={PawPrint} tono="blue" titulo="Por especie" descripcion="Producción">
             <BarrasRanking items={aItems(especies, (g) => `${g.cantidad} at.`)} formato="clp" activo={filtros.especie} onElegir={alternar("especie")} />
           </Panel>
         ) : (
-          <Panel titulo="Nuevos del período" descripcion="Primera atención">
+          <Panel icono={UserPlus} tono="blue" titulo="Nuevos del período" descripcion="Primera atención">
             {nuevos.length === 0 ? <Vacio /> : (
               <ul className="divide-y divide-border text-xs">
                 {nuevos.slice(0, 8).map((c) => (
@@ -1068,17 +1120,17 @@ function VistaPacientes({
         )}
       </div>
       {vacunas && (
-        <Panel titulo="Estado de vacunas hoy" descripcion="Todas las mascotas de la clínica, sin importar el período. Las vencidas y por vencer están en Recordatorios.">
+        <Panel icono={Syringe} tono="amber" titulo="Estado de vacunas hoy" descripcion="Todas las mascotas de la clínica, sin importar el período. Las vencidas y por vencer están en Recordatorios.">
           <div className="grid gap-3 sm:grid-cols-4">
             {([
-              ["vencida", "Vencidas", "bg-danger-bg text-danger"],
-              ["por_vencer", "Vencen en 30 días", "bg-warning-bg text-warning"],
-              ["al_dia", "Al día", "bg-success-bg text-success"],
-              ["sin_dato", "Sin registro", "bg-surface-muted text-muted-foreground"],
-            ] as const).map(([clave, etiqueta, tono]) => (
-              <div key={clave} className="rounded-lg border border-border px-3 py-2.5">
-                <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium", tono)}>{etiqueta}</span>
-                <p className="mt-1.5 text-xl font-semibold tabular-nums text-foreground">{entero.format(vacunas[clave])}</p>
+              ["vencida", "Vencidas", "border-l-danger", "text-danger"],
+              ["por_vencer", "Vencen en 30 días", "border-l-warning", "text-warning"],
+              ["al_dia", "Al día", "border-l-success", "text-success"],
+              ["sin_dato", "Sin registro", "border-l-border-strong", "text-foreground"],
+            ] as const).map(([clave, etiqueta, borde, cifra]) => (
+              <div key={clave} className={cn("rounded-lg border border-l-2 border-border bg-background px-3 py-2.5", borde)}>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{etiqueta}</p>
+                <p className={cn("mt-1 text-2xl font-semibold tracking-tight tabular-nums", vacunas[clave] > 0 ? cifra : "text-foreground")}>{entero.format(vacunas[clave])}</p>
               </div>
             ))}
           </div>
@@ -1121,29 +1173,30 @@ function VistaCaja({
     <div className="space-y-4">
       <AvisoNoAplica filtros={filtros} conjunto="saldos" nombre="los pagos y saldos" />
       <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-6">
-        <Kpi etiqueta="Producción" valor={formatoClpCorto(kpis.produccion)} delta={variacion(kpis.produccion, kpisAntes.produccion)} />
-        <Kpi etiqueta="Cobrado" valor={formatoClpCorto(kpis.produccion - kpis.pendienteDelPeriodo)} detalle={`${formatoPct(kpis.cobradoPct)} de lo producido`} delta={variacion(kpis.produccion - kpis.pendienteDelPeriodo, kpisAntes.produccion - kpisAntes.pendienteDelPeriodo)} />
-        <Kpi etiqueta="Pendiente" valor={formatoClpCorto(kpis.pendienteDelPeriodo)} delta={variacion(kpis.pendienteDelPeriodo, kpisAntes.pendienteDelPeriodo)} inverso detalle="de lo producido en el período" />
-        <Kpi etiqueta="Por cobrar hoy" valor={formatoClpCorto(totalSaldo)} detalle={`${deudores.length} fichas con saldo`} />
-        <Kpi etiqueta="Pagos registrados" valor={formatoClpCorto(suma(recibidos, (p) => p.monto))} detalle={`${recibidos.length} pagos en caja`} />
-        <Kpi etiqueta="Enlaces sin pagar" valor={entero.format(enLinea.length)} detalle={formatoClpCorto(suma(enLinea, (p) => p.monto))} />
+        <Kpi icono={Banknote} tono="green" etiqueta="Producción" valor={formatoClpCorto(kpis.produccion)} delta={variacion(kpis.produccion, kpisAntes.produccion)} />
+        <Kpi icono={HandCoins} tono="green" etiqueta="Cobrado" valor={formatoClpCorto(kpis.produccion - kpis.pendienteDelPeriodo)} detalle={`${formatoPct(kpis.cobradoPct)} de lo producido`} delta={variacion(kpis.produccion - kpis.pendienteDelPeriodo, kpisAntes.produccion - kpisAntes.pendienteDelPeriodo)} />
+        <Kpi icono={Hourglass} tono="amber" etiqueta="Pendiente" valor={formatoClpCorto(kpis.pendienteDelPeriodo)} delta={variacion(kpis.pendienteDelPeriodo, kpisAntes.pendienteDelPeriodo)} inverso detalle="de lo producido en el período" />
+        <Kpi icono={Wallet} tono="green" etiqueta="Por cobrar hoy" valor={formatoClpCorto(totalSaldo)} detalle={`${deudores.length} fichas con saldo`} />
+        <Kpi icono={Receipt} tono="green" etiqueta="Pagos registrados" valor={formatoClpCorto(suma(recibidos, (p) => p.monto))} detalle={`${recibidos.length} pagos en caja`} />
+        <Kpi icono={Link2} tono="teal" etiqueta="Enlaces sin pagar" valor={entero.format(enLinea.length)} detalle={formatoClpCorto(suma(enLinea, (p) => p.monto))} />
       </div>
       <div className="grid gap-4 xl:grid-cols-5">
-        <Panel titulo="Cobrado de lo producido" descripcion="Atenciones ya pagadas, según la fecha de la atención" acciones={<LeyendaTendencia comparar={comparar} contra={contra} />} className="xl:col-span-3">
+        <Panel icono={ChartLine} tono="green" titulo="Cobrado de lo producido" descripcion="Atenciones ya pagadas, según la fecha de la atención" acciones={<LeyendaTendencia comparar={comparar} contra={contra} />} className="xl:col-span-3">
           <Tendencia puntos={cobradoSerie} formato="clp" comparar={comparar} contra={contra} alto={220} />
         </Panel>
-        <Panel titulo="Antigüedad de lo por cobrar" descripcion="Saldo total de hoy, por días desde la atención" className="xl:col-span-2" exportar={{ nombre: "Antigüedad", filas: antiguedad.map((t) => ({ Tramo: t.etiqueta, Monto: t.monto, Fichas: t.fichas })), formatos: { Monto: "clp" } }}>
+        <Panel icono={Hourglass} tono="amber" titulo="Antigüedad de lo por cobrar" descripcion="Saldo total de hoy, por días desde la atención" className="xl:col-span-2" exportar={{ nombre: "Antigüedad", filas: antiguedad.map((t) => ({ Tramo: t.etiqueta, Monto: t.monto, Fichas: t.fichas })), formatos: { Monto: "clp" } }}>
           <BarrasRanking items={antiguedad.map((t) => ({ clave: t.etiqueta, valor: t.monto, detalle: `${t.fichas} fichas` }))} formato="clp" mostrarVariacion={false} maximo={4} />
         </Panel>
       </div>
       <div className="grid gap-4 xl:grid-cols-3">
-        <Panel titulo="Medios de pago" descripcion="Pagos registrados en Caja en el período">
+        <Panel icono={CreditCard} tono="green" titulo="Medios de pago" descripcion="Pagos registrados en Caja en el período">
           {medios.length === 0 ? <Vacio>Todavía no hay pagos registrados en Caja en este período.</Vacio> : <BarrasRanking items={aItems(medios, (g) => `${g.cantidad}`)} formato="clp" />}
         </Panel>
-        <Panel titulo="Por cobrar por profesional" descripcion="Quién atendió lo que falta cobrar">
+        <Panel icono={UserRound} tono="blue" titulo="Por cobrar por profesional" descripcion="Quién atendió lo que falta cobrar">
           <BarrasRanking items={aItems(porProfesional)} formato="clp" activo={filtros.profesional} onElegir={alternar("profesional")} mostrarVariacion={false} />
         </Panel>
         <Panel
+          icono={Wallet} tono="green"
           titulo="Mayores saldos"
           exportar={{ nombre: "Por cobrar", filas: deudores.map((d) => ({ [voc.persona]: nombreDe(d.cuentaId), Saldo: d.monto, Atenciones: d.lineas, Desde: d.desde, Días: diasEntre(d.desde, hoy) })), formatos: { Saldo: "clp", Desde: "fecha" } }}
         >

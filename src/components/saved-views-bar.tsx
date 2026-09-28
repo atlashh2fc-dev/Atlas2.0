@@ -96,7 +96,7 @@ export function SavedViewsBar<T>({
             className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-medium transition ${
               active
                 ? "border-primary/40 bg-primary/10 text-primary"
-                : "border-border text-muted-foreground hover:bg-surface-muted hover:text-foreground"
+                : "border-border bg-surface text-muted-foreground hover:border-border-strong hover:bg-surface-muted hover:text-foreground"
             }`}
           >
             <button

@@ -10,7 +10,7 @@ export default function LeadDetailLoading() {
       <LoadingState label="Estamos preparando la ficha del cliente" className="rounded-xl border border-border bg-surface px-5 py-4" />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
       <div className="space-y-6 lg:col-span-1">
-        <div className="rounded-xl border border-border bg-surface p-5">
+        <div className="rounded-xl border border-border bg-surface p-5 shadow-sm">
           <div className="flex items-center justify-between gap-2">
             <Bar className="h-5 w-40" />
             <Bar className="h-6 w-20 rounded-full" />
@@ -21,11 +21,11 @@ export default function LeadDetailLoading() {
             ))}
           </div>
         </div>
-        <div className="rounded-xl border border-border bg-surface p-5">
+        <div className="rounded-xl border border-border bg-surface p-5 shadow-sm">
           <Bar className="mb-3 h-4 w-32" />
           <Bar className="h-2 w-full" />
         </div>
-        <div className="rounded-xl border border-border bg-surface">
+        <div className="rounded-xl border border-border bg-surface shadow-sm">
           <div className="border-b border-border px-5 py-4">
             <Bar className="h-4 w-36" />
           </div>
@@ -38,7 +38,7 @@ export default function LeadDetailLoading() {
       </div>
 
       <div className="space-y-6 lg:col-span-2">
-        <div className="rounded-xl border border-border bg-surface p-5">
+        <div className="rounded-xl border border-border bg-surface p-5 shadow-sm">
           <Bar className="mb-4 h-4 w-48" />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             {Array.from({ length: 3 }).map((_, i) => (
@@ -47,7 +47,7 @@ export default function LeadDetailLoading() {
           </div>
           <Bar className="mt-4 h-20 w-full" />
         </div>
-        <div className="rounded-xl border border-border bg-surface p-5">
+        <div className="rounded-xl border border-border bg-surface p-5 shadow-sm">
           <Bar className="h-9 w-40" />
         </div>
       </div>

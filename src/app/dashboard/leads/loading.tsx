@@ -15,7 +15,7 @@ export default function LeadsLoading() {
 
       <Bar className="h-10 w-full max-w-md" />
 
-      <div className="overflow-hidden rounded-xl border border-border bg-surface">
+      <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
         <div className="border-b border-border px-5 py-3">
           <Bar className="h-3 w-full" />
         </div>

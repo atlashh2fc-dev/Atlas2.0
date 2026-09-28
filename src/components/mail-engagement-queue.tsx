@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { Clock3, MousePointerClick, MailOpen } from "lucide-react";
 import { assignMailEngagementLead } from "@/app/actions/mail";
 import { ActionForm, ActionSubmit, Badge, Button, Select, SlideOver, Table, Tbody, Td, Th, Thead, TableEmpty, Tr } from "@/components/ui";
 
@@ -80,10 +81,22 @@ export function MailEngagementQueue({
                 </Td>
                 <Td>
                   <div className="flex flex-wrap gap-1.5">
-                    {row.clicked && <Badge tone="success">Click</Badge>}
-                    {row.opened && <Badge tone="warning">Apertura</Badge>}
+                    {row.clicked && (
+                      <Badge tone="success">
+                        <MousePointerClick size={12} className="mr-1" aria-hidden />
+                        Click
+                      </Badge>
+                    )}
+                    {row.opened && (
+                      <Badge tone="warning">
+                        <MailOpen size={12} className="mr-1" aria-hidden />
+                        Apertura
+                      </Badge>
+                    )}
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{formatDate(row.last_event_at)}</p>
+                  <p className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground">
+                    <Clock3 size={12} aria-hidden /> {formatDate(row.last_event_at)}
+                  </p>
                 </Td>
                 <Td muted>
                   <p>{row.mail_campaign_name}</p>
@@ -101,18 +114,18 @@ export function MailEngagementQueue({
         </Table>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-3 text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 text-xs text-muted-foreground">
         <span>
           Mostrando {rows.length.toLocaleString("es-CL")} de {total.toLocaleString("es-CL")} priorizados.
         </span>
         <div className="flex items-center gap-2">
           {nextHref && (
-            <Link href={nextHref} className="rounded-md border border-border bg-surface px-2.5 py-1 font-medium text-foreground hover:bg-surface-muted">
+            <Link href={nextHref} className="rounded-lg border border-border bg-surface px-2.5 py-1 font-medium text-foreground shadow-sm hover:bg-surface-muted">
               Cargar siguientes
             </Link>
           )}
           {nextHref && (
-            <Link href={resetHref} className="rounded-md px-2.5 py-1 font-medium text-muted-foreground hover:bg-surface-muted hover:text-foreground">
+            <Link href={resetHref} className="rounded-lg px-2.5 py-1 font-medium text-muted-foreground hover:bg-surface-muted hover:text-foreground">
               Volver al inicio
             </Link>
           )}
@@ -130,7 +143,7 @@ export function MailEngagementQueue({
             <input type="hidden" name="lead_id" value={selected.lead_id} />
             <input type="hidden" name="mail_campaign_id" value={selected.mail_campaign_id ?? ""} />
 
-            <div className="rounded-lg border border-border bg-background p-4 text-sm">
+            <div className="rounded-lg border border-border border-l-2 border-l-warning bg-background p-4 text-sm shadow-sm">
               <p className="font-medium text-foreground">{selected.priority_reason}</p>
               <p className="mt-1 text-muted-foreground">Última señal: {formatDate(selected.last_event_at)}</p>
             </div>

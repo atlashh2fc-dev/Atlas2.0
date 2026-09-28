@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCheck, ChevronRight, Clock3, Mail, MessageCircleReply, MousePointerClick, UserRound } from "lucide-react";
+import { CalendarClock, CheckCheck, ChevronRight, Clock3, History, Inbox, Mail, MessageCircleReply, MousePointerClick, Phone, UserRound } from "lucide-react";
 import { bulkAssignMailEngagementLeads } from "@/app/actions/mail";
-import { Badge, Button, Select, SlideOver } from "@/components/ui";
+import { Badge, Button, Callout, EmptyState, SectionCard, Select, SlideOver } from "@/components/ui";
 import { useToast } from "@/components/ui/toast";
 
 export type MailQueueRow = {
@@ -65,16 +65,17 @@ function formatDate(value: string | null | undefined) {
   });
 }
 
+/** Borde izquierdo y color de la cifra de cada prioridad (baldosa de estado). */
 function bucketTone(tone: MailControlBucket["tone"] = "neutral") {
   return tone === "danger"
-    ? "border-danger/35 bg-danger-bg text-danger"
+    ? { edge: "border-l-danger", value: "text-danger" }
     : tone === "warning"
-      ? "border-warning/35 bg-warning-bg text-warning"
+      ? { edge: "border-l-warning", value: "text-warning" }
       : tone === "success"
-        ? "border-success/35 bg-success-bg text-success"
+        ? { edge: "border-l-success", value: "text-success" }
         : tone === "info"
-          ? "border-primary/30 bg-primary/10 text-primary"
-          : "border-border bg-surface text-foreground";
+          ? { edge: "border-l-primary", value: "text-primary" }
+          : { edge: "border-l-border-strong", value: "text-foreground" };
 }
 
 function queueState(row: MailQueueRow) {
@@ -170,44 +171,47 @@ export function MailControlCenter({
   }
 
   return (
-    <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
-      <div className="border-b border-border px-5 py-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold text-foreground">Centro de control mail</p>
-            <p className="mt-1 text-xs text-muted-foreground">Elige una prioridad, revisa el contexto y asigna trabajo en bloque.</p>
-          </div>
-          <span className="rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-muted-foreground">
-            {total.toLocaleString("es-CL")} oportunidades priorizadas
-          </span>
-        </div>
-
-        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+    <SectionCard
+      title="Centro de control mail"
+      description="Elige una prioridad, revisa el contexto y asigna trabajo en bloque."
+      icon={Mail}
+      tone="teal"
+      actions={
+        <Badge tone="info">
+          <span className="tabular-nums">{total.toLocaleString("es-CL")}</span>&nbsp;oportunidades priorizadas
+        </Badge>
+      }
+    >
+      <div className="border-b border-border px-4 py-4">
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {buckets.map((bucket) => {
             const active = activeBucket === bucket.id;
+            const style = bucketTone(bucket.tone);
             return (
               <Link
                 key={bucket.id}
                 href={bucket.href}
                 aria-current={active ? "page" : undefined}
-                className={`rounded-lg border p-3 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                  active ? "border-primary bg-primary text-primary-foreground shadow-sm" : `${bucketTone(bucket.tone)} hover:brightness-95`
+                className={`rounded-lg border border-l-2 px-3 py-2.5 text-left transition-[border-color,background-color,box-shadow] focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${style.edge} ${
+                  active
+                    ? "border-primary/50 bg-primary/10 shadow-sm ring-1 ring-primary/40"
+                    : "border-border bg-background hover:border-border-strong hover:bg-surface-muted"
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
-                  <span className="text-xs font-medium">{bucket.label}</span>
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums ${active ? "bg-primary-foreground/20" : "bg-background/60"}`}>
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{bucket.label}</span>
+                  <span className={`text-xl font-semibold leading-none tracking-tight tabular-nums ${bucket.count > 0 ? style.value : "text-muted-foreground"}`}>
                     {bucket.count.toLocaleString("es-CL")}
                   </span>
                 </div>
-                <p className={`mt-2 text-xs ${active ? "text-primary-foreground/80" : "opacity-80"}`}>{bucket.description}</p>
+                <p className="mt-1.5 text-xs text-muted-foreground">{bucket.description}</p>
               </Link>
             );
           })}
         </div>
       </div>
 
-      <div className="border-b border-border bg-background/40 px-5 py-3">
+      <div className="border-b border-border bg-surface-muted/30 px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span className="font-medium text-foreground">{rows.length.toLocaleString("es-CL")} listos para gestionar</span>
@@ -230,17 +234,18 @@ export function MailControlCenter({
 
       <div className="max-h-[34rem] divide-y divide-border overflow-y-auto">
         {rows.length === 0 ? (
-          <div className="px-5 py-12 text-center">
-            <p className="text-sm font-medium text-foreground">No hay oportunidades pendientes en esta prioridad.</p>
-            <p className="mt-1 text-xs text-muted-foreground">El trabajo ya fue gestionado o no hay señales que requieran intervención.</p>
-          </div>
+          <EmptyState
+            icon={Inbox}
+            title="No hay oportunidades pendientes en esta prioridad."
+            description="El trabajo ya fue gestionado o no hay señales que requieran intervención."
+          />
         ) : (
           rows.map((row) => {
             const state = queueState(row);
             const StateIcon = state.icon;
             const checked = selectedIds.includes(row.lead_id);
             return (
-              <article key={`${row.mail_campaign_id ?? row.campaign_id}-${row.lead_id}`} className="group flex gap-3 px-5 py-3 hover:bg-surface-muted/60">
+              <article key={`${row.mail_campaign_id ?? row.campaign_id}-${row.lead_id}`} className="group flex gap-3 px-4 py-3 transition-colors hover:bg-surface-muted/60">
                 <label className="mt-1 flex h-5 w-5 flex-none cursor-pointer items-center justify-center">
                   <input
                     type="checkbox"
@@ -269,7 +274,7 @@ export function MailControlCenter({
                 </button>
                 <div className="hidden shrink-0 items-center gap-2 sm:flex">
                   <span className="max-w-36 truncate text-xs text-muted-foreground">{row.assigned_to_name ?? "Sin asignar"}</span>
-                  <ChevronRight size={16} className="text-muted-foreground" aria-hidden />
+                  <ChevronRight size={16} className="text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden />
                 </div>
               </article>
             );
@@ -277,16 +282,16 @@ export function MailControlCenter({
         )}
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-3 text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 text-xs text-muted-foreground">
         <span>La lista contiene el bloque de trabajo ya cargado; los contadores conservan el total de la cola.</span>
         <div className="flex items-center gap-2">
           {nextHref && (
-            <Link href={nextHref} className="rounded-md border border-border bg-surface px-2.5 py-1 font-medium text-foreground hover:bg-surface-muted">
+            <Link href={nextHref} className="rounded-lg border border-border bg-surface px-2.5 py-1 font-medium text-foreground shadow-sm hover:bg-surface-muted">
               Cargar siguientes
             </Link>
           )}
           {nextHref && (
-            <Link href={resetHref} className="rounded-md px-2.5 py-1 font-medium text-muted-foreground hover:bg-surface-muted hover:text-foreground">
+            <Link href={resetHref} className="rounded-lg px-2.5 py-1 font-medium text-muted-foreground hover:bg-surface-muted hover:text-foreground">
               Volver al inicio
             </Link>
           )}
@@ -303,18 +308,23 @@ export function MailControlCenter({
         {inspected && (
           <div className="space-y-5">
             <div className="grid gap-3 sm:grid-cols-2">
-              <Detail label="Responsable" value={inspected.assigned_to_name ?? "Sin asignar"} icon={UserRound} />
-              <Detail label="Última señal" value={formatDate(inspected.last_event_at)} icon={Clock3} />
-              <Detail label="Última gestión" value={formatDate(inspected.last_interaction_at)} />
-              <Detail label="Próxima acción" value={formatDate(inspected.next_action_at)} />
+              <Detail label="Responsable" value={inspected.assigned_to_name ?? "Sin asignar"} icon={UserRound} tone="blue" />
+              <Detail label="Última señal" value={formatDate(inspected.last_event_at)} icon={Clock3} tone="teal" />
+              <Detail label="Última gestión" value={formatDate(inspected.last_interaction_at)} icon={History} tone="slate" />
+              <Detail label="Próxima acción" value={formatDate(inspected.next_action_at)} icon={CalendarClock} tone="amber" />
             </div>
-            <div className="rounded-lg border border-border bg-background p-4 text-sm">
-              <p className="font-medium text-foreground">Contacto</p>
+            <div className="rounded-xl border border-border bg-background p-4 text-sm shadow-sm">
+              <p className="flex items-center gap-2 font-medium text-foreground">
+                <span className="icon-chip size-7 rounded-lg" data-tone="primary" aria-hidden="true">
+                  <Phone size={14} />
+                </span>
+                Contacto
+              </p>
               <p className="mt-1 text-muted-foreground">{inspected.phone ?? inspected.email ?? "No hay teléfono ni correo registrado."}</p>
               <p className="mt-2 text-xs text-muted-foreground">Campaña: {inspected.mail_campaign_name} · {inspected.campaign_name}</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Link href={`/dashboard/leads/${inspected.lead_id}`} className="inline-flex items-center justify-center rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-foreground hover:bg-surface-muted">
+              <Link href={`/dashboard/leads/${inspected.lead_id}`} className="inline-flex items-center justify-center rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium text-foreground shadow-sm hover:bg-surface-muted">
                 Abrir ficha completa
               </Link>
               <Button type="button" onClick={() => openAssignment([inspected.lead_id])}>
@@ -349,21 +359,38 @@ export function MailControlCenter({
           </Select>
         </label>
         {assignmentCampaignIds.length > 0 && assignmentAgents.length === 0 && (
-          <p className="mt-3 rounded-md border border-warning/35 bg-warning-bg px-3 py-2 text-xs text-warning">
+          <Callout tone="warning" className="mt-3 px-3 py-2 text-xs">
             No hay un ejecutivo del mismo equipo habilitado en todas las campañas de la selección. Ajusta el bloque o la membresía de campaña.
-          </p>
+          </Callout>
         )}
         <p className="mt-4 text-xs text-muted-foreground">La asignación conserva el historial operativo y actualiza la cola, los registros y el control de equipo.</p>
       </SlideOver>
-    </section>
+    </SectionCard>
   );
 }
 
-function Detail({ label, value, icon: Icon }: { label: string; value: string; icon?: typeof Clock3 }) {
+function Detail({
+  label,
+  value,
+  icon: Icon,
+  tone = "slate",
+}: {
+  label: string;
+  value: string;
+  icon?: typeof Clock3;
+  tone?: "blue" | "teal" | "amber" | "slate";
+}) {
   return (
-    <div className="rounded-lg border border-border bg-background p-3">
-      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">{Icon && <Icon size={13} aria-hidden />}{label}</p>
-      <p className="mt-1 text-sm font-medium text-foreground">{value}</p>
+    <div className="flex items-start gap-3 rounded-lg border border-border bg-background p-3">
+      {Icon && (
+        <span className="icon-chip size-8 rounded-lg" data-tone={tone} aria-hidden="true">
+          <Icon size={15} />
+        </span>
+      )}
+      <div className="min-w-0">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+        <p className="mt-0.5 text-sm font-medium text-foreground">{value}</p>
+      </div>
     </div>
   );
 }

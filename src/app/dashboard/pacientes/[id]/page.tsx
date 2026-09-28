@@ -3,11 +3,16 @@ import { notFound } from "next/navigation";
 import { unstable_noStore as noStore } from "next/cache";
 import {
   CalendarClock,
+  ClipboardList,
   FileText,
+  HandCoins,
+  History,
+  IdCard,
   Mail,
   MessageCircle,
   NotebookPen,
   Phone,
+  PawPrint,
   PhoneMissed,
   Syringe,
   Users,
@@ -27,6 +32,7 @@ import {
   SectionCard,
   Select,
   buttonClasses,
+  type IconTone,
 } from "@/components/ui";
 import { PACIENTES_POR_EDICION, VENTAS_POR_EDICION } from "@/lib/ediciones";
 import { ETIQUETA_VACUNA, edad, estadoVacuna } from "@/lib/mascotas";
@@ -90,6 +96,19 @@ const ICONO: Record<Evento["tipo"], typeof NotebookPen> = {
   etapa: FileText,
   mensaje_entrante: MessageCircle,
   mensaje_saliente: MessageCircle,
+};
+
+/** Tono del chip de cada evento, con la convención del menú por canal. */
+const TONO_EVENTO: Record<Evento["tipo"], IconTone> = {
+  nota: "slate",
+  llamada: "primary",
+  llamada_fallida: "rose",
+  whatsapp: "green",
+  correo: "teal",
+  reunion: "amber",
+  etapa: "green",
+  mensaje_entrante: "green",
+  mensaje_saliente: "green",
 };
 
 function fechaCorta(valor: string | null): string {
@@ -403,16 +422,16 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
       <div className="grid gap-4 xl:grid-cols-3">
         <div className="space-y-4 xl:col-span-2">
           {esVet && (
-            <SectionCard title="Mascotas" description="El semáforo es la próxima vacuna: vencida, por vencer en 30 días o al día.">
+            <SectionCard icon={PawPrint} tone="blue" title="Mascotas" description="El semáforo es la próxima vacuna: vencida, por vencer en 30 días o al día.">
               {(mascotas ?? []).length === 0 ? (
-                <EmptyState title="Sin mascotas registradas" description="Se agregan al crear la ficha del tutor." />
+                <EmptyState icon={PawPrint} title="Sin mascotas registradas" description="Se agregan al crear la ficha del tutor." />
               ) : (
                 <div className="grid gap-3 p-4 sm:grid-cols-2">
                   {(mascotas ?? []).map((mascota) => {
                     const estado = estadoVacuna(mascota.proxima_vacuna as string | null);
                     const tono = estado === "vencida" ? "danger" : estado === "por_vencer" ? "warning" : estado === "al_dia" ? "success" : "neutral";
                     return (
-                      <div key={mascota.id as string} className="rounded-lg border border-border bg-surface p-4">
+                      <div key={mascota.id as string} className="rounded-xl border border-border bg-surface p-4 shadow-sm">
                         <div className="flex items-start justify-between gap-2">
                           <div>
                             <p className="text-base font-semibold text-foreground">{mascota.nombre as string}</p>
@@ -456,9 +475,9 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
             </SectionCard>
           )}
 
-          <SectionCard title={ventas.negocios} description={`Todo lo presupuestado a ${ficha.name.split(" ")[0]}, del más reciente al más antiguo.`}>
+          <SectionCard icon={HandCoins} tone="green" title={ventas.negocios} description={`Todo lo presupuestado a ${ficha.name.split(" ")[0]}, del más reciente al más antiguo.`}>
             {(negocios ?? []).length === 0 ? (
-              <EmptyState title={`Sin ${ventas.negocios.toLowerCase()}`} description={`Crea el primero con "${ventas.nuevo}".`} />
+              <EmptyState icon={HandCoins} title={`Sin ${ventas.negocios.toLowerCase()}`} description={`Crea el primero con "${ventas.nuevo}".`} />
             ) : (
               <ul className="divide-y divide-border">
                 {(negocios ?? []).map((negocio) => {
@@ -491,9 +510,9 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
             )}
           </SectionCard>
 
-          <SectionCard title="Historia" description="Notas, llamadas, mensajes y cambios de etapa en una sola línea de tiempo.">
+          <SectionCard icon={History} tone="teal" title="Historia" description="Notas, llamadas, mensajes y cambios de etapa en una sola línea de tiempo.">
             {eventos.length === 0 ? (
-              <EmptyState title="Sin historia todavía" description="Lo que registres aparece acá." />
+              <EmptyState icon={History} title="Sin historia todavía" description="Lo que registres aparece acá." />
             ) : (
               <ol className="relative space-y-4 px-4 py-4">
                 {eventos.map((evento, indice) => {
@@ -501,13 +520,14 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
                   const entrante = evento.tipo === "mensaje_entrante";
                   return (
                     <li key={`${evento.at}-${indice}`} className="flex gap-3">
-                      <div
-                        className={`flex size-8 flex-shrink-0 items-center justify-center rounded-full ${
-                          entrante ? "bg-accent/40 text-accent-foreground" : evento.tipo === "llamada_fallida" ? "bg-surface-muted text-muted-foreground" : "bg-surface-muted text-primary"
-                        }`}
+                      <span
+                        className="icon-chip size-8 rounded-full"
+                        data-tone={TONO_EVENTO[evento.tipo]}
+                        data-active={entrante ? "true" : undefined}
+                        aria-hidden="true"
                       >
                         <Icono size={15} aria-hidden="true" />
-                      </div>
+                      </span>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm text-foreground">{evento.titulo}</p>
                         {evento.detalle && (
@@ -529,7 +549,7 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
         </div>
 
         <div className="space-y-4">
-          <SectionCard title="Datos">
+          <SectionCard icon={IdCard} tone="blue" title="Datos">
             <dl className="divide-y divide-border text-sm">
               {datos.map(([etiqueta, valor]) => (
                 <div key={etiqueta} className="flex justify-between gap-3 px-4 py-2">
@@ -540,7 +560,7 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
             </dl>
           </SectionCard>
 
-          <SectionCard title="Registrar gestión" description="Queda en la historia de la ficha.">
+          <SectionCard icon={ClipboardList} tone="teal" title="Registrar gestión" description="Queda en la historia de la ficha.">
             <ActionForm action={agregarNota} success="Gestión registrada" className="space-y-3 px-4 py-4">
               <input type="hidden" name="cuenta_id" value={id} />
               <Field label="Tipo">

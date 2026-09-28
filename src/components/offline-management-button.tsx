@@ -67,7 +67,7 @@ export function OfflineManagementButton({ leadId }: { leadId: string }) {
         Registrar gestión sin llamada
       </button>
       {open && (
-        <span className="absolute right-0 top-full z-30 mt-1 block w-72 space-y-2 rounded-xl border border-border bg-surface p-3 text-left shadow-lg">
+        <span className="absolute right-0 top-full z-30 mt-1 block w-72 space-y-2 rounded-xl border border-border bg-surface-solid p-3 text-left shadow-lg">
           <span className="block text-xs font-semibold text-foreground">¿Por dónde fue el contacto?</span>
           <span className="flex flex-wrap gap-1.5">
             {CHANNELS.map((option) => (

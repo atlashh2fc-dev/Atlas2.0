@@ -1,11 +1,15 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
 import {
   ArrowUpRight,
   Bot,
   CalendarClock,
   CheckCheck,
+  ClipboardList,
+  Database,
+  History,
+  Inbox,
   Megaphone,
   MessageCircle,
   MessageSquare,
@@ -13,6 +17,7 @@ import {
   UserRound,
   XCircle,
 } from "lucide-react";
+import type { SectionTone } from "@/components/ui/card";
 
 import {
   assignWhatsAppConversation,
@@ -224,14 +229,23 @@ function conversationsHref({
 
 function ContextSection({
   title,
+  icon: Icon,
+  tone = "slate",
   children,
 }: {
   title: string;
+  icon?: ComponentType<{ size?: number }>;
+  tone?: SectionTone;
   children: ReactNode;
 }) {
   return (
     <section className="border-b border-border p-4 last:border-b-0">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      <h3 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        {Icon && (
+          <span className="icon-chip size-6 rounded-md" data-tone={tone} aria-hidden="true">
+            <Icon size={13} />
+          </span>
+        )}
         {title}
       </h3>
       <div className="mt-3 space-y-2.5">{children}</div>
@@ -437,7 +451,7 @@ export default async function WhatsAppInboxPage({
           disponibles; vuelve a intentar o revisa los permisos de tu cuenta.
         </Callout>
       ) : (
-        <div className="grid min-h-[32rem] overflow-hidden rounded-lg border border-border bg-surface shadow-sm lg:h-[calc(100dvh-12rem)] lg:min-h-0 lg:grid-cols-[20rem_minmax(0,1fr)] xl:grid-cols-[20rem_minmax(28rem,1fr)_19rem]">
+        <div className="grid min-h-[32rem] overflow-hidden rounded-xl border border-border bg-surface shadow-sm lg:h-[calc(100dvh-12rem)] lg:min-h-0 lg:grid-cols-[20rem_minmax(0,1fr)] xl:grid-cols-[20rem_minmax(28rem,1fr)_19rem]">
           <aside className="border-b border-border lg:flex lg:min-h-0 lg:flex-col lg:border-b-0 lg:border-r">
             <div className="flex gap-1 border-b border-border p-3">
               {(["open", "pending", "closed", "all"] as const).map((value) => (
@@ -510,9 +524,11 @@ export default async function WhatsAppInboxPage({
 
             <div className="overflow-y-auto lg:min-h-0 lg:flex-1">
               {conversations.length === 0 ? (
-                <div className="p-5 text-center text-sm text-muted-foreground">
-                  No hay conversaciones en esta vista.
-                </div>
+                <EmptyState
+                  icon={Inbox}
+                  title="No hay conversaciones en esta vista."
+                  className="py-10"
+                />
               ) : (
                 conversations.map((conversation) => {
                   const itemCampaign = one(conversation.campaigns);
@@ -528,7 +544,8 @@ export default async function WhatsAppInboxPage({
                       })}
                       className={cn(
                         "block border-b border-border p-4 transition-colors hover:bg-surface-muted",
-                        selectedId === conversation.id && "bg-surface-muted",
+                        selectedId === conversation.id &&
+                          "bg-surface-muted shadow-[inset_3px_0_0_var(--tone-green)]",
                       )}
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -538,7 +555,13 @@ export default async function WhatsAppInboxPage({
                               conversation.contact_phone}
                           </p>
                           <p className="mt-1 flex items-center gap-1.5 truncate text-xs text-muted-foreground">
-                            <MessageCircle size={12} className="text-success" />{" "}
+                            <span
+                              className="icon-chip size-5 rounded"
+                              data-tone="green"
+                              aria-hidden="true"
+                            >
+                              <MessageCircle size={11} />
+                            </span>
                             WhatsApp
                           </p>
                         </div>
@@ -579,31 +602,40 @@ export default async function WhatsAppInboxPage({
               />
             ) : (
               <>
-                <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border p-4">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-base font-semibold text-foreground">
-                        {selected.contact_name || selected.contact_phone}
-                      </h2>
-                      <Badge tone="success">WhatsApp</Badge>
-                      <Badge tone="neutral">
-                        {campaign?.name ?? "Sin campaña"}
-                      </Badge>
-                      <Badge
-                        tone={
-                          selected.status === "closed"
-                            ? "neutral"
-                            : selected.status === "pending"
-                              ? "warning"
-                              : "success"
-                        }
-                      >
-                        {conversationLabel(selected.status)}
-                      </Badge>
+                <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border bg-surface-muted/40 p-4">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <span
+                      className="icon-chip mt-0.5 size-9 rounded-lg"
+                      data-tone="green"
+                      aria-hidden="true"
+                    >
+                      <MessageCircle size={17} />
+                    </span>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="text-base font-semibold text-foreground">
+                          {selected.contact_name || selected.contact_phone}
+                        </h2>
+                        <Badge tone="success">WhatsApp</Badge>
+                        <Badge tone="neutral">
+                          {campaign?.name ?? "Sin campaña"}
+                        </Badge>
+                        <Badge
+                          tone={
+                            selected.status === "closed"
+                              ? "neutral"
+                              : selected.status === "pending"
+                                ? "warning"
+                                : "success"
+                          }
+                        >
+                          {conversationLabel(selected.status)}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {selected.contact_phone}
+                      </p>
                     </div>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {selected.contact_phone}
-                    </p>
                   </div>
                   <Link
                     href={`/dashboard/leads/${selected.lead_id}`}
@@ -640,10 +672,10 @@ export default async function WhatsAppInboxPage({
                         >
                           <div
                             className={cn(
-                              "max-w-[80%] rounded-xl px-3 py-2 text-sm shadow-sm",
+                              "max-w-[80%] rounded-2xl border px-3 py-2 text-sm text-foreground shadow-sm",
                               outbound
-                                ? "bg-primary text-primary-foreground"
-                                : "border border-border bg-surface text-foreground",
+                                ? "rounded-br-md border-primary/30 bg-primary/15"
+                                : "rounded-bl-md border-border bg-surface-muted",
                             )}
                           >
                             {(message.message_type === "image" ||
@@ -670,10 +702,7 @@ export default async function WhatsAppInboxPage({
                               )}
                             <div
                               className={cn(
-                                "mt-1 flex items-center justify-end gap-1 text-[10px]",
-                                outbound
-                                  ? "text-primary-foreground/75"
-                                  : "text-muted-foreground",
+                                "mt-1 flex items-center justify-end gap-1 text-[10px] text-muted-foreground",
                               )}
                             >
                               {outbound &&
@@ -754,7 +783,7 @@ export default async function WhatsAppInboxPage({
 
           {selected && (
             <aside className="border-t border-border bg-surface lg:col-span-2 xl:col-span-1 xl:min-h-0 xl:overflow-y-auto xl:border-l xl:border-t-0">
-              <ContextSection title="Contexto comercial">
+              <ContextSection title="Contexto comercial" icon={Megaphone} tone="rose">
                 <ContextRow label="Campaña">
                   {campaign?.name ?? "Sin campaña"}
                 </ContextRow>
@@ -777,9 +806,9 @@ export default async function WhatsAppInboxPage({
                   </Link>
                 )}
                 {(referralHeadline || referralBody) && (
-                  <div className="rounded-md border border-border bg-surface-muted p-3">
+                  <div className="rounded-lg border border-border border-l-2 border-l-[var(--tone-rose)] bg-surface-muted p-3">
                     <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                      <Megaphone size={13} /> Origen Meta Ads
+                      <Megaphone size={13} className="text-[var(--tone-rose)]" /> Origen Meta Ads
                     </p>
                     {referralHeadline && (
                       <p className="mt-1 text-xs font-medium text-foreground">
@@ -795,7 +824,7 @@ export default async function WhatsAppInboxPage({
                 )}
               </ContextSection>
 
-              <ContextSection title="Registro 360">
+              <ContextSection title="Registro 360" icon={UserRound} tone="blue">
                 <ContextRow label="Contacto">
                   {lead?.full_name ?? selected.contact_name ?? "—"}
                 </ContextRow>
@@ -813,7 +842,7 @@ export default async function WhatsAppInboxPage({
                 </ContextRow>
               </ContextSection>
 
-              <ContextSection title="Gestión">
+              <ContextSection title="Gestión" icon={ClipboardList} tone="blue">
                 <ContextRow label="Responsable">
                   {assigned?.full_name ?? "Sin asignar"}
                 </ContextRow>
@@ -927,10 +956,12 @@ export default async function WhatsAppInboxPage({
                 )}
               </ContextSection>
 
-              <ContextSection title="Asistente IA">
-                <div className="flex items-center justify-between gap-3 rounded-md bg-surface-muted p-2.5">
+              <ContextSection title="Asistente IA" icon={Bot} tone="violet">
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface-muted p-2.5">
                   <div className="flex min-w-0 items-center gap-2">
-                    <Bot size={15} className="shrink-0 text-primary" />
+                    <span className="icon-chip size-7 rounded-lg" data-tone="violet" aria-hidden="true">
+                      <Bot size={14} />
+                    </span>
                     <div className="min-w-0">
                       <p className="text-xs font-medium text-foreground">
                         Mercury 2
@@ -971,7 +1002,7 @@ export default async function WhatsAppInboxPage({
                   </Badge>
                 </div>
                 {selected.ai_state === "handoff" && handoffEvent && (
-                  <div className="rounded-md border border-warning/35 bg-warning/10 p-3">
+                  <div className="rounded-lg border border-warning/30 border-l-2 border-l-warning bg-warning-bg p-3">
                     <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
                       <UserRound size={14} />{" "}
                       {handoffKindLabel(handoffEvent.metadata?.kind)}
@@ -998,11 +1029,11 @@ export default async function WhatsAppInboxPage({
                 )}
               </ContextSection>
 
-              <ContextSection title="Cierre de atención">
+              <ContextSection title="Cierre de atención" icon={CheckCheck} tone="green">
                 {selected.status === "closed" ? (
-                  <div className="rounded-md border border-border bg-surface-muted p-3">
+                  <div className="rounded-lg border border-border border-l-2 border-l-success bg-surface-muted p-3">
                     <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                      <CheckCheck size={14} /> Atención cerrada
+                      <CheckCheck size={14} className="text-success" /> Atención cerrada
                     </p>
                     <p className="mt-1 text-xs text-foreground">
                       {closureReason?.label ?? "Tipificación registrada"}
@@ -1074,7 +1105,7 @@ export default async function WhatsAppInboxPage({
               </ContextSection>
 
               {dynamicData.length > 0 && (
-                <ContextSection title="Datos de campaña">
+                <ContextSection title="Datos de campaña" icon={Database} tone="rose">
                   {dynamicData.map(([key, value]) => (
                     <ContextRow key={key} label={fieldLabel(key)}>
                       {String(value)}
@@ -1083,18 +1114,21 @@ export default async function WhatsAppInboxPage({
                 </ContextSection>
               )}
 
-              <ContextSection title="Actividad omnicanal">
+              <ContextSection title="Actividad omnicanal" icon={History} tone="teal">
                 {(lead360?.timeline ?? []).slice(0, 4).map((item) => {
                   const Icon = item.source === "call" ? Phone : MessageSquare;
                   return (
                     <div
                       key={`${item.source}-${item.id}`}
-                      className="flex gap-2.5 rounded-md bg-surface-muted p-2.5"
+                      className="flex gap-2.5 rounded-lg border border-border bg-surface-muted p-2.5"
                     >
-                      <Icon
-                        size={14}
-                        className="mt-0.5 shrink-0 text-muted-foreground"
-                      />
+                      <span
+                        className="icon-chip size-7 rounded-lg"
+                        data-tone={item.source === "call" ? "primary" : "teal"}
+                        aria-hidden="true"
+                      >
+                        <Icon size={13} />
+                      </span>
                       <div className="min-w-0">
                         <p className="truncate text-xs font-medium text-foreground">
                           {item.title || sourceLabel(item.source)}

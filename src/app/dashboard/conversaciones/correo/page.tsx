@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Inbox, Mail } from "lucide-react";
 
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -34,6 +35,7 @@ export default async function MailAttentionPage() {
   if (rows.length === 0) {
     return (
       <EmptyState
+        icon={Inbox}
         title="Sin buzones activos"
         description="Ninguna de tus campañas con correo habilitado tiene un buzón configurado."
       />
@@ -43,7 +45,12 @@ export default async function MailAttentionPage() {
   if (rows.length === 1) redirect(`/dashboard/campanas/${rows[0].campaign_id}/correo`);
 
   return (
-    <SectionCard title="Buzones" description="Elige la campaña cuyo correo quieres revisar.">
+    <SectionCard
+      title="Buzones"
+      description="Elige la campaña cuyo correo quieres revisar."
+      icon={Inbox}
+      tone="teal"
+    >
       <ul className="divide-y divide-border">
         {rows.map((mailbox) => {
           const embedded = Array.isArray(mailbox.campaigns) ? mailbox.campaigns[0] : mailbox.campaigns;
@@ -53,11 +60,16 @@ export default async function MailAttentionPage() {
                 href={`/dashboard/campanas/${mailbox.campaign_id}/correo`}
                 className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-surface-muted"
               >
-                <span className="min-w-0">
-                  <span className="block truncate font-medium text-foreground">
-                    {mailbox.label ?? mailbox.address}
+                <span className="flex min-w-0 items-center gap-3">
+                  <span className="icon-chip size-8 rounded-lg" data-tone="teal" aria-hidden="true">
+                    <Mail size={15} />
                   </span>
-                  <span className="block truncate text-xs text-muted-foreground">{mailbox.address}</span>
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium text-foreground">
+                      {mailbox.label ?? mailbox.address}
+                    </span>
+                    <span className="block truncate text-xs text-muted-foreground">{mailbox.address}</span>
+                  </span>
                 </span>
                 <span className="shrink-0 text-xs text-muted-foreground">{embedded?.name ?? "Sin campaña"}</span>
               </Link>

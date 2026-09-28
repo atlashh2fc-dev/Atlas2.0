@@ -1,7 +1,8 @@
 "use client";
 
 import type { IntegrityAgentRow, IntegrityDetailRow } from "@/app/actions/management-integrity";
-import { Badge, Card, DataTable, type Column } from "@/components/ui";
+import { Flag, Users } from "lucide-react";
+import { Badge, DataTable, SectionCard, type Column } from "@/components/ui";
 
 function formatSeconds(value: number | null): string {
   if (value === null || value === undefined) return "—";
@@ -99,8 +100,8 @@ export function ManagementIntegrityTables({
 }) {
   return (
     <>
-      <Card>
-        <h2 className="mb-3 text-sm font-semibold text-foreground">Por ejecutivo</h2>
+      <SectionCard title="Por ejecutivo" icon={Users} tone="blue">
+        <div className="p-4">
         <DataTable
           rows={agents}
           columns={AGENT_COLUMNS}
@@ -110,11 +111,16 @@ export function ManagementIntegrityTables({
           emptyTitle="Sin gestiones en el período"
           emptyDescription="Ajusta el período o la campaña para revisar otro tramo."
         />
-      </Card>
+        </div>
+      </SectionCard>
 
-      <Card>
-        <h2 className="mb-1 text-sm font-semibold text-foreground">Gestiones marcadas</h2>
-        <p className="mb-3 text-xs text-muted-foreground">Hasta 500 gestiones, de la más reciente a la más antigua.</p>
+      <SectionCard
+        title="Gestiones marcadas"
+        description="Hasta 500 gestiones, de la más reciente a la más antigua."
+        icon={Flag}
+        tone="violet"
+      >
+        <div className="p-4">
         <DataTable
           rows={detail}
           columns={DETAIL_COLUMNS}
@@ -125,7 +131,8 @@ export function ManagementIntegrityTables({
           emptyTitle="Ninguna gestión marcada"
           emptyDescription="En este período no hay cierres instantáneos, contactos sin respaldo ni ráfagas."
         />
-      </Card>
+        </div>
+      </SectionCard>
     </>
   );
 }

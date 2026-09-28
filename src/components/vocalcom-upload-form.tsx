@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
 import { createClient } from "@/lib/supabase/client";
-import { LoadingState } from "@/components/ui";
+import { FileCheck2 } from "lucide-react";
+import { Callout, LoadingState } from "@/components/ui";
 import {
   VOCALCOM_CHUNK_SIZE,
   buildVocalcomImportRows,
@@ -139,7 +140,7 @@ export function VocalcomUploadForm() {
 
   return (
     <div className="space-y-4">
-      <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-border bg-surface p-5">
+      <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-border bg-surface p-5 shadow-sm">
         <div>
           <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
             Archivo Vocalcom acumulado (.csv, .xls, .xlsx)
@@ -214,14 +215,17 @@ export function VocalcomUploadForm() {
       </form>
 
       {error && (
-        <div className="rounded-xl border border-danger/30 bg-danger-bg p-4 text-sm text-danger">
-          {error}
-        </div>
+        <Callout tone="danger">{error}</Callout>
       )}
 
       {importResult && (
-        <div className="rounded-xl border border-border bg-surface p-5">
-          <h3 className="mb-2 text-sm font-semibold text-foreground">Resultado de la carga</h3>
+        <div className="rounded-xl border border-border bg-surface p-5 shadow-sm">
+          <h3 className="mb-3 flex items-center gap-2.5 text-sm font-semibold text-foreground">
+            <span className="icon-chip size-8 rounded-lg" data-tone="slate" aria-hidden="true">
+              <FileCheck2 size={16} />
+            </span>
+            Resultado de la carga
+          </h3>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
             <Stat label="Filas procesadas" value={importResult.source_rows} />
             <Stat label="Nuevas guardadas" value={importResult.inserted} highlight />
@@ -240,11 +244,18 @@ export function VocalcomUploadForm() {
   );
 }
 
+/** Cifra en baldosa: lo que entró se destaca con borde y número de éxito. */
 function Stat({ label, value, highlight }: { label: string; value: number; highlight?: boolean }) {
   return (
-    <div className={`rounded-lg border p-3 ${highlight ? "border-primary/40 bg-primary/5" : "border-border"}`}>
-      <p className="text-[11px] text-muted-foreground">{label}</p>
-      <p className="mt-0.5 text-lg font-semibold text-foreground">{value.toLocaleString("es-CL")}</p>
+    <div
+      className={`rounded-lg border border-border border-l-2 bg-background px-3 py-2.5 ${
+        highlight ? "border-l-success" : "border-l-border-strong"
+      }`}
+    >
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className={`mt-1 text-xl font-semibold tabular-nums tracking-tight ${highlight ? "text-success" : "text-foreground"}`}>
+        {value.toLocaleString("es-CL")}
+      </p>
     </div>
   );
 }

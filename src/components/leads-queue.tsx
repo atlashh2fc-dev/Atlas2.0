@@ -99,12 +99,13 @@ function queueState(lead: LeadQueueRow, now: Date): QueueState {
   };
 }
 
+/** Pill con borde del mismo tono, igual que `Badge`. */
 function stateClass(tone: QueueState["tone"]) {
-  if (tone === "danger") return "bg-danger-bg text-danger";
-  if (tone === "warning") return "bg-warning-bg text-warning";
-  if (tone === "success") return "bg-success-bg text-success";
-  if (tone === "primary") return "bg-primary text-primary-foreground";
-  return "bg-surface-muted text-muted-foreground";
+  if (tone === "danger") return "border-danger/35 bg-danger-bg text-danger";
+  if (tone === "warning") return "border-warning/35 bg-warning-bg text-warning";
+  if (tone === "success") return "border-success/35 bg-success-bg text-success";
+  if (tone === "primary") return "border-primary/35 bg-primary/10 text-primary";
+  return "border-border-strong bg-surface-muted text-muted-foreground";
 }
 
 export function LeadsQueue({
@@ -195,7 +196,7 @@ export function LeadsQueue({
           return (
             <span className="inline-flex flex-col gap-1">
               <span
-                className={`inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${stateClass(state.tone)}`}
+                className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${stateClass(state.tone)}`}
               >
                 <Icon size={13} />
                 {state.label}
@@ -318,7 +319,7 @@ export function LeadsQueue({
               className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
                 active
                   ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border bg-surface text-muted-foreground hover:bg-surface-muted hover:text-foreground"
+                  : "border-border bg-surface text-muted-foreground shadow-sm hover:border-border-strong hover:bg-surface-muted hover:text-foreground"
               }`}
             >
               {item.label}

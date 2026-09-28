@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CalendarClock, Mail, MessageCircle, MessageSquare, PhoneCall, RefreshCw } from "lucide-react";
+import { CalendarClock, History, Mail, MessageCircle, MessageSquare, PhoneCall, RefreshCw } from "lucide-react";
+import { EmptyState, SectionCard } from "@/components/ui";
 
 export type TimelineEntry = {
   key: string;
@@ -21,6 +22,15 @@ const FILTERS = [
   { id: "whatsapp", label: "WhatsApp" },
   { id: "integration", label: "Integraciones" },
 ] as const;
+
+/** Icono y color por tipo de entrada, con el mismo criterio de canal que el menú. */
+const SOURCE_CHIP: Record<TimelineEntry["source"], { icon: typeof PhoneCall; tone: string }> = {
+  call: { icon: PhoneCall, tone: "primary" },
+  email: { icon: Mail, tone: "teal" },
+  whatsapp: { icon: MessageCircle, tone: "green" },
+  integration: { icon: RefreshCw, tone: "slate" },
+  interaction: { icon: MessageSquare, tone: "blue" },
+};
 
 function formatDateTime(value: string | null): string {
   if (!value) return "—";
@@ -52,10 +62,12 @@ export function LeadTimeline({ entries }: { entries: TimelineEntry[] }) {
   const visible = filter === "todo" ? entries : entries.filter((entry) => entry.source === filter);
 
   return (
-    <div className="rounded-xl border border-border bg-surface">
-      <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
-        <h2 className="text-sm font-semibold text-foreground">Historial</h2>
-        <div className="ml-auto flex flex-wrap gap-1.5">
+    <SectionCard
+      title="Historial"
+      icon={History}
+      tone="blue"
+      actions={
+        <div className="flex flex-wrap justify-end gap-1.5">
           {FILTERS.map((item) => {
             const active = item.id === filter;
             return (
@@ -66,7 +78,7 @@ export function LeadTimeline({ entries }: { entries: TimelineEntry[] }) {
                 className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors ${
                   active
                     ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border bg-surface text-muted-foreground hover:bg-surface-muted hover:text-foreground"
+                    : "border-border bg-surface text-muted-foreground hover:border-border-strong hover:bg-surface-muted hover:text-foreground"
                 }`}
               >
                 {item.label}
@@ -81,29 +93,25 @@ export function LeadTimeline({ entries }: { entries: TimelineEntry[] }) {
             );
           })}
         </div>
-      </div>
-
+      }
+    >
       {visible.length === 0 ? (
-        <p className="px-4 py-10 text-center text-sm text-muted-foreground">
-          {entries.length === 0
-            ? "Sin gestiones registradas todavía. Al cerrar la primera llamada aparecerá acá."
-            : "No hay registros de este tipo."}
-        </p>
+        <EmptyState
+          icon={History}
+          title={
+            entries.length === 0
+              ? "Sin gestiones registradas todavía. Al cerrar la primera llamada aparecerá acá."
+              : "No hay registros de este tipo."
+          }
+          className="py-10"
+        />
       ) : (
         <ol className="divide-y divide-border">
           {visible.map((entry) => {
-            const Icon = entry.source === "call"
-              ? PhoneCall
-              : entry.source === "email"
-                ? Mail
-              : entry.source === "integration"
-                ? RefreshCw
-                : entry.source === "whatsapp"
-                  ? MessageCircle
-                  : MessageSquare;
+            const { icon: Icon, tone } = SOURCE_CHIP[entry.source];
             return (
               <li key={entry.key} className="flex gap-3 px-4 py-3.5">
-                <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-surface-muted text-muted-foreground">
+                <span className="icon-chip mt-0.5 size-7 flex-shrink-0 rounded-full" data-tone={tone}>
                   <Icon size={14} aria-hidden="true" />
                 </span>
                 <div className="min-w-0 flex-1">
@@ -114,7 +122,7 @@ export function LeadTimeline({ entries }: { entries: TimelineEntry[] }) {
                   <p className="mt-0.5 text-xs text-muted-foreground">{entry.agent}</p>
                   {entry.notes && <p className="mt-1.5 text-sm text-muted-foreground">{entry.notes}</p>}
                   {entry.agenda && (
-                    <p className="mt-1.5 inline-flex items-center gap-1 text-xs text-primary">
+                    <p className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-[var(--tone-amber)]">
                       <CalendarClock size={12} aria-hidden="true" />
                       Agendó para {formatDateTime(entry.agenda)}
                     </p>
@@ -125,6 +133,6 @@ export function LeadTimeline({ entries }: { entries: TimelineEntry[] }) {
           })}
         </ol>
       )}
-    </div>
+    </SectionCard>
   );
 }

@@ -7,6 +7,16 @@ import {
   getCallMetricsReport,
   listCampaignsForReports,
 } from "@/app/actions/dialer-reports";
+import {
+  CalendarRange,
+  CircleCheck,
+  Headset,
+  PhoneCall,
+  PhoneIncoming,
+  PhoneMissed,
+  PhoneOff,
+  Users,
+} from "lucide-react";
 import type { AgentActivityReportRow, CallMetricsReportRow } from "@/lib/types";
 import {
   Button,
@@ -300,9 +310,14 @@ export function DialerReports() {
   return (
     <div className="space-y-6">
       <Card className="flex flex-wrap items-end gap-3">
-        <div className="flex flex-col gap-0.5">
-          <span className="text-xs font-medium text-muted-foreground">Período analizado</span>
-          <span className="text-sm font-semibold text-foreground">{formatReportRangeLabel(range)}</span>
+        <div className="flex items-center gap-2.5">
+          <span className="icon-chip size-8 rounded-lg" data-tone="amber" aria-hidden="true">
+            <CalendarRange size={16} />
+          </span>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Período analizado</span>
+            <span className="text-sm font-semibold text-foreground">{formatReportRangeLabel(range)}</span>
+          </div>
         </div>
 
         <Field label="Campaña" className="w-auto">
@@ -324,7 +339,7 @@ export function DialerReports() {
 
         {selectedCampaign && (
           <div className="flex flex-col gap-0.5">
-            <span className="text-xs font-medium text-muted-foreground">Dirección</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Dirección</span>
             <span className="text-sm font-semibold text-foreground">
               {CAMPAIGN_DIRECTION_LABELS[selectedCampaign.direction]}
             </span>
@@ -343,19 +358,19 @@ export function DialerReports() {
       )}
 
       {error && (
-        <Card className="flex items-center gap-3">
-          <p className="text-sm text-danger">{error}</p>
+        <Callout tone="danger" className="flex items-center gap-3">
+          <p className="text-sm">{error}</p>
           <Button variant="secondary" size="sm" onClick={() => setReloadToken((token) => token + 1)}>
             Reintentar
           </Button>
-        </Card>
+        </Callout>
       )}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-        <MetricCard label="Intentos" value={totals.total_attempts.toLocaleString("es-CL")} />
-        <MetricCard label="Contestadas" value={totals.answered.toLocaleString("es-CL")} tone="good" />
-        <MetricCard label="Completadas" value={totals.completed.toLocaleString("es-CL")} />
-        <MetricCard label="No contesta" value={totals.no_answer.toLocaleString("es-CL")} />
+        <MetricCard label="Intentos" value={totals.total_attempts.toLocaleString("es-CL")} icon={PhoneCall} iconTone="primary" />
+        <MetricCard label="Contestadas" value={totals.answered.toLocaleString("es-CL")} tone="good" icon={PhoneIncoming} iconTone="green" />
+        <MetricCard label="Completadas" value={totals.completed.toLocaleString("es-CL")} icon={CircleCheck} iconTone="green" />
+        <MetricCard label="No contesta" value={totals.no_answer.toLocaleString("es-CL")} icon={PhoneMissed} iconTone="amber" />
         <MetricCard
           label="Abandono"
           metric="abandono"
@@ -363,11 +378,15 @@ export function DialerReports() {
           hint={`${totals.abandoned.toLocaleString("es-CL")} llamadas`}
           target={`≤ ${ABANDON_ALERT_RATE}%`}
           tone={abandonRate != null && abandonRate > ABANDON_ALERT_RATE ? "danger" : "good"}
+          icon={PhoneOff}
+          iconTone="rose"
         />
       </div>
 
       <SectionCard
         title="Métricas de llamadas"
+        icon={Headset}
+        tone="primary"
         description={`Por día y campaña · ${formatDate(from)} a ${formatDate(to)}${
           selectedCampaignName ? ` · ${selectedCampaignName}` : ""
         }`}
@@ -399,6 +418,8 @@ export function DialerReports() {
             ? `${selectedCampaignName} · solo métricas de llamada: el tiempo de jornada no es atribuible a una campaña`
             : "Todas las campañas · jornada completa"
         }
+        icon={Users}
+        tone="blue"
       >
         <div className="p-4">
           <DataTable

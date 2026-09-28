@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { unstable_noStore as noStore } from "next/cache";
-import { Undo2 } from "lucide-react";
+import { CheckCheck, Flame, History, Inbox, Snowflake, Undo2 } from "lucide-react";
 
 import { deshacerToque } from "@/app/actions/prospeccion";
 import { BandejaProspeccion, type FilaProspecto } from "@/components/bandeja-prospeccion";
-import { Callout, EmptyState, NavTabs, PageHeader, SectionCard, StatCard, SubmitButton } from "@/components/ui";
+import { Callout, EmptyState, MetricCard, NavTabs, PageHeader, SectionCard, SubmitButton } from "@/components/ui";
 import { requireProfile } from "@/lib/auth";
 import { ZONA_CLINICA, fechaEnChile, instanteEnChile } from "@/lib/citas";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
@@ -92,13 +92,13 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
       <NavTabs tabs={PESTANAS_VENTAS} />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Por contactar" value={cola.length} hint="Abrieron, hicieron clic o respondieron en 14 días" />
-        <StatCard label="Calientes" value={calientes.length} hint="Respondieron, hicieron clic o volvieron a abrir" tone={calientes.length > 0 ? "warn" : "default"} />
-        <StatCard label="Más de un día sin gestión" value={sinGestionUnDia.length} hint="El interés se enfría rápido" tone={sinGestionUnDia.length > 0 ? "danger" : "good"} />
-        <StatCard label="Gestionados hoy" value={hechosHoy.length} hint={`${toques.length} en los últimos 7 días`} tone="good" />
+        <MetricCard label="Por contactar" value={cola.length} hint="Abrieron, hicieron clic o respondieron en 14 días" icon={Inbox} iconTone="teal" />
+        <MetricCard label="Calientes" value={calientes.length} hint="Respondieron, hicieron clic o volvieron a abrir" tone={calientes.length > 0 ? "warn" : "default"} icon={Flame} iconTone="amber" />
+        <MetricCard label="Más de un día sin gestión" value={sinGestionUnDia.length} hint="El interés se enfría rápido" tone={sinGestionUnDia.length > 0 ? "danger" : "good"} icon={Snowflake} iconTone="amber" />
+        <MetricCard label="Gestionados hoy" value={hechosHoy.length} hint={`${toques.length} en los últimos 7 días`} tone="good" icon={CheckCheck} iconTone="green" />
       </div>
 
-      <div className="inline-flex rounded-md border border-border bg-surface p-0.5 text-sm">
+      <div className="inline-flex rounded-lg border border-border bg-surface p-0.5 text-sm shadow-sm">
         {[
           { clave: "cola", texto: `Por contactar · ${cola.length}`, href: "/dashboard/ventas/prospeccion" },
           { clave: "historial", texto: "Gestionados · 7 días", href: "/dashboard/ventas/prospeccion?vista=historial" },
@@ -109,7 +109,7 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
               key={opcion.clave}
               href={opcion.href}
               aria-current={activa ? "page" : undefined}
-              className={`rounded px-3 py-1 font-medium transition-colors ${activa ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              className={`rounded-md px-3 py-1 font-medium transition-colors ${activa ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
             >
               {opcion.texto}
             </Link>
@@ -122,10 +122,12 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
       {vista !== "historial" ? (
         <SectionCard
           title="Por contactar"
+          icon={Inbox}
+          tone="teal"
           description="Ordenado por temperatura: quien respondió, quien hizo clic, quien volvió a abrir y quien abrió más de una vez. Al escribirle vuelve en 3 días si no pasa nada; si vuelve a abrir antes, sube."
         >
           {cola.length === 0 ? (
-            <EmptyState title="Bandeja al día" description="Nadie con interés espera gestión. Cuando alguien abra o haga clic en la campaña, aparece acá." />
+            <EmptyState icon={Inbox} title="Bandeja al día" description="Nadie con interés espera gestión. Cuando alguien abra o haga clic en la campaña, aparece acá." />
           ) : (
             <BandejaProspeccion
               filas={cola.map((p): FilaProspecto => {
@@ -162,9 +164,9 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
           )}
         </SectionCard>
       ) : (
-        <SectionCard title="Gestionados en los últimos 7 días" description="Lo que se hizo con cada prospecto. Lo tuyo de las últimas 24 horas se puede deshacer, salvo lo que ya pasó al pipeline.">
+        <SectionCard title="Gestionados en los últimos 7 días" description="Lo que se hizo con cada prospecto. Lo tuyo de las últimas 24 horas se puede deshacer, salvo lo que ya pasó al pipeline." icon={History} tone="teal">
           {toques.length === 0 ? (
-            <EmptyState title="Sin gestiones todavía" description="Cada WhatsApp, llamada o resultado que anotes en la bandeja aparece acá." />
+            <EmptyState icon={History} title="Sin gestiones todavía" description="Cada WhatsApp, llamada o resultado que anotes en la bandeja aparece acá." />
           ) : (
             <ul className="divide-y divide-border">
               {toques.map((t) => {

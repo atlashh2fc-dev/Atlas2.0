@@ -1,4 +1,5 @@
 import { unstable_noStore as noStore } from "next/cache";
+import { Clock, Hourglass, Percent, Trophy } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { getTabs } from "@/lib/nav.config";
 import { getAgentQuotations, type QuotationCampaign, type QuotationRow } from "@/app/actions/cotizaciones";
@@ -46,18 +47,24 @@ export default async function CotizacionesPage() {
           label="Pendientes"
           value={pending.length.toLocaleString("es-CL")}
           hint="Esperan respuesta del cliente"
+          icon={Clock}
+          iconTone="amber"
         />
         <MetricCard
           label="Sin respuesta hace más de 7 días"
           value={stale.toLocaleString("es-CL")}
           hint={stale > 0 ? "Vale la pena volver a contactarlos" : "Nada atrasado"}
           tone={stale > 0 ? "warn" : "good"}
+          icon={Hourglass}
+          iconTone="amber"
         />
-        <MetricCard label="Vendidas" value={sold.toLocaleString("es-CL")} hint="Van a Validación de ventas" />
+        <MetricCard label="Vendidas" value={sold.toLocaleString("es-CL")} hint="Van a Validación de ventas" icon={Trophy} iconTone="green" />
         <MetricCard
           label="Tasa de cierre"
           value={closeRate === null ? "—" : `${closeRate} %`}
           hint={`${sold} vendidas de ${sold + lost} resueltas`}
+          icon={Percent}
+          iconTone="violet"
         />
       </section>
 

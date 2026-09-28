@@ -41,14 +41,19 @@ export function UserPasswordDialog({
           event.preventDefault();
           close();
         }}
-        className="w-[min(30rem,calc(100vw-2rem))] rounded-xl border border-border bg-surface p-0 text-foreground shadow-2xl backdrop:bg-black/45"
+        className="w-[min(30rem,calc(100vw-2rem))] rounded-xl border border-border bg-surface-solid p-0 text-foreground shadow-2xl backdrop:bg-black/45"
       >
-        <div className="border-b border-border px-5 py-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Acceso del usuario</p>
-          <h2 className="mt-1 text-lg font-semibold">Cambiar contraseña</h2>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            {user.fullName} · {user.email}
-          </p>
+        <div className="flex items-start gap-3 border-b border-border px-5 py-4">
+          <span className="icon-chip mt-0.5 size-9 rounded-lg" data-tone="slate" aria-hidden="true">
+            <KeyRound size={17} />
+          </span>
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Acceso del usuario</p>
+            <h2 className="mt-1 text-lg font-semibold">Cambiar contraseña</h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              {user.fullName} · {user.email}
+            </p>
+          </div>
         </div>
 
         <ActionForm
@@ -102,7 +107,7 @@ export function UserPasswordDialog({
             {mismatch && <span className="mt-1 block text-xs text-danger">Las contraseñas no coinciden.</span>}
           </label>
 
-          <p className="rounded-md bg-surface-muted px-3 py-2 text-xs text-muted-foreground">
+          <p className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-xs text-muted-foreground">
             La nueva contraseña tendrá efecto inmediato. Compártela con el usuario por un canal seguro.
           </p>
 

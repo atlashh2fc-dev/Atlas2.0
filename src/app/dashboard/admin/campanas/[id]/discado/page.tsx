@@ -1,3 +1,4 @@
+import { CalendarClock, PhoneCall, Timer } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { upsertDialerCampaignConfig } from "@/app/actions/dialer-config";
@@ -62,6 +63,8 @@ export default async function CampaignDialerPage({ params }: { params: Promise<{
       )}
 
       <SectionCard
+        icon={PhoneCall}
+        tone="primary"
         title="Configuración de discado"
         description="Define cómo el motor maneja esta campaña. Los ejecutivos asignados en la pestaña Ejecutivos son los que se sincronizan como miembros de la cola."
       >
@@ -248,7 +251,12 @@ export default async function CampaignDialerPage({ params }: { params: Promise<{
           {shortCallAvailable && (
             <>
               <div className="sm:col-span-2 border-t border-border pt-4">
-                <p className="text-sm font-medium text-foreground">Conexiones cortas</p>
+                <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <span className="icon-chip size-6 rounded-md" data-tone="amber" aria-hidden="true">
+                    <Timer size={13} />
+                  </span>
+                  Conexiones cortas
+                </p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   Una conexión del discador que dura menos que el umbral (buzón, centralita, cuelgan al tiro) se
                   cierra sola con el motivo elegido al terminar la interrupción legal. El ejecutivo ve el aviso y
@@ -308,7 +316,12 @@ export default async function CampaignDialerPage({ params }: { params: Promise<{
           </label>
 
           <div className="sm:col-span-2 border-t border-border pt-4">
-            <p className="text-sm font-medium text-foreground">Compromisos agendados</p>
+            <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <span className="icon-chip size-6 rounded-md" data-tone="amber" aria-hidden="true">
+                <CalendarClock size={13} />
+              </span>
+              Compromisos agendados
+            </p>
             <p className="mt-0.5 text-xs text-muted-foreground">
               Cuando un ejecutivo agenda una llamada, ese compromiso es suyo. A la hora acordada el discador marca al
               cliente y la llamada le entra a él, nunca al resto del equipo.

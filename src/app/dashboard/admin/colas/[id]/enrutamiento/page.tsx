@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { Route, ScrollText } from "lucide-react";
 
 import { saveContactCenterQueue } from "@/app/actions/contact-center-queues";
 import { ActionForm, ActionSubmit, Field, Input, SectionCard, Select } from "@/components/ui";
@@ -14,7 +15,7 @@ export default async function QueueRoutingPage({ params }: { params: Promise<{ i
 
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,34rem)_minmax(20rem,1fr)]">
-      <SectionCard title="Estrategia ACD" description="La misma política distribuye interacciones de todas las fuentes conectadas a esta cola.">
+      <SectionCard icon={Route} tone="rose" title="Estrategia ACD" description="La misma política distribuye interacciones de todas las fuentes conectadas a esta cola.">
         <ActionForm action={saveContactCenterQueue} success="Enrutamiento actualizado" className="space-y-4 p-4">
           <input type="hidden" name="queue_id" value={id} />
           <Field label="Estrategia de asignación"><Select name="routing_mode" defaultValue={queue.routing_mode}><option value="least_loaded">Automática · menor carga</option><option value="manual">Manual · selección desde cola</option></Select></Field>
@@ -23,7 +24,7 @@ export default async function QueueRoutingPage({ params }: { params: Promise<{ i
           <ActionSubmit pendingLabel="Guardando…">Guardar enrutamiento</ActionSubmit>
         </ActionForm>
       </SectionCard>
-      <SectionCard title="Comportamiento" description="Reglas operativas de la estrategia seleccionada.">
+      <SectionCard icon={ScrollText} tone="slate" title="Comportamiento" description="Reglas operativas de la estrategia seleccionada.">
         <div className="space-y-3 p-4 text-sm leading-6 text-muted-foreground">
           <p><strong className="text-foreground">Menor carga:</strong> entrega al miembro activo con menos interacciones abiertas.</p>
           <p><strong className="text-foreground">Capacidad:</strong> si todos llegan al máximo, la interacción permanece visible sin asignar.</p>

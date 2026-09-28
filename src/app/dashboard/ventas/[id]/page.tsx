@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { unstable_noStore as noStore } from "next/cache";
+import { ArrowRightLeft, Building2, ClipboardList, FileText, History, Mail, MessageCircle, Send, Signpost, UserRound } from "lucide-react";
 
 import { moverEtapa, registrarGestion } from "@/app/actions/ventas";
 import { cerrarNegocio, escribirAlNegocio, fijarProximaAccion } from "@/app/actions/pipeline";
@@ -173,7 +174,7 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
       />
 
       <div className="grid gap-3 lg:grid-cols-3">
-        <SectionCard title="Estado" description={`En qué va ${mensual ? "el negocio" : `el ${voc.negocio.toLowerCase()}`}.`}>
+        <SectionCard title="Estado" description={`En qué va ${mensual ? "el negocio" : `el ${voc.negocio.toLowerCase()}`}.`} icon={Signpost} tone="green">
           <div className="space-y-2 px-5 py-4 text-sm">
             <p>
               <Badge tone={negocio.status === "ganada" ? "success" : negocio.status === "perdida" ? "danger" : "neutral"}>
@@ -194,7 +195,7 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
           </div>
         </SectionCard>
 
-        <SectionCard title={voc.cuenta} description="Con quién se está hablando.">
+        <SectionCard title={voc.cuenta} description="Con quién se está hablando." icon={Building2} tone="blue">
           <div className="space-y-1 px-5 py-4 text-sm text-muted-foreground">
             <p className="font-medium text-foreground">{empresa?.name}</p>
             {empresa?.rut && <p>RUT {empresa.rut}</p>}
@@ -213,7 +214,7 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
         </SectionCard>
 
         {voc.personas ? (
-          <SectionCard title="Ficha" description="Lo que la clínica sabe de este caso.">
+          <SectionCard title="Ficha" description="Lo que la clínica sabe de este caso." icon={FileText} tone="blue">
             {detalle.length > 0 ? (
               <dl className="space-y-1 px-5 py-4 text-sm">
                 {detalle.map((fila) => (
@@ -228,7 +229,7 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
             )}
           </SectionCard>
         ) : (
-        <SectionCard title="Contacto" description="Quién decide o responde.">
+        <SectionCard title="Contacto" description="Quién decide o responde." icon={UserRound} tone="blue">
           {contacto ? (
             <div className="space-y-1 px-5 py-4 text-sm text-muted-foreground">
               <p className="font-medium text-foreground">{contacto.full_name}</p>
@@ -244,7 +245,7 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
       </div>
 
       {abierto && (
-        <SectionCard title={mensual ? "Mover el negocio" : `Mover el ${voc.negocio.toLowerCase()}`} description="Cada movimiento queda registrado en la historia.">
+        <SectionCard title={mensual ? "Mover el negocio" : `Mover el ${voc.negocio.toLowerCase()}`} description="Cada movimiento queda registrado en la historia." icon={ArrowRightLeft} tone="green">
           <ActionForm action={moverEtapa} success="Etapa actualizada">
             <input type="hidden" name="oportunidad_id" value={negocio.id} />
             <div className="flex flex-wrap items-end gap-3 px-5 py-4">
@@ -266,7 +267,7 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
         </SectionCard>
       )}
 
-      <SectionCard title="Registrar gestión" description="Con fecha futura queda como la próxima acción.">
+      <SectionCard title="Registrar gestión" description="Con fecha futura queda como la próxima acción." icon={ClipboardList} tone="amber">
         <ActionForm action={registrarGestion} success="Gestión registrada">
           <input type="hidden" name="oportunidad_id" value={negocio.id} />
           <div className="flex flex-wrap items-end gap-3 px-5 py-4">
@@ -292,7 +293,7 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
       </SectionCard>
 
       <div id="escribir" />
-      <SectionCard title="Escribir desde Atlas" description="Correo al contacto del negocio por el puente con Atlas Lead; WhatsApp si la empresa tiene el canal. Queda en la historia y con su estado.">
+      <SectionCard title="Escribir desde Atlas" description="Correo al contacto del negocio por el puente con Atlas Lead; WhatsApp si la empresa tiene el canal. Queda en la historia y con su estado." icon={Send} tone="teal">
         <div className="grid gap-4 px-4 py-4 lg:grid-cols-[1fr_320px]">
           <form action={escribirAlNegocio} className="space-y-2">
             <input type="hidden" name="oportunidad_id" value={negocio.id} />
@@ -308,8 +309,8 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
             <SubmitButton pendingLabel="Enviando…">Enviar</SubmitButton>
           </form>
           <div className="space-y-3">
-            <form action={fijarProximaAccion} className="space-y-2 rounded-lg border border-border p-3">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Próxima acción</p>
+            <form action={fijarProximaAccion} className="space-y-2 rounded-lg border border-border border-l-2 border-l-warning bg-surface-muted/40 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Próxima acción</p>
               <input type="hidden" name="oportunidad_id" value={negocio.id} />
               <div className="flex gap-2">
                 <Input type="date" name="fecha" required className="flex-1" />
@@ -319,8 +320,8 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
               <SubmitButton size="sm" variant="secondary" pendingLabel="…">Fijar</SubmitButton>
             </form>
             {negocio.status === "abierta" && (
-              <form action={cerrarNegocio} className="space-y-2 rounded-lg border border-border p-3">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">Cerrar</p>
+              <form action={cerrarNegocio} className="space-y-2 rounded-lg border border-border border-l-2 border-l-success bg-surface-muted/40 p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Cerrar</p>
                 <input type="hidden" name="oportunidad_id" value={negocio.id} />
                 <Input name="motivo" placeholder="Motivo si se pierde" />
                 <div className="flex gap-2">
@@ -337,7 +338,12 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
               const etiqueta = ETIQUETA_ESTADO_MENSAJE[mensaje.estado as EstadoMensaje] ?? ETIQUETA_ESTADO_MENSAJE.programado;
               return (
                 <li key={mensaje.id} className="flex items-center gap-3 px-4 py-2 text-sm">
-                  <span className="w-20 text-xs text-muted-foreground">{mensaje.canal === "correo" ? "Correo" : "WhatsApp"}</span>
+                  <span className="inline-flex w-28 shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                    <span className="icon-chip size-6 rounded-md" data-tone={mensaje.canal === "correo" ? "teal" : "green"} aria-hidden="true">
+                      {mensaje.canal === "correo" ? <Mail size={13} /> : <MessageCircle size={13} />}
+                    </span>
+                    {mensaje.canal === "correo" ? "Correo" : "WhatsApp"}
+                  </span>
                   <span className="min-w-0 flex-1 truncate text-foreground">{mensaje.asunto ?? mensaje.cuerpo ?? ""}</span>
                   <Badge tone={etiqueta.tone}>{etiqueta.label}</Badge>
                   {mensaje.error && <span className="text-xs text-danger">{mensaje.error}</span>}
@@ -349,7 +355,7 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
       </SectionCard>
 
       {leadId && (hiloCampana.length > 0 || senales.length > 0) && (
-        <SectionCard title="Correo de campaña" description="Lo que Atlas Lead le mandó a esta persona y lo que respondió, más las señales que llegaron (aperturas, clics, respuestas).">
+        <SectionCard title="Correo de campaña" description="Lo que Atlas Lead le mandó a esta persona y lo que respondió, más las señales que llegaron (aperturas, clics, respuestas)." icon={Mail} tone="teal">
           <div className="space-y-4 px-4 py-4">
             {senales.length > 0 && (
               <ul className="flex flex-wrap gap-1.5">
@@ -367,7 +373,7 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
         </SectionCard>
       )}
 
-      <SectionCard title="Historia" description={`Todo lo que pasó con ${mensual ? "este negocio" : `este ${voc.negocio.toLowerCase()}`}.`}>
+      <SectionCard title="Historia" description={`Todo lo que pasó con ${mensual ? "este negocio" : `este ${voc.negocio.toLowerCase()}`}.`} icon={History} tone="violet">
         <Table>
           <Thead>
             <Th>Cuándo</Th>

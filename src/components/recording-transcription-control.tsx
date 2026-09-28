@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { FileText, LoaderCircle, RotateCcw, WandSparkles } from "lucide-react";
-import { Badge, Button, SlideOver, useToast } from "@/components/ui";
+import { Badge, Button, EmptyState, SlideOver, useToast } from "@/components/ui";
 
 export type TranscriptionStatus = "pending" | "processing" | "completed" | "failed";
 
@@ -162,7 +162,7 @@ export function RecordingTranscriptionControl({
               <div className="space-y-3">
                 {transcription.segments.map((segment, index) => (
                   <div key={`${segment.start ?? index}-${index}`} className="grid grid-cols-[3.5rem_1fr] gap-3">
-                    <span className="pt-0.5 text-xs tabular-nums text-muted-foreground">
+                    <span className="h-fit rounded-md border border-border bg-surface-muted/60 px-1.5 py-0.5 text-center text-[11px] font-medium tabular-nums text-muted-foreground">
                       {formatTimestamp(segment.start)}
                     </span>
                     <p className="text-sm leading-6 text-foreground">{segment.text?.trim()}</p>
@@ -174,7 +174,7 @@ export function RecordingTranscriptionControl({
             )}
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">La transcripción todavía no está disponible.</p>
+          <EmptyState icon={FileText} title="La transcripción todavía no está disponible." />
         )}
       </SlideOver>
     </>

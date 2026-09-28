@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { unstable_noStore as noStore } from "next/cache";
+import { MailOpen, MessageSquareReply } from "lucide-react";
 
 import { descartarBorrador, marcarBorradorEnviado } from "@/app/actions/vendedor";
 import {
@@ -83,6 +84,7 @@ export default async function RespuestasDelAgentePage() {
 
       {lista.length === 0 ? (
         <EmptyState
+          icon={MessageSquareReply}
           title="No hay respuestas esperando"
           description="Cuando alguien conteste una campaña, el agente redacta acá su propuesta en menos de quince minutos."
         />
@@ -93,6 +95,8 @@ export default async function RespuestasDelAgentePage() {
             <SectionCard
               key={borrador.id}
               title={borrador.para_email}
+              icon={MailOpen}
+              tone="teal"
               description={`${cuando.format(new Date(borrador.created_at))} · ${borrador.razonamiento ?? ""}`}
               actions={
                 <div className="flex items-center gap-2">

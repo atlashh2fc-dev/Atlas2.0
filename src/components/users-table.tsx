@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Headset, KeyRound, ShieldCheck, type LucideIcon } from "lucide-react";
 import { bulkSetUserActive, toggleUserActive } from "@/app/actions/admin";
 import type { AppRole } from "@/lib/types";
 import { UserRoleForm } from "@/components/user-role-form";
@@ -21,6 +22,13 @@ const ROLE_LABEL: Record<AppRole, string> = {
   agente: "Agente",
   supervisor: "Supervisor",
   admin: "Administrador",
+};
+
+/** Chip del rol: ejecutivos en azul (personas), supervisión en violeta, administración en gris. */
+const ROLE_CHIP: Record<AppRole, { icon: LucideIcon; tone: "blue" | "violet" | "slate" }> = {
+  agente: { icon: Headset, tone: "blue" },
+  supervisor: { icon: ShieldCheck, tone: "violet" },
+  admin: { icon: KeyRound, tone: "slate" },
 };
 
 export type UserRow = {
@@ -80,20 +88,32 @@ export function UsersTable({
         id: "usuario",
         header: "Usuario",
         value: (row) => row.full_name,
-        cell: (row) => (
-          <span className="block space-y-2">
-            <span className="block">
-              <span className="font-medium text-foreground">{row.full_name}</span>
-              <span className="mt-0.5 block break-all text-xs text-muted-foreground">{row.email}</span>
-              {row.role === "agente" && (
-                <span className="mt-1 block text-xs text-muted-foreground">
-                  Supervisores: {row.supervisor_names.length > 0 ? row.supervisor_names.join(" · ") : "Sin supervisor"}
+        cell: (row) => {
+          const { icon: RoleIcon, tone } = ROLE_CHIP[row.role];
+          return (
+            <span className="flex items-start gap-3">
+              <span
+                className={`icon-chip mt-0.5 size-8 rounded-full ${row.active ? "" : "opacity-50"}`}
+                data-tone={tone}
+                aria-hidden="true"
+              >
+                <RoleIcon size={15} />
+              </span>
+              <span className="block min-w-0 space-y-2">
+                <span className="block">
+                  <span className="font-medium text-foreground">{row.full_name}</span>
+                  <span className="mt-0.5 block break-all text-xs text-muted-foreground">{row.email}</span>
+                  {row.role === "agente" && (
+                    <span className="mt-1 block text-xs text-muted-foreground">
+                      Supervisores: {row.supervisor_names.length > 0 ? row.supervisor_names.join(" · ") : "Sin supervisor"}
+                    </span>
+                  )}
                 </span>
-              )}
+                <UserPasswordDialog user={{ id: row.id, fullName: row.full_name, email: row.email }} />
+              </span>
             </span>
-            <UserPasswordDialog user={{ id: row.id, fullName: row.full_name, email: row.email }} />
-          </span>
-        ),
+          );
+        },
       },
       {
         id: "rol",
@@ -151,7 +171,7 @@ export function UsersTable({
             <span className="block space-y-2">
               <span className="flex max-w-56 flex-wrap gap-1">
                 {row.campaign_ids.map((campaignId) => (
-                  <span key={campaignId} className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] text-primary">
+                  <span key={campaignId} className="icon-chip rounded-md px-1.5 py-0.5 text-[11px] font-medium" data-tone="rose">
                     {campaignNameById.get(campaignId) ?? "Campaña"}
                   </span>
                 ))}

@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
+import { CalendarClock, History, PhoneOutgoing } from "lucide-react";
+import { Callout, EmptyState, SectionCard, buttonClasses } from "@/components/ui";
 import type { HomeDashboardSummary } from "@/lib/types";
 
 export function LiveDashboard({
@@ -65,17 +67,18 @@ export function LiveDashboard({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2">
-        <span
-          className={`inline-flex h-2 w-2 rounded-full ${live ? "bg-success" : "bg-muted-foreground"}`}
-        />
-        <span className="text-xs text-muted-foreground">
-          {live ? "Datos en vivo" : "Conectando…"}
+      <div
+        className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-medium ${live ? "border-success/30 bg-success-bg text-success" : "border-border bg-surface text-muted-foreground"}`}
+      >
+        <span className="relative inline-flex size-2">
+          {live && <span className="absolute inset-0 animate-ping rounded-full bg-success opacity-60" />}
+          <span className={`relative inline-flex size-2 rounded-full ${live ? "bg-success" : "bg-muted-foreground"}`} />
         </span>
+        {live ? "Datos en vivo" : "Conectando…"}
       </div>
 
       {refreshError && (
-        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger">
+        <Callout tone="danger" className="flex flex-wrap items-center gap-3 px-4 py-3">
           <span>No se pudo actualizar: {refreshError}</span>
           <button
             type="button"
@@ -84,28 +87,32 @@ export function LiveDashboard({
           >
             Reintentar
           </button>
-        </div>
+        </Callout>
       )}
 
-      <div className="rounded-xl border border-border bg-surface">
-        <div className="flex items-center justify-between border-b border-border px-5 py-4">
-          <h2 className="text-sm font-semibold text-foreground">Mis agendas de hoy</h2>
-          {agenda.length > 0 && (
-            <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-accent-foreground">
+      <SectionCard
+        title="Mis agendas de hoy"
+        icon={CalendarClock}
+        tone="amber"
+        actions={
+          agenda.length > 0 && (
+            <span className="rounded-full border border-warning/30 bg-warning-bg px-2 py-0.5 text-xs font-semibold tabular-nums text-warning">
               {agenda.length}
             </span>
-          )}
-        </div>
+          )
+        }
+      >
+        {agenda.length === 0 && (
+          <EmptyState icon={CalendarClock} title="No tienes agendas pendientes para hoy." className="py-8" />
+        )}
         <ul className="divide-y divide-border">
-          {agenda.length === 0 && (
-            <li className="px-5 py-4 text-sm text-muted-foreground">
-              No tienes agendas pendientes para hoy.
-            </li>
-          )}
           {agenda.map((a) => {
             const overdue = new Date(a.next_action_at).getTime() < nowTick;
             return (
-              <li key={a.id} className="flex items-center justify-between px-5 py-3">
+              <li
+                key={a.id}
+                className={`flex items-center justify-between border-l-2 px-5 py-3 transition-colors hover:bg-surface-muted/50 ${overdue ? "border-l-danger" : "border-l-transparent"}`}
+              >
                 <div>
                   <p className="text-sm font-medium text-foreground">{a.full_name}</p>
                   <p className="text-xs text-muted-foreground">
@@ -117,10 +124,8 @@ export function LiveDashboard({
                     {overdue ? "Vencida: " : ""}
                     {new Date(a.next_action_at).toLocaleString("es-CL")}
                   </span>
-                  <Link
-                    href={`/dashboard/leads/${a.id}`}
-                    className="inline-flex items-center rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary-hover"
-                  >
+                  <Link href={`/dashboard/leads/${a.id}`} className={buttonClasses({ size: "sm" })}>
+                    <PhoneOutgoing size={13} aria-hidden="true" />
                     Llamar ahora
                   </Link>
                 </div>
@@ -128,23 +133,24 @@ export function LiveDashboard({
             );
           })}
         </ul>
-      </div>
+      </SectionCard>
 
-      <div className="rounded-xl border border-border bg-surface">
-        <div className="flex items-center justify-between border-b border-border px-5 py-4">
-          <h2 className="text-sm font-semibold text-foreground">Gestiones recientes</h2>
-          <Link href="/dashboard/leads" className="text-sm text-primary hover:underline">
+      <SectionCard
+        title="Gestiones recientes"
+        icon={History}
+        tone="blue"
+        actions={
+          <Link href="/dashboard/leads" className="text-sm font-medium text-primary hover:underline">
             Ver registros
           </Link>
-        </div>
+        }
+      >
+        {recent.length === 0 && (
+          <EmptyState icon={History} title="Aún no hay gestiones registradas." className="py-8" />
+        )}
         <ul className="divide-y divide-border">
-          {recent.length === 0 && (
-            <li className="px-5 py-4 text-sm text-muted-foreground">
-              Aún no hay gestiones registradas.
-            </li>
-          )}
           {recent.map((r) => (
-            <li key={r.id} className="flex items-center justify-between px-5 py-3">
+            <li key={r.id} className="flex items-center justify-between px-5 py-3 transition-colors hover:bg-surface-muted/50">
               <div>
                 <p className="text-sm font-medium text-foreground">{r.lead_name}</p>
                 <p className="text-xs text-muted-foreground">{r.result}</p>
@@ -155,7 +161,7 @@ export function LiveDashboard({
             </li>
           ))}
         </ul>
-      </div>
+      </SectionCard>
     </div>
   );
 }

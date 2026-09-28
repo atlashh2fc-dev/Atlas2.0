@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { ListChecks } from "lucide-react";
 import { ChartDownloadButton } from "@/components/chart-download-button";
+import { EmptyState, SectionCard } from "@/components/ui";
 import {
   tipificationExportRows,
   type TipificationBreakdown as Breakdown,
@@ -14,9 +16,9 @@ import {
  * vistazo sin ir a la leyenda.
  */
 const RESULT_TONE: Record<string, { bar: string; text: string; label: string }> = {
-  INTERESADO: { bar: "var(--success)", text: "text-[color:var(--success)]", label: "Interesa" },
-  "NO INTERESADO": { bar: "var(--danger)", text: "text-[color:var(--danger)]", label: "No interesa" },
-  "NO CONTACTO": { bar: "var(--warning)", text: "text-[color:var(--warning)]", label: "No contacto" },
+  INTERESADO: { bar: "var(--success)", text: "text-success", label: "Interesa" },
+  "NO INTERESADO": { bar: "var(--danger)", text: "text-danger", label: "No interesa" },
+  "NO CONTACTO": { bar: "var(--warning)", text: "text-warning", label: "No contacto" },
 };
 
 /** Cuántos motivos se muestran antes de plegar el resto. */
@@ -49,22 +51,28 @@ function ResultColumn({ group, total }: { group: TipificationGroup; total: numbe
   const share = total > 0 ? (group.count / total) * 100 : 0;
 
   return (
-    <div className="flex flex-col rounded-lg border border-border bg-surface-muted/30 p-4">
+    <div
+      className="flex flex-col rounded-lg border border-border border-l-2 bg-background p-4"
+      style={{ borderLeftColor: palette.bar }}
+    >
       <div className="flex items-baseline justify-between gap-2">
-        <span className={`text-[11px] font-semibold uppercase tracking-wide ${palette.text}`}>
+        <span className={`text-[11px] font-semibold uppercase tracking-wider ${palette.text}`}>
           {palette.label}
         </span>
         <span className="text-[11px] tabular-nums text-muted-foreground">{fmtPct(share)}</span>
       </div>
 
-      <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">
+      <p className={`mt-1 text-2xl font-semibold tracking-tight tabular-nums ${palette.text === "text-muted-foreground" ? "text-foreground" : palette.text}`}>
         {fmtInt(group.count)}
       </p>
 
-      <div className="mt-2 h-1 overflow-hidden rounded-full bg-surface">
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-muted">
         <div
           className="h-full rounded-full"
-          style={{ width: `${Math.min(100, share)}%`, background: palette.bar }}
+          style={{
+            width: `${Math.min(100, share)}%`,
+            background: `linear-gradient(90deg, color-mix(in srgb, ${palette.bar} 55%, transparent), ${palette.bar})`,
+          }}
         />
       </div>
 
@@ -108,32 +116,28 @@ export function TipificationBreakdown({
 }) {
   if (breakdown.total === 0) {
     return (
-      <div className="rounded-xl border border-border bg-surface p-5">
-        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-        <p className="mt-4 text-xs text-muted-foreground">
-          Sin gestiones tipificadas en el período.
-        </p>
-      </div>
+      <SectionCard title={title} icon={ListChecks} tone="violet">
+        <EmptyState icon={ListChecks} title="Sin gestiones tipificadas en el período." className="py-8" />
+      </SectionCard>
     );
   }
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {fmtInt(breakdown.total)} gestiones tipificadas en el período.
-          </p>
-        </div>
+    <SectionCard
+      title={title}
+      description={`${fmtInt(breakdown.total)} gestiones tipificadas en el período.`}
+      icon={ListChecks}
+      tone="violet"
+      actions={
         <ChartDownloadButton
           filename="tipificaciones-por-resultado.xlsx"
           rows={tipificationExportRows(breakdown)}
         />
-      </div>
-
+      }
+    >
+      <div className="p-5 pt-4">
       {/* Proporción del período de un vistazo, antes del detalle. */}
-      <div className="mt-4 flex h-2 overflow-hidden rounded-full bg-surface-muted">
+      <div className="flex h-2 gap-0.5 overflow-hidden rounded-full bg-surface-muted">
         {breakdown.groups.map((group) => (
           <div
             key={group.result}
@@ -148,6 +152,7 @@ export function TipificationBreakdown({
           <ResultColumn key={group.result} group={group} total={breakdown.total} />
         ))}
       </div>
-    </div>
+      </div>
+    </SectionCard>
   );
 }

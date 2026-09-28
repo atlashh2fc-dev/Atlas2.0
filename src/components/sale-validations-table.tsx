@@ -317,7 +317,9 @@ export function SaleValidationsTable({
           <div className="space-y-5 text-sm">
             <div className="flex items-center justify-between gap-2">
               <Badge tone={STATUS_BADGE[detail.status].tone}>{STATUS_BADGE[detail.status].label}</Badge>
-              <span className="text-lg font-semibold tabular-nums">{formatUf(detail.ufAmount)}</span>
+              <span className="rounded-lg border border-border border-l-2 border-l-success bg-background px-3 py-1 text-lg font-semibold tabular-nums text-foreground">
+                {formatUf(detail.ufAmount)}
+              </span>
             </div>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
               <Item label="Ejecutivo">{detail.agentName ?? "—"}</Item>
@@ -331,7 +333,7 @@ export function SaleValidationsTable({
               </Item>
             </dl>
             {detail.managementChannel && (
-              <div className="flex items-start justify-between gap-3 rounded-md border border-border px-3 py-2">
+              <div className="flex items-start justify-between gap-3 rounded-lg border border-border border-l-2 border-l-warning bg-surface-muted/40 px-3 py-2">
                 <p className="text-xs text-muted-foreground">
                   Registrada sin llamada: su fecha es la del registro. Si la venta fue antes, fecharla la lleva a ese
                   período en esta vista y en el reporte.
@@ -347,7 +349,7 @@ export function SaleValidationsTable({
               </div>
             )}
             <div>
-              <p className="mb-1.5 text-xs uppercase tracking-wide text-muted-foreground">Productos</p>
+              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Productos</p>
               <div className="flex flex-wrap gap-1.5">
                 {detail.products.length > 0 ? (
                   detail.products.map((product) => (
@@ -362,13 +364,13 @@ export function SaleValidationsTable({
             </div>
             {detail.agentNotes && (
               <div>
-                <p className="mb-1.5 text-xs uppercase tracking-wide text-muted-foreground">Observación del ejecutivo</p>
-                <p className="whitespace-pre-wrap rounded-md bg-surface-muted px-3 py-2">{detail.agentNotes}</p>
+                <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Observación del ejecutivo</p>
+                <p className="whitespace-pre-wrap rounded-lg border border-border bg-surface-muted px-3 py-2">{detail.agentNotes}</p>
               </div>
             )}
             {detail.decidedAt && (
               <div>
-                <p className="mb-1.5 text-xs uppercase tracking-wide text-muted-foreground">Decisión</p>
+                <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Decisión</p>
                 <p>
                   {decidedBy(detail)} · {dateTime.format(new Date(detail.decidedAt))}
                 </p>
@@ -406,7 +408,9 @@ export function SaleValidationsTable({
       >
         {decision && (
           <div className="space-y-4 text-sm">
-            <div className="rounded-lg border border-border bg-surface-muted px-3 py-2">
+            <div
+              className={`rounded-lg border border-border border-l-2 bg-surface-muted px-3 py-2 ${decision.decision === "aprobada" ? "border-l-success" : "border-l-danger"}`}
+            >
               <p className="font-medium">
                 {decision.rows.length} {decision.rows.length === 1 ? "venta" : "ventas"} · {formatUf(decisionUf)}
               </p>

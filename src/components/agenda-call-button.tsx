@@ -101,13 +101,13 @@ export function AgendaCallButton({
         <span
           role="menu"
           aria-label="Elige el número a marcar"
-          className="absolute right-0 top-full z-30 mt-1 block w-72 rounded-xl border border-border bg-surface p-1.5 text-left shadow-lg"
+          className="absolute right-0 top-full z-30 mt-1 block w-72 rounded-xl border border-border bg-surface-solid p-1.5 text-left shadow-lg"
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
           }}
         >
-          <span className="block px-2 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <span className="block px-2 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             ¿A qué número llamas?
           </span>
           {options.map((option, index) => (
@@ -123,12 +123,21 @@ export function AgendaCallButton({
               }}
               className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-left text-sm hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <span className="min-w-0">
+              <span className="flex min-w-0 items-start gap-2">
+                <span
+                  className="icon-chip mt-0.5 size-5 rounded-md text-[10px] font-semibold"
+                  data-tone={option.blockedReason ? "rose" : option.isPrimary ? "primary" : "slate"}
+                  aria-hidden="true"
+                >
+                  {index + 1}
+                </span>
+                <span className="min-w-0">
                 <span className="block font-medium tabular-nums text-foreground">
-                  {index + 1}. {formatDialDigits(option.dialDigits)}
+                  {formatDialDigits(option.dialDigits)}
                 </span>
                 <span className="block truncate text-xs text-muted-foreground">
                   {option.blockedReason ? "No llamar" : option.isPrimary ? "Principal" : option.label ?? "Adicional"}
+                </span>
                 </span>
               </span>
               <Phone size={14} className="shrink-0 text-primary" />

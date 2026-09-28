@@ -126,11 +126,13 @@ export default async function GrabacionesPage({
 
       <section aria-labelledby="quality-recordings-title">
         <div className="mb-3">
-          <h2 id="quality-recordings-title" className="flex items-center gap-2 text-sm font-semibold text-foreground">
-            <Headphones size={16} className="text-primary" />
+          <h2 id="quality-recordings-title" className="flex items-center gap-2.5 text-sm font-semibold text-foreground">
+            <span className="icon-chip size-7 rounded-lg" data-tone="violet" aria-hidden="true">
+              <Headphones size={14} />
+            </span>
             Grabaciones post-llamada
           </h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
+          <p className="mt-1 text-xs text-muted-foreground">
             {recordings.total.toLocaleString("es-CL")} grabación{recordings.total === 1 ? "" : "es"} encontrada{recordings.total === 1 ? "" : "s"}
           </p>
         </div>

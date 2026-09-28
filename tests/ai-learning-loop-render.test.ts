@@ -24,6 +24,7 @@ const ui = {
   MetricCard: ({ label, value }: Props) => React.createElement("div", null, `${label}: ${value}`),
   Field: ({ label, children }: Props) => React.createElement("label", null, label as React.ReactNode, children),
   Select: element("select"), Input: element("input"), Button: element("button"), Callout: element("aside"), Badge: element("span"),
+  buttonClasses: () => "",
 };
 function load(path: string, dependencies: Record<string, unknown>, env: Record<string, string> = {}): Record<string, unknown> {
   const compiled = ts.transpileModule(readFileSync(new URL(path, import.meta.url), "utf8"), {

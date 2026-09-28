@@ -31,7 +31,13 @@ export function OperationsRefresh({ observedAt }: { observedAt: string }) {
 
   return (
     <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-      <span aria-live="polite">
+      <span
+        aria-live="polite"
+        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-medium ${
+          stale ? "border-warning/30 bg-warning-bg text-warning" : "border-success/30 bg-success-bg text-success"
+        }`}
+      >
+        <span className={`size-1.5 rounded-full ${stale ? "bg-warning" : "bg-success"}`} aria-hidden="true" />
         {stale ? "Datos de hace más de 1 minuto" : "Instantánea consultada"} ·{" "}
         {new Date(observedAt).toLocaleTimeString("es-CL", {
           timeZone: "America/Santiago",
@@ -43,6 +49,7 @@ export function OperationsRefresh({ observedAt }: { observedAt: string }) {
       <label className="inline-flex cursor-pointer items-center gap-2">
         <input
           type="checkbox"
+          className="accent-[var(--primary)]"
           checked={auto}
           onChange={(event) => setAuto(event.target.checked)}
         />{" "}

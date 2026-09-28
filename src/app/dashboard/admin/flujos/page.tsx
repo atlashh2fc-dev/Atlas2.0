@@ -2,10 +2,11 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { toggleWorkflowActive } from "@/app/actions/workflows";
 import Link from "next/link";
+import { Workflow } from "lucide-react";
 import type { WorkflowStep, WorkflowStepBranch } from "@/lib/types";
 import { validateWorkflow, workflowStatus } from "@/lib/workflow-validation";
 import { WorkflowCreatePanel } from "@/components/workflow-create-panel";
-import { ActionForm, ActionSubmit, Badge, Callout, PageHeader, SectionCard, Table, Tbody, Td, Th, Thead, TableEmpty, Tr } from "@/components/ui";
+import { ActionForm, ActionSubmit, Badge, Callout, EmptyState, PageHeader, SectionCard, Table, Tbody, Td, Th, Thead, TableEmpty, Tr } from "@/components/ui";
 
 export default async function WorkflowsPage({
   searchParams,
@@ -83,7 +84,12 @@ export default async function WorkflowsPage({
         <Callout tone="danger">No se pudieron cargar los flujos: {workflowsError.message}</Callout>
       )}
 
-      <SectionCard>
+      <SectionCard
+        icon={Workflow}
+        tone="rose"
+        title="Flujos"
+        description={`${(workflows ?? []).length.toLocaleString("es-CL")} ${(workflows ?? []).length === 1 ? "flujo" : "flujos"} · revisión y campañas que lo usan`}
+      >
         <Table>
           <Thead>
             <Th>Nombre</Th>
@@ -95,7 +101,12 @@ export default async function WorkflowsPage({
           <Tbody>
             {(workflows ?? []).length === 0 && (
               <TableEmpty colSpan={5}>
-                Todavía no hay flujos. Crea el primero con el botón &ldquo;Nuevo flujo&rdquo;.
+                <EmptyState
+                  icon={Workflow}
+                  title="Todavía no hay flujos"
+                  description="Crea el primero con el botón “Nuevo flujo”."
+                  className="py-6"
+                />
               </TableEmpty>
             )}
             {(workflows ?? []).map((w) => {
@@ -104,10 +115,21 @@ export default async function WorkflowsPage({
               return (
                 <Tr key={w.id}>
                   <Td strong>
-                    <Link href={`/dashboard/admin/flujos/${w.id}`} className="hover:text-primary">
-                      {w.name}
-                    </Link>
-                    {w.description && <p className="mt-0.5 text-xs text-muted-foreground">{w.description}</p>}
+                    <div className="flex items-start gap-3">
+                      <span
+                        className={`icon-chip mt-0.5 size-8 rounded-lg ${w.is_active ? "" : "opacity-50"}`}
+                        data-tone="rose"
+                        aria-hidden="true"
+                      >
+                        <Workflow size={15} />
+                      </span>
+                      <div className="min-w-0">
+                        <Link href={`/dashboard/admin/flujos/${w.id}`} className="hover:text-primary">
+                          {w.name}
+                        </Link>
+                        {w.description && <p className="mt-0.5 text-xs font-normal text-muted-foreground">{w.description}</p>}
+                      </div>
+                    </div>
                   </Td>
                   <Td muted>{usedBy.length > 0 ? usedBy.join(", ") : "Ninguna campaña"}</Td>
                   <Td>

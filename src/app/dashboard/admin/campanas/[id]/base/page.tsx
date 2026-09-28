@@ -1,7 +1,7 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
-import { Upload } from "lucide-react";
+import { CalendarClock, CheckCircle2, Database, Inbox, PhoneOff, Upload } from "lucide-react";
 import { MetricCard, SectionCard, buttonClasses } from "@/components/ui";
 
 export default async function CampaignBasePage({ params }: { params: Promise<{ id: string }> }) {
@@ -29,12 +29,16 @@ export default async function CampaignBasePage({ params }: { params: Promise<{ i
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <MetricCard
           label="Base total"
+          icon={Database}
+          iconTone="blue"
           value={totalCount.toLocaleString("es-CL")}
           href={`/dashboard/leads?campaign=${id}`}
           hrefLabel="Ver registros"
         />
         <MetricCard
           label="Sin gestionar"
+          icon={Inbox}
+          iconTone="slate"
           value={(pending.count ?? 0).toLocaleString("es-CL")}
           hint={`${share(pending.count ?? 0)}% de la base`}
           href={`/dashboard/leads?campaign=${id}&view=disponibles`}
@@ -43,6 +47,8 @@ export default async function CampaignBasePage({ params }: { params: Promise<{ i
         />
         <MetricCard
           label="Gestionados"
+          icon={CheckCircle2}
+          iconTone="green"
           value={(managed.count ?? 0).toLocaleString("es-CL")}
           hint={`${share(managed.count ?? 0)}% de la base`}
           href={`/dashboard/leads?campaign=${id}&view=gestionados`}
@@ -52,12 +58,16 @@ export default async function CampaignBasePage({ params }: { params: Promise<{ i
         />
         <MetricCard
           label="Con agenda"
+          icon={CalendarClock}
+          iconTone="amber"
           value={(scheduled.count ?? 0).toLocaleString("es-CL")}
           href={`/dashboard/leads?campaign=${id}&view=hoy`}
           hrefLabel="Ver agenda de hoy"
         />
         <MetricCard
           label="Sin teléfono"
+          icon={PhoneOff}
+          iconTone="primary"
           value={(withoutPhone.count ?? 0).toLocaleString("es-CL")}
           hint="No se pueden marcar"
           href={`/dashboard/leads?campaign=${id}&view=bloqueados`}
@@ -67,6 +77,8 @@ export default async function CampaignBasePage({ params }: { params: Promise<{ i
       </div>
 
       <SectionCard
+        icon={Upload}
+        tone="blue"
         title="Cargar más registros"
         description="La carga masiva asigna automáticamente el flujo de gestión de esta campaña."
       >

@@ -9,6 +9,7 @@ import {
   type ReasonOptionNode,
 } from "@/lib/call-typification";
 import type { WorkflowIssue } from "@/lib/workflow-validation";
+import { Badge, SectionCard } from "@/components/ui";
 
 const OUTCOME_LABEL: Record<CallOutcome, string> = {
   sale: "Venta",
@@ -54,7 +55,7 @@ function PreviewNodes({ nodes }: { nodes: ReasonOptionNode[] }) {
     flushRun();
     blocks.push(
       <div key={`group-${node.label}`} className="rounded-xl border border-border/70 bg-surface-muted/40 p-3">
-        <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{node.label}</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{node.label}</p>
         <PreviewNodes nodes={node.children} />
       </div>
     );
@@ -79,54 +80,50 @@ export function TypificationPreview({
   const states = groupReasonsByState(catalog);
 
   return (
-    <section className="rounded-xl border border-border bg-surface" aria-label="Vista previa de tipificación">
-      <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
-        <div>
-          <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-            <Eye size={15} aria-hidden="true" />
-            Así lo verá el ejecutivo
-          </h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Se calcula con el mismo código que la ficha y cambia con cada edición del lienzo. Bajo cada opción, cómo
-            queda grabado el cierre.
-          </p>
-        </div>
-        <span className="rounded-full bg-surface-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
-          {catalog.length} {catalog.length === 1 ? "opción" : "opciones"}
-        </span>
-      </header>
-
-      {issues.length > 0 && (
-        <ul className="space-y-1.5 border-b border-border px-4 py-3 text-sm">
-          {issues.map((issue, index) => (
-            <li key={`${issue.stepId ?? "flow"}-${index}`} className="flex items-start gap-2">
-              {issue.level === "error" ? (
-                <AlertTriangle size={15} className="mt-0.5 flex-shrink-0 text-danger" aria-hidden="true" />
-              ) : (
-                <AlertCircle size={15} className="mt-0.5 flex-shrink-0 text-warning" aria-hidden="true" />
-              )}
-              <span className={issue.level === "error" ? "text-foreground" : "text-muted-foreground"}>
-                {issue.message}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <div className="space-y-4 p-4">
-        {states.length === 0 ? (
-          <p className="text-sm font-medium text-danger">
-            El formulario quedaría vacío: con este flujo el ejecutivo no podría tipificar ninguna llamada.
-          </p>
-        ) : (
-          states.map((state) => (
-            <div key={state.label}>
-              <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">{state.label}</h3>
-              <PreviewNodes nodes={nestReasonOptions(state.reasons)} />
-            </div>
-          ))
+    <section aria-label="Vista previa de tipificación">
+      <SectionCard
+        title="Así lo verá el ejecutivo"
+        description="Se calcula con el mismo código que la ficha y cambia con cada edición del lienzo. Bajo cada opción, cómo queda grabado el cierre."
+        icon={Eye}
+        tone="rose"
+        actions={
+          <Badge tone="neutral" className="shrink-0">
+            {catalog.length} {catalog.length === 1 ? "opción" : "opciones"}
+          </Badge>
+        }
+      >
+        {issues.length > 0 && (
+          <ul className="space-y-1.5 border-b border-border px-4 py-3 text-sm">
+            {issues.map((issue, index) => (
+              <li key={`${issue.stepId ?? "flow"}-${index}`} className="flex items-start gap-2">
+                {issue.level === "error" ? (
+                  <AlertTriangle size={15} className="mt-0.5 flex-shrink-0 text-danger" aria-hidden="true" />
+                ) : (
+                  <AlertCircle size={15} className="mt-0.5 flex-shrink-0 text-warning" aria-hidden="true" />
+                )}
+                <span className={issue.level === "error" ? "text-foreground" : "text-muted-foreground"}>
+                  {issue.message}
+                </span>
+              </li>
+            ))}
+          </ul>
         )}
-      </div>
+
+        <div className="space-y-4 p-4">
+          {states.length === 0 ? (
+            <p className="text-sm font-medium text-danger">
+              El formulario quedaría vacío: con este flujo el ejecutivo no podría tipificar ninguna llamada.
+            </p>
+          ) : (
+            states.map((state) => (
+              <div key={state.label}>
+                <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{state.label}</h3>
+                <PreviewNodes nodes={nestReasonOptions(state.reasons)} />
+              </div>
+            ))
+          )}
+        </div>
+      </SectionCard>
     </section>
   );
 }

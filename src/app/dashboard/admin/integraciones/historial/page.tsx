@@ -1,3 +1,4 @@
+import { History } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { activateHistoricalAgent } from "@/app/actions/admin";
@@ -6,6 +7,7 @@ import {
   ActionForm,
   ActionSubmit,
   Badge,
+  EmptyState,
   Field,
   Input,
   SectionCard,
@@ -60,12 +62,12 @@ export default async function HistoricalAgentsAdminPage() {
         reasigna todo su historial de llamadas, sin perder la trazabilidad al origen legado.
       </p>
 
-      <SectionCard>
+      <SectionCard icon={History} tone="blue" title="Ejecutivos del CRM legado">
         <Table>
           <Thead>
             <Th>Ejecutivo (legado)</Th>
             <Th>Sistema origen</Th>
-            <Th>Llamadas históricas</Th>
+            <Th align="right">Llamadas históricas</Th>
             <Th>Estado</Th>
             <Th>Activar</Th>
           </Thead>
@@ -77,7 +79,7 @@ export default async function HistoricalAgentsAdminPage() {
                 <Tr key={a.id}>
                   <Td strong>{a.full_name}</Td>
                   <Td muted>{a.legacy_system}</Td>
-                  <Td muted>{calls}</Td>
+                  <Td align="right" muted>{calls.toLocaleString("es-CL")}</Td>
                   <Td>
                     {linked ? (
                       <Badge tone="success">Activo como {linked.full_name}</Badge>
@@ -96,7 +98,7 @@ export default async function HistoricalAgentsAdminPage() {
                         <ActionForm
                           action={activateHistoricalAgent}
                           success="Cuenta creada y ejecutivo activado"
-                          className="mt-3 flex flex-wrap items-end gap-2 rounded-lg border border-border bg-background p-3"
+                          className="mt-3 flex flex-wrap items-end gap-2 rounded-xl border border-border bg-background p-3"
                         >
                           <input type="hidden" name="historical_agent_id" value={a.id} />
                           <Field label="Correo" className="w-52">
@@ -139,7 +141,9 @@ export default async function HistoricalAgentsAdminPage() {
               );
             })}
             {(agents ?? []).length === 0 && (
-              <TableEmpty colSpan={5}>No hay ejecutivos históricos registrados.</TableEmpty>
+              <TableEmpty colSpan={5}>
+                <EmptyState icon={History} title="No hay ejecutivos históricos registrados." className="py-6" />
+              </TableEmpty>
             )}
           </Tbody>
         </Table>

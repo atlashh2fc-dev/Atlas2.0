@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { unstable_noStore as noStore } from "next/cache";
-import { AlertTriangle, ArrowRight, Inbox, Search } from "lucide-react";
+import { AlertTriangle, ArrowRight, Briefcase, CheckCircle2, Inbox, Search } from "lucide-react";
 
 import { asignarNegocio } from "@/app/actions/pipeline";
 import { moverEtapa } from "@/app/actions/ventas";
-import { Badge, EmptyState, Input, NavTabs, PageHeader, SectionCard, Select, SubmitButton, buttonClasses } from "@/components/ui";
+import { Badge, Callout, EmptyState, Input, NavTabs, PageHeader, SectionCard, Select, SubmitButton, buttonClasses } from "@/components/ui";
 import { requireProfile } from "@/lib/auth";
 import { ZONA_CLINICA } from "@/lib/citas";
 import { VENTAS_POR_EDICION } from "@/lib/ediciones";
@@ -97,7 +97,7 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
     const vencida = negocio.status === "abierta" && negocio.next_action_at && new Date(negocio.next_action_at) < ahora;
     const responsableNombre = negocio.owner_id ? nombres.get(negocio.owner_id) ?? "—" : null;
     return (
-      <div className={`rounded-lg border bg-surface p-2.5 text-xs shadow-sm ${vencida ? "border-danger/40" : "border-border"}`}>
+      <div className={`rounded-lg border border-l-2 bg-surface-solid p-2.5 text-xs shadow-sm ${vencida ? "border-danger/40 border-l-danger" : "border-border border-l-[var(--tone-green)]"}`}>
         <div className="flex items-start justify-between gap-2">
           <Link href={`/dashboard/ventas/${negocio.id}`} className="min-w-0 font-medium text-foreground hover:text-primary hover:underline">
             <span className="block truncate">{primero(negocio.sales_companies)?.name ?? "—"}</span>
@@ -179,29 +179,32 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
       </form>
 
       {prospectos.length > 0 && (
-        <Link href="/dashboard/ventas/prospeccion" className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm hover:bg-surface-muted">
-          <span className="inline-flex items-center gap-2 text-foreground">
-            <Inbox size={15} className="text-primary" aria-hidden="true" />
+        <Link href="/dashboard/ventas/prospeccion" className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-2.5 text-sm shadow-sm transition-colors hover:border-border-strong hover:bg-surface-muted">
+          <span className="inline-flex items-center gap-3 text-foreground">
+            <span className="icon-chip size-8 shrink-0 rounded-lg" data-tone="teal" aria-hidden="true">
+              <Inbox size={16} />
+            </span>
             {prospectos.length} {prospectos.length === 1 ? "persona mostró" : "personas mostraron"} interés en la campaña y esperan contacto{calientes > 0 ? ` · ${calientes} hicieron clic o respondieron` : ""}
           </span>
           <span className="inline-flex items-center gap-1 text-primary">Ir a Prospección <ArrowRight size={13} aria-hidden="true" /></span>
         </Link>
       )}
 
-      {error && <p className="rounded-lg border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger">No se pudieron leer los negocios. Vuelve a cargar para reintentar.</p>}
+      {error && <Callout tone="danger">No se pudieron leer los negocios. Vuelve a cargar para reintentar.</Callout>}
 
       <div className="overflow-x-auto pb-2">
         <div className="flex w-max gap-3">
           {etapas.filter((etapa) => !etapa.is_won && !etapa.is_lost).map((etapa) => {
             const propios = abiertos.filter((negocio) => negocio.stage_id === etapa.id);
             return (
-              <div key={etapa.id} className="w-64 flex-shrink-0 rounded-xl border border-border bg-surface">
-                <div className="flex items-center justify-between border-b border-border px-3 py-2">
+              <div key={etapa.id} className="relative w-64 flex-shrink-0 overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
+                <div aria-hidden="true" className="absolute inset-x-0 top-0 h-0.5 bg-[linear-gradient(90deg,var(--tone-green),transparent_85%)]" />
+                <div className="flex items-center justify-between border-b border-border bg-surface-muted/40 px-3 py-2">
                   <div>
                     <p className="text-sm font-medium text-foreground">{etapa.name}</p>
                     <p className="text-[11px] text-muted-foreground">{pesos.format(propios.reduce((total, negocio) => total + monto(negocio), 0))}{etapa.probability !== null ? ` · ${etapa.probability}%` : ""}</p>
                   </div>
-                  <span className="text-xs text-muted-foreground">{propios.length}</span>
+                  <span className="rounded-full border border-border-strong bg-surface-muted px-2 py-0.5 text-xs font-semibold tabular-nums text-foreground">{propios.length}</span>
                 </div>
                 <div className="max-h-[65vh] space-y-2 overflow-y-auto p-2">
                   {propios.length === 0 ? <p className="px-1 py-2 text-xs text-muted-foreground">Nada en esta etapa.</p> : propios.map((negocio) => <Tarjeta key={negocio.id} negocio={negocio} />)}
@@ -210,14 +213,17 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
             );
           })}
 
-          <div className="w-64 flex-shrink-0 rounded-xl border border-border bg-surface-muted/30">
-            <div className="flex items-center justify-between border-b border-border px-3 py-2">
-              <p className="text-sm font-medium text-foreground">Cerrados · 30 días</p>
-              <span className="text-xs text-muted-foreground">{cerradosRecientes.length}</span>
+          <div className="w-64 flex-shrink-0 overflow-hidden rounded-xl border border-border bg-surface-muted/30 shadow-sm">
+            <div className="flex items-center justify-between border-b border-border bg-surface-muted/40 px-3 py-2">
+              <p className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
+                <span className="icon-chip size-6 rounded-md" data-tone="slate" aria-hidden="true"><CheckCircle2 size={13} /></span>
+                Cerrados · 30 días
+              </p>
+              <span className="rounded-full border border-border-strong bg-surface-muted px-2 py-0.5 text-xs font-semibold tabular-nums text-foreground">{cerradosRecientes.length}</span>
             </div>
             <div className="max-h-[65vh] space-y-2 overflow-y-auto p-2">
               {cerradosRecientes.length === 0 ? <p className="px-1 py-2 text-xs text-muted-foreground">Nada cerrado este mes.</p> : cerradosRecientes.map((negocio) => (
-                <div key={negocio.id} className="rounded-lg border border-border bg-surface p-2.5 text-xs">
+                <div key={negocio.id} className={`rounded-lg border border-border border-l-2 bg-surface p-2.5 text-xs ${negocio.status === "ganada" ? "border-l-success" : "border-l-danger"}`}>
                   <div className="flex items-center justify-between gap-2">
                     <Link href={`/dashboard/ventas/${negocio.id}`} className="truncate font-medium text-foreground hover:text-primary hover:underline">{primero(negocio.sales_companies)?.name ?? "—"}</Link>
                     <Badge tone={negocio.status === "ganada" ? "success" : "danger"}>{negocio.status === "ganada" ? "Ganado" : "Perdido"}</Badge>
@@ -231,8 +237,8 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
       </div>
 
       {negocios.length === 0 && (
-        <SectionCard title="Sin negocios">
-          <EmptyState title="Todavía no hay negocios" description={`Crea el primero con "${voc.nuevo}", marca interesado a alguien en Prospección o espera a que lleguen desde la web.`} />
+        <SectionCard title="Sin negocios" icon={Briefcase} tone="green">
+          <EmptyState icon={Briefcase} title="Todavía no hay negocios" description={`Crea el primero con "${voc.nuevo}", marca interesado a alguien en Prospección o espera a que lleguen desde la web.`} />
         </SectionCard>
       )}
     </div>

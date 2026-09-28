@@ -99,6 +99,6 @@ test("contratar una aplicación es del dueño de la plataforma", () => {
   assert.match(MIGRACION, /using \(organization_id = any \(public\.current_org_ids\(\)\)\)/);
   assert.match(MIGRACION, /using \(public\.is_platform_owner\(\)\)/);
   // La pantalla de empresas es la única que contrata, y solo para el dueño.
-  assert.match(EMPRESAS, /\{duenioDePlataforma && \(\s*<SectionCard\s*title="Aplicaciones de la suite"/);
+  assert.match(EMPRESAS, /\{duenioDePlataforma && \(\s*<SectionCard[^>]*?\stitle="Aplicaciones de la suite"/);
   assert.match(EMPRESAS, /cambiarAplicacionDeEmpresa/);
 });

@@ -3,6 +3,7 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { ManualLeadRecordForm } from "@/components/manual-lead-record-form";
 import { getSupervisedTeamIds } from "@/lib/supervisor-scope";
+import { Callout, PageHeader, buttonClasses } from "@/components/ui";
 
 type TeamRow = {
   id: string;
@@ -59,25 +60,20 @@ export default async function NewLeadRecordPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">Ingresar fuera de base</h1>
-          <p className="text-sm text-muted-foreground">
-            Agrega a la campaña un cliente que no venía en la carga. Si el RUT ya está en esa base, se abre su ficha en vez de duplicarlo.
-          </p>
-        </div>
-        <Link
-          href="/dashboard/leads"
-          className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground hover:bg-surface-muted"
-        >
-          Volver a registros
-        </Link>
-      </div>
+      <PageHeader
+        title="Ingresar fuera de base"
+        description="Agrega a la campaña un cliente que no venía en la carga. Si el RUT ya está en esa base, se abre su ficha en vez de duplicarlo."
+        actions={
+          <Link href="/dashboard/leads" className={buttonClasses({ variant: "secondary" })}>
+            Volver a registros
+          </Link>
+        }
+      />
 
       {profile.role === "supervisor" && teamOptions.length === 0 ? (
-        <div className="rounded-xl border border-danger/30 bg-danger-bg px-5 py-4 text-sm text-danger">
+        <Callout tone="danger">
           Tu usuario supervisor no tiene equipos asignados. Un administrador debe asignarte al menos uno antes de crear registros.
-        </div>
+        </Callout>
       ) : (
         <ManualLeadRecordForm
           role={role}

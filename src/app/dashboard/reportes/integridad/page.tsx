@@ -1,6 +1,7 @@
 import { requireProfile } from "@/lib/auth";
 import { getManagementIntegrityReport } from "@/app/actions/management-integrity";
 import { ManagementIntegrityTables } from "@/components/management-integrity-tables";
+import { ClipboardList, Flag, PhoneOff, ShieldCheck, Timer, Zap } from "lucide-react";
 import { Callout, MetricCard } from "@/components/ui";
 import { resolveCampaignScope } from "@/lib/campaign-scope";
 import { formatReportRangeLabel, resolveReportRange } from "@/lib/report-range";
@@ -30,7 +31,11 @@ export default async function ReportesIntegridadPage({
         {`Señales de tipificación automatizada · ${formatReportRangeLabel(range)}`}
       </p>
 
-      <Callout tone="info">
+      <Callout tone="info" className="flex gap-3">
+        <span className="icon-chip size-8 rounded-lg" data-tone="violet" aria-hidden="true">
+          <ShieldCheck size={16} />
+        </span>
+        <p>
         Estas señales las produce el servidor —duración real de la gestión, eventos de conexión del
         discador y cadencia entre cierres—, así que una extensión del navegador no puede falsearlas.
         Son indicios para investigar, no una acusación: una llamada que no contestan se tipifica
@@ -38,28 +43,42 @@ export default async function ReportesIntegridadPage({
         cerrada como contactada sin que la central registre conexión. Solo se evalúan gestiones
         hechas en Atlas 2.0: el historial migrado de Atlas 1 y las llamadas anuladas no tienen
         esas señales y quedan fuera (siguen completos en la ficha del cliente).
+        </p>
       </Callout>
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-        <MetricCard label="Gestiones del período" value={totals.gestiones.toLocaleString("es-CL")} />
+        <MetricCard
+          label="Gestiones del período"
+          value={totals.gestiones.toLocaleString("es-CL")}
+          icon={ClipboardList}
+          iconTone="violet"
+        />
         <MetricCard
           label="Marcadas"
           value={totals.sospechosas.toLocaleString("es-CL")}
           hint={`${suspiciousRate.toFixed(1)}% del total`}
           tone={suspiciousRate > 20 ? "danger" : "default"}
+          icon={Flag}
+          iconTone="violet"
         />
         <MetricCard
           label={`Cierres bajo ${thresholds.fast_close_seconds}s`}
           value={totals.cierres_instantaneos.toLocaleString("es-CL")}
+          icon={Timer}
+          iconTone="amber"
         />
         <MetricCard
           label="Contacto sin llamada"
           value={totals.contactos_sin_respaldo.toLocaleString("es-CL")}
           tone={totals.contactos_sin_respaldo > 0 ? "danger" : "default"}
+          icon={PhoneOff}
+          iconTone="primary"
         />
         <MetricCard
           label={`Cierres a menos de ${thresholds.burst_seconds}s`}
           value={totals.rafagas.toLocaleString("es-CL")}
+          icon={Zap}
+          iconTone="amber"
         />
       </section>
 

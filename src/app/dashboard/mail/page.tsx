@@ -2,6 +2,7 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getSupervisedTeamIds } from "@/lib/supervisor-scope";
 import { redirect } from "next/navigation";
+import { CircleCheck, Flame, MailOpen, MousePointerClick, Send, UserRoundCheck } from "lucide-react";
 import {
   MailControlCenter,
   type MailControlBucket,
@@ -12,7 +13,9 @@ import { MailWorkspace } from "@/components/mail-workspace";
 import {
   Button,
   PageHeader,
+  SectionCard,
   Select,
+  StatCard,
   Table,
   Tbody,
   Td,
@@ -92,16 +95,6 @@ function percent(part: number, total: number) {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
   })}%`;
-}
-
-function MetricCard({ label, value, detail }: { label: string; value: string; detail?: string }) {
-  return (
-    <div className="rounded-lg border border-border bg-surface p-4 shadow-sm">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="mt-1.5 text-2xl font-semibold tabular-nums text-foreground">{value}</p>
-      {detail && <p className="mt-1.5 text-xs text-muted-foreground">{detail}</p>}
-    </div>
-  );
 }
 
 function CampaignFilterForm({
@@ -512,14 +505,14 @@ export default async function MailDashboardPage({
         operation={<MailControlCenter rows={queue} agents={agentOptions} buckets={buckets} activeBucket={activeBucket} total={totalPrioritized} nextHref={nextQueueHref} resetHref={resetQueueHref} />}
         team={<MailAgentControl rows={agentSummaryForDisplay} />}
         reports={
-          <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
+          <SectionCard tone="violet">
             <div className="grid gap-3 border-b border-border p-4 sm:grid-cols-2 xl:grid-cols-3">
-              <MetricCard label="Enviados" value={formatNumber(totals.sent)} />
-              <MetricCard label="Aperturas" value={formatNumber(totals.opened)} detail={percent(totals.opened, totals.sent)} />
-              <MetricCard label="Clicks" value={formatNumber(totals.clicked)} detail={percent(totals.clicked, totals.sent)} />
-              <MetricCard label="Priorizados" value={formatNumber(totals.hot)} detail="Apertura o click" />
-              <MetricCard label="Asignados" value={formatNumber(totals.assigned)} detail={percent(totals.assigned, totals.hot)} />
-              <MetricCard label="Gestionados" value={formatNumber(totals.managed)} detail={percent(totals.managed, totals.hot)} />
+              <StatCard label="Enviados" value={formatNumber(totals.sent)} icon={Send} iconTone="teal" />
+              <StatCard label="Aperturas" value={formatNumber(totals.opened)} hint={percent(totals.opened, totals.sent)} icon={MailOpen} iconTone="teal" />
+              <StatCard label="Clicks" value={formatNumber(totals.clicked)} hint={percent(totals.clicked, totals.sent)} icon={MousePointerClick} iconTone="violet" />
+              <StatCard label="Priorizados" value={formatNumber(totals.hot)} hint="Apertura o click" icon={Flame} iconTone="rose" />
+              <StatCard label="Asignados" value={formatNumber(totals.assigned)} hint={percent(totals.assigned, totals.hot)} icon={UserRoundCheck} iconTone="blue" />
+              <StatCard label="Gestionados" value={formatNumber(totals.managed)} hint={percent(totals.managed, totals.hot)} icon={CircleCheck} iconTone="green" />
             </div>
             <div className="max-h-[34rem] overflow-auto">
               <Table>
@@ -530,7 +523,7 @@ export default async function MailDashboardPage({
                 </Tbody>
               </Table>
             </div>
-          </section>
+          </SectionCard>
         }
       />
     </div>

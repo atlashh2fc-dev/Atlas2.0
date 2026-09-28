@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CalendarClock, ExternalLink, FileText, Mail, Phone, ShoppingCart, X } from "lucide-react";
-import { Input, LoadingState, Select, buttonClasses } from "@/components/ui";
+import { CalendarClock, ExternalLink, FileText, Mail, MousePointerClick, Phone, SearchX, ShoppingCart, X } from "lucide-react";
+import { Callout, EmptyState, Input, LoadingState, Select, buttonClasses } from "@/components/ui";
 import { getCampaignVocabulary, type CampaignVertical } from "@/lib/campaign-vertical";
 
 export type SupervisorAgentMetric = {
@@ -233,6 +233,13 @@ function getMetricIcon(metric: DrilldownMetric) {
   return ShoppingCart;
 }
 
+/** Tono del chip según la métrica: agenda en ámbar, cotización en violeta, venta en verde. */
+function getMetricTone(metric: DrilldownMetric) {
+  if (metric === "agendas") return "amber";
+  if (metric === "cotizaciones") return "violet";
+  return "green";
+}
+
 function metricValue(agent: SupervisorAgentMetric, key: SortKey): number | string {
   if (key === "full_name") return agent.full_name;
   return numberValue(agent[key]);
@@ -360,8 +367,8 @@ export function SupervisorAgentMetricsTable({
   };
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-surface">
-      <div className="space-y-3 border-b border-border p-4">
+    <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
+      <div className="space-y-3 border-b border-border bg-surface-muted/40 p-4">
         <div className="grid gap-3 md:grid-cols-[minmax(220px,1fr)_180px]">
           <Input
             value={query}
@@ -375,7 +382,7 @@ export function SupervisorAgentMetricsTable({
           </Select>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium text-muted-foreground">Priorizar</span>
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Priorizar</span>
           {priorityFilters.map((filter) => {
             const isActive = priority === filter.key;
             return (
@@ -385,8 +392,8 @@ export function SupervisorAgentMetricsTable({
                 onClick={() => selectPriority(filter)}
                 className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
                   isActive
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border bg-background text-muted-foreground hover:text-foreground"
+                    ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                    : "border-border bg-background text-muted-foreground hover:border-border-strong hover:text-foreground"
                 }`}
               >
                 {filter.label}
@@ -402,16 +409,16 @@ export function SupervisorAgentMetricsTable({
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1040px] text-sm">
           <thead>
-            <tr className="border-b border-border text-left text-xs text-muted-foreground">
+            <tr className="border-b border-border bg-surface-muted/40 text-left text-[11px] uppercase tracking-wider text-muted-foreground">
               {columns.map((column) => (
                 <th
                   key={column.key}
-                  className={`px-5 py-3 font-medium ${column.align === "right" ? "text-right" : ""}`}
+                  className={`px-5 py-3 font-semibold ${column.align === "right" ? "text-right" : ""}`}
                 >
                   <button
                     type="button"
                     onClick={() => setSort(column.key)}
-                    className={`inline-flex items-center gap-1 rounded-md text-xs font-medium hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                    className={`inline-flex items-center gap-1 rounded-md text-[11px] font-semibold uppercase tracking-wider hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                       column.align === "right" ? "justify-end" : ""
                     }`}
                   >
@@ -427,18 +434,18 @@ export function SupervisorAgentMetricsTable({
           <tbody className="divide-y divide-border">
             {visibleAgents.length === 0 && (
               <tr>
-                <td colSpan={columns.length} className="px-5 py-6 text-center text-muted-foreground">
-                  Sin ejecutivos para los filtros aplicados.
+                <td colSpan={columns.length}>
+                  <EmptyState icon={SearchX} title="Sin ejecutivos para los filtros aplicados." className="py-8" />
                 </td>
               </tr>
             )}
             {visibleAgents.map((agent) => (
-              <tr key={agent.agent_id}>
+              <tr key={agent.agent_id} className="transition-colors hover:bg-surface-muted/50">
                 {columns.map((column) => (
                   <td
                     key={column.key}
                     className={`px-5 py-3 ${
-                      column.align === "right" ? "text-right text-muted-foreground" : "font-medium text-foreground"
+                      column.align === "right" ? "text-right tabular-nums text-muted-foreground" : "font-medium text-foreground"
                     }`}
                   >
                     {column.key === "full_name" ? (
@@ -454,7 +461,7 @@ export function SupervisorAgentMetricsTable({
                       <button
                         type="button"
                         onClick={() => openDrilldown(agent, column.key as DrilldownMetric)}
-                        className="rounded-md px-2 py-1 font-medium text-primary hover:bg-surface-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className="rounded-md px-2 py-1 font-semibold text-primary hover:bg-primary/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         title={`Ver detalle de ${column.label.toLowerCase()}`}
                       >
                         {cellValue(agent, column.key)}
@@ -472,7 +479,7 @@ export function SupervisorAgentMetricsTable({
 
       {drilldown && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
-          <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl">
+          <div role="dialog" aria-modal="true" className="flex max-h-[calc(100vh-2rem)] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-border bg-surface-solid shadow-2xl">
             <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
               <div>
                 <p className="text-xs font-medium text-muted-foreground">
@@ -497,9 +504,9 @@ export function SupervisorAgentMetricsTable({
                     <LoadingState label="Estamos preparando el detalle de gestiones" />
                   </div>
                 )}
-                {loadError && <div className="p-5 text-sm text-danger">{loadError}</div>}
+                {loadError && <Callout tone="danger" className="m-4">{loadError}</Callout>}
                 {!loading && !loadError && payload?.items.length === 0 && (
-                  <div className="p-5 text-sm text-muted-foreground">Sin gestiones para este filtro.</div>
+                  <EmptyState icon={SearchX} title="Sin gestiones para este filtro." className="py-10" />
                 )}
                 {!loading &&
                   !loadError &&
@@ -512,11 +519,11 @@ export function SupervisorAgentMetricsTable({
                         type="button"
                         onClick={() => setSelectedCallId(item.call_id)}
                         className={`block w-full border-b border-border px-5 py-4 text-left transition ${
-                          isActive ? "bg-surface-muted" : "hover:bg-surface-muted/70"
+                          isActive ? "border-l-2 border-l-primary bg-surface-muted" : "hover:bg-surface-muted/70"
                         }`}
                       >
                         <div className="flex items-start gap-3">
-                          <span className="mt-1 rounded-lg bg-background p-2 text-primary">
+                          <span className="icon-chip mt-0.5 size-8 rounded-lg" data-tone={getMetricTone(drilldown.metric)} aria-hidden="true">
                             <Icon className="size-4" aria-hidden="true" />
                           </span>
                           <span className="min-w-0">
@@ -538,7 +545,7 @@ export function SupervisorAgentMetricsTable({
 
               <div className="min-h-0 overflow-y-auto p-5">
                 {!selectedItem && !loading && (
-                  <div className="text-sm text-muted-foreground">Selecciona una gestión para ver el detalle.</div>
+                  <EmptyState icon={MousePointerClick} title="Selecciona una gestión para ver el detalle." />
                 )}
 
                 {selectedItem && (
@@ -557,20 +564,20 @@ export function SupervisorAgentMetricsTable({
                     </div>
 
                     <div className="grid gap-3 md:grid-cols-3">
-                      <div className="rounded-lg border border-border bg-background p-3">
-                        <p className="text-xs text-muted-foreground">Última tipificación</p>
+                      <div className="rounded-lg border border-border border-l-2 border-l-[color:var(--tone-violet)] bg-background p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Última tipificación</p>
                         <p className="mt-1 text-sm font-medium text-foreground">
                           {selectedItem.lead.tipificacion_actual ?? selectedItem.reason ?? "-"}
                         </p>
                       </div>
-                      <div className="rounded-lg border border-border bg-background p-3">
-                        <p className="text-xs text-muted-foreground">Próxima agenda</p>
+                      <div className="rounded-lg border border-border border-l-2 border-l-[color:var(--tone-amber)] bg-background p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Próxima agenda</p>
                         <p className="mt-1 text-sm font-medium text-foreground">
                           {formatDateTime(selectedItem.lead.next_action_at ?? selectedItem.next_action_at)}
                         </p>
                       </div>
-                      <div className="rounded-lg border border-border bg-background p-3">
-                        <p className="text-xs text-muted-foreground">UF / Venta</p>
+                      <div className="rounded-lg border border-border border-l-2 border-l-[color:var(--tone-green)] bg-background p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">UF / Venta</p>
                         <p className="mt-1 text-sm font-medium text-foreground">
                           {selectedItem.equifax_uf_amount
                             ? `UF ${formatDecimal(selectedItem.equifax_uf_amount, 2)}`
@@ -589,7 +596,9 @@ export function SupervisorAgentMetricsTable({
                           const ContactIcon = contact.contact_type === "phone" ? Phone : Mail;
                           return (
                             <div key={contact.id} className="flex items-center gap-2 rounded-lg border border-border px-3 py-2">
-                              <ContactIcon className="size-4 text-muted-foreground" aria-hidden="true" />
+                              <span className="icon-chip size-7 rounded-lg" data-tone={contact.contact_type === "phone" ? "primary" : "teal"} aria-hidden="true">
+                                <ContactIcon className="size-3.5" aria-hidden="true" />
+                              </span>
                               <div className="min-w-0">
                                 <p className="truncate text-sm font-medium text-foreground">{contact.value}</p>
                                 <p className="text-xs text-muted-foreground">
@@ -608,26 +617,26 @@ export function SupervisorAgentMetricsTable({
                       <h5 className="text-sm font-semibold text-foreground">Gestión seleccionada</h5>
                       <dl className="mt-3 grid gap-3 text-sm md:grid-cols-2">
                         <div>
-                          <dt className="text-muted-foreground">Fecha gestión</dt>
+                          <dt className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Fecha gestión</dt>
                           <dd className="text-foreground">{formatDateTime(selectedItem.activity_at)}</dd>
                         </div>
                         <div>
-                          <dt className="text-muted-foreground">Ejecutivo</dt>
+                          <dt className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Ejecutivo</dt>
                           <dd className="text-foreground">{selectedItem.agent_name}</dd>
                         </div>
                         <div>
-                          <dt className="text-muted-foreground">Estado / resultado</dt>
+                          <dt className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Estado / resultado</dt>
                           <dd className="text-foreground">
                             {[selectedItem.status, selectedItem.outcome].filter(Boolean).join(" / ") || "-"}
                           </dd>
                         </div>
                         <div>
-                          <dt className="text-muted-foreground">Motivo</dt>
+                          <dt className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Motivo</dt>
                           <dd className="text-foreground">{selectedItem.reason ?? "-"}</dd>
                         </div>
                       </dl>
                       {(selectedItem.notes || selectedItem.lead.observacion_actual) && (
-                        <p className="mt-3 rounded-lg bg-surface px-3 py-2 text-sm text-muted-foreground">
+                        <p className="mt-3 rounded-lg border border-border bg-surface-muted/50 px-3 py-2 text-sm text-muted-foreground">
                           {selectedItem.notes ?? selectedItem.lead.observacion_actual}
                         </p>
                       )}

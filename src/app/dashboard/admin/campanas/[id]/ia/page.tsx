@@ -10,6 +10,7 @@ import {
   ActionSubmit,
   Badge,
   Callout,
+  EmptyState,
   Field,
   Input,
   SectionCard,
@@ -20,8 +21,9 @@ import {
   Th,
   Thead,
   Tr,
+  buttonClasses,
 } from "@/components/ui";
-import { Download } from "lucide-react";
+import { Bot, Download, FileSpreadsheet, History, PhoneOutgoing } from "lucide-react";
 import Link from "next/link";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -133,6 +135,8 @@ export default async function AiVoiceCampaignPage({ params }: { params: Promise<
       )}
 
       <SectionCard
+        icon={Bot}
+        tone="primary"
         title="Agente de voz"
         description="La clave de ElevenLabs no se guarda aquí. Solo se registran los identificadores no secretos del agente y del troncal SIP."
         actions={
@@ -211,12 +215,14 @@ export default async function AiVoiceCampaignPage({ params }: { params: Promise<
 
       {config?.survey_schema === "prever_v1" && (
         <SectionCard
+          icon={FileSpreadsheet}
+          tone="violet"
           title="Informe contractual PREVER"
           description="Genera el Excel con la misma estructura, fórmulas y presentación del modelo entregado por el cliente."
           actions={
             <Link
               href={`/api/campanas/${id}/prever-report`}
-              className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-muted"
+              className={buttonClasses({ variant: "secondary", size: "sm" })}
             >
               <Download className="h-4 w-4" />
               Descargar informe
@@ -230,6 +236,8 @@ export default async function AiVoiceCampaignPage({ params }: { params: Promise<
       )}
 
       <SectionCard
+        icon={PhoneOutgoing}
+        tone="primary"
         title="Llamada manual de prueba"
         description="Ingresa un número y el agente configurado llamará apenas el motor tome la solicitud. Esto no enciende la campaña automática ni modifica su base."
         actions={<Badge tone={config?.phone_number_id ? "success" : "danger"}>{config?.phone_number_id ? "Lista para probar" : "Falta troncal"}</Badge>}
@@ -271,7 +279,9 @@ export default async function AiVoiceCampaignPage({ params }: { params: Promise<
           </Thead>
           <Tbody>
             {testCalls.length === 0 && (
-              <TableEmpty colSpan={5}>Aún no hay pruebas manuales.</TableEmpty>
+              <TableEmpty colSpan={5}>
+                <EmptyState icon={PhoneOutgoing} title="Aún no hay pruebas manuales." className="py-6" />
+              </TableEmpty>
             )}
             {testCalls.map((testCall) => {
               const resultText = testCallResultText(testCall);
@@ -285,7 +295,7 @@ export default async function AiVoiceCampaignPage({ params }: { params: Promise<
                     </Badge>
                   </Td>
                   <Td muted>{resultText}</Td>
-                  <Td muted>{new Date(testCall.created_at).toLocaleString("es-CL")}</Td>
+                  <Td muted>{new Date(testCall.created_at).toLocaleString("es-CL", { timeZone: "America/Santiago" })}</Td>
                 </Tr>
               );
             })}
@@ -294,6 +304,8 @@ export default async function AiVoiceCampaignPage({ params }: { params: Promise<
       </SectionCard>
 
       <SectionCard
+        icon={History}
+        tone="blue"
         title="Historial de la base automática"
         description={`${leadCount.toLocaleString("es-CL")} contacto(s) en la base · concurrencia ${config?.max_concurrent_calls ?? 1} · sin agentes humanos`}
       >
@@ -307,7 +319,14 @@ export default async function AiVoiceCampaignPage({ params }: { params: Promise<
           </Thead>
           <Tbody>
             {attempts.length === 0 && (
-              <TableEmpty colSpan={5}>Todavía no hay llamadas. La campaña permanece detenida.</TableEmpty>
+              <TableEmpty colSpan={5}>
+                <EmptyState
+                  icon={History}
+                  title="Todavía no hay llamadas."
+                  description="La campaña permanece detenida."
+                  className="py-6"
+                />
+              </TableEmpty>
             )}
             {attempts.map((attempt) => {
               const related = attempt.leads as unknown;
@@ -322,7 +341,7 @@ export default async function AiVoiceCampaignPage({ params }: { params: Promise<
                     <Badge tone={statusTone(attempt.status)}>{STATUS_LABELS[attempt.status] ?? attempt.status}</Badge>
                   </Td>
                   <Td muted>{attempt.provider_conversation_id ?? "—"}</Td>
-                  <Td muted>{new Date(attempt.created_at).toLocaleString("es-CL")}</Td>
+                  <Td muted>{new Date(attempt.created_at).toLocaleString("es-CL", { timeZone: "America/Santiago" })}</Td>
                 </Tr>
               );
             })}

@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { unstable_noStore as noStore } from "next/cache";
-import { Megaphone } from "lucide-react";
+import { ListChecks, Megaphone, MousePointerClick } from "lucide-react";
 
 import { cancelarCampana, crearCampana, lanzarCampana } from "@/app/actions/campanas-clinica";
 import { CreatePanel } from "@/components/create-panel";
-import { Badge, EmptyState, Field, Input, PageHeader, SectionCard, Select, SubmitButton } from "@/components/ui";
+import { Badge, Callout, EmptyState, Field, Input, PageHeader, SectionCard, Select, SubmitButton } from "@/components/ui";
 import { ETIQUETA_CANAL, ETIQUETA_ESTADO_CAMPANA, SEGMENTOS } from "@/lib/campanas-clinica";
 import { ZONA_CLINICA, fechaEnChile } from "@/lib/citas";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
@@ -24,6 +24,17 @@ const cuando = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, day: "
 
 type Campana = { id: string; nombre: string; segmento: string; parametros: Record<string, unknown>; canal: string; asunto: string | null; texto: string; programada_para: string | null; estado: string; destinatarios: number; lanzada_at: string | null; created_at: string };
 type Resultado = { origen_ref: string | null; cuenta_id: string | null; estado: string; canal: string };
+
+/** Cifra en baldosa, como en Operación: etiqueta, número y un detalle debajo. */
+function Baldosa({ label, valor, detalle }: { label: string; valor: number; detalle: string }) {
+  return (
+    <div className="rounded-lg border border-border border-l-2 border-l-border-strong bg-background px-3 py-2.5">
+      <dt className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</dt>
+      <dd className="mt-1 text-2xl font-semibold tracking-tight tabular-nums text-foreground">{valor.toLocaleString("es-CL")}</dd>
+      <p className="mt-1 text-xs text-muted-foreground">{detalle}</p>
+    </div>
+  );
+}
 
 export default async function CampanasClinicaPage({ searchParams }: { searchParams: Promise<{ c?: string }> }) {
   noStore();
@@ -120,12 +131,12 @@ export default async function CampanasClinicaPage({ searchParams }: { searchPara
         }
       />
 
-      {error && <p className="rounded-lg border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger">No se pudieron leer las campañas. Vuelve a cargar para reintentar.</p>}
+      {error && <Callout tone="danger">No se pudieron leer las campañas. Vuelve a cargar para reintentar.</Callout>}
 
       <div className="grid gap-4 xl:grid-cols-[380px_1fr]">
-        <SectionCard title={`Campañas · ${campanas.length}`} description="Las más recientes primero.">
+        <SectionCard icon={Megaphone} tone="rose" title={`Campañas · ${campanas.length}`} description="Las más recientes primero.">
           {campanas.length === 0 ? (
-            <EmptyState title="Todavía no hay campañas" description='Crea la primera con "Nueva campaña".' />
+            <EmptyState icon={Megaphone} title="Todavía no hay campañas" description='Crea la primera con "Nueva campaña".' />
           ) : (
             <ul className="divide-y divide-border">
               {campanas.map((campana) => {
@@ -151,22 +162,18 @@ export default async function CampanasClinicaPage({ searchParams }: { searchPara
         </SectionCard>
 
         {actual ? (
-          <SectionCard title={actual.nombre} description={`${segmentos.find((segmento) => segmento.id === actual.segmento)?.label ?? actual.segmento} · ${ETIQUETA_CANAL[actual.canal] ?? actual.canal}${actual.programada_para ? ` · programada para ${cuando.format(new Date(actual.programada_para))}` : ""}`}>
+          <SectionCard icon={ListChecks} tone="rose" title={actual.nombre} description={`${segmentos.find((segmento) => segmento.id === actual.segmento)?.label ?? actual.segmento} · ${ETIQUETA_CANAL[actual.canal] ?? actual.canal}${actual.programada_para ? ` · programada para ${cuando.format(new Date(actual.programada_para))}` : ""}`}>
             <div className="space-y-4 px-4 py-4">
               {vistaPrevia && (
-                <div className="grid gap-3 sm:grid-cols-3">
+                <dl className="grid gap-3 sm:grid-cols-3">
                   {[
                     { label: actual.lanzada_at ? "Enviados" : "Entran en el segmento", valor: actual.lanzada_at ? resumen(actual.id).total : vistaPrevia.total, detalle: actual.lanzada_at ? `${resumen(actual.id).pendientes} pendientes · ${resumen(actual.id).fallidos} fallidos` : `${vistaPrevia.conCelular} con celular · ${vistaPrevia.conCorreo} con correo` },
                     { label: "Respondieron", valor: resumen(actual.id).respondidos, detalle: `${resumen(actual.id).entregados} entregados` },
                     { label: "Agendaron después", valor: agendaron, detalle: "Citas creadas tras el envío" },
                   ].map((metrica) => (
-                    <div key={metrica.label} className="rounded-xl border border-border bg-surface px-4 py-3">
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">{metrica.label}</p>
-                      <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{metrica.valor}</p>
-                      <p className="text-xs text-muted-foreground">{metrica.detalle}</p>
-                    </div>
+                    <Baldosa key={metrica.label} label={metrica.label} valor={metrica.valor} detalle={metrica.detalle} />
                   ))}
-                </div>
+                </dl>
               )}
               <div className="rounded-lg border border-border bg-surface-muted/40 px-4 py-3 text-sm">
                 {actual.asunto && actual.canal !== "whatsapp" && <p className="mb-1 font-medium text-foreground">{actual.asunto}</p>}
@@ -196,8 +203,8 @@ export default async function CampanasClinicaPage({ searchParams }: { searchPara
             </div>
           </SectionCard>
         ) : (
-          <SectionCard title="Elige una campaña" description="A la izquierda están las campañas. Al crear una, verás cuántas fichas entran antes de lanzarla.">
-            <EmptyState title="Nada seleccionado" description="Toca una campaña para ver a quién llega y cómo le fue." />
+          <SectionCard icon={Megaphone} tone="rose" title="Elige una campaña" description="A la izquierda están las campañas. Al crear una, verás cuántas fichas entran antes de lanzarla.">
+            <EmptyState icon={MousePointerClick} title="Nada seleccionado" description="Toca una campaña para ver a quién llega y cómo le fue." />
           </SectionCard>
         )}
       </div>

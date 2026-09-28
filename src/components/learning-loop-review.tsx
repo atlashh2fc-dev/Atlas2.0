@@ -32,7 +32,7 @@ export function LearningLoopReview({ runId, version }: { runId: string; version:
     <Field label="Motivo de la revisión"><Input name="note" minLength={3} maxLength={1000} required disabled={pending} placeholder="Qué es correcto, qué falta o por qué se rechaza" /></Field>
     <p className="text-xs text-muted-foreground">Confirmar hechos permite reutilizarlos en interacciones posteriores autorizadas. Aceptar la recomendación no agenda ni origina un contacto.</p>
     <Button type="submit" disabled={pending}>{pending ? "Guardando…" : version ? "Guardar nueva revisión" : "Guardar revisión"}</Button>
-    {message && <p role="status" className="text-sm">{message}</p>}
+    {message && <p role="status" className="rounded-lg border border-border bg-surface-muted/50 px-3 py-2 text-sm">{message}</p>}
   </form>;
 }
 

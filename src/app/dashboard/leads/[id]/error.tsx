@@ -11,7 +11,7 @@ import { AlertTriangle, RefreshCw } from "lucide-react";
 export default function LeadDetailError({ reset }: { reset: () => void }) {
   return (
     <div className="mx-auto flex max-w-xl flex-col items-center rounded-2xl border border-danger/30 bg-surface p-8 text-center shadow-sm">
-      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-danger-bg text-danger">
+      <span className="icon-chip size-12 rounded-2xl" data-tone="rose" aria-hidden="true">
         <AlertTriangle size={22} />
       </span>
       <h1 className="mt-4 text-lg font-bold text-foreground">No pudimos abrir la ficha de esta llamada</h1>
@@ -29,7 +29,7 @@ export default function LeadDetailError({ reset }: { reset: () => void }) {
         </button>
         <Link
           href="/dashboard/leads"
-          className="rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-surface-muted"
+          className="rounded-lg border border-border-strong bg-surface px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-surface-muted"
         >
           Volver a registros
         </Link>

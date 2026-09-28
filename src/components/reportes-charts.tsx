@@ -13,7 +13,22 @@ import {
   AreaChart,
   Area,
 } from "recharts";
+import { BarChart3 } from "lucide-react";
+import { EmptyState } from "@/components/ui";
 import type { AgentPerformance, WorkflowCompliance } from "@/lib/types";
+import {
+  CHART_AXIS_TICK as AXIS_TICK,
+  CHART_COLOR,
+  CHART_CURSOR,
+  CHART_GRID,
+  CHART_LEGEND_STYLE,
+  CHART_TOOLTIP_LABEL_STYLE,
+  CHART_TOOLTIP_STYLE as TOOLTIP_STYLE,
+  chartGradients,
+  gradientUrl,
+  useChartId,
+  type ChartColor,
+} from "@/components/chart-theme";
 
 type SupervisorTipification = {
   label: string;
@@ -47,14 +62,10 @@ type SupervisorAgentChartMetric = {
   contactabilidad: number | null;
 };
 
-const TOOLTIP_STYLE = {
-  background: "var(--surface)",
-  border: "1px solid var(--border)",
-  borderRadius: 8,
-  fontSize: 12,
-};
-
-const AXIS_TICK = { fontSize: 11, fill: "var(--muted-foreground)" };
+/** Gráfico sin datos: estado vacío con icono, a la altura del gráfico. */
+function ChartEmpty({ children }: { children: string }) {
+  return <EmptyState icon={BarChart3} title={children} className="h-64" />;
+}
 
 function fmtInt(n: number): string {
   return n.toLocaleString("es-CL");
@@ -64,11 +75,11 @@ function fmtDay(value: string): string {
   return new Date(value).toLocaleDateString("es-CL", { day: "2-digit", month: "2-digit" });
 }
 
-function complianceColor(rate: number | null): string {
-  if (rate === null) return "var(--muted-foreground)";
-  if (rate >= 80) return "var(--success)";
-  if (rate >= 50) return "var(--warning)";
-  return "var(--danger)";
+function complianceColor(rate: number | null): ChartColor {
+  if (rate === null) return "muted";
+  if (rate >= 80) return "success";
+  if (rate >= 50) return "warning";
+  return "danger";
 }
 
 /**
@@ -77,6 +88,7 @@ function complianceColor(rate: number | null): string {
  * detalle fila por fila (incluye tiempo de primera respuesta).
  */
 export function AgentPerformanceChart({ agents }: { agents: AgentPerformance[] }) {
+  const chartId = useChartId("desempeno");
   const top = agents.slice(0, 10).map((a) => ({
     name: a.full_name,
     Gestiones: a.total_interactions,
@@ -86,23 +98,22 @@ export function AgentPerformanceChart({ agents }: { agents: AgentPerformance[] }
 
   if (top.length === 0) {
     return (
-      <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
-        Sin datos todavía.
-      </div>
+      <ChartEmpty>Sin datos todavía.</ChartEmpty>
     );
   }
 
   return (
     <ResponsiveContainer width="100%" height={Math.max(240, top.length * 42)}>
-      <BarChart data={top} layout="vertical" margin={{ left: 8, right: 16 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+      <BarChart data={top} layout="vertical" margin={{ left: 8, right: 16 }} barGap={3}>
+        {chartGradients(chartId, ["primary", "teal", "green"], "horizontal-bars")}
+        <CartesianGrid {...CHART_GRID} horizontal={false} />
         <XAxis type="number" tick={AXIS_TICK} allowDecimals={false} />
         <YAxis type="category" dataKey="name" width={140} tick={AXIS_TICK} />
-        <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => fmtInt(Number(value))} />
-        <Legend wrapperStyle={{ fontSize: 12 }} />
-        <Bar dataKey="Gestiones" fill="var(--primary)" radius={[0, 4, 4, 0]} />
-        <Bar dataKey="Registros gestionados" fill="var(--accent)" radius={[0, 4, 4, 0]} />
-        <Bar dataKey="Conversiones" fill="var(--foreground)" radius={[0, 4, 4, 0]} />
+        <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} cursor={CHART_CURSOR} formatter={(value) => fmtInt(Number(value))} />
+        <Legend wrapperStyle={CHART_LEGEND_STYLE} iconType="circle" iconSize={8} />
+        <Bar dataKey="Gestiones" fill={gradientUrl(chartId, "primary")} radius={[0, 6, 6, 0]} maxBarSize={14} />
+        <Bar dataKey="Registros gestionados" fill={gradientUrl(chartId, "teal")} radius={[0, 6, 6, 0]} maxBarSize={14} />
+        <Bar dataKey="Conversiones" fill={gradientUrl(chartId, "green")} radius={[0, 6, 6, 0]} maxBarSize={14} />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -114,6 +125,7 @@ export function AgentPerformanceChart({ agents }: { agents: AgentPerformance[] }
  * necesitan atención.
  */
 export function WorkflowComplianceChart({ workflows }: { workflows: WorkflowCompliance[] }) {
+  const chartId = useChartId("cumplimiento");
   const data = workflows.map((w) => ({
     name: w.workflow_name,
     rate: w.compliance_rate,
@@ -121,25 +133,24 @@ export function WorkflowComplianceChart({ workflows }: { workflows: WorkflowComp
 
   if (data.length === 0) {
     return (
-      <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
-        No hay flujos configurados.
-      </div>
+      <ChartEmpty>No hay flujos configurados.</ChartEmpty>
     );
   }
 
   return (
     <ResponsiveContainer width="100%" height={Math.max(240, data.length * 48)}>
       <BarChart data={data} layout="vertical" margin={{ left: 8, right: 24 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+        {chartGradients(chartId, ["success", "warning", "danger", "muted"], "horizontal-bars")}
+        <CartesianGrid {...CHART_GRID} horizontal={false} />
         <XAxis type="number" domain={[0, 100]} tick={AXIS_TICK} unit="%" />
         <YAxis type="category" dataKey="name" width={150} tick={AXIS_TICK} />
         <Tooltip
-          contentStyle={TOOLTIP_STYLE}
+          contentStyle={TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} cursor={CHART_CURSOR}
           formatter={(value) => [value !== null ? `${value}%` : "—", "Cumplimiento"] as [string, string]}
         />
-        <Bar dataKey="rate" radius={[0, 4, 4, 0]}>
+        <Bar dataKey="rate" radius={[0, 6, 6, 0]} maxBarSize={22}>
           {data.map((entry, i) => (
-            <Cell key={i} fill={complianceColor(entry.rate)} />
+            <Cell key={i} fill={gradientUrl(chartId, complianceColor(entry.rate))} />
           ))}
         </Bar>
       </BarChart>
@@ -148,6 +159,7 @@ export function WorkflowComplianceChart({ workflows }: { workflows: WorkflowComp
 }
 
 export function SupervisorTipificationsChart({ tipifications }: { tipifications: SupervisorTipification[] }) {
+  const chartId = useChartId("tipificaciones");
   const top = tipifications.slice(0, 10).map((row) => ({
     name: row.label.length > 34 ? `${row.label.slice(0, 31)}...` : row.label,
     fullName: row.label,
@@ -156,26 +168,25 @@ export function SupervisorTipificationsChart({ tipifications }: { tipifications:
 
   if (top.length === 0) {
     return (
-      <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
-        Sin tipificaciones en el período.
-      </div>
+      <ChartEmpty>Sin tipificaciones en el período.</ChartEmpty>
     );
   }
 
   return (
     <ResponsiveContainer width="100%" height={Math.max(280, top.length * 38)}>
       <BarChart data={top} layout="vertical" margin={{ top: 4, right: 24, bottom: 4, left: 8 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+        {chartGradients(chartId, ["violet", "primary"], "horizontal-bars")}
+        <CartesianGrid {...CHART_GRID} horizontal={false} />
         <XAxis type="number" tick={AXIS_TICK} allowDecimals={false} />
         <YAxis type="category" dataKey="name" width={190} tick={AXIS_TICK} />
         <Tooltip
-          contentStyle={TOOLTIP_STYLE}
+          contentStyle={TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} cursor={CHART_CURSOR}
           formatter={(value) => [fmtInt(Number(value)), "Cantidad"] as [string, string]}
           labelFormatter={(_, payload) => payload?.[0]?.payload?.fullName ?? ""}
         />
-        <Bar dataKey="count" fill="var(--primary)" radius={[0, 5, 5, 0]}>
+        <Bar dataKey="count" fill={gradientUrl(chartId, "primary")} radius={[0, 6, 6, 0]} maxBarSize={20}>
           {top.map((_, i) => (
-            <Cell key={i} fill={i < 3 ? "var(--primary)" : "color-mix(in srgb, var(--primary) 68%, var(--accent))"} />
+            <Cell key={i} fill={gradientUrl(chartId, i < 3 ? "violet" : "primary")} />
           ))}
         </Bar>
       </BarChart>
@@ -184,6 +195,7 @@ export function SupervisorTipificationsChart({ tipifications }: { tipifications:
 }
 
 export function SupervisorDailyChart({ daily }: { daily: SupervisorDailyPoint[] }) {
+  const chartId = useChartId("diario");
   const data = daily.map((row) => ({
     day: fmtDay(row.day),
     Gestiones: row.crm_gestiones,
@@ -193,53 +205,29 @@ export function SupervisorDailyChart({ daily }: { daily: SupervisorDailyPoint[] 
 
   if (data.length === 0) {
     return (
-      <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
-        Sin movimiento diario en el período.
-      </div>
+      <ChartEmpty>Sin movimiento diario en el período.</ChartEmpty>
     );
   }
 
   return (
     <ResponsiveContainer width="100%" height={320}>
       <AreaChart data={data} margin={{ top: 8, right: 18, bottom: 0, left: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+        {chartGradients(chartId, ["primary", "teal", "green"], "area")}
+        <CartesianGrid {...CHART_GRID} vertical={false} />
         <XAxis dataKey="day" tick={AXIS_TICK} tickMargin={8} />
         <YAxis tick={AXIS_TICK} allowDecimals={false} tickFormatter={(value) => fmtInt(Number(value))} />
-        <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => fmtInt(Number(value))} />
-        <Legend wrapperStyle={{ fontSize: 12 }} />
-        <Area
-          type="monotone"
-          dataKey="Gestiones"
-          stroke="var(--primary)"
-          fill="var(--primary)"
-          fillOpacity={0.12}
-          strokeWidth={2}
-          dot={false}
-        />
-        <Area
-          type="monotone"
-          dataKey="Contactados"
-          stroke="var(--accent)"
-          fill="var(--accent)"
-          fillOpacity={0.16}
-          strokeWidth={2}
-          dot={false}
-        />
-        <Area
-          type="monotone"
-          dataKey="Agendas"
-          stroke="var(--success)"
-          fill="var(--success)"
-          fillOpacity={0.08}
-          strokeWidth={2}
-          dot={false}
-        />
+        <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} cursor={{ stroke: "var(--border-strong)" }} formatter={(value) => fmtInt(Number(value))} />
+        <Legend wrapperStyle={CHART_LEGEND_STYLE} iconType="circle" iconSize={8} />
+        <Area type="monotone" dataKey="Gestiones" stroke={CHART_COLOR.primary} fill={gradientUrl(chartId, "primary")} strokeWidth={2.25} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
+        <Area type="monotone" dataKey="Contactados" stroke={CHART_COLOR.teal} fill={gradientUrl(chartId, "teal")} strokeWidth={2.25} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
+        <Area type="monotone" dataKey="Agendas" stroke={CHART_COLOR.green} fill={gradientUrl(chartId, "green")} strokeWidth={2.25} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
       </AreaChart>
     </ResponsiveContainer>
   );
 }
 
 export function SupervisorPipelineChart({ kpis }: { kpis: SupervisorPipelineKpis }) {
+  const chartId = useChartId("embudo");
   const data = [
     { name: "Base", value: kpis.base_total },
     { name: "Recorridos", value: kpis.recorridos },
@@ -252,21 +240,19 @@ export function SupervisorPipelineChart({ kpis }: { kpis: SupervisorPipelineKpis
   return (
     <ResponsiveContainer width="100%" height={320}>
       <BarChart data={data} layout="vertical" margin={{ top: 8, right: 28, bottom: 0, left: 8 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+        {chartGradients(chartId, ["primary", "amber", "green"], "horizontal-bars")}
+        <CartesianGrid {...CHART_GRID} horizontal={false} />
         <XAxis type="number" tick={AXIS_TICK} tickFormatter={(value) => fmtInt(Number(value))} />
         <YAxis type="category" dataKey="name" width={120} tick={AXIS_TICK} />
-        <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => fmtInt(Number(value))} />
-        <Bar dataKey="value" radius={[0, 5, 5, 0]}>
+        <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} cursor={CHART_CURSOR} formatter={(value) => fmtInt(Number(value))} />
+        <Bar dataKey="value" radius={[0, 6, 6, 0]} maxBarSize={26}>
           {data.map((entry) => (
             <Cell
               key={entry.name}
-              fill={
-                entry.name === "Ventas"
-                  ? "var(--success)"
-                  : entry.name === "Cotizaciones"
-                    ? "var(--warning)"
-                    : "var(--primary)"
-              }
+              fill={gradientUrl(
+                chartId,
+                entry.name === "Ventas" ? "green" : entry.name === "Cotizaciones" ? "amber" : "primary",
+              )}
             />
           ))}
         </Bar>
@@ -291,25 +277,23 @@ export function SupervisorAgentFocusChart({ agents }: { agents: SupervisorAgentC
 
   if (data.length === 0) {
     return (
-      <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
-        Sin gestión por ejecutivo en el período.
-      </div>
+      <ChartEmpty>Sin gestión por ejecutivo en el período.</ChartEmpty>
     );
   }
 
   return (
     <ResponsiveContainer width="100%" height={Math.max(320, data.length * 38)}>
       <BarChart data={data} layout="vertical" margin={{ top: 8, right: 24, bottom: 0, left: 8 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+        <CartesianGrid {...CHART_GRID} horizontal={false} />
         <XAxis type="number" tick={AXIS_TICK} tickFormatter={(value) => fmtInt(Number(value))} />
         <YAxis type="category" dataKey="name" width={150} tick={AXIS_TICK} />
-        <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => fmtInt(Number(value))} />
-        <Legend wrapperStyle={{ fontSize: 12 }} />
-        <Bar dataKey="Contactados" stackId="a" fill="var(--accent)" radius={[0, 0, 0, 0]} />
-        <Bar dataKey="No contacto" stackId="a" fill="var(--warning)" radius={[0, 0, 0, 0]} />
-        <Bar dataKey="Agendas" stackId="a" fill="var(--primary)" radius={[0, 0, 0, 0]} />
-        <Bar dataKey="Cotizaciones" stackId="a" fill="color-mix(in srgb, var(--success) 70%, var(--primary))" radius={[0, 0, 0, 0]} />
-        <Bar dataKey="Ventas" stackId="a" fill="var(--success)" radius={[0, 5, 5, 0]} />
+        <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} cursor={CHART_CURSOR} formatter={(value) => fmtInt(Number(value))} />
+        <Legend wrapperStyle={CHART_LEGEND_STYLE} iconType="circle" iconSize={8} />
+        <Bar dataKey="Contactados" stackId="a" fill={CHART_COLOR.teal} maxBarSize={20} />
+        <Bar dataKey="No contacto" stackId="a" fill={CHART_COLOR.amber} maxBarSize={20} />
+        <Bar dataKey="Agendas" stackId="a" fill={CHART_COLOR.primary} maxBarSize={20} />
+        <Bar dataKey="Cotizaciones" stackId="a" fill={CHART_COLOR.violet} maxBarSize={20} />
+        <Bar dataKey="Ventas" stackId="a" fill={CHART_COLOR.green} radius={[0, 6, 6, 0]} maxBarSize={20} />
       </BarChart>
     </ResponsiveContainer>
   );

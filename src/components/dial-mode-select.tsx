@@ -25,7 +25,7 @@ export function DialModeSelect({ defaultValue }: { defaultValue: DialMode }) {
 
       <div
         id="dial-mode-description"
-        className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
+        className="rounded-lg border border-border border-l-2 border-l-primary bg-surface-muted px-3 py-2 text-xs text-muted-foreground"
         aria-live="polite"
       >
         <span className="font-medium text-foreground">{selectedMode.label}: </span>

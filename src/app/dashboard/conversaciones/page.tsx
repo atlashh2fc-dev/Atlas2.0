@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { Inbox } from "lucide-react";
 
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -19,5 +20,5 @@ export default async function AttentionIndexPage() {
   if (first) redirect(first.href);
 
   // El layout ya explica por qué no hay canales; acá no hace falta repetirlo.
-  return <EmptyState title="Sin canales de atención" description="No hay nada que atender todavía." />;
+  return <EmptyState icon={Inbox} title="Sin canales de atención" description="No hay nada que atender todavía." />;
 }

@@ -138,7 +138,7 @@ export function EstudiosPanel({
       {estudios.length === 0 && !formulario && <p className="text-sm text-muted-foreground">Sin estudios adjuntos.</p>}
 
       {formulario && (
-        <form onSubmit={adjuntar} className="mt-3 space-y-3 rounded-lg border border-border p-3">
+        <form onSubmit={adjuntar} className="mt-3 space-y-3 rounded-lg border border-border bg-surface-muted/40 p-3">
           <input type="hidden" name="cuenta_id" value={cuentaId} />
           {mascotaId && <input type="hidden" name="mascota_id" value={mascotaId} />}
           {pieza !== undefined && <input type="hidden" name="pieza" value={pieza} />}

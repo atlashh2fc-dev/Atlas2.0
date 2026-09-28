@@ -1,4 +1,5 @@
 import { unstable_noStore as noStore } from "next/cache";
+import { BadgeCheck, ClipboardCheck, Coins, Hourglass } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { listSaleValidations, searchSaleValidations, type SaleValidationRow } from "@/app/actions/validacion-ventas";
 import { SaleValidationsTable } from "@/components/sale-validations-table";
@@ -91,8 +92,15 @@ export default async function ValidacionVentasPage({ searchParams }: { searchPar
       {loadError && <Callout tone="danger">{loadError}</Callout>}
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <MetricCard label="Por validar" value={pending.length.toLocaleString("es-CL")} hint="Ventas esperando tu decisión" />
-        <MetricCard label="UF en juego" value={formatUf(sumUf(pending))} hint="Suma mensual de lo pendiente" />
+        <MetricCard
+          label="Por validar"
+          value={pending.length.toLocaleString("es-CL")}
+          hint="Ventas esperando tu decisión"
+          tone={pending.length > 0 ? "warn" : "good"}
+          icon={ClipboardCheck}
+          iconTone="green"
+        />
+        <MetricCard label="UF en juego" value={formatUf(sumUf(pending))} hint="Suma mensual de lo pendiente" icon={Coins} iconTone="green" />
         <MetricCard
           label="Esperando más de 7 días"
           value={overdue.toLocaleString("es-CL")}
@@ -100,6 +108,8 @@ export default async function ValidacionVentasPage({ searchParams }: { searchPar
           tone={overdue > 0 ? "danger" : "good"}
           href={overdue > 0 ? `/dashboard/validacion-ventas?hasta=${daysAgo(8)}` : undefined}
           hrefLabel="Ver atrasadas"
+          icon={Hourglass}
+          iconTone="amber"
         />
         <MetricCard
           label="Ventas aprobadas del mes"
@@ -107,6 +117,8 @@ export default async function ValidacionVentasPage({ searchParams }: { searchPar
           hint={`${formatUf(sumUf(approvedThisMonth))} · vendidas este mes`}
           href={`/dashboard/validacion-ventas/validadas?periodo=${thisMonth.periodo}`}
           hrefLabel="Ver ventas del mes"
+          icon={BadgeCheck}
+          iconTone="green"
         />
       </section>
 

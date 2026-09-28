@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { AlertTriangle, CalendarClock, ChevronRight, Search, UsersRound } from "lucide-react";
-import { Badge, Button, SlideOver } from "@/components/ui";
+import { Badge, Button, EmptyState, SectionCard, SlideOver } from "@/components/ui";
 
 export type MailAgentControlRow = {
   agent_id: string;
@@ -83,16 +83,15 @@ export function MailAgentControl({ rows }: { rows: MailAgentControlRow[] }) {
   ];
 
   return (
-    <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-5 py-4">
-        <div>
-          <h2 className="text-sm font-semibold text-foreground">Control por ejecutivo</h2>
-          <p className="mt-1 text-xs text-muted-foreground">Filtra el equipo y abre una tarjeta para ver su carga sin abandonar la consola.</p>
-        </div>
-        <span className="rounded-full border border-border bg-background px-3 py-1 text-xs text-muted-foreground">{counts.attention} con atención requerida</span>
-      </div>
+    <SectionCard
+      title="Control por ejecutivo"
+      description="Filtra el equipo y abre una tarjeta para ver su carga sin abandonar la consola."
+      icon={UsersRound}
+      tone="blue"
+      actions={<Badge tone={counts.attention > 0 ? "warning" : "success"}>{counts.attention} con atención requerida</Badge>}
+    >
 
-      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background/40 px-5 py-3">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
         <div className="flex flex-wrap gap-2">
           {filters.map((item) => {
             const active = filter === item.id;
@@ -105,7 +104,7 @@ export function MailAgentControl({ rows }: { rows: MailAgentControlRow[] }) {
                   setLimit(PAGE_SIZE);
                 }}
                 aria-pressed={active}
-                className={`rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors ${active ? "border-primary bg-primary text-primary-foreground" : "border-border bg-surface text-muted-foreground hover:bg-surface-muted hover:text-foreground"}`}
+                className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${active ? "border-primary/40 bg-primary/15 text-foreground" : "border-border bg-surface text-muted-foreground hover:bg-surface-muted hover:text-foreground"}`}
               >
                 {item.label} <span className="ml-1 tabular-nums opacity-80">{counts[item.id]}</span>
               </button>
@@ -121,14 +120,14 @@ export function MailAgentControl({ rows }: { rows: MailAgentControlRow[] }) {
               setLimit(PAGE_SIZE);
             }}
             placeholder="Buscar ejecutivo"
-            className="w-full rounded-md border border-border bg-surface py-1.5 pl-8 pr-2.5 text-xs text-foreground outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring"
+            className="w-full rounded-lg border border-border bg-surface py-1.5 pl-8 pr-2.5 text-xs text-foreground outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring"
           />
         </label>
       </div>
 
       <div className="grid max-h-[34rem] gap-3 overflow-y-auto p-4 sm:grid-cols-2 xl:grid-cols-3">
         {visible.length === 0 ? (
-          <div className="col-span-full py-8 text-center text-sm text-muted-foreground">No hay ejecutivos en este grupo.</div>
+          <EmptyState icon={UsersRound} title="No hay ejecutivos en este grupo." className="col-span-full py-8" />
         ) : (
           visible.map((row) => {
             const state = attention(row);
@@ -138,19 +137,19 @@ export function MailAgentControl({ rows }: { rows: MailAgentControlRow[] }) {
                 key={row.agent_id}
                 type="button"
                 onClick={() => setSelected(row)}
-                className="group rounded-lg border border-border bg-background p-4 text-left transition-colors hover:border-primary/40 hover:bg-surface-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="group rounded-xl border border-border bg-background p-4 text-left shadow-sm transition-[border-color,background-color,box-shadow] hover:border-border-strong hover:bg-surface-muted hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <div className="flex items-start gap-3">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-muted text-sm font-semibold text-foreground">{row.agent_name.slice(0, 1).toUpperCase()}</span>
+                  <span className="icon-chip size-9 rounded-full text-sm font-semibold" data-tone="blue" aria-hidden="true">{row.agent_name.slice(0, 1).toUpperCase()}</span>
                   <span className="min-w-0 flex-1">
-                    <span className="flex items-center justify-between gap-2"><span className="truncate font-medium text-foreground">{row.agent_name}</span><ChevronRight size={16} className="text-muted-foreground" /></span>
+                    <span className="flex items-center justify-between gap-2"><span className="truncate font-medium text-foreground">{row.agent_name}</span><ChevronRight size={16} className="text-muted-foreground transition-transform group-hover:translate-x-0.5" /></span>
                     <span className="mt-1 block"><Badge tone={state.tone}><Icon size={12} className="mr-1" aria-hidden />{state.label}</Badge></span>
                   </span>
                 </div>
-                <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                <div className="mt-4 grid grid-cols-3 gap-2">
                   <Metric label="Carga" value={row.assigned_leads} />
                   <Metric label="Contactados" value={row.contacted_leads} />
-                  <Metric label="Vencidos" value={row.overdue_agendas} danger={row.overdue_agendas > 0} />
+                  <Metric label="Vencidos" value={row.overdue_agendas} danger={row.overdue_agendas > 0} good={row.overdue_agendas === 0} />
                 </div>
               </button>
             );
@@ -174,12 +173,19 @@ export function MailAgentControl({ rows }: { rows: MailAgentControlRow[] }) {
       >
         {selected && <AgentDetail row={selected} />}
       </SlideOver>
-    </section>
+    </SectionCard>
   );
 }
 
-function Metric({ label, value, danger = false }: { label: string; value: number; danger?: boolean }) {
-  return <span><span className={`block text-lg font-semibold tabular-nums ${danger ? "text-danger" : "text-foreground"}`}>{value.toLocaleString("es-CL")}</span><span className="block text-[10px] text-muted-foreground">{label}</span></span>;
+/** Baldosa mínima de la tarjeta del ejecutivo: borde izquierdo con el estado. */
+function Metric({ label, value, danger = false, good = false }: { label: string; value: number; danger?: boolean; good?: boolean }) {
+  const edge = danger ? "border-l-danger" : good ? "border-l-success" : "border-l-border-strong";
+  return (
+    <span className={`block rounded-lg border border-border border-l-2 bg-surface px-2 py-1.5 ${edge}`}>
+      <span className={`block text-lg font-semibold tabular-nums tracking-tight ${danger ? "text-danger" : "text-foreground"}`}>{value.toLocaleString("es-CL")}</span>
+      <span className="block truncate text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</span>
+    </span>
+  );
 }
 
 function AgentDetail({ row }: { row: MailAgentControlRow }) {
@@ -190,9 +196,17 @@ function AgentDetail({ row }: { row: MailAgentControlRow }) {
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3">
-        {stats.map(([label, value]) => <div key={label} className="rounded-lg border border-border bg-background p-3"><p className="text-xs text-muted-foreground">{label}</p><p className={label === "Agendas vencidas" && value > 0 ? "mt-1 text-xl font-semibold text-danger" : "mt-1 text-xl font-semibold text-foreground"}>{value.toLocaleString("es-CL")}</p></div>)}
+        {stats.map(([label, value]) => {
+          const overdue = label === "Agendas vencidas" && value > 0;
+          return (
+            <div key={label} className={`rounded-lg border border-border border-l-2 bg-background px-3 py-2.5 ${overdue ? "border-l-danger" : "border-l-border-strong"}`}>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+              <p className={`mt-1 text-xl font-semibold tabular-nums tracking-tight ${overdue ? "text-danger" : "text-foreground"}`}>{value.toLocaleString("es-CL")}</p>
+            </div>
+          );
+        })}
       </div>
-      <div className="rounded-lg border border-border bg-background p-4 text-sm"><p className="font-medium text-foreground">Próximo seguimiento</p><p className="mt-1 text-muted-foreground">Próxima agenda: {formatDate(row.next_agenda_at)}</p><p className="mt-1 text-muted-foreground">Última señal Mail: {formatDate(row.last_event_at)}</p><p className="mt-1 text-muted-foreground">Sin próxima acción: {row.no_next_action_leads.toLocaleString("es-CL")}</p></div>
+      <div className="rounded-xl border border-border bg-background p-4 text-sm shadow-sm"><p className="flex items-center gap-2 font-medium text-foreground"><span className="icon-chip size-7 rounded-lg" data-tone="amber" aria-hidden="true"><CalendarClock size={14} /></span>Próximo seguimiento</p><p className="mt-1 text-muted-foreground">Próxima agenda: {formatDate(row.next_agenda_at)}</p><p className="mt-1 text-muted-foreground">Última señal Mail: {formatDate(row.last_event_at)}</p><p className="mt-1 text-muted-foreground">Sin próxima acción: {row.no_next_action_leads.toLocaleString("es-CL")}</p></div>
     </div>
   );
 }

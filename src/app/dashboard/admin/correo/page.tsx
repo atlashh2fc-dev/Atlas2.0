@@ -1,4 +1,5 @@
 import { unstable_noStore as noStore } from "next/cache";
+import { Mail } from "lucide-react";
 
 import { guardarBuzon } from "@/app/actions/buzon";
 import { Callout, Field, Input, PageHeader, SectionCard, SubmitButton } from "@/components/ui";
@@ -50,7 +51,7 @@ export default async function CorreoPage() {
         </Callout>
       )}
 
-      <SectionCard title="Buzón" description="Los datos que te entrega tu proveedor de correo. Si el servidor IMAP y el SMTP son el mismo, repítelo. Gmail y Outlook exigen una contraseña de aplicación.">
+      <SectionCard icon={Mail} tone="teal" title="Buzón" description="Los datos que te entrega tu proveedor de correo. Si el servidor IMAP y el SMTP son el mismo, repítelo. Gmail y Outlook exigen una contraseña de aplicación.">
         <form action={guardarBuzon} className="grid gap-4 px-4 py-4 sm:grid-cols-2">
           <Field label="Dirección">
             <Input name="address" type="email" required defaultValue={buzon?.address ?? ""} placeholder="contacto@clinica.cl" />

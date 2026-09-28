@@ -5,7 +5,7 @@ import { Button, EmptyState } from "@/components/ui";
 
 export default function CalidadError({ reset }: { error: Error; reset: () => void }) {
   return (
-    <div className="rounded-xl border border-border bg-surface">
+    <div className="rounded-xl border border-border bg-surface shadow-sm">
       <EmptyState
         icon={CircleAlert}
         title="No pudimos cargar el menú de Calidad"

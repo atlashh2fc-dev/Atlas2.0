@@ -1,8 +1,9 @@
 import { unstable_noStore as noStore } from "next/cache";
+import { Stethoscope } from "lucide-react";
 
 import { crearProcedimiento, guardarProcedimiento } from "@/app/actions/atenciones";
 import { CreatePanel } from "@/components/create-panel";
-import { ActionForm, ActionSubmit, Badge, Field, Input, PageHeader, SectionCard, Select } from "@/components/ui";
+import { ActionForm, ActionSubmit, Badge, Callout, Field, Input, PageHeader, SectionCard, Select } from "@/components/ui";
 import { InsumosProvider } from "@/components/insumos-context";
 import { RecetaEditor } from "@/components/receta-editor";
 import { CATEGORIAS, ETIQUETA_APLICA_A, porCategoria, type Insumo, type Procedimiento } from "@/lib/arancel";
@@ -101,10 +102,10 @@ export default async function ArancelesPage() {
         }
       />
 
-      {error && <p className="text-sm text-danger">No se pudo leer el arancel. Vuelve a cargar para reintentar.</p>}
+      {error && <Callout tone="danger">No se pudo leer el arancel. Vuelve a cargar para reintentar.</Callout>}
 
       {grupos.map(([categoria, items]) => (
-        <SectionCard key={categoria} title={categoria} description={`${items.length} ${items.length === 1 ? "procedimiento" : "procedimientos"}`}>
+        <SectionCard key={categoria} icon={Stethoscope} tone="green" title={categoria} description={`${items.length} ${items.length === 1 ? "procedimiento" : "procedimientos"}`}>
           <div className="divide-y divide-border">
             {items.map((procedimiento) => (
               <div key={procedimiento.id}>

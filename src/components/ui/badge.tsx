@@ -3,12 +3,13 @@ import { cn } from "@/lib/utils";
 
 export type BadgeTone = "neutral" | "success" | "warning" | "danger" | "info";
 
+// Pill con borde del mismo tono, como los badges de Atlas Suite.
 const TONES: Record<BadgeTone, string> = {
-  neutral: "bg-surface-muted text-muted-foreground",
-  success: "bg-success-bg text-success",
-  warning: "bg-warning-bg text-warning",
-  danger: "bg-danger-bg text-danger",
-  info: "bg-surface-muted text-primary",
+  neutral: "border-border-strong bg-surface-muted text-muted-foreground",
+  success: "border-success/35 bg-success-bg text-success",
+  warning: "border-warning/35 bg-warning-bg text-warning",
+  danger: "border-danger/35 bg-danger-bg text-danger",
+  info: "border-primary/35 bg-primary/10 text-primary",
 };
 
 /** Pill semántico para estados, prioridades y etiquetas. */
@@ -24,7 +25,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded px-2 py-0.5 text-xs font-medium",
+        "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium",
         TONES[tone],
         className
       )}

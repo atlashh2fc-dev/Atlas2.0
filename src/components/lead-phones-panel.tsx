@@ -26,7 +26,7 @@ export async function LeadPhonesPanel({ leadId, canManage }: { leadId: string; c
 
   return (
     <div className="mt-4 space-y-2 border-t border-border pt-3 text-sm">
-      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Teléfonos para llamar</p>
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Teléfonos para llamar</p>
       {error && <p className="text-xs text-danger">{error}</p>}
       {!error && phones.length === 0 && <p className="text-xs text-muted-foreground">Sin teléfonos marcables.</p>}
       <ol className="space-y-2">
@@ -34,8 +34,15 @@ export async function LeadPhonesPanel({ leadId, canManage }: { leadId: string; c
           <li key={phone.dialDigits} className="space-y-1">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <p className="tabular-nums text-foreground">
-                  {index + 1}. {formatDialDigits(phone.dialDigits)}
+                <p className="flex items-center gap-2 tabular-nums text-foreground">
+                  <span
+                    className="icon-chip size-5 rounded-md text-[10px] font-semibold"
+                    data-tone={phone.blockedReason ? "rose" : phone.isPrimary ? "primary" : "slate"}
+                    aria-hidden="true"
+                  >
+                    {index + 1}
+                  </span>
+                  {formatDialDigits(phone.dialDigits)}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {phone.isPrimary ? "Principal" : phone.label ?? "Adicional"}

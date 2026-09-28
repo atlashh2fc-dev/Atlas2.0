@@ -1,4 +1,16 @@
-import { BarChart3, BrainCircuit } from "lucide-react";
+import {
+  AudioLines,
+  BarChart3,
+  BrainCircuit,
+  CircleAlert,
+  ClipboardCheck,
+  FileText,
+  Gauge,
+  History,
+  Hourglass,
+  PhoneCall,
+  ShieldCheck,
+} from "lucide-react";
 import { ReportRangePicker } from "@/components/report-range-picker";
 import { requireProfile } from "@/lib/auth";
 import { fetchQualityAnalysis } from "@/lib/quality-analysis";
@@ -10,7 +22,7 @@ import {
   SECRETARIA_VIRTUAL_RUBRIC_NAME,
   SECRETARIA_VIRTUAL_RUBRIC_VERSION,
 } from "@/lib/secretaria-virtual-quality-rubric";
-import { Badge, Callout, MetricCard, SectionCard, Table, Tbody, Td, Th, Thead, Tr } from "@/components/ui";
+import { Badge, Callout, EmptyState, MetricCard, SectionCard, Table, Tbody, Td, Th, Thead, Tr } from "@/components/ui";
 
 function formatDuration(seconds: number) {
   const hours = Math.floor(seconds / 3600);
@@ -61,11 +73,13 @@ export default async function CalidadAnalisisPage({
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-            <BarChart3 size={16} className="text-primary" />
+          <h2 className="flex items-center gap-2.5 text-sm font-semibold text-foreground">
+            <span className="icon-chip size-7 rounded-lg" data-tone="violet" aria-hidden="true">
+              <BarChart3 size={14} />
+            </span>
             Reportes y análisis
           </h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
+          <p className="mt-1 text-xs text-muted-foreground">
             Cobertura de transcripción y preparación de evaluaciones automáticas.
           </p>
         </div>
@@ -85,21 +99,45 @@ export default async function CalidadAnalisisPage({
           label="Llamadas seleccionadas"
           value={analysis.summary.eligibleRecordings.toLocaleString("es-CL")}
           hint="Venta o rechazo · más de 2 min"
+          icon={PhoneCall}
+          iconTone="primary"
         />
         <MetricCard
           label="Transcritas"
           value={analysis.summary.completed.toLocaleString("es-CL")}
           hint={`${completionRate.toLocaleString("es-CL", { maximumFractionDigits: 1 })}% de cobertura`}
           tone="good"
+          icon={FileText}
+          iconTone="violet"
+          progress={completionRate}
         />
-        <MetricCard label="Pendientes" value={analysis.summary.pending.toLocaleString("es-CL")} tone="warn" />
-        <MetricCard label="Con error" value={analysis.summary.failed.toLocaleString("es-CL")} tone={analysis.summary.failed ? "danger" : "default"} />
-        <MetricCard label="Audio transcrito" value={formatDuration(analysis.summary.transcribedSeconds)} />
+        <MetricCard
+          label="Pendientes"
+          value={analysis.summary.pending.toLocaleString("es-CL")}
+          tone={analysis.summary.pending > 0 ? "warn" : "good"}
+          icon={Hourglass}
+          iconTone="amber"
+        />
+        <MetricCard
+          label="Con error"
+          value={analysis.summary.failed.toLocaleString("es-CL")}
+          tone={analysis.summary.failed ? "danger" : "default"}
+          icon={CircleAlert}
+          iconTone="slate"
+        />
+        <MetricCard
+          label="Audio transcrito"
+          value={formatDuration(analysis.summary.transcribedSeconds)}
+          icon={AudioLines}
+          iconTone="amber"
+        />
       </div>
 
       <Callout tone={mercuryConfigured ? "info" : "warning"}>
-        <span className="flex items-start gap-2">
-          <BrainCircuit size={17} className="mt-0.5 flex-shrink-0" />
+        <span className="flex items-start gap-3">
+          <span className="icon-chip size-7 rounded-lg" data-tone={mercuryConfigured ? "violet" : "amber"} aria-hidden="true">
+            <BrainCircuit size={14} />
+          </span>
           <span>
             {mercuryConfigured
               ? `${SECRETARIA_VIRTUAL_RUBRIC_NAME} · pauta v${SECRETARIA_VIRTUAL_RUBRIC_VERSION} activa. Los puntajes de Mercury 2 son apoyo para revisión humana, no una decisión disciplinaria automática.`
@@ -111,32 +149,45 @@ export default async function CalidadAnalisisPage({
       <SectionCard
         title="Auditoría · Secretaría Virtual"
         description="Solo llamadas outbound transcritas; Secretaría Virtual - Inbound queda fuera de esta pauta."
+        icon={ShieldCheck}
+        tone="violet"
       >
         <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-5">
           <MetricCard
             label="Auditables"
             value={analysis.summary.auditableRecordings.toLocaleString("es-CL")}
             hint="Transcritas con pauta aplicable"
+            icon={FileText}
+            iconTone="violet"
           />
           <MetricCard
             label="Auditadas"
             value={analysis.summary.evaluated.toLocaleString("es-CL")}
             tone="good"
+            icon={ClipboardCheck}
+            iconTone="green"
           />
           <MetricCard
             label="Pendientes"
             value={analysis.summary.evaluationPending.toLocaleString("es-CL")}
             hint={analysis.summary.evaluationProcessing ? `${analysis.summary.evaluationProcessing} procesando` : undefined}
-            tone="warn"
+            tone={analysis.summary.evaluationPending > 0 ? "warn" : "good"}
+            icon={Hourglass}
+            iconTone="amber"
           />
           <MetricCard
             label="Promedio"
             value={analysis.summary.evaluated ? `${analysis.summary.averageScore.toLocaleString("es-CL", { maximumFractionDigits: 1 })}/100` : "—"}
+            icon={Gauge}
+            iconTone="violet"
+            progress={analysis.summary.evaluated ? analysis.summary.averageScore : undefined}
           />
           <MetricCard
             label="Con error"
             value={analysis.summary.evaluationFailed.toLocaleString("es-CL")}
             tone={analysis.summary.evaluationFailed ? "danger" : "default"}
+            icon={CircleAlert}
+            iconTone="slate"
           />
         </div>
       </SectionCard>
@@ -144,11 +195,11 @@ export default async function CalidadAnalisisPage({
       <SectionCard
         title="Actividad reciente"
         description="Últimas transcripciones dentro del período seleccionado."
+        icon={History}
+        tone="violet"
       >
         {analysis.recent.length === 0 ? (
-          <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-            Todavía no hay transcripciones en este período.
-          </p>
+          <EmptyState icon={FileText} title="Todavía no hay transcripciones en este período." />
         ) : (
           <Table>
             <Thead>

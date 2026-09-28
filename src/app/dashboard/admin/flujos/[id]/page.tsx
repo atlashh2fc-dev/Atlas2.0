@@ -2,11 +2,12 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { Workflow } from "lucide-react";
 import { WorkflowCanvas } from "@/components/workflow-canvas";
 import type { WorkflowStep, WorkflowStepBranch } from "@/lib/types";
 import { validateWorkflow, workflowStatus } from "@/lib/workflow-validation";
 import { setWorkflowStatus } from "@/app/actions/workflows";
-import { ActionForm, ActionSubmit, Badge, Callout, PageHeader } from "@/components/ui";
+import { ActionForm, ActionSubmit, Badge, Callout, EmptyState, PageHeader } from "@/components/ui";
 
 export default async function WorkflowDetailPage({
   params,
@@ -111,9 +112,12 @@ export default async function WorkflowDetailPage({
       </Callout>
 
       {(steps ?? []).length === 0 ? (
-        <div className="rounded-xl border border-border bg-surface p-10 text-center text-sm text-muted-foreground">
-          Este flujo todavía no tiene pasos. Usa el botón &quot;+ Agregar paso&quot; dentro del editor para
-          empezar a construir el script de la campaña.
+        <div className="rounded-xl border border-border bg-surface shadow-sm">
+          <EmptyState
+            icon={Workflow}
+            title="Este flujo todavía no tiene pasos."
+            description="Usa el botón “+ Agregar paso” dentro del editor para empezar a construir el script de la campaña."
+          />
         </div>
       ) : null}
 

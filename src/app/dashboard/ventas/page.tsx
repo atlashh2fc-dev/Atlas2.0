@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { unstable_noStore as noStore } from "next/cache";
+import { BadgeDollarSign, Briefcase, CalendarClock, Filter, Trophy } from "lucide-react";
 
 import { crearOportunidad } from "@/app/actions/ventas";
 import { CreatePanel } from "@/components/create-panel";
@@ -189,6 +190,8 @@ export default async function VentasPage() {
           value={pesos.format(mensualAbierto)}
           hint={`${abiertas.length} ${abiertas.length === 1 ? `${voc.negocio.toLowerCase()} abierto` : `${voc.negocios.toLowerCase()} abiertos`}`}
           tooltip={`Suma del monto ${mensual ? "mensual " : ""}de los ${voc.negocios.toLowerCase()} que siguen abiertos.`}
+          icon={BadgeDollarSign}
+          iconTone="green"
         />
         <MetricCard
           label={mensual ? "Ganado" : "Aceptado"}
@@ -196,26 +199,33 @@ export default async function VentasPage() {
           hint={`${ganadas.length} ${ganadas.length === 1 ? `${voc.negocio.toLowerCase()} cerrado` : `${voc.negocios.toLowerCase()} cerrados`}`}
           tone={mensualGanado > 0 ? "good" : "default"}
           tooltip={`Monto ${mensual ? "mensual " : ""}ya comprometido por los ${voc.negocios.toLowerCase()} ganados.`}
+          icon={Trophy}
+          iconTone="green"
         />
         <MetricCard
           label="Para hoy"
           value={vencidas.length}
           hint={`de ${abiertas.length} ${abiertas.length === 1 ? "abierto" : "abiertos"}`}
-          tone={vencidas.length > 0 ? "warn" : "default"}
+          tone={vencidas.length > 0 ? "warn" : "good"}
           tooltip={`${voc.negocios} cuya próxima acción ya venció.`}
+          icon={CalendarClock}
+          iconTone="amber"
         />
       </div>
 
-      <SectionCard title="Embudo" description="Cuánto hay en cada etapa, solo negocios abiertos.">
+      <SectionCard title="Embudo" description="Cuánto hay en cada etapa, solo negocios abiertos." icon={Filter} tone="rose">
         <div className="grid gap-3 px-5 py-4 sm:grid-cols-2 lg:grid-cols-5">
           {listaEtapas
             .filter((etapa) => !etapa.is_won && !etapa.is_lost)
             .map((etapa) => {
               const casilla = porEtapa.get(etapa.id);
               return (
-                <div key={etapa.id} className="rounded-lg border border-border bg-surface p-4 shadow-sm">
-                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{etapa.name}</p>
-                  <p className="mt-1.5 text-2xl font-semibold tabular-nums tracking-tight text-foreground">
+                <div
+                  key={etapa.id}
+                  className={`rounded-lg border border-border border-l-2 bg-background px-3 py-2.5 ${(casilla?.total ?? 0) > 0 ? "border-l-[var(--tone-rose)]" : "border-l-border-strong"}`}
+                >
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{etapa.name}</p>
+                  <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-foreground">
                     {casilla?.total ?? 0}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
@@ -229,9 +239,10 @@ export default async function VentasPage() {
         </div>
       </SectionCard>
 
-      <SectionCard title={voc.negocios} description="Ordenados por la próxima acción: primero lo vencido.">
+      <SectionCard title={voc.negocios} description="Ordenados por la próxima acción: primero lo vencido." icon={Briefcase} tone="green">
         {listaOportunidades.length === 0 ? (
           <EmptyState
+            icon={Briefcase}
             title={`Todavía no hay ${voc.negocios.toLowerCase()}`}
             description="Crea la primera con el botón de arriba, o deja que llegue desde una campaña."
           />

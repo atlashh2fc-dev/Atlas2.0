@@ -1,4 +1,5 @@
 import { unstable_noStore as noStore } from "next/cache";
+import { BadgeCheck, Calculator, Coins, Users } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { searchSaleValidations, type SaleValidationRow, type SaleValidationStatus } from "@/app/actions/validacion-ventas";
 import { SaleValidationsTable } from "@/components/sale-validations-table";
@@ -120,18 +121,22 @@ export default async function VentasValidadasPage({ searchParams }: { searchPara
                 ? "Con los filtros aplicados"
                 : "Todo el historial"
           }
+          icon={BadgeCheck}
+          iconTone="green"
         />
-        <MetricCard label="UF mensual" value={formatUf(totalUf)} hint="Suma de las ventas encontradas" />
-        <MetricCard label="UF promedio por venta" value={formatUf(rows.length ? totalUf / rows.length : null)} />
+        <MetricCard label="UF mensual" value={formatUf(totalUf)} hint="Suma de las ventas encontradas" icon={Coins} iconTone="green" />
+        <MetricCard label="UF promedio por venta" value={formatUf(rows.length ? totalUf / rows.length : null)} icon={Calculator} iconTone="violet" />
         <MetricCard
           label="Ejecutivos"
           value={byAgent.length.toLocaleString("es-CL")}
           hint={byAgent[0] ? `Lidera ${byAgent[0][0]}` : undefined}
+          icon={Users}
+          iconTone="blue"
         />
       </section>
 
       {byAgent.length > 1 && (
-        <SectionCard title="Por ejecutivo" description="Ventas y UF de lo encontrado, de mayor a menor.">
+        <SectionCard title="Por ejecutivo" description="Ventas y UF de lo encontrado, de mayor a menor." icon={Users} tone="blue">
           <ul className="grid gap-x-6 gap-y-1 px-4 py-3 text-sm sm:grid-cols-2 xl:grid-cols-3">
             {byAgent.map(([name, totals]) => (
               <li key={name} className="flex items-baseline justify-between gap-3 border-b border-border/60 py-1.5">

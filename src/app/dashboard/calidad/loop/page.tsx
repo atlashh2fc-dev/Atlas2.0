@@ -1,10 +1,11 @@
 import Link from "next/link";
+import { ArrowLeft, BrainCircuit, ClipboardCheck, Layers, Settings2 } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { LOOP_ACTION_LABELS, type ConversationFacts, type LoopDecision } from "@/lib/ai-learning-loop";
 import { LearningLoopConfig, LearningLoopReview } from "@/components/learning-loop-review";
 import { RecordingAudioPlayer } from "@/components/recording-audio-player";
-import { Badge, Callout, Field, MetricCard, SectionCard, Select, Button } from "@/components/ui";
+import { Badge, Callout, Field, MetricCard, SectionCard, Select, Button, buttonClasses } from "@/components/ui";
 
 type Feedback = { id: string; kind: string; created_at: string; payload: Record<string, unknown> };
 type Run = {
@@ -55,21 +56,23 @@ export default async function LearningLoopPage({ searchParams }: { searchParams:
       <Field label="Campaña"><Select name="campaign" defaultValue={campaignId ?? ""}><option value="">Todas las autorizadas</option>{campaigns.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}</Select></Field>
       <Button type="submit">Filtrar</Button>
     </form>
-    {selectedRun && <Link className="text-sm text-primary underline" href={url(1)}>Volver al listado</Link>}
-    {profile.role === "admin" && campaignId && !configResult.error && <SectionCard title="Configuración del piloto">
-      <LearningLoopConfig key={`${campaignId}:${configResult.data?.mode}`} campaignId={campaignId} mode={configResult.data?.mode ?? "off"} dailyLimit={configResult.data?.daily_attempt_limit ?? 20} />
+    {selectedRun && <Link className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline" href={url(1)}><ArrowLeft size={14} aria-hidden="true" />Volver al listado</Link>}
+    {profile.role === "admin" && campaignId && !configResult.error && <SectionCard title="Configuración del piloto" icon={Settings2} tone="slate">
+      <div className="p-4">
+        <LearningLoopConfig key={`${campaignId}:${configResult.data?.mode}`} campaignId={campaignId} mode={configResult.data?.mode ?? "off"} dailyLimit={configResult.data?.daily_attempt_limit ?? 20} />
+      </div>
     </SectionCard>}
     {!error && <>
       <div className="grid gap-3 sm:grid-cols-3">
-        <MetricCard label="Versiones en el alcance" value={runsResult.count ?? 0} />
-        <MetricCard label="Analizadas en esta página" value={runs.filter((run) => run.status === "completed").length} />
-        <MetricCard label="Revisadas en esta página" value={runs.filter((run) => run.review_version > 0).length} />
+        <MetricCard label="Versiones en el alcance" value={runsResult.count ?? 0} icon={Layers} iconTone="violet" />
+        <MetricCard label="Analizadas en esta página" value={runs.filter((run) => run.status === "completed").length} icon={BrainCircuit} iconTone="violet" />
+        <MetricCard label="Revisadas en esta página" value={runs.filter((run) => run.review_version > 0).length} icon={ClipboardCheck} iconTone="green" />
       </div>
       {runs.length === 0 && <Callout>No hay análisis en este alcance. Se requiere una campaña en observación, transcripciones completadas y gestión final. No se transcriben audios automáticamente desde este loop.</Callout>}
       {runs.map((run) => {
         const stale = !!run.superseded_at || Date.parse(run.expires_at) <= asOf;
-        return <SectionCard key={run.id} title={<span className="flex flex-wrap gap-2">{run.decision ? LOOP_ACTION_LABELS[run.decision.action] : STATUS[run.status]} <Badge tone={stale ? "neutral" : "info"}>{stale ? "No vigente" : STATUS[run.status]}</Badge></span>}>
-          <div className="space-y-3">
+        return <SectionCard key={run.id} icon={BrainCircuit} tone={stale ? "slate" : "violet"} title={<span className="flex flex-wrap gap-2">{run.decision ? LOOP_ACTION_LABELS[run.decision.action] : STATUS[run.status]} <Badge tone={stale ? "neutral" : "info"}>{stale ? "No vigente" : STATUS[run.status]}</Badge></span>}>
+          <div className="space-y-3 p-4">
             <p className="text-xs text-muted-foreground">{date(run.created_at)} · Política {run.policy_version} · Revisión {run.review_version}</p>
             {run.decision && <p className="text-sm">{run.decision.reason}</p>}
             <div className="flex flex-wrap gap-4 text-sm"><Link className="text-primary underline" href={`/dashboard/leads/${run.lead_id}`}>Ficha 360</Link><Link className="text-primary underline" href={url(page, run.id)}>Ver evidencia y revisión</Link></div>
@@ -81,10 +84,10 @@ export default async function LearningLoopPage({ searchParams }: { searchParams:
               <RecordingAudioPlayer recordingId={run.recording_id} playable />
               {transcriptResult.data?.status === "completed" && <details className="text-sm"><summary className="cursor-pointer text-primary">Ver transcripción actual</summary>
                 <p className="mt-2 text-xs text-muted-foreground">La transcripción actual puede diferir de versiones históricas. Confirma hablantes y contexto escuchando el audio.</p>
-                <p className="mt-2 max-h-80 overflow-y-auto whitespace-pre-wrap rounded border border-border p-3">{transcriptResult.data.transcript_text}</p>
+                <p className="mt-2 max-h-80 overflow-y-auto whitespace-pre-wrap rounded-lg border border-border bg-background p-3">{transcriptResult.data.transcript_text}</p>
               </details>}
               <h3 className="text-sm font-semibold">Hechos candidatos y evidencia literal</h3>
-              {run.analysis?.facts.length ? run.analysis.facts.map((fact, index) => <blockquote key={index} className="border-l-2 border-primary pl-3 text-sm"><p>{fact.quote}</p><footer className="mt-1 text-xs text-muted-foreground">{fact.kind} · {fact.speaker === "customer" ? "cliente inferido" : fact.speaker === "agent" ? "agente inferido" : "hablante incierto"}{fact.requested_time_text ? ` · Referencia temporal: ${fact.requested_time_text}` : ""}</footer></blockquote>) : <p className="text-sm text-muted-foreground">No se extrajeron hechos respaldados.</p>}
+              {run.analysis?.facts.length ? run.analysis.facts.map((fact, index) => <blockquote key={index} className="rounded-r-lg border-l-2 border-primary bg-primary/5 py-1.5 pl-3 pr-2 text-sm"><p>{fact.quote}</p><footer className="mt-1 text-xs text-muted-foreground">{fact.kind} · {fact.speaker === "customer" ? "cliente inferido" : fact.speaker === "agent" ? "agente inferido" : "hablante incierto"}{fact.requested_time_text ? ` · Referencia temporal: ${fact.requested_time_text}` : ""}</footer></blockquote>) : <p className="text-sm text-muted-foreground">No se extrajeron hechos respaldados.</p>}
               <p className="text-xs text-muted-foreground">Memorias previas utilizadas: {run.decision?.memory_ids.length ?? 0}. Las citas prueban procedencia; la interpretación requiere revisión. Puedes retirar hechos incorrectos desde la ficha 360, aunque su decisión haya vencido.</p>
               {!stale && run.status === "completed" ? <LearningLoopReview runId={run.id} version={run.review_version} /> : <Callout>Esta versión no admite revisión operativa. Se conserva como historia.</Callout>}
               <h3 className="text-sm font-semibold">Feedback y resultados observados (últimos 30 eventos)</h3>
@@ -93,7 +96,7 @@ export default async function LearningLoopPage({ searchParams }: { searchParams:
           </div>
         </SectionCard>;
       })}
-      <nav aria-label="Páginas del loop" className="flex gap-4 text-sm">{page > 1 && <Link href={url(page - 1)}>Anterior</Link>}{(runsResult.count ?? 0) > page * 20 && <Link href={url(page + 1)}>Siguiente</Link>}</nav>
+      <nav aria-label="Páginas del loop" className="flex gap-2 text-sm">{page > 1 && <Link className={buttonClasses({ variant: "secondary", size: "sm" })} href={url(page - 1)}>Anterior</Link>}{(runsResult.count ?? 0) > page * 20 && <Link className={buttonClasses({ variant: "secondary", size: "sm" })} href={url(page + 1)}>Siguiente</Link>}</nav>
     </>}
   </div>;
 }

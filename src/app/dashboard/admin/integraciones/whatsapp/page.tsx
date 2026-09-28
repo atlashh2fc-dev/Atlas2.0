@@ -1,10 +1,10 @@
-import { CheckCircle2, CircleAlert, Copy, Webhook } from "lucide-react";
+import { CheckCircle2, CircleAlert, Copy, MessageCircle, Send, Smartphone, Webhook, type LucideIcon } from "lucide-react";
 
 import { saveWhatsAppChannelConfig } from "@/app/actions/whatsapp";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { isWhatsAppProviderConfigured, whatsappProvider } from "@/lib/whatsapp-provider";
-import { ActionForm, ActionSubmit, Badge, Card, Field, Input, Select } from "@/components/ui";
+import { ActionForm, ActionSubmit, Badge, Field, Input, SectionCard, Select } from "@/components/ui";
 
 const META_WEBHOOK_URL = "https://atlascrm.geimser.cl/api/integrations/meta/whatsapp/webhook";
 const YCLOUD_WEBHOOK_URL = "https://atlascrm.geimser.cl/api/integrations/ycloud/whatsapp/webhook";
@@ -57,18 +57,21 @@ export default async function WhatsAppIntegrationPage() {
     <div className="space-y-5">
       <div className="grid gap-4 xl:grid-cols-3">
         <StatusCard
+          icon={Smartphone}
           label="Número corporativo"
           value={channel?.display_phone_number ?? "+56 9 7415 8774"}
           ok={Boolean(channel)}
           detail={channel ? `Phone ID ${channel.phone_number_id}` : "Activo identificado en Meta"}
         />
         <StatusCard
+          icon={Webhook}
           label="Webhook de Atlas"
           value={ready ? "Conectado" : "Pendiente"}
           ok={ready}
           detail={`Último evento: ${formatDateTime(channel?.last_webhook_at ?? null)}`}
         />
         <StatusCard
+          icon={Send}
           label="Salida desde el CRM"
           value={providerConfigured ? "Habilitada" : "Pendiente"}
           ok={providerConfigured}
@@ -76,18 +79,16 @@ export default async function WhatsAppIntegrationPage() {
         />
       </div>
 
-      <Card className="space-y-4">
-        <div>
-          <h2 className="text-sm font-semibold text-foreground">Canal y campaña de destino</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Cada conversación nueva crea o reutiliza un lead en esta campaña. Los secretos del proveedor no se guardan en la base.
-          </p>
-        </div>
-
+      <SectionCard
+        icon={MessageCircle}
+        tone="green"
+        title="Canal y campaña de destino"
+        description="Cada conversación nueva crea o reutiliza un lead en esta campaña. Los secretos del proveedor no se guardan en la base."
+      >
         <ActionForm
           action={saveWhatsAppChannelConfig}
           success="Canal de WhatsApp guardado"
-          className="grid gap-4 md:grid-cols-2 xl:grid-cols-3"
+          className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3"
         >
           <Field label="Cuenta de WhatsApp (WABA ID)">
             <Input name="waba_id" defaultValue={channel?.waba_id ?? "1111675941525164"} required />
@@ -125,20 +126,17 @@ export default async function WhatsAppIntegrationPage() {
             <ActionSubmit pendingLabel="Guardando…">Guardar configuración</ActionSubmit>
           </div>
         </ActionForm>
-      </Card>
+      </SectionCard>
 
-      <Card className="space-y-4">
-        <div className="flex items-start gap-3">
-          <Webhook size={18} className="mt-0.5 text-primary" />
-          <div>
-            <h2 className="text-sm font-semibold text-foreground">Webhook del proveedor</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              La suscripción debe incluir mensajes entrantes, estados y ecos enviados desde el celular.
-            </p>
-          </div>
-        </div>
+      <SectionCard
+        icon={Webhook}
+        tone="slate"
+        title="Webhook del proveedor"
+        description="La suscripción debe incluir mensajes entrantes, estados y ecos enviados desde el celular."
+      >
+        <div className="space-y-4 p-4">
         <div className="rounded-lg border border-border bg-background p-3">
-          <p className="text-xs font-medium text-muted-foreground">URL de devolución de llamada</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">URL de devolución de llamada</p>
           <div className="mt-1 flex items-center gap-2">
             <code className="min-w-0 flex-1 truncate text-sm text-foreground">{webhookUrl}</code>
             <Copy size={14} className="text-muted-foreground" aria-hidden />
@@ -163,23 +161,44 @@ export default async function WhatsAppIntegrationPage() {
             {channel.last_error}
           </p>
         )}
-      </Card>
+        </div>
+      </SectionCard>
     </div>
   );
 }
 
-function StatusCard({ label, value, detail, ok }: { label: string; value: string; detail: string; ok: boolean }) {
-  const Icon = ok ? CheckCircle2 : CircleAlert;
+/** Baldosa de estado: el borde izquierdo y el ícono de estado dicen si está listo. */
+function StatusCard({
+  icon: KindIcon,
+  label,
+  value,
+  detail,
+  ok,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  detail: string;
+  ok: boolean;
+}) {
+  const StateIcon = ok ? CheckCircle2 : CircleAlert;
   return (
-    <Card>
+    <div
+      className={`rounded-xl border border-border border-l-2 bg-surface p-4 shadow-sm ${ok ? "border-l-success" : "border-l-warning"}`}
+    >
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs text-muted-foreground">{label}</p>
-          <p className="mt-1 text-lg font-semibold text-foreground">{value}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="icon-chip size-8 rounded-lg" data-tone="green" aria-hidden="true">
+            <KindIcon size={16} />
+          </span>
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+            <p className="mt-1 text-lg font-semibold tracking-tight text-foreground">{value}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
+          </div>
         </div>
-        <Icon size={18} className={ok ? "text-success" : "text-warning"} />
+        <StateIcon size={18} className={ok ? "text-success" : "text-warning"} aria-hidden="true" />
       </div>
-    </Card>
+    </div>
   );
 }

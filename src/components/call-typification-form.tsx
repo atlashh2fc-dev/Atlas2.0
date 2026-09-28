@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { AlertCircle, CalendarClock, CheckCircle2, Clock3, MessageSquare, PhoneOff } from "lucide-react";
+import { AlertCircle, BadgeDollarSign, CalendarClock, CheckCircle2, ClipboardCheck, Clock3, MessageSquare, PhoneOff } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { notifyAgentManagementClosed, requestAgentHangup } from "@/lib/agent-control";
 import type { Call, Lead } from "@/lib/types";
@@ -553,7 +553,7 @@ export function CallTypificationForm({
           aria-label={node.label}
           className="rounded-xl border border-border/70 bg-surface-muted/40 p-3"
         >
-          <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{node.label}</p>
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{node.label}</p>
           {renderReasonNodes(node.children, `${keyPrefix}-${node.label}`)}
         </div>
       );
@@ -620,7 +620,7 @@ export function CallTypificationForm({
       {supervision && (
         <div className="space-y-3 rounded-2xl border border-warning/30 bg-warning-bg px-4 py-3 text-foreground">
           <div className="flex items-start gap-3">
-            <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-warning text-white">
+            <span className="icon-chip mt-0.5 size-8 rounded-lg" data-tone="amber" aria-hidden="true">
               <CalendarClock size={17} />
             </span>
             <div>
@@ -680,7 +680,7 @@ export function CallTypificationForm({
       )}
       {revision && !supervision && (
         <div className="flex items-start gap-3 rounded-2xl border border-warning/30 bg-warning-bg px-4 py-3 text-foreground">
-          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-warning text-white">
+          <span className="icon-chip mt-0.5 size-8 rounded-lg" data-tone="amber" aria-hidden="true">
             <CalendarClock size={17} />
           </span>
           <div>
@@ -693,7 +693,7 @@ export function CallTypificationForm({
       )}
       {!revision && !call.notes && lead.observacion_actual?.trim() && (
         <div className="flex items-start gap-3 rounded-2xl border border-border bg-surface-muted px-4 py-3">
-          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface text-primary">
+          <span className="icon-chip mt-0.5 size-8 rounded-lg" data-tone="teal" aria-hidden="true">
             <MessageSquare size={17} aria-hidden="true" />
           </span>
           <div className="min-w-0">
@@ -756,7 +756,7 @@ export function CallTypificationForm({
             <button
               type="button"
               onClick={() => requestAgentHangup()}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-danger px-3 py-2 text-xs font-semibold text-white hover:opacity-90"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-danger px-3 py-2 text-xs font-semibold text-primary-foreground shadow-sm hover:opacity-90"
             >
               <PhoneOff size={14} aria-hidden="true" />
               Colgar y cerrar
@@ -796,9 +796,9 @@ export function CallTypificationForm({
         disabled={pending !== null || legalBreakActive || armed || catalog.length === 0}
         className="flex flex-col gap-4 border-0 p-0 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        <div className="sticky top-2 z-10 rounded-2xl border border-border bg-surface p-3 shadow-lg">
+        <div className="sticky top-2 z-10 rounded-xl border border-border bg-surface-solid p-3 shadow-lg">
         {attemptedClose && pendingIssues.length > 0 && (
-          <ul className="mb-3 space-y-1 rounded-lg bg-warning-bg p-3 text-xs text-warning">
+          <ul className="mb-3 space-y-1 rounded-lg border border-warning/30 bg-warning-bg p-3 text-xs text-warning">
             {pendingIssues.map((issue) => (
               <li key={issue}>- {issue}</li>
             ))}
@@ -809,7 +809,7 @@ export function CallTypificationForm({
           <div
             role={message.type === "error" ? "alert" : "status"}
             className={`mb-3 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium ${
-              message.type === "error" ? "bg-danger-bg text-danger" : "bg-success-bg text-success"
+              message.type === "error" ? "border border-danger/30 bg-danger-bg text-danger" : "border border-success/30 bg-success-bg text-success"
             }`}
           >
             {message.type === "error" ? <AlertCircle size={16} /> : <CheckCircle2 size={16} />}
@@ -868,7 +868,7 @@ export function CallTypificationForm({
                 type="button"
                 onClick={handleDiscard}
                 disabled={pending !== null}
-                className="rounded-lg bg-danger px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+                className="rounded-lg bg-danger px-3 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:opacity-90 disabled:opacity-50"
               >
                 {pending === "discard" ? "Descartando..." : "Confirmar"}
               </button>
@@ -876,14 +876,17 @@ export function CallTypificationForm({
           </div>
         )}
         </div>
-        <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
-        <h2 className="mb-4 text-sm font-semibold text-foreground">
+        <div className="rounded-xl border border-border bg-surface p-5 shadow-sm">
+        <h2 className="mb-4 flex items-center gap-2.5 text-sm font-semibold text-foreground">
+          <span className="icon-chip size-8 rounded-lg" data-tone="primary" aria-hidden="true">
+            <ClipboardCheck size={16} />
+          </span>
           {adding ? "Nueva tipificación" : revision ? "Corregir tipificación" : "Tipificar"}
         </h2>
 
         <div className="space-y-5">
           <section aria-labelledby={`${fieldId}-state`} className="space-y-3">
-            <h3 id={`${fieldId}-state`} className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+            <h3 id={`${fieldId}-state`} className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               Categoría
             </h3>
             {renderStepChips(
@@ -902,10 +905,12 @@ export function CallTypificationForm({
           </section>
 
           {showAgendaBlock && (
-            <div className="rounded-lg border border-border bg-background p-4">
+            <div className="rounded-lg border border-border border-l-2 border-l-[var(--tone-amber)] bg-background p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <CalendarClock size={16} className="text-warning" />
+                  <span className="icon-chip size-7 rounded-lg" data-tone="amber" aria-hidden="true">
+                    <CalendarClock size={15} />
+                  </span>
                   <h3 className="text-sm font-semibold text-foreground">Agenda</h3>
                   {reasonConfig?.agenda === "optional" && (
                     <span className="text-xs font-medium text-muted-foreground">Opcional</span>
@@ -951,8 +956,13 @@ export function CallTypificationForm({
           )}
 
           {showEquifaxBlock && (
-            <div className="rounded-lg border border-border bg-background p-4">
-              <h3 className="mb-3 text-sm font-semibold text-foreground">Datos comerciales Equifax</h3>
+            <div className="rounded-lg border border-border border-l-2 border-l-[var(--tone-green)] bg-background p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <span className="icon-chip size-7 rounded-lg" data-tone="green" aria-hidden="true">
+                  <BadgeDollarSign size={15} />
+                </span>
+                <h3 className="text-sm font-semibold text-foreground">Datos comerciales Equifax</h3>
+              </div>
               <div className="mb-3">
                 <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Productos</label>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">

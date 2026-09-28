@@ -1,8 +1,9 @@
 import { unstable_noStore as noStore } from "next/cache";
+import { Coins, Package, PackageX, Receipt, Wallet } from "lucide-react";
 
 import { crearInsumo, guardarInsumo } from "@/app/actions/insumos";
 import { CreatePanel } from "@/components/create-panel";
-import { ActionForm, ActionSubmit, Badge, Field, Input, PageHeader, SectionCard, StatCard } from "@/components/ui";
+import { ActionForm, ActionSubmit, Badge, Callout, Field, Input, PageHeader, SectionCard, StatCard } from "@/components/ui";
 import { pesos, type Insumo } from "@/lib/arancel";
 import { createClient } from "@/lib/supabase/server";
 
@@ -102,14 +103,16 @@ export default async function InsumosPage() {
         }
       />
 
-      {error && <p className="text-sm text-danger">No se pudieron leer los materiales. Vuelve a cargar para reintentar.</p>}
+      {error && <Callout tone="danger">No se pudieron leer los materiales. Vuelve a cargar para reintentar.</Callout>}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Costo de materiales · 30 días" value={pesos.format(costoMes)} hint={`${(usos ?? []).length} usos registrados`} />
-        <StatCard label="Materiales cobrados · 30 días" value={pesos.format(cobradoMes)} hint="Sumados a la cuenta del paciente" tone="good" />
-        <StatCard label="Inventario valorizado" value={pesos.format(inventario)} hint={`${insumos.filter((insumo) => insumo.activo).length} materiales activos`} />
+        <StatCard label="Costo de materiales · 30 días" value={pesos.format(costoMes)} hint={`${(usos ?? []).length} usos registrados`} icon={Wallet} iconTone="green" />
+        <StatCard label="Materiales cobrados · 30 días" value={pesos.format(cobradoMes)} hint="Sumados a la cuenta del paciente" tone="good" icon={Receipt} iconTone="green" />
+        <StatCard label="Inventario valorizado" value={pesos.format(inventario)} hint={`${insumos.filter((insumo) => insumo.activo).length} materiales activos`} icon={Package} iconTone="slate" />
         <StatCard
           label="Por reponer"
+          icon={PackageX}
+          iconTone={bajos.length > 0 ? "amber" : "green"}
           value={bajos.length}
           hint={bajos.length > 0 ? bajos.slice(0, 3).map((insumo) => insumo.nombre).join(", ") : "Todo sobre el mínimo"}
           tone={bajos.length > 0 ? "warn" : "default"}
@@ -117,7 +120,7 @@ export default async function InsumosPage() {
       </div>
 
       {masUsados.length > 0 && (
-        <SectionCard title="Dónde se va el gasto" description="Los materiales que más costaron en los últimos 30 días.">
+        <SectionCard icon={Coins} tone="green" title="Dónde se va el gasto" description="Los materiales que más costaron en los últimos 30 días.">
           <ul className="divide-y divide-border">
             {masUsados.map(([id, uso]) => (
               <li key={id} className="flex items-center justify-between gap-3 px-4 py-2 text-sm">
@@ -132,8 +135,8 @@ export default async function InsumosPage() {
       )}
 
       {[...grupos.entries()].map(([categoria, items]) => (
-        <SectionCard key={categoria} title={categoria} description={`${items.length} ${items.length === 1 ? "material" : "materiales"}`}>
-          <div className="hidden grid-cols-[minmax(0,1fr)_110px_110px_90px_90px_auto_auto] gap-3 border-b border-border px-4 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground lg:grid">
+        <SectionCard key={categoria} icon={Package} tone="slate" title={categoria} description={`${items.length} ${items.length === 1 ? "material" : "materiales"}`}>
+          <div className="hidden grid-cols-[minmax(0,1fr)_110px_110px_90px_90px_auto_auto] gap-3 border-b border-border bg-surface-muted px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground lg:grid">
             <span>Material</span>
             <span className="text-right">Costo</span>
             <span className="text-right">Precio venta</span>

@@ -1,3 +1,4 @@
+import { CalendarClock, CalendarX2 } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { resolveCampaignScope } from "@/lib/campaign-scope";
@@ -86,18 +87,26 @@ export default async function MyAgendaPage({
         que los gestiones tú.
       </Callout>
       {error ? (
-        <p className="rounded-lg border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger">
-          No se pudo cargar tu agenda: {error.message}
-        </p>
+        <Callout tone="danger">No se pudo cargar tu agenda: {error.message}</Callout>
       ) : (
         <>
           <section className="space-y-3">
-            <h2 className="text-sm font-semibold text-foreground">Próximas ({upcoming.length})</h2>
+            <h2 className="flex items-center gap-2.5 text-sm font-semibold text-foreground">
+              <span className="icon-chip size-7 rounded-lg" data-tone="amber" aria-hidden="true">
+                <CalendarClock size={15} />
+              </span>
+              Próximas ({upcoming.length})
+            </h2>
             <AgendaTable rows={upcoming} storageKey="agenda" />
           </section>
           {overdueCount > 0 && (
             <section className="space-y-3">
-              <h2 className="text-sm font-semibold text-danger">Vencidas por recuperar ({overdueCount})</h2>
+              <h2 className="flex items-center gap-2.5 text-sm font-semibold text-danger">
+                <span className="icon-chip size-7 rounded-lg" data-tone="rose" aria-hidden="true">
+                  <CalendarX2 size={15} />
+                </span>
+                Vencidas por recuperar ({overdueCount})
+              </h2>
               <AgendaTable rows={overdueRows} storageKey="agenda-vencidas" />
             </section>
           )}

@@ -1,4 +1,5 @@
 import { unstable_noStore as noStore } from "next/cache";
+import { Building2, LayoutGrid, Users } from "lucide-react";
 
 import {
   cambiarAplicacionDeEmpresa,
@@ -12,6 +13,7 @@ import {
   ActionSubmit,
   Badge,
   Callout,
+  EmptyState,
   Field,
   Input,
   PageHeader,
@@ -145,34 +147,51 @@ export default async function EmpresasAdminPage() {
         </Callout>
       )}
 
-      <SectionCard title="Empresas" description="Personas y campañas que tiene cada una.">
+      <SectionCard icon={Building2} tone="blue" title="Empresas" description="Personas y campañas que tiene cada una.">
         <Table>
           <Thead>
             <Th>Empresa</Th>
             <Th>Clave</Th>
             <Th>Edición</Th>
-            <Th>Personas</Th>
-            <Th>Campañas</Th>
+            <Th align="right">Personas</Th>
+            <Th align="right">Campañas</Th>
             <Th>Estado</Th>
             {duenioDePlataforma && <Th>Acción</Th>}
           </Thead>
           <Tbody>
             {listaEmpresas.length === 0 && (
               <TableEmpty colSpan={duenioDePlataforma ? 7 : 6}>
-                No hay empresas visibles para tu cuenta.
+                <EmptyState icon={Building2} title="No hay empresas visibles para tu cuenta." className="py-6" />
               </TableEmpty>
             )}
             {listaEmpresas.map((empresa) => (
               <Tr key={empresa.id}>
-                <Td className="font-medium text-foreground">{empresa.name}</Td>
-                <Td className="text-muted-foreground">{empresa.slug}</Td>
+                <Td className="font-medium text-foreground">
+                  <span className="flex items-center gap-3">
+                    {/* El chip toma el color de la edición, igual que el logo de esa empresa. */}
+                    <span
+                      data-edicion={parseEdicion(empresa.edicion)}
+                      data-tone="primary"
+                      className={`icon-chip size-8 rounded-lg ${empresa.active ? "" : "opacity-50"}`}
+                      aria-hidden="true"
+                    >
+                      <Building2 size={15} />
+                    </span>
+                    {empresa.name}
+                  </span>
+                </Td>
+                <Td className="font-mono text-xs text-muted-foreground">{empresa.slug}</Td>
                 <Td>
-                  <span data-edicion={parseEdicion(empresa.edicion)} className="font-medium text-primary">
+                  <span
+                    data-edicion={parseEdicion(empresa.edicion)}
+                    data-tone="primary"
+                    className="icon-chip rounded-full px-2 py-0.5 text-xs font-medium"
+                  >
                     {EDICION_INFO[parseEdicion(empresa.edicion)].sufijo}
                   </span>
                 </Td>
-                <Td>{personasPorEmpresa.get(empresa.id) ?? 0}</Td>
-                <Td>{campanasPorEmpresa.get(empresa.id) ?? 0}</Td>
+                <Td align="right">{personasPorEmpresa.get(empresa.id) ?? 0}</Td>
+                <Td align="right">{campanasPorEmpresa.get(empresa.id) ?? 0}</Td>
                 <Td>
                   <Badge tone={empresa.active ? "success" : "neutral"}>
                     {empresa.active ? "Activa" : "Suspendida"}
@@ -200,13 +219,25 @@ export default async function EmpresasAdminPage() {
 
       {duenioDePlataforma && (
         <SectionCard
+          icon={LayoutGrid}
+          tone="slate"
           title="Aplicaciones de la suite"
           description="Cada empresa ve en su menú solo lo que tiene contratado. Apagar una aplicación la hace desaparecer, también si alguien escribe la dirección a mano."
         >
           <div className="space-y-5 px-5 py-4">
             {listaEmpresas.map((empresa) => (
               <div key={empresa.id}>
-                <p className="mb-2 text-sm font-medium text-foreground">{empresa.name}</p>
+                <p className="mb-2 flex items-center gap-2 text-sm font-medium text-foreground">
+                  <span
+                    data-edicion={parseEdicion(empresa.edicion)}
+                    data-tone="primary"
+                    className="icon-chip size-6 rounded-md"
+                    aria-hidden="true"
+                  >
+                    <Building2 size={13} />
+                  </span>
+                  {empresa.name}
+                </p>
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {APP_MODULES.map((modulo) => {
                     const info = MODULE_INFO[modulo];
@@ -214,12 +245,12 @@ export default async function EmpresasAdminPage() {
                     return (
                       <div
                         key={modulo}
-                        className={`rounded-lg border p-3 ${activa ? "border-border bg-surface" : "border-dashed border-border"}`}
+                        className={`rounded-xl border p-3 ${activa ? "border-border border-l-2 border-l-success bg-background shadow-sm" : "border-dashed border-border-strong"}`}
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <p className="text-sm font-medium text-foreground">{info.label}</p>
-                            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                               {info.producto}
                               {!info.dentro && " · sistema aparte"}
                             </p>
@@ -249,6 +280,8 @@ export default async function EmpresasAdminPage() {
       )}
 
       <SectionCard
+        icon={Users}
+        tone="blue"
         title="Personas"
         description={
           duenioDePlataforma
@@ -266,7 +299,9 @@ export default async function EmpresasAdminPage() {
           </Thead>
           <Tbody>
             {listaPersonas.length === 0 && (
-              <TableEmpty colSpan={duenioDePlataforma ? 5 : 4}>Sin personas.</TableEmpty>
+              <TableEmpty colSpan={duenioDePlataforma ? 5 : 4}>
+                <EmptyState icon={Users} title="Sin personas." className="py-6" />
+              </TableEmpty>
             )}
             {listaPersonas.map((persona) => (
               <Tr key={persona.id}>
@@ -275,7 +310,9 @@ export default async function EmpresasAdminPage() {
                   {!persona.active && <span className="ml-2 text-xs text-muted-foreground">(inactiva)</span>}
                 </Td>
                 <Td className="text-muted-foreground">{persona.email}</Td>
-                <Td>{persona.role}</Td>
+                <Td>
+                  <Badge>{persona.role}</Badge>
+                </Td>
                 <Td>{nombrePorEmpresa.get(persona.organization_id ?? "") ?? "—"}</Td>
                 {duenioDePlataforma && (
                   <Td>

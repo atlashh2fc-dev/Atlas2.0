@@ -9,6 +9,7 @@ import { PACIENTES_POR_EDICION, VENTAS_POR_EDICION, type Edicion } from "@/lib/e
 import type { AppModule } from "@/lib/modules";
 import type { AppRole, Profile } from "@/lib/types";
 import { useViewPreference } from "@/lib/use-view-preference";
+import { navTone } from "@/lib/nav-tone";
 import {
   HELP_HREF,
   ROLE_LABEL,
@@ -154,42 +155,6 @@ function sectionsFor(
   }));
 }
 
-/**
- * Tono del chip de cada destino. Agrupa por naturaleza y no por sección, para
- * que el mismo destino tenga el mismo color en cualquier menú y rol: comunicación
- * en turquesa, agenda en ámbar, dinero en verde, análisis en violeta, personas
- * en azul, campañas en rosa y configuración en gris.
- */
-const NAV_TONE: Record<string, string> = {
-  inicio: "primary",
-  operacion: "teal",
-  correo: "teal",
-  "correo-clinica": "teal",
-  conversaciones: "teal",
-  "conversaciones-clinica": "teal",
-  recordatorios: "teal",
-  agenda: "amber",
-  "agenda-clinica": "amber",
-  ventas: "green",
-  caja: "green",
-  "validacion-ventas": "green",
-  aranceles: "green",
-  reportes: "violet",
-  "reportes-clinica": "violet",
-  calidad: "violet",
-  pacientes: "blue",
-  registros: "blue",
-  equipo: "blue",
-  "usuarios-equipo": "blue",
-  usuarios: "blue",
-  empresas: "blue",
-  campanas: "rose",
-  "campanas-clinica": "rose",
-  "campanas-operativas": "rose",
-  colas: "rose",
-  flujos: "rose",
-};
-
 const NAV_ROW_ACTIVE =
   "bg-surface-muted text-foreground ring-1 ring-inset ring-border before:absolute before:-left-2 before:top-1/2 before:h-6 before:w-[3px] before:-translate-y-1/2 before:rounded-full before:bg-primary";
 const NAV_ROW_IDLE = "text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground";
@@ -240,7 +205,7 @@ function NavLink({
       >
         <span
           className="icon-chip h-7 w-7 rounded-md transition-shadow"
-          data-tone={NAV_TONE[item.id] ?? "slate"}
+          data-tone={navTone(item.id)}
           data-active={active}
         >
           <Icon size={16} />

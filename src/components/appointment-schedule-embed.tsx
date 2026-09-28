@@ -56,7 +56,7 @@ export function AppointmentScheduleEmbed({
             if (event.target === event.currentTarget) onOpenChange(false);
           }}
         >
-          <div className="flex h-[min(92vh,900px)] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
+          <div className="flex h-[min(92vh,900px)] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-border bg-surface-solid shadow-2xl">
             <div className="flex items-start justify-between gap-4 border-b border-border px-4 py-3 sm:px-5">
               <div>
                 <h2 id={titleId} className="text-sm font-semibold text-foreground">

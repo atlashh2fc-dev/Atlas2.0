@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   ArrowRight,
   BarChart3,
+  BookOpen,
   CalendarClock,
   CheckCircle2,
   ChevronRight,
@@ -29,6 +30,8 @@ import {
 } from "lucide-react";
 import type { AppRole } from "@/lib/types";
 import { metricGlossary } from "@/lib/metric-definitions";
+import type { SectionTone } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui";
 
 type TrainingStep = {
   title: string;
@@ -342,6 +345,30 @@ const GUIDES: Guide[] = [
   },
 ];
 
+/**
+ * Tono del chip de cada guía, con la misma convención del menú: personas en
+ * azul, agenda en ámbar, en vivo y correo en turquesa, análisis en violeta,
+ * campañas y flujos en rosa, voz en primario y lo técnico en gris.
+ */
+const GUIDE_TONE: Record<string, SectionTone> = {
+  lead: "blue",
+  agenda: "amber",
+  team: "blue",
+  monitor: "teal",
+  reports: "violet",
+  "dialer-reports": "violet",
+  campaign: "rose",
+  workflow: "rose",
+  upload: "rose",
+  users: "blue",
+  phone: "primary",
+  vocalcom: "slate",
+  mail: "teal",
+  "manual-lead": "blue",
+};
+
+const guideTone = (guide: Guide): SectionTone => GUIDE_TONE[guide.id] ?? "primary";
+
 const ROLE_COPY: Record<AppRole, { title: string; description: string; scope: string; searches: string[] }> = {
   agente: {
     title: "Capacitación para tu operación diaria",
@@ -400,7 +427,7 @@ function GuideDetail({ guide, onClose }: { guide: Guide; onClose: () => void }) 
     <section className="rounded-2xl border border-primary/30 bg-surface p-4 shadow-sm sm:p-6" aria-label={`Capacitación: ${guide.title}`}>
       <div className="flex items-start justify-between gap-4 border-b border-border pb-5">
         <div className="flex gap-3">
-          <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Icon size={22} /></div>
+          <div className="icon-chip size-11 rounded-xl" data-tone={guideTone(guide)} data-active="true" aria-hidden="true"><Icon size={22} /></div>
           <div><p className="text-xs font-semibold uppercase tracking-wide text-primary">Guía práctica</p><h2 className="mt-1 text-xl font-semibold text-foreground">{guide.title}</h2><p className="mt-1 text-sm text-muted-foreground">{guide.description}</p></div>
         </div>
         <button type="button" onClick={onClose} className="rounded-lg p-2 text-muted-foreground hover:bg-surface-muted hover:text-foreground" aria-label="Cerrar guía"><X size={18} /></button>
@@ -428,7 +455,7 @@ function GuideDetail({ guide, onClose }: { guide: Guide; onClose: () => void }) 
         </aside>
       </div>
 
-      <div className="mt-6 border-t border-border pt-5"><div className="flex items-center gap-2"><ClipboardCheck size={18} className="text-primary" /><h3 className="text-base font-semibold text-foreground">Qué hacer, qué seleccionar y cómo comprobarlo</h3></div><ol className="mt-4 grid gap-3 lg:grid-cols-2">{guide.steps.map((step, index) => <li key={step.title} className="rounded-xl border border-border bg-background p-4"><div className="flex gap-3"><span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">{index + 1}</span><div><h4 className="text-sm font-semibold text-foreground">{step.title}</h4><p className="mt-1 text-xs leading-5 text-muted-foreground"><span className="font-semibold text-foreground">Haz esto: </span>{step.do}</p><p className="mt-2 text-xs leading-5 text-muted-foreground"><span className="font-semibold text-success">Comprueba: </span>{step.verify}</p>{step.warning && <p className="mt-2 flex gap-1.5 text-xs leading-5 text-amber-700 dark:text-amber-300"><AlertTriangle size={14} className="mt-0.5 shrink-0" />{step.warning}</p>}</div></div></li>)}</ol></div>
+      <div className="mt-6 border-t border-border pt-5"><div className="flex items-center gap-2"><span className="icon-chip size-8 rounded-lg" data-tone="green" aria-hidden="true"><ClipboardCheck size={16} /></span><h3 className="text-base font-semibold text-foreground">Qué hacer, qué seleccionar y cómo comprobarlo</h3></div><ol className="mt-4 grid gap-3 lg:grid-cols-2">{guide.steps.map((step, index) => <li key={step.title} className="rounded-xl border border-border bg-background p-4"><div className="flex gap-3"><span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">{index + 1}</span><div><h4 className="text-sm font-semibold text-foreground">{step.title}</h4><p className="mt-1 text-xs leading-5 text-muted-foreground"><span className="font-semibold text-foreground">Haz esto: </span>{step.do}</p><p className="mt-2 text-xs leading-5 text-muted-foreground"><span className="font-semibold text-success">Comprueba: </span>{step.verify}</p>{step.warning && <p className="mt-2 flex gap-1.5 text-xs leading-5 text-warning"><AlertTriangle size={14} className="mt-0.5 shrink-0" />{step.warning}</p>}</div></div></li>)}</ol></div>
     </section>
   );
 }
@@ -442,13 +469,16 @@ function MetricGlossary() {
   const entries = metricGlossary();
 
   return (
-    <section className="rounded-xl border border-border bg-surface p-4">
+    <section className="rounded-xl border border-border bg-surface p-4 shadow-sm">
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
         aria-expanded={open}
         className="flex w-full items-center gap-2 text-left"
       >
+        <span className="icon-chip size-8 rounded-lg" data-tone="violet" aria-hidden="true">
+          <BookOpen size={16} />
+        </span>
         <span className="text-sm font-semibold text-foreground">Glosario de métricas</span>
         <span className="text-xs text-muted-foreground">{entries.length} términos</span>
         <ArrowRight
@@ -484,10 +514,10 @@ export function HelpCenter({ role }: { role: AppRole }) {
 
   return <div className="mx-auto max-w-7xl space-y-6 pb-8">
     <section className="overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 via-surface to-surface p-6 sm:p-8"><div className="max-w-4xl"><span className="inline-flex items-center gap-2 rounded-full bg-surface px-3 py-1 text-xs font-semibold text-primary shadow-sm"><CircleHelp size={15} /> Centro de capacitación Atlas</span><h1 className="mt-4 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">{copy.title}</h1><p className="mt-2 text-sm leading-6 text-muted-foreground sm:text-base">{copy.description}</p><div className="relative mt-5 max-w-3xl"><Search size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Busca una tarea: campaña, flujo, carga, agenda, usuarios..." className="w-full rounded-xl border border-border bg-surface py-3 pl-10 pr-4 text-sm text-foreground shadow-sm outline-none placeholder:text-muted-foreground focus:border-primary" /></div><div className="mt-3 flex flex-wrap gap-2">{copy.searches.map((item) => <button key={item} type="button" onClick={() => setQuery(item)} className="rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:border-primary hover:text-primary">{item}</button>)}</div></div></section>
-    <section className="rounded-xl border border-border bg-surface p-4"><p className="text-sm font-semibold text-foreground">Tu alcance</p><p className="mt-1 text-sm text-muted-foreground">{copy.scope}</p><p className="mt-3 flex gap-2 rounded-lg bg-surface-muted/60 p-3 text-xs leading-5 text-muted-foreground"><CheckCircle2 size={16} className="mt-0.5 shrink-0 text-success" />Cada guía incluye ruta de menú, una referencia visual, pantalla real cargable y validaciones de término. Así sabes dónde entrar, qué hacer y cuándo está bien hecho.</p></section>
+    <section className="rounded-xl border border-border bg-surface p-4 shadow-sm"><div className="flex items-start gap-3"><span className="icon-chip size-8 rounded-lg" data-tone="blue" aria-hidden="true"><ShieldCheck size={16} /></span><div><p className="text-sm font-semibold text-foreground">Tu alcance</p><p className="mt-1 text-sm text-muted-foreground">{copy.scope}</p></div></div><p className="mt-3 flex gap-2 rounded-lg bg-surface-muted/60 p-3 text-xs leading-5 text-muted-foreground"><CheckCircle2 size={16} className="mt-0.5 shrink-0 text-success" />Cada guía incluye ruta de menú, una referencia visual, pantalla real cargable y validaciones de término. Así sabes dónde entrar, qué hacer y cuándo está bien hecho.</p></section>
     {selectedGuide && <GuideDetail guide={selectedGuide} onClose={() => setSelectedId(null)} />}
     <MetricGlossary />
 
-    <section><div className="mb-4"><h2 className="text-lg font-semibold text-foreground">Guías disponibles</h2><p className="mt-1 text-sm text-muted-foreground">{normalizedQuery ? `${guides.length} resultado${guides.length === 1 ? "" : "s"} para tu búsqueda.` : `${guides.length} procedimientos habilitados para tu rol.`}</p></div>{guides.length > 0 ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{guides.map((guide) => { const Icon = guide.icon; return <article key={guide.id} className="flex flex-col rounded-xl border border-border bg-surface p-5 shadow-sm"><div className="flex gap-3"><div className="icon-chip size-10 rounded-xl" data-tone="primary"><Icon size={20} /></div><div><h3 className="text-base font-semibold text-foreground">{guide.title}</h3><p className="mt-1 text-sm leading-5 text-muted-foreground">{guide.description}</p></div></div><div className="mt-4 flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">{guide.route.map((item) => <span key={item} className="rounded border border-border bg-background px-2 py-1">{item}</span>)}</div><div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-4"><span className="text-xs text-muted-foreground">{guide.steps.length} pasos con validación</span><button type="button" onClick={() => { setSelectedId(guide.id); setQuery(""); }} className="inline-flex items-center gap-1 text-sm font-semibold text-primary hover:text-primary-hover">Ver capacitación <ArrowRight size={16} /></button></div></article>; })}</div> : <div className="rounded-xl border border-dashed border-border bg-surface p-8 text-center"><CircleHelp size={24} className="mx-auto text-muted-foreground" /><p className="mt-3 text-sm font-medium text-foreground">No encontramos una guía para “{query.trim()}”.</p><p className="mt-1 text-sm text-muted-foreground">Prueba con campaña, lead, agenda, flujo, carga, usuario o discador.</p></div>}</section>
+    <section><div className="mb-4"><h2 className="text-lg font-semibold text-foreground">Guías disponibles</h2><p className="mt-1 text-sm text-muted-foreground">{normalizedQuery ? `${guides.length} resultado${guides.length === 1 ? "" : "s"} para tu búsqueda.` : `${guides.length} procedimientos habilitados para tu rol.`}</p></div>{guides.length > 0 ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{guides.map((guide) => { const Icon = guide.icon; return <article key={guide.id} className="flex flex-col rounded-xl border border-border bg-surface p-5 shadow-sm transition-[border-color,box-shadow,transform] hover:-translate-y-0.5 hover:border-border-strong hover:shadow-md"><div className="flex gap-3"><div className="icon-chip size-10 rounded-xl" data-tone={guideTone(guide)} aria-hidden="true"><Icon size={20} /></div><div><h3 className="text-base font-semibold text-foreground">{guide.title}</h3><p className="mt-1 text-sm leading-5 text-muted-foreground">{guide.description}</p></div></div><div className="mt-4 flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">{guide.route.map((item) => <span key={item} className="rounded border border-border bg-background px-2 py-1">{item}</span>)}</div><div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-4"><span className="text-xs text-muted-foreground">{guide.steps.length} pasos con validación</span><button type="button" onClick={() => { setSelectedId(guide.id); setQuery(""); }} className="inline-flex items-center gap-1 text-sm font-semibold text-primary hover:text-primary-hover">Ver capacitación <ArrowRight size={16} /></button></div></article>; })}</div> : <EmptyState icon={CircleHelp} title={`No encontramos una guía para “${query.trim()}”.`} description="Prueba con campaña, lead, agenda, flujo, carga, usuario o discador." className="rounded-xl border border-dashed border-border bg-surface p-8" />}</section>
   </div>;
 }

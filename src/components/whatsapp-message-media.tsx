@@ -18,7 +18,7 @@ export function WhatsAppMessageMedia({
         href={mediaUrl}
         target="_blank"
         rel="noreferrer"
-        className="mb-2 block overflow-hidden rounded-lg bg-black/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="mb-2 block overflow-hidden rounded-lg border border-border bg-surface-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         aria-label="Abrir imagen en tamaño completo"
       >
         {/* La ruta es autenticada y redirige a una URL privada de corta vida. */}

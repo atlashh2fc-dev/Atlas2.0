@@ -1,9 +1,39 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
-import { Bar, BarChart, Cell, Label, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, Label, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import ReactGridLayout, { useContainerWidth, verticalCompactor, type Layout, type LayoutItem } from "react-grid-layout";
-import { LogOut, Plus, RotateCcw, X } from "lucide-react";
+import {
+  Activity,
+  BadgeCheck,
+  ChartPie,
+  CircleCheck,
+  ClipboardList,
+  ClipboardPen,
+  Clock,
+  Coffee,
+  Funnel,
+  Gauge,
+  Layers,
+  LogOut,
+  Megaphone,
+  PhoneCall,
+  PhoneIncoming,
+  PhoneMissed,
+  PhoneOff,
+  Plus,
+  Repeat,
+  RotateCcw,
+  ServerCrash,
+  Target,
+  Timer,
+  TriangleAlert,
+  Trophy,
+  UserCheck,
+  Users,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import { forceAgentLogout, getAgentLiveStatus, getLiveWallboard, getQueueHealth, getStatusReasonCaps, type ConectadosSinAlo, type EmbudoCopc, type LiveWallboard } from "@/app/actions/supervision";
 import type { AgentLiveStatus, QueueHealth } from "@/lib/types";
 import { LEGAL_INTERCALL_BREAK_SECONDS } from "@/lib/intercall-break";
@@ -13,8 +43,21 @@ import type { MetricId } from "@/lib/metric-definitions";
 import { SavedViewsBar } from "@/components/saved-views-bar";
 import { cn } from "@/lib/utils";
 import {
+  CHART_AXIS_TICK,
+  CHART_COLOR,
+  CHART_CURSOR,
+  CHART_GRID,
+  CHART_TOOLTIP_LABEL_STYLE,
+  CHART_TOOLTIP_STYLE,
+  chartGradients,
+  gradientUrl,
+  useChartId,
+} from "@/components/chart-theme";
+import {
   Button,
+  Callout,
   Card,
+  EmptyState,
   DataTable,
   Field,
   Input,
@@ -26,6 +69,7 @@ import {
   useToast,
   type BadgeTone,
   type Column,
+  type IconTone,
 } from "@/components/ui";
 
 const POLL_MS = 2000;
@@ -194,6 +238,80 @@ const WIDGET_KICKER: Record<WidgetId, string> = {
   agents: "SEGUIMIENTO EN VIVO",
 };
 
+/**
+ * Chip de cada tarjeta, con la convención de color del menú: voz en el color
+ * de marca, equipo en azul, tiempos en ámbar, ventas en verde, análisis en
+ * violeta, campañas y pausas en rosa, telefonía técnica en gris.
+ */
+const WIDGET_ICON: Record<WidgetId, { icon: LucideIcon; tone: IconTone }> = {
+  occupancy: { icon: Gauge, tone: "blue" },
+  connected: { icon: Users, tone: "blue" },
+  available: { icon: UserCheck, tone: "green" },
+  "on-call": { icon: PhoneCall, tone: "primary" },
+  "wrap-up": { icon: ClipboardPen, tone: "amber" },
+  paused: { icon: Coffee, tone: "rose" },
+  alerts: { icon: TriangleAlert, tone: "rose" },
+  campaigns: { icon: Megaphone, tone: "rose" },
+  answered: { icon: PhoneIncoming, tone: "primary" },
+  completed: { icon: CircleCheck, tone: "green" },
+  "abandon-rate": { icon: PhoneOff, tone: "rose" },
+  "no-answer-rate": { icon: PhoneMissed, tone: "amber" },
+  "contact-rate": { icon: Target, tone: "teal" },
+  "effective-contacts": { icon: BadgeCheck, tone: "teal" },
+  "attempts-per-contact": { icon: Repeat, tone: "slate" },
+  "sales-today": { icon: Trophy, tone: "green" },
+  funnel: { icon: Funnel, tone: "violet" },
+  tmo: { icon: Timer, tone: "amber" },
+  tmc: { icon: Clock, tone: "amber" },
+  production: { icon: ClipboardList, tone: "violet" },
+  "technical-failures": { icon: ServerCrash, tone: "slate" },
+  hourly: { icon: Activity, tone: "teal" },
+  "pause-reasons": { icon: Coffee, tone: "rose" },
+  "status-chart": { icon: ChartPie, tone: "blue" },
+  "campaign-chart": { icon: Megaphone, tone: "rose" },
+  queues: { icon: Layers, tone: "rose" },
+  agents: { icon: Users, tone: "blue" },
+};
+
+const TONE_VAR: Record<IconTone, string> = {
+  primary: "var(--primary)",
+  blue: "var(--tone-blue)",
+  teal: "var(--tone-teal)",
+  green: "var(--tone-green)",
+  amber: "var(--tone-amber)",
+  violet: "var(--tone-violet)",
+  rose: "var(--tone-rose)",
+  slate: "var(--tone-slate)",
+};
+
+/** Con estado de alerta el chip toma el color del estado, como MetricCard. */
+const ALERT_CHIP: Partial<Record<"default" | "warn" | "danger" | "good", IconTone>> = { warn: "amber", danger: "rose" };
+
+function WidgetChip({ id, tone }: { id: WidgetId; tone?: IconTone }) {
+  const { icon: Icon, tone: own } = WIDGET_ICON[id];
+  return (
+    <span className="icon-chip size-7 rounded-lg" data-tone={tone ?? own} aria-hidden="true">
+      <Icon size={14} />
+    </span>
+  );
+}
+
+/** Cabecera de las tarjetas grandes: chip, antetítulo en el tono y título. */
+function WidgetHeader({ id, title, description }: { id: WidgetId; title: string; description: ReactNode }) {
+  return (
+    <div>
+      <div className="flex items-center gap-2.5">
+        <WidgetChip id={id} />
+        <p className="text-[10px] font-semibold tracking-[0.18em]" style={{ color: TONE_VAR[WIDGET_ICON[id].tone] }}>
+          {WIDGET_KICKER[id]}
+        </p>
+      </div>
+      <p className="mt-2 text-lg font-semibold tracking-tight text-foreground">{title}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+    </div>
+  );
+}
+
 function elapsedSeconds(sinceIso: string | null, now: number): number | null {
   if (!sinceIso) return null;
   const since = new Date(sinceIso).getTime();
@@ -272,14 +390,18 @@ function formatInt(value: number): string {
   return value.toLocaleString("es-CL");
 }
 
-function MetricWidget({ label, value, hint, tone = "default", metric, children, kicker }: { label: string; value: string | number; hint?: ReactNode; tone?: "default" | "warn" | "danger" | "good"; metric?: MetricId; children?: ReactNode; kicker: string }) {
+function MetricWidget({ id, label, value, hint, tone = "default", metric, children }: { id: WidgetId; label: string; value: string | number; hint?: ReactNode; tone?: "default" | "warn" | "danger" | "good"; metric?: MetricId; children?: ReactNode }) {
   const color = tone === "danger" ? "text-danger" : tone === "warn" ? "text-warning" : tone === "good" ? "text-success" : "text-foreground";
+  const chipTone = ALERT_CHIP[tone] ?? WIDGET_ICON[id].tone;
   return (
     <div className="relative flex h-full min-h-32 flex-col justify-between overflow-hidden">
-      <div className="absolute right-0 top-0 size-14 rounded-full border border-border/70" />
-      <div className="absolute right-3 top-3 size-8 rounded-full border border-border/60" />
       <div>
-        <p className="mb-3 text-[9px] font-semibold tracking-[0.2em] text-primary">{kicker}</p>
+        <div className="mb-3 flex items-center gap-2.5">
+          <WidgetChip id={id} tone={chipTone} />
+          <p className="min-w-0 truncate text-[9px] font-semibold tracking-[0.2em]" style={{ color: TONE_VAR[chipTone] }}>
+            {WIDGET_KICKER[id]}
+          </p>
+        </div>
         <p className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
           {metric ? <MetricLabel id={metric} /> : label}
         </p>
@@ -317,36 +439,42 @@ function QueueHealthCard({ queue, funnel }: { queue: QueueHealth; funnel?: Embud
   const abandonRate = handled > 0 ? Math.round((queue.abandoned_today / handled) * 100) : 0;
   const overThreshold = abandonRate > THRESHOLDS.abandonRate;
   return (
-    <div className="rounded-xl border border-border bg-surface-muted/40 p-4 transition-colors hover:bg-surface-muted/70">
+    <div className="rounded-xl border border-border bg-surface-muted/40 p-4 shadow-sm transition-colors hover:border-border-strong">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <div>
           <p className="text-sm font-semibold text-foreground">{queue.campaign_name}</p>
           <p className="mt-0.5 text-[11px] uppercase tracking-[0.12em] text-muted-foreground">Cola · {queue.queue_name}</p>
         </div>
         <div className="flex flex-wrap gap-1.5">
-          <span className="rounded-full border border-primary/25 bg-surface px-2 py-1 text-[11px] font-semibold text-primary">Contactabilidad {formatPercent(funnel?.contactabilidad)}</span>
+          <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-1 text-[11px] font-semibold text-primary">Contactabilidad {formatPercent(funnel?.contactabilidad)}</span>
           <span className={cn("rounded-full border px-2 py-1 text-[11px] font-semibold", overThreshold ? "border-danger/30 bg-danger-bg text-danger" : "border-border bg-surface text-muted-foreground")}>Abandono {abandonRate}%</span>
         </div>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
-        <QueueNumber label="Recorridos" value={funnel?.recorridos ?? 0} />
-        <QueueNumber label="Conectados" value={funnel?.conectados ?? 0} />
-        <QueueNumber label="Aló" value={funnel?.contactados ?? 0} />
-        <QueueNumber label="Titular" value={funnel?.titulares ?? 0} />
-        <QueueNumber label="Ventas" value={funnel?.ventas ?? 0} />
+        <QueueNumber label="Recorridos" value={funnel?.recorridos ?? 0} edge="var(--tone-teal)" />
+        <QueueNumber label="Conectados" value={funnel?.conectados ?? 0} edge="var(--tone-slate)" />
+        <QueueNumber label="Aló" value={funnel?.contactados ?? 0} edge="var(--primary)" />
+        <QueueNumber label="Titular" value={funnel?.titulares ?? 0} edge="var(--tone-violet)" />
+        <QueueNumber label="Ventas" value={funnel?.ventas ?? 0} edge="var(--success)" />
       </div>
       <div className="mt-3 grid grid-cols-2 gap-3 border-t border-border/70 pt-3 sm:grid-cols-4">
         <QueueNumber label="En curso" value={queue.in_flight} />
         <QueueNumber label="Llamadas conectadas" value={queue.answered_today} />
         <QueueNumber label="Completadas" value={queue.completed_today} />
-        <QueueNumber label="No responde" value={queue.no_answer_today} />
+        <QueueNumber label="No responde" value={queue.no_answer_today} edge={queue.no_answer_today > 0 ? "var(--warning)" : undefined} />
       </div>
     </div>
   );
 }
 
-function QueueNumber({ label, value }: { label: string; value: number }) {
-  return <div><p className="text-xl font-semibold tabular-nums tracking-tight text-foreground">{formatInt(value)}</p><p className="mt-0.5 text-[10px] uppercase tracking-[0.1em] text-muted-foreground">{label}</p></div>;
+/** Cifra en baldosa: el borde izquierdo lleva el color de la etapa. */
+function QueueNumber({ label, value, edge }: { label: string; value: number; edge?: string }) {
+  return (
+    <div className="rounded-lg border border-border border-l-2 bg-background px-3 py-2" style={{ borderLeftColor: edge ?? "var(--border-strong)" }}>
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className="mt-0.5 text-xl font-semibold tabular-nums tracking-tight text-foreground">{formatInt(value)}</p>
+    </div>
+  );
 }
 
 export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boolean }) {
@@ -380,6 +508,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
     [hiddenSet]
   );
   const { width, containerRef } = useContainerWidth();
+  const hourlyChartId = useChartId("curva-hora");
 
   const setLayout = useCallback(
     (nextLayout: WidgetLayout[]) => {
@@ -576,48 +705,46 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
   const hourlyData = (wallboard?.por_hora ?? []).map((row) => ({ name: `${String(row.hora).padStart(2, "0")}h`, Recorridos: row.recorridos ?? 0, Conectados: row.conectados ?? 0, "Aló": row.contactados ?? 0, Titular: row.titulares ?? 0, Contactabilidad: row.recorridos ? `${Math.round(((row.contactados ?? 0) / row.recorridos) * 1000) / 10}%` : "—" }));
   const pauseTotal = (wallboard?.pausa_equipo ?? []).reduce((sum, item) => sum + item.segundos, 0);
   const widgets: Record<WidgetId, ReactNode> = {
-    occupancy: <MetricWidget kicker={WIDGET_KICKER.occupancy} label="Ocupación del equipo" metric="ocupacion" value={`${occupancy}%`} hint={`${connected} conectados · objetivo operativo 85%`} tone={occupancy >= 85 ? "warn" : "default"} />,
-    connected: <MetricWidget kicker={WIDGET_KICKER.connected} label="Equipo conectado" value={connected} hint={`de ${agents.length} ejecutivos`} />,
-    available: <MetricWidget kicker={WIDGET_KICKER.available} label="Disponibles" value={groups.available} hint={connected ? `${Math.round((groups.available / connected) * 100)}% del equipo conectado` : "Sin equipo conectado"} tone={groups.available === 0 && connected > 0 ? "warn" : "good"} />,
-    "on-call": <MetricWidget kicker={WIDGET_KICKER["on-call"]} label="En llamada" value={groups.on_call} hint={`${groups.on_call + groups.wrap_up} trabajando llamadas`} />,
-    "wrap-up": <MetricWidget kicker={WIDGET_KICKER["wrap-up"]} label="En cierre" value={groups.wrap_up} hint="Incluye interrupción legal y ACW" tone={groups.wrap_up > 0 ? "warn" : "default"} />,
-    paused: <MetricWidget kicker={WIDGET_KICKER.paused} label="En pausa" value={groups.paused} hint={exceededPauses ? `${exceededPauses} ${exceededPauses === 1 ? "excedió" : "excedieron"} el tope de su pausa` : "Fuera de la cola por AUX"} tone={exceededPauses ? "danger" : groups.paused > 0 ? "warn" : "default"} />,
-    alerts: <MetricWidget kicker={WIDGET_KICKER.alerts} label="Alertas operativas" value={alerts} hint={alerts ? "Pausa o cierre fuera de umbral" : "Todo dentro de los umbrales"} tone={alerts ? "danger" : "good"} />,
-    campaigns: <MetricWidget kicker={WIDGET_KICKER.campaigns} label="Campañas activas" value={queues.length} hint={`${totals.inFlight} llamadas en curso`} />,
-    answered: <MetricWidget kicker={WIDGET_KICKER.answered} label="Conectados hoy" metric="conectados" value={funnel ? formatInt(funnel.conectados) : "—"} hint={funnel ? (funnel.conectados ? `${formatPercent(funnel.tasa_conexion)} de ${formatInt(funnel.recorridos)} recorridos únicos · ${formatInt(funnel.contactados)} con aló (${formatPercent(funnel.alo_de_conectados)})` : "Nadie ha contestado todavía") : "Calculando…"} />,
-    completed: <MetricWidget kicker={WIDGET_KICKER.completed} label="Completadas hoy" value={formatInt(totals.completed)} hint={totals.answered ? `${Math.round((totals.completed / totals.answered) * 100)}% de las llamadas conectadas` : "Sin llamadas conectadas"} />,
-    "abandon-rate": <MetricWidget kicker={WIDGET_KICKER["abandon-rate"]} label="Abandono hoy" metric="abandono" value={`${abandonRate}%`} hint={`${formatInt(totals.abandoned)} abandonadas · umbral ${THRESHOLDS.abandonRate}%`} tone={abandonRate > THRESHOLDS.abandonRate ? "danger" : "good"} />,
-    "no-answer-rate": <MetricWidget kicker={WIDGET_KICKER["no-answer-rate"]} label="Sin respuesta hoy" value={`${noAnswerRate}%`} hint={`${formatInt(totals.noAnswer)} intentos sin respuesta`} tone={noAnswerRate >= 70 ? "warn" : "default"} />,
-    "contact-rate": <MetricWidget kicker={WIDGET_KICKER["contact-rate"]} label="Contactabilidad hoy" metric="contactabilidad" value={formatPercent(funnel?.contactabilidad)} hint={funnel ? (funnel.recorridos ? `${formatInt(funnel.contactados)} aló de ${formatInt(funnel.recorridos)} registros recorridos` : "Sin registros recorridos todavía") : "Calculando…"} />,
-    "effective-contacts": <MetricWidget kicker={WIDGET_KICKER["effective-contacts"]} label="Contacto titular" metric="contacto_titular" value={formatPercent(funnel?.contactabilidad_titular)} hint={funnel ? (funnel.contactados ? `${formatInt(funnel.titulares)} titulares · ${formatPercent(funnel.titularidad)} de los aló` : "Sin aló todavía") : "Calculando…"} />,
-    "attempts-per-contact": <MetricWidget kicker={WIDGET_KICKER["attempts-per-contact"]} label="Intentos por contacto" metric="intentos_por_contacto" value={formatRatio(funnel?.intentos_por_contacto)} hint={funnel ? (funnel.contactados ? `${formatInt(funnel.intentos)} marcaciones · intensidad ${formatRatio(funnel.intensidad)} por registro` : "Aún sin aló") : "Calculando…"} tone={funnel?.intentos_por_contacto != null && funnel.intentos_por_contacto > 15 ? "warn" : "default"} />,
-    "sales-today": <MetricWidget kicker={WIDGET_KICKER["sales-today"]} label="Ventas hoy" value={funnel ? formatInt(funnel.ventas) : "—"} hint={funnel ? (funnel.titulares ? `Conversión ${formatPercent(funnel.conversion)} de los contactos titulares` : "Sin contactos titulares todavía") : "Calculando…"} tone={funnel && funnel.ventas > 0 ? "good" : "default"} />,
+    occupancy: <MetricWidget id="occupancy" label="Ocupación del equipo" metric="ocupacion" value={`${occupancy}%`} hint={`${connected} conectados · objetivo operativo 85%`} tone={occupancy >= 85 ? "warn" : "default"} />,
+    connected: <MetricWidget id="connected" label="Equipo conectado" value={connected} hint={`de ${agents.length} ejecutivos`} />,
+    available: <MetricWidget id="available" label="Disponibles" value={groups.available} hint={connected ? `${Math.round((groups.available / connected) * 100)}% del equipo conectado` : "Sin equipo conectado"} tone={groups.available === 0 && connected > 0 ? "warn" : "good"} />,
+    "on-call": <MetricWidget id="on-call" label="En llamada" value={groups.on_call} hint={`${groups.on_call + groups.wrap_up} trabajando llamadas`} />,
+    "wrap-up": <MetricWidget id="wrap-up" label="En cierre" value={groups.wrap_up} hint="Incluye interrupción legal y ACW" tone={groups.wrap_up > 0 ? "warn" : "default"} />,
+    paused: <MetricWidget id="paused" label="En pausa" value={groups.paused} hint={exceededPauses ? `${exceededPauses} ${exceededPauses === 1 ? "excedió" : "excedieron"} el tope de su pausa` : "Fuera de la cola por AUX"} tone={exceededPauses ? "danger" : groups.paused > 0 ? "warn" : "default"} />,
+    alerts: <MetricWidget id="alerts" label="Alertas operativas" value={alerts} hint={alerts ? "Pausa o cierre fuera de umbral" : "Todo dentro de los umbrales"} tone={alerts ? "danger" : "good"} />,
+    campaigns: <MetricWidget id="campaigns" label="Campañas activas" value={queues.length} hint={`${totals.inFlight} llamadas en curso`} />,
+    answered: <MetricWidget id="answered" label="Conectados hoy" metric="conectados" value={funnel ? formatInt(funnel.conectados) : "—"} hint={funnel ? (funnel.conectados ? `${formatPercent(funnel.tasa_conexion)} de ${formatInt(funnel.recorridos)} recorridos únicos · ${formatInt(funnel.contactados)} con aló (${formatPercent(funnel.alo_de_conectados)})` : "Nadie ha contestado todavía") : "Calculando…"} />,
+    completed: <MetricWidget id="completed" label="Completadas hoy" value={formatInt(totals.completed)} hint={totals.answered ? `${Math.round((totals.completed / totals.answered) * 100)}% de las llamadas conectadas` : "Sin llamadas conectadas"} />,
+    "abandon-rate": <MetricWidget id="abandon-rate" label="Abandono hoy" metric="abandono" value={`${abandonRate}%`} hint={`${formatInt(totals.abandoned)} abandonadas · umbral ${THRESHOLDS.abandonRate}%`} tone={abandonRate > THRESHOLDS.abandonRate ? "danger" : "good"} />,
+    "no-answer-rate": <MetricWidget id="no-answer-rate" label="Sin respuesta hoy" value={`${noAnswerRate}%`} hint={`${formatInt(totals.noAnswer)} intentos sin respuesta`} tone={noAnswerRate >= 70 ? "warn" : "default"} />,
+    "contact-rate": <MetricWidget id="contact-rate" label="Contactabilidad hoy" metric="contactabilidad" value={formatPercent(funnel?.contactabilidad)} hint={funnel ? (funnel.recorridos ? `${formatInt(funnel.contactados)} aló de ${formatInt(funnel.recorridos)} registros recorridos` : "Sin registros recorridos todavía") : "Calculando…"} />,
+    "effective-contacts": <MetricWidget id="effective-contacts" label="Contacto titular" metric="contacto_titular" value={formatPercent(funnel?.contactabilidad_titular)} hint={funnel ? (funnel.contactados ? `${formatInt(funnel.titulares)} titulares · ${formatPercent(funnel.titularidad)} de los aló` : "Sin aló todavía") : "Calculando…"} />,
+    "attempts-per-contact": <MetricWidget id="attempts-per-contact" label="Intentos por contacto" metric="intentos_por_contacto" value={formatRatio(funnel?.intentos_por_contacto)} hint={funnel ? (funnel.contactados ? `${formatInt(funnel.intentos)} marcaciones · intensidad ${formatRatio(funnel.intensidad)} por registro` : "Aún sin aló") : "Calculando…"} tone={funnel?.intentos_por_contacto != null && funnel.intentos_por_contacto > 15 ? "warn" : "default"} />,
+    "sales-today": <MetricWidget id="sales-today" label="Ventas hoy" value={funnel ? formatInt(funnel.ventas) : "—"} hint={funnel ? (funnel.titulares ? `Conversión ${formatPercent(funnel.conversion)} de los contactos titulares` : "Sin contactos titulares todavía") : "Calculando…"} tone={funnel && funnel.ventas > 0 ? "good" : "default"} />,
     funnel: (
       <div className="flex h-[19.5rem] flex-col">
-        <p className="text-[10px] font-semibold tracking-[0.18em] text-primary">{WIDGET_KICKER.funnel}</p>
-        <p className="mt-2 text-lg font-semibold tracking-tight text-foreground">Embudo del día</p>
-        <p className="mt-1 text-xs text-muted-foreground">Toques únicos a la base: cada registro cuenta una vez al día aunque se marque varias veces. Hora Chile. Cada tasa sobre el recorrido; entre paréntesis, sobre la etapa anterior.</p>
+        <WidgetHeader id="funnel" title="Embudo del día" description="Toques únicos a la base: cada registro cuenta una vez al día aunque se marque varias veces. Hora Chile. Cada tasa sobre el recorrido; entre paréntesis, sobre la etapa anterior." />
         {funnel && funnel.recorridos > 0 ? (
           <div className="mt-3 flex-1 space-y-2">
             {([
-              { label: "Recorridos únicos", value: funnel.recorridos, color: "var(--accent)", step: null, stepLabel: `${formatInt(funnel.intentos)} marcaciones · ${formatRatio(funnel.intensidad)} por registro` },
-              { label: "Conectados", value: funnel.conectados, color: "var(--muted-foreground)", step: null, stepLabel: `${formatPercent(funnel.tasa_conexion)} conexión` },
-              { label: "Aló", value: funnel.contactados, color: "var(--primary)", step: funnel.alo_de_conectados, stepLabel: "de los conectados" },
-              { label: "Titular", value: funnel.titulares, color: "var(--success)", step: funnel.titularidad, stepLabel: "de los aló" },
-              { label: "Ventas", value: funnel.ventas, color: "var(--warning)", step: funnel.conversion, stepLabel: "conversión" },
+              { label: "Recorridos únicos", value: funnel.recorridos, color: CHART_COLOR.teal, step: null, stepLabel: `${formatInt(funnel.intentos)} marcaciones · ${formatRatio(funnel.intensidad)} por registro` },
+              { label: "Conectados", value: funnel.conectados, color: CHART_COLOR.slate, step: null, stepLabel: `${formatPercent(funnel.tasa_conexion)} conexión` },
+              { label: "Aló", value: funnel.contactados, color: CHART_COLOR.primary, step: funnel.alo_de_conectados, stepLabel: "de los conectados" },
+              { label: "Titular", value: funnel.titulares, color: CHART_COLOR.violet, step: funnel.titularidad, stepLabel: "de los aló" },
+              { label: "Ventas", value: funnel.ventas, color: CHART_COLOR.green, step: funnel.conversion, stepLabel: "conversión" },
             ]).map((stage) => {
               const share = Math.round((stage.value / funnel.recorridos) * 1000) / 10;
               return (
                 <div key={stage.label}>
                   <div className="flex items-baseline justify-between gap-2 text-xs">
-                    <span className="font-medium text-foreground">{stage.label}</span>
+                    <span className="inline-flex items-center gap-1.5 font-medium text-foreground"><i className="size-2 rounded-full" style={{ backgroundColor: stage.color }} />{stage.label}</span>
                     <span className="tabular-nums text-muted-foreground">
                       <span className="font-mono font-semibold text-foreground">{formatInt(stage.value)}</span>
                       {stage.step === null ? ` · ${stage.stepLabel}` : ` · ${formatPercent(share)} (${formatPercent(stage.step)} ${stage.stepLabel})`}
                     </span>
                   </div>
                   <div className="mt-1 h-2 overflow-hidden rounded-full bg-surface-muted">
-                    <div className="h-full rounded-full" style={{ width: `${Math.max(share, stage.value > 0 ? 1 : 0)}%`, backgroundColor: stage.color }} />
+                    <div className="h-full rounded-full" style={{ width: `${Math.max(share, stage.value > 0 ? 1 : 0)}%`, background: `linear-gradient(90deg, color-mix(in srgb, ${stage.color} 55%, transparent), ${stage.color})` }} />
                   </div>
                 </div>
               );
@@ -626,40 +753,38 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
               Conectados sin aló: {conectadosSinAlo(funnel.conectados_sin_alo)}
             </p>
           </div>
-        ) : <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">{funnel ? "Sin registros recorridos todavía." : "Calculando…"}</div>}
+        ) : <EmptyState icon={Funnel} title={funnel ? "Sin registros recorridos todavía." : "Calculando…"} className="flex-1 py-0" />}
       </div>
     ),
-    tmo: <MetricWidget kicker={WIDGET_KICKER.tmo} label="TMO del día" value={formatElapsed(today?.tmo_segundos ?? null)} hint={today ? `Gestión completa, de abrir a tipificar · con contacto ${formatElapsed(today.tmo_contacto_segundos)}` : "Calculando…"} />,
-    tmc: <MetricWidget kicker={WIDGET_KICKER.tmc} label="Tiempo de conversación" value={formatElapsed(today?.tmc_segundos ?? null)} hint={today ? `Promedio por llamada conectada · ${formatInt(today.discador_conectadas)} conectadas hoy` : "Calculando…"} />,
-    production: <MetricWidget kicker={WIDGET_KICKER.production} label="Producción del día" value={today ? formatInt(today.gestiones) : "—"} hint={today ? `Gestiones cerradas del equipo · ${formatInt(today.contactos)} con aló · ${formatInt(today.ventas)} ventas · ${formatInt(today.cotizaciones)} cotizaciones · ${formatInt(today.agendas)} agendas` : "Calculando…"} tone={today && today.ventas > 0 ? "good" : "default"} />,
-    "technical-failures": <MetricWidget kicker={WIDGET_KICKER["technical-failures"]} label="Fallas de troncal" value={today?.fallas_tecnicas == null ? "—" : `${today.fallas_tecnicas}%`} hint={today ? `Intentos que no alcanzaron a sonar · ${formatInt(today.discador_intentos)} intentos hoy · abandono ${today.abandono ?? 0}%` : "Calculando…"} tone={today?.fallas_tecnicas != null && today.fallas_tecnicas >= 30 ? "danger" : today?.fallas_tecnicas != null && today.fallas_tecnicas >= 10 ? "warn" : "good"} />,
+    tmo: <MetricWidget id="tmo" label="TMO del día" value={formatElapsed(today?.tmo_segundos ?? null)} hint={today ? `Gestión completa, de abrir a tipificar · con contacto ${formatElapsed(today.tmo_contacto_segundos)}` : "Calculando…"} />,
+    tmc: <MetricWidget id="tmc" label="Tiempo de conversación" value={formatElapsed(today?.tmc_segundos ?? null)} hint={today ? `Promedio por llamada conectada · ${formatInt(today.discador_conectadas)} conectadas hoy` : "Calculando…"} />,
+    production: <MetricWidget id="production" label="Producción del día" value={today ? formatInt(today.gestiones) : "—"} hint={today ? `Gestiones cerradas del equipo · ${formatInt(today.contactos)} con aló · ${formatInt(today.ventas)} ventas · ${formatInt(today.cotizaciones)} cotizaciones · ${formatInt(today.agendas)} agendas` : "Calculando…"} tone={today && today.ventas > 0 ? "good" : "default"} />,
+    "technical-failures": <MetricWidget id="technical-failures" label="Fallas de troncal" value={today?.fallas_tecnicas == null ? "—" : `${today.fallas_tecnicas}%`} hint={today ? `Intentos que no alcanzaron a sonar · ${formatInt(today.discador_intentos)} intentos hoy · abandono ${today.abandono ?? 0}%` : "Calculando…"} tone={today?.fallas_tecnicas != null && today.fallas_tecnicas >= 30 ? "danger" : today?.fallas_tecnicas != null && today.fallas_tecnicas >= 10 ? "warn" : "good"} />,
     hourly: (
       <div className="h-[19.5rem]">
-        <p className="text-[10px] font-semibold tracking-[0.18em] text-primary">{WIDGET_KICKER.hourly}</p>
-        <p className="mt-2 text-lg font-semibold tracking-tight text-foreground">Curva por hora</p>
-        <p className="mt-1 text-xs text-muted-foreground">Registros recorridos, conectados, con aló y con titular en cada hora de hoy, hora Chile.</p>
+        <WidgetHeader id="hourly" title="Curva por hora" description="Registros recorridos, conectados, con aló y con titular en cada hora de hoy, hora Chile." />
         {hourlyData.length ? (
           <ResponsiveContainer width="100%" height="72%">
-            <BarChart data={hourlyData} margin={{ top: 16, left: -12, right: 8, bottom: 0 }} barCategoryGap="22%">
-              <XAxis dataKey="name" tick={{ fill: "var(--muted-foreground)", fontSize: 10 }} tickLine={false} axisLine={false} interval={0} />
-              <YAxis allowDecimals={false} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickLine={false} axisLine={false} />
-              <Tooltip cursor={{ fill: "var(--surface-muted)" }} contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, fontSize: 12 }} labelFormatter={(label, payload) => `${label} · contactabilidad ${payload?.[0]?.payload?.Contactabilidad ?? "—"}`} />
-              <Bar dataKey="Recorridos" fill="var(--accent)" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="Conectados" fill="var(--muted-foreground)" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="Aló" fill="var(--primary)" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="Titular" fill="var(--success)" radius={[4, 4, 0, 0]} />
+            <BarChart data={hourlyData} margin={{ top: 16, left: -12, right: 8, bottom: 0 }} barCategoryGap="22%" barGap={2}>
+              {chartGradients(hourlyChartId, ["teal", "slate", "primary", "violet"])}
+              <CartesianGrid {...CHART_GRID} vertical={false} />
+              <XAxis dataKey="name" tick={{ ...CHART_AXIS_TICK, fontSize: 10 }} tickLine={false} axisLine={false} interval={0} />
+              <YAxis allowDecimals={false} tick={CHART_AXIS_TICK} tickLine={false} axisLine={false} />
+              <Tooltip cursor={CHART_CURSOR} contentStyle={CHART_TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} labelFormatter={(label, payload) => `${label} · contactabilidad ${payload?.[0]?.payload?.Contactabilidad ?? "—"}`} />
+              <Bar dataKey="Recorridos" fill={gradientUrl(hourlyChartId, "teal")} radius={[5, 5, 0, 0]} maxBarSize={18} />
+              <Bar dataKey="Conectados" fill={gradientUrl(hourlyChartId, "slate")} radius={[5, 5, 0, 0]} maxBarSize={18} />
+              <Bar dataKey="Aló" fill={gradientUrl(hourlyChartId, "primary")} radius={[5, 5, 0, 0]} maxBarSize={18} />
+              <Bar dataKey="Titular" fill={gradientUrl(hourlyChartId, "violet")} radius={[5, 5, 0, 0]} maxBarSize={18} />
             </BarChart>
           </ResponsiveContainer>
-        ) : <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">Sin actividad todavía.</div>}
+        ) : <EmptyState icon={Activity} title="Sin actividad todavía." className="h-48 py-0" />}
       </div>
     ),
     "pause-reasons": (
       <div className="h-[19.5rem] overflow-y-auto">
-        <p className="text-[10px] font-semibold tracking-[0.18em] text-primary">{WIDGET_KICKER["pause-reasons"]}</p>
-        <p className="mt-2 text-lg font-semibold tracking-tight text-foreground">Pausa por motivo</p>
-        <p className="mt-1 text-xs text-muted-foreground">Tiempo acumulado hoy del equipo y quiénes están en pausa ahora.</p>
+        <WidgetHeader id="pause-reasons" title="Pausa por motivo" description="Tiempo acumulado hoy del equipo y quiénes están en pausa ahora." />
         <div className="mt-4 space-y-2.5">
-          {(wallboard?.pausa_equipo ?? []).length === 0 && <p className="text-sm text-muted-foreground">Sin pausas registradas hoy.</p>}
+          {(wallboard?.pausa_equipo ?? []).length === 0 && <EmptyState icon={Coffee} title="Sin pausas registradas hoy." className="py-6" />}
           {(wallboard?.pausa_equipo ?? []).map((item) => {
             const pausedNow = wallboard?.estado.pausa_por_motivo.find((row) => row.motivo === item.motivo)?.ejecutivos ?? 0;
             const share = pauseTotal > 0 ? Math.round((item.segundos / pauseTotal) * 100) : 0;
@@ -669,7 +794,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
                   <span className="font-medium text-foreground">{item.motivo}{pausedNow > 0 && <span className="ml-1.5 text-danger">· {pausedNow} ahora</span>}</span>
                   <span className="font-mono tabular-nums text-muted-foreground">{formatElapsed(item.segundos)}</span>
                 </div>
-                <div className="mt-1 h-2 overflow-hidden rounded-full bg-surface-muted"><div className="h-full rounded-full bg-danger/70" style={{ width: `${share}%` }} /></div>
+                <div className="mt-1 h-2 overflow-hidden rounded-full bg-surface-muted"><div className="h-full rounded-full bg-[linear-gradient(90deg,color-mix(in_srgb,var(--tone-rose)_50%,transparent),var(--tone-rose))]" style={{ width: `${share}%` }} /></div>
               </div>
             );
           })}
@@ -680,11 +805,9 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
       <div className="h-[19.5rem]">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-[10px] font-semibold tracking-[0.18em] text-primary">{WIDGET_KICKER["status-chart"]}</p>
-            <p className="mt-2 text-lg font-semibold tracking-tight text-foreground">Distribución del equipo</p>
-            <p className="mt-1 text-xs text-muted-foreground">Lectura de disponibilidad en este instante.</p>
+            <WidgetHeader id="status-chart" title="Distribución del equipo" description="Lectura de disponibilidad en este instante." />
           </div>
-          <div className="rounded-xl border border-border bg-surface-muted/60 px-3 py-2 text-right">
+          <div className="rounded-lg border border-border border-r-2 border-r-[color:var(--tone-blue)] bg-background px-3 py-2 text-right">
             <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">Conectados</p>
             <p className="mt-0.5 text-xl font-semibold tabular-nums tracking-tight text-foreground">{connected}<span className="text-sm text-muted-foreground">/{agents.length}</span></p>
           </div>
@@ -700,11 +823,11 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
           </div>
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
-              <Pie data={statusChartData} dataKey="value" nameKey="name" innerRadius="58%" outerRadius="82%" paddingAngle={4} stroke="var(--surface)" strokeWidth={4}>
+              <Pie data={statusChartData} dataKey="value" nameKey="name" innerRadius="60%" outerRadius="84%" paddingAngle={3} cornerRadius={5} stroke="none">
                 {statusChartData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
                 <Label value={`${occupancy}%`} position="center" className="fill-foreground text-2xl font-semibold" />
               </Pie>
-              <Tooltip contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, fontSize: 12, boxShadow: "0 14px 28px -18px rgba(24,49,55,.55)" }} formatter={(value) => [formatInt(Number(value)), "Ejecutivos"]} />
+              <Tooltip contentStyle={CHART_TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} formatter={(value) => [formatInt(Number(value)), "Ejecutivos"]} />
             </PieChart>
           </ResponsiveContainer>
         </div>
@@ -714,37 +837,36 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
       <div className="h-[19.5rem]">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-[10px] font-semibold tracking-[0.18em] text-primary">{WIDGET_KICKER["campaign-chart"]}</p>
-            <p className="mt-2 text-lg font-semibold tracking-tight text-foreground">Actividad por campaña</p>
-            <p className="mt-1 text-xs text-muted-foreground">Acumulado de jornada y carga que sigue activa.</p>
+            <WidgetHeader id="campaign-chart" title="Actividad por campaña" description="Acumulado de jornada y carga que sigue activa." />
           </div>
           <div className="flex flex-col gap-1 text-right text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
-            <span className="inline-flex items-center justify-end gap-1.5"><i className="size-2 rounded-sm bg-accent" />En curso</span>
-            <span className="inline-flex items-center justify-end gap-1.5"><i className="size-2 rounded-sm bg-primary" />Conectadas</span>
-            <span className="inline-flex items-center justify-end gap-1.5"><i className="size-2 rounded-sm bg-success" />Completadas</span>
+            <span className="inline-flex items-center justify-end gap-1.5"><i className="size-2 rounded-sm" style={{ backgroundColor: CHART_COLOR.teal }} />En curso</span>
+            <span className="inline-flex items-center justify-end gap-1.5"><i className="size-2 rounded-sm" style={{ backgroundColor: CHART_COLOR.primary }} />Conectadas</span>
+            <span className="inline-flex items-center justify-end gap-1.5"><i className="size-2 rounded-sm" style={{ backgroundColor: CHART_COLOR.green }} />Completadas</span>
           </div>
         </div>
         {campaignChartData.length ? (
           <ResponsiveContainer width="100%" height="76%">
             <BarChart data={campaignChartData} margin={{ top: 16, left: -12, right: 8, bottom: 0 }} barCategoryGap="28%">
-              <XAxis dataKey="name" tick={{ fill: "var(--muted-foreground)", fontSize: 10 }} tickLine={false} axisLine={false} interval={0} />
-              <YAxis allowDecimals={false} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickLine={false} axisLine={false} />
-              <Tooltip cursor={{ fill: "var(--surface-muted)" }} contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, fontSize: 12, boxShadow: "0 14px 28px -18px rgba(24,49,55,.55)" }} labelFormatter={(_, payload) => payload?.[0]?.payload?.fullName ?? ""} />
-              <Bar dataKey="En curso" stackId="a" fill="var(--accent)" radius={[0, 0, 4, 4]} />
-              <Bar dataKey="Conectadas" stackId="a" fill="var(--primary)" />
-              <Bar dataKey="Completadas" stackId="a" fill="var(--success)" radius={[4, 4, 0, 0]} />
+              <CartesianGrid {...CHART_GRID} vertical={false} />
+              <XAxis dataKey="name" tick={{ ...CHART_AXIS_TICK, fontSize: 10 }} tickLine={false} axisLine={false} interval={0} />
+              <YAxis allowDecimals={false} tick={CHART_AXIS_TICK} tickLine={false} axisLine={false} />
+              <Tooltip cursor={CHART_CURSOR} contentStyle={CHART_TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} labelFormatter={(_, payload) => payload?.[0]?.payload?.fullName ?? ""} />
+              <Bar dataKey="En curso" stackId="a" fill={CHART_COLOR.teal} radius={[0, 0, 4, 4]} maxBarSize={44} />
+              <Bar dataKey="Conectadas" stackId="a" fill={CHART_COLOR.primary} maxBarSize={44} />
+              <Bar dataKey="Completadas" stackId="a" fill={CHART_COLOR.green} radius={[6, 6, 0, 0]} maxBarSize={44} />
             </BarChart>
           </ResponsiveContainer>
-        ) : <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">No hay campañas activas.</div>}
+        ) : <EmptyState icon={Megaphone} title="No hay campañas activas." className="h-48 py-0" />}
       </div>
     ),
     queues: (
-      <SectionCard className="rounded-xl border-border" title={<span className="text-base tracking-tight">Salud de las colas</span>} description={`Actualizado automáticamente cada ${POLL_MS / 1000} segundos.`} actions={<span className="hidden items-center gap-1 text-[10px] font-semibold tracking-[0.14em] text-success sm:inline-flex"><span className="size-1.5 rounded-full bg-success" />LIVE</span>}>
-        <div className="space-y-3 p-4">{queues.length === 0 ? <p className="text-sm text-muted-foreground">No hay campañas activas para el motor de discado.</p> : queues.map((queue) => <QueueHealthCard key={queue.campaign_id} queue={queue} funnel={funnelByCampaign.get(queue.campaign_id)} />)}</div>
+      <SectionCard className="rounded-xl border-border" icon={Layers} tone="rose" title={<span className="text-base tracking-tight">Salud de las colas</span>} description={`Actualizado automáticamente cada ${POLL_MS / 1000} segundos.`} actions={<span className="hidden items-center gap-1 text-[10px] font-semibold tracking-[0.14em] text-success sm:inline-flex"><span className="size-1.5 rounded-full bg-success" />LIVE</span>}>
+        <div className="space-y-3 p-4">{queues.length === 0 ? <EmptyState icon={Megaphone} title="No hay campañas activas para el motor de discado." className="py-8" /> : queues.map((queue) => <QueueHealthCard key={queue.campaign_id} queue={queue} funnel={funnelByCampaign.get(queue.campaign_id)} />)}</div>
       </SectionCard>
     ),
     agents: (
-      <SectionCard className="rounded-xl border-border" title={<span className="text-base tracking-tight">Ejecutivos <span className="font-mono text-sm font-medium text-muted-foreground">({filteredAgents.length})</span></span>} description={alerts > 0 ? `${alerts} sobre el umbral${exceededPauses ? ` (${exceededPauses} ${exceededPauses === 1 ? "pausa excedida" : "pausas excedidas"})` : ""}: pausa sobre el tope de su motivo (${THRESHOLDS.pauseSeconds / 60} minutos si no tiene) o cierre de llamada sobre ${THRESHOLDS.wrapUpSeconds} segundos.` : `Se sincroniza cada ${POLL_MS / 1000} segundos.`}>
+      <SectionCard className="rounded-xl border-border" icon={Users} tone="blue" title={<span className="text-base tracking-tight">Ejecutivos <span className="font-mono text-sm font-medium text-muted-foreground">({filteredAgents.length})</span></span>} description={alerts > 0 ? `${alerts} sobre el umbral${exceededPauses ? ` (${exceededPauses} ${exceededPauses === 1 ? "pausa excedida" : "pausas excedidas"})` : ""}: pausa sobre el tope de su motivo (${THRESHOLDS.pauseSeconds / 60} minutos si no tiene) o cierre de llamada sobre ${THRESHOLDS.wrapUpSeconds} segundos.` : `Se sincroniza cada ${POLL_MS / 1000} segundos.`}>
         <div className="space-y-4 p-4">
           <div className="flex flex-wrap items-end gap-3 rounded-xl bg-surface-muted/45 p-3">
             <Field label="Estado" className="w-44"><Select value={group} onChange={(event) => setGroup(event.target.value as AgentGroup | "")}><option value="">Todos</option>{(Object.keys(GROUP_LABEL) as AgentGroup[]).map((key) => <option key={key} value={key}>{GROUP_LABEL[key]}</option>)}</Select></Field>
@@ -758,7 +880,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
   };
 
   if (loading) return <LoadingState label="Estamos conectando el monitor en vivo" className="rounded-xl border border-border bg-surface px-5 py-4" />;
-  if (error) return <p className="text-sm text-danger">Error: {error}</p>;
+  if (error) return <Callout tone="danger">Error: {error}</Callout>;
   // Se reconstruye desde el catálogo, no desde lo guardado: así una tarjeta
   // nueva del producto aparece sola y una preferencia vieja o corrupta no deja
   // el monitor en blanco. Lo oculto se respeta; lo que falte se repone.

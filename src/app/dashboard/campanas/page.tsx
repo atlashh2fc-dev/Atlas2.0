@@ -4,7 +4,7 @@ import { Bot, ChevronRight, Mail, Megaphone, MessageCircle, Phone, Users } from 
 import { requireProfile } from "@/lib/auth";
 import { campaignCapabilityKey } from "@/lib/campaign-capabilities";
 import { createClient } from "@/lib/supabase/server";
-import { Badge, PageHeader, SectionCard } from "@/components/ui";
+import { Badge, EmptyState, PageHeader, SectionCard, type SectionTone } from "@/components/ui";
 
 type CampaignRow = {
   id: string;
@@ -65,24 +65,24 @@ export default async function OperationalCampaignsPage() {
         description="Selecciona una campaña para trabajar con sus registros y canales habilitados."
       />
 
-      <SectionCard>
+      <SectionCard tone="rose">
         <div className="divide-y divide-border">
           {campaigns.length === 0 && (
-            <div className="px-5 py-12 text-center">
-              <Megaphone className="mx-auto text-muted-foreground/60" size={30} />
-              <p className="mt-3 font-medium text-foreground">No hay campañas operativas</p>
-              <p className="mt-1 text-sm text-muted-foreground">Revisa la asignación o el estado de las campañas.</p>
-            </div>
+            <EmptyState
+              icon={Megaphone}
+              title="No hay campañas operativas"
+              description="Revisa la asignación o el estado de las campañas."
+            />
           )}
 
           {campaigns.map((campaign) => {
             const channels = [
-              withAiVoice.has(campaign.id) ? { label: "Voz IA · ElevenLabs", icon: Bot } : null,
-              withPhone.has(campaign.id) ? { label: "Teléfono", icon: Phone } : null,
-              withMailSignals.has(campaign.id) ? { label: "Correo", icon: Mail } : null,
-              withMailbox.has(campaign.id) ? { label: "Bandeja de entrada", icon: Mail } : null,
-              withWhatsApp.has(campaign.id) ? { label: "WhatsApp Business", icon: MessageCircle } : null,
-            ].filter(Boolean) as Array<{ label: string; icon: typeof Phone }>;
+              withAiVoice.has(campaign.id) ? { label: "Voz IA · ElevenLabs", icon: Bot, tone: "violet" } : null,
+              withPhone.has(campaign.id) ? { label: "Teléfono", icon: Phone, tone: "primary" } : null,
+              withMailSignals.has(campaign.id) ? { label: "Correo", icon: Mail, tone: "teal" } : null,
+              withMailbox.has(campaign.id) ? { label: "Bandeja de entrada", icon: Mail, tone: "teal" } : null,
+              withWhatsApp.has(campaign.id) ? { label: "WhatsApp Business", icon: MessageCircle, tone: "green" } : null,
+            ].filter(Boolean) as Array<{ label: string; icon: typeof Phone; tone: SectionTone }>;
 
             return (
               <Link
@@ -90,7 +90,7 @@ export default async function OperationalCampaignsPage() {
                 href={`/dashboard/campanas/${campaign.id}`}
                 className="group flex items-center gap-4 px-5 py-4 transition-colors hover:bg-surface-muted/60"
               >
-                <span className="icon-chip h-10 w-10 rounded-lg" data-tone="primary">
+                <span className="icon-chip h-10 w-10 rounded-lg" data-tone="rose" aria-hidden="true">
                   <Megaphone size={19} />
                 </span>
                 <div className="min-w-0 flex-1">
@@ -99,9 +99,15 @@ export default async function OperationalCampaignsPage() {
                     {campaign.description ?? "Campaña operativa"}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-1.5">
-                    <Badge tone="neutral"><Users size={12} className="mr-1" /> Registros</Badge>
-                    {channels.map(({ label, icon: Icon }) => (
-                      <Badge key={label} tone="info"><Icon size={12} className="mr-1" /> {label}</Badge>
+                    <Badge tone="neutral" className="gap-1.5 pl-1">
+                      <span className="icon-chip size-4 rounded" data-tone="blue" aria-hidden="true"><Users size={10} /></span>
+                      Registros
+                    </Badge>
+                    {channels.map(({ label, icon: Icon, tone }) => (
+                      <Badge key={label} tone="neutral" className="gap-1.5 pl-1">
+                        <span className="icon-chip size-4 rounded" data-tone={tone} aria-hidden="true"><Icon size={10} /></span>
+                        {label}
+                      </Badge>
                     ))}
                   </div>
                 </div>

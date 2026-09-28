@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AlarmClock, CalendarClock, PhoneCall, PhoneOff, UserRoundCheck } from "lucide-react";
 
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -45,6 +46,7 @@ export default async function VoiceQueuePage() {
   if (voiceCampaigns.length === 0) {
     return (
       <EmptyState
+        icon={PhoneOff}
         title="Sin campañas de voz"
         description="Ninguna de tus campañas tiene el canal de voz habilitado."
       />
@@ -131,13 +133,32 @@ export default async function VoiceQueuePage() {
       )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard label="Vencidos" value={String(overdue.length)} />
-        <StatCard label="Agendados" value={String(rows.length - overdue.length)} />
-        <StatCard label="Sin trabajar" value={String(pending.length)} />
+        <StatCard
+          label="Vencidos"
+          value={String(overdue.length)}
+          icon={AlarmClock}
+          iconTone={overdue.length > 0 ? "rose" : "green"}
+          tone={overdue.length > 0 ? "danger" : "good"}
+        />
+        <StatCard
+          label="Agendados"
+          value={String(rows.length - overdue.length)}
+          icon={CalendarClock}
+          iconTone="amber"
+        />
+        <StatCard
+          label="Sin trabajar"
+          value={String(pending.length)}
+          icon={UserRoundCheck}
+          iconTone={pending.length > 0 ? "amber" : "green"}
+          tone={pending.length > 0 ? "warn" : "good"}
+        />
       </div>
 
       <SectionCard
         title="Compromisos telefónicos"
+        icon={PhoneCall}
+        tone="primary"
         description="Vencidos primero; dentro de cada grupo, el más urgente arriba."
       >
         <AgendaTable rows={ordered} />
@@ -145,6 +166,8 @@ export default async function VoiceQueuePage() {
 
       <SectionCard
         title="Asignados sin trabajar"
+        icon={UserRoundCheck}
+        tone="blue"
         description="Registros con teléfono que todavía no tienen gestión ni agenda."
         actions={
           <Link href="/dashboard/leads" className={buttonClasses({ variant: "secondary", size: "sm" })}>
@@ -154,6 +177,7 @@ export default async function VoiceQueuePage() {
       >
         {pending.length === 0 ? (
           <EmptyState
+            icon={UserRoundCheck}
             title="Nada pendiente"
             description="No hay registros asignados sin trabajar en tus campañas de voz."
           />

@@ -268,7 +268,7 @@ function Visita({
         action={registrarAtenciones}
         success={lineas.length === 1 ? "Atención registrada" : `${lineas.length} procedimientos registrados`}
         onSuccess={onGuardada}
-        className="relative flex h-full w-full max-w-6xl flex-col overflow-hidden bg-surface shadow-2xl sm:rounded-2xl sm:border sm:border-border"
+        className="relative flex h-full w-full max-w-6xl flex-col overflow-hidden bg-surface-solid shadow-2xl sm:rounded-2xl sm:border sm:border-border"
       >
         <input type="hidden" name="cuenta_id" value={cuentaId} />
         <input type="hidden" name="lineas" value={cargaUtil} />
@@ -276,7 +276,9 @@ function Visita({
         {region && <input type="hidden" name="region" value={region} />}
 
         <header className="flex items-center gap-3 border-b border-border px-5 py-3.5">
-          <Stethoscope size={18} className="text-primary" aria-hidden="true" />
+          <span className="icon-chip size-9 rounded-lg" data-tone="blue" aria-hidden="true">
+            <Stethoscope size={18} />
+          </span>
           <div className="min-w-0">
             <h2 className="truncate text-base font-semibold text-foreground">{titulo}</h2>
             <p className="text-xs text-muted-foreground">Agrega todo lo que se hizo en esta visita. Los materiales parten de la receta de cada procedimiento.</p>
@@ -592,7 +594,7 @@ function Visita({
             </div>
 
             {/* Cierre de la visita */}
-            <div className="space-y-3 border-t border-border bg-surface px-4 py-3">
+            <div className="space-y-3 border-t border-border bg-surface-solid px-4 py-3">
               <div className="grid gap-3 sm:grid-cols-3">
                 <Field label="Profesional">
                   <Select name="profesional" defaultValue={profesionales[0] ?? ""}>

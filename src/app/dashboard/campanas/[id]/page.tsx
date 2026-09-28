@@ -5,13 +5,15 @@ import { ArrowLeft, BarChart3, Bot, ChevronRight, Mail, Phone, Users } from "luc
 import { requireProfile } from "@/lib/auth";
 import { campaignCapabilityKey } from "@/lib/campaign-capabilities";
 import { createClient } from "@/lib/supabase/server";
-import { Badge, Card, PageHeader } from "@/components/ui";
+import { Badge, Card, PageHeader, type SectionTone } from "@/components/ui";
 
 type Capability = {
   title: string;
   description: string;
   href: string;
   icon: typeof Users;
+  /** Color del chip según el dominio (mismo criterio que el menú). */
+  tone: SectionTone;
   badge?: string;
 };
 
@@ -47,6 +49,7 @@ export default async function OperationalCampaignPage({ params }: { params: Prom
       description: "Revisa y gestiona la base asociada a esta campaña.",
       href: `/dashboard/leads?campaign=${id}`,
       icon: Users,
+      tone: "blue",
       badge: `${(leadResult.count ?? 0).toLocaleString("es-CL")} registros`,
     },
   ];
@@ -57,6 +60,7 @@ export default async function OperationalCampaignPage({ params }: { params: Prom
       description: "Opera llamadas y revisa los contactos de esta campaña.",
       href: `/dashboard/leads?campaign=${id}`,
       icon: Phone,
+      tone: "primary",
       badge: dialerResult.data.is_active ? "En operación" : "Disponible",
     });
   }
@@ -67,6 +71,7 @@ export default async function OperationalCampaignPage({ params }: { params: Prom
       description: "Configura y supervisa las llamadas automáticas de ElevenLabs.",
       href: `/dashboard/admin/campanas/${id}/ia`,
       icon: Bot,
+      tone: "violet",
       badge: aiVoiceResult.data.is_active
         ? "En ejecución"
         : aiVoiceResult.data.phone_number_id
@@ -89,6 +94,7 @@ export default async function OperationalCampaignPage({ params }: { params: Prom
         ? `/dashboard/mail?campaignContext=${id}&umbrella=${encodeURIComponent(campaignKey)}`
         : `/dashboard/mail?campaign=${id}`,
       icon: Mail,
+      tone: "teal",
       badge: `${relatedMailCampaigns.length} campaña(s) mail`,
     });
   }
@@ -99,6 +105,7 @@ export default async function OperationalCampaignPage({ params }: { params: Prom
       description: "Convierte correos recibidos en registros para contacto telefónico.",
       href: `/dashboard/campanas/${id}/correo`,
       icon: Mail,
+      tone: "teal",
       badge: mailboxResult.data?.[0]?.address,
     });
   }
@@ -108,6 +115,7 @@ export default async function OperationalCampaignPage({ params }: { params: Prom
     description: "Consulta resultados de gestión para esta campaña.",
     href: `/dashboard/reportes?campaign=${id}`,
     icon: BarChart3,
+    tone: "violet",
   });
 
   return (
@@ -122,10 +130,10 @@ export default async function OperationalCampaignPage({ params }: { params: Prom
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {capabilities.map(({ title, description, href, icon: Icon, badge }) => (
+        {capabilities.map(({ title, description, href, icon: Icon, tone, badge }) => (
           <Link key={title} href={href} className="group">
-            <Card className="flex h-full items-start gap-4 transition-colors group-hover:border-primary">
-              <span className="icon-chip h-10 w-10 rounded-lg" data-tone="primary">
+            <Card className="flex h-full items-start gap-4 transition-[border-color,box-shadow,transform] group-hover:-translate-y-0.5 group-hover:border-border-strong group-hover:shadow-md">
+              <span className="icon-chip h-10 w-10 shrink-0 rounded-lg" data-tone={tone} aria-hidden="true">
                 <Icon size={19} />
               </span>
               <div className="min-w-0 flex-1">

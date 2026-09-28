@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
-import { CheckCircle2, Clock3, Mail, Phone, RefreshCw, Search, ShieldCheck, Trash2, UserRoundPlus, X } from "lucide-react";
+import { CheckCircle2, Clock3, Mail, MailX, Phone, RefreshCw, Search, ShieldCheck, Trash2, UserRoundPlus, X } from "lucide-react";
 
 import { convertInboundEmail, deleteInboundEmails, syncInboundMailbox } from "@/app/actions/mail";
-import { Badge, Button, Input, Select, SlideOver } from "@/components/ui";
+import { Badge, Button, Callout, EmptyState, Input, Select, SlideOver } from "@/components/ui";
 import { useToast } from "@/components/ui/toast";
 
 export type InboundEmailRow = {
@@ -165,9 +165,10 @@ export function InboundMailbox({
 
   return (
     <>
-      <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
-        <header className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-4">
-          <div className="icon-chip h-10 w-10 rounded-lg" data-tone="primary">
+      <section className="relative overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
+        <div aria-hidden="true" className="absolute inset-x-0 top-0 h-0.5 bg-[linear-gradient(90deg,var(--tone-teal),transparent_85%)]" />
+        <header className="flex flex-wrap items-center gap-3 border-b border-border bg-surface-muted/40 px-5 py-4">
+          <div className="icon-chip h-10 w-10 rounded-lg" data-tone="teal" aria-hidden="true">
             <Mail size={20} aria-hidden />
           </div>
           <div className="min-w-0">
@@ -248,16 +249,17 @@ export function InboundMailbox({
 
         <div className="divide-y divide-border">
           {filteredMessages.length === 0 && (
-            <div className="px-6 py-14 text-center">
-              <Search className="mx-auto text-muted-foreground/60" size={30} />
-              <p className="mt-3 font-medium text-foreground">No encontramos correos</p>
-              <p className="mt-1 text-sm text-muted-foreground">Cambia la búsqueda o desactiva el filtro de rebotes.</p>
-            </div>
+            <EmptyState
+              icon={Search}
+              title="No encontramos correos"
+              description="Cambia la búsqueda o desactiva el filtro de rebotes."
+              className="py-14"
+            />
           )}
           {filteredMessages.map((message) => (
             <article
               key={message.id}
-              className={`grid gap-3 px-5 py-4 transition-colors hover:bg-surface-muted/60 md:grid-cols-[auto_minmax(12rem,0.8fr)_minmax(20rem,2fr)_auto] md:items-center ${checkedIds.has(message.id) ? "bg-primary/[0.04]" : ""}`}
+              className={`grid gap-3 px-5 py-4 transition-colors hover:bg-surface-muted/60 md:grid-cols-[auto_minmax(12rem,0.8fr)_minmax(20rem,2fr)_auto] md:items-center ${checkedIds.has(message.id) ? "bg-primary/5" : ""}`}
             >
               <input
                 type="checkbox"
@@ -267,9 +269,15 @@ export function InboundMailbox({
                 className="h-4 w-4 accent-primary"
               />
               <div className="min-w-0">
-                <button type="button" onClick={() => openMessage(message)} className="block w-full text-left">
-                  <p className="truncate text-sm font-medium text-foreground">{message.from_name || message.from_address}</p>
-                  <p className="truncate text-xs text-muted-foreground">{message.from_address}</p>
+                <button type="button" onClick={() => openMessage(message)} className="flex w-full items-center gap-3 text-left">
+                  {/* Rebote en rosa, correo real en el tono del canal. */}
+                  <span className="icon-chip size-8 rounded-lg" data-tone={isBounce(message) ? "rose" : "teal"} aria-hidden="true">
+                    {isBounce(message) ? <MailX size={15} /> : <Mail size={15} />}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium text-foreground">{message.from_name || message.from_address}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{message.from_address}</span>
+                  </span>
                 </button>
               </div>
               <div className="min-w-0">
@@ -316,7 +324,7 @@ export function InboundMailbox({
             </div>
 
             {selected.status === "converted" && selected.lead_id ? (
-              <div className="rounded-lg border border-success/30 bg-success-bg p-4">
+              <div className="rounded-lg border border-success/30 border-l-2 border-l-success bg-success-bg p-4">
                 <p className="font-medium text-success">Este correo ya fue convertido en lead.</p>
                 <Link href={`/dashboard/leads/${selected.lead_id}`} className="mt-2 inline-flex text-sm font-medium text-primary hover:underline">
                   Abrir registro
@@ -326,7 +334,9 @@ export function InboundMailbox({
               <div className="space-y-4 border-t border-border pt-5">
                 <div>
                   <div className="flex items-center gap-2">
-                    <UserRoundPlus size={17} className="text-primary" />
+                    <span className="icon-chip size-8 rounded-lg" data-tone="blue" aria-hidden="true">
+                      <UserRoundPlus size={16} />
+                    </span>
                     <h3 className="font-semibold text-foreground">Convertir para contacto telefónico</h3>
                   </div>
                   <p className="mt-1 text-sm text-muted-foreground">Se creará o reutilizará un registro en la campaña {campaignName} y quedará asignado de inmediato.</p>
@@ -352,9 +362,9 @@ export function InboundMailbox({
                 </label>
 
                 {agents.length === 0 && (
-                  <p className="rounded-lg border border-warning/30 bg-warning-bg p-3 text-sm text-warning">
+                  <Callout tone="warning" className="p-3">
                     No hay ejecutivos activos asignados a esta campaña.
-                  </p>
+                  </Callout>
                 )}
 
                 <div className="flex justify-end gap-2 pt-2">
@@ -378,9 +388,9 @@ export function InboundMailbox({
         description="Esta acción también se ejecutará en el servidor de correo."
       >
         <div className="space-y-5">
-          <div className="rounded-lg border border-danger/30 bg-danger-bg p-4 text-sm text-danger">
+          <Callout tone="danger">
             Los mensajes desaparecerán de Atlas y se moverán a la Papelera del webmail cuando esté disponible. Los leads ya creados no se eliminarán.
-          </div>
+          </Callout>
           <p className="text-sm text-muted-foreground">
             Confirma solo si seleccionaste exactamente los correos que quieres quitar.
           </p>

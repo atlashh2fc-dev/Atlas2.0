@@ -79,7 +79,11 @@ export function RecordingAudioPlayer({
           className: compact ? "w-full gap-1 px-2 text-xs leading-tight" : undefined,
         })}
       >
-        {loading ? <LoaderCircle size={14} className="animate-spin" /> : <Play size={14} />}
+        {loading ? (
+          <LoaderCircle size={14} className="animate-spin" />
+        ) : (
+          <Play size={14} className="fill-current text-primary" />
+        )}
         {loading ? "Preparando" : "Escuchar"}
       </button>
       {error && (

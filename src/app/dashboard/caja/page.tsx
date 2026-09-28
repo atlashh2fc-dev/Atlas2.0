@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { unstable_noStore as noStore } from "next/cache";
 import { headers } from "next/headers";
-import { Copy, MessageCircle } from "lucide-react";
+import { CalendarCheck, Copy, HandCoins, Link2, MessageCircle, Receipt, Wallet } from "lucide-react";
 
 import { enviarMensaje } from "@/app/actions/mensajes";
 import { cobrarEnLinea, registrarPago } from "@/app/actions/pagos";
-import { Badge, Callout, EmptyState, Input, NavTabs, PageHeader, SectionCard, Select, SubmitButton, buttonClasses } from "@/components/ui";
+import { Badge, Callout, EmptyState, Input, MetricCard, NavTabs, PageHeader, SectionCard, Select, SubmitButton, buttonClasses } from "@/components/ui";
 import { ZONA_CLINICA, fechaEnChile } from "@/lib/citas";
 import { PACIENTES_POR_EDICION, VENTAS_POR_EDICION } from "@/lib/ediciones";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
@@ -140,28 +140,41 @@ export default async function CajaPage({ searchParams }: { searchParams: Promise
       )}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {[
-          { label: "Por cobrar", valor: pesos.format(totalPorCobrar), detalle: `${saldos.length} ${saldos.length === 1 ? "ficha con saldo" : "fichas con saldo"}` },
-          { label: "Cobrado hoy", valor: pesos.format(cobradoHoy), detalle: "Pagos recibidos hoy" },
-          { label: "Cobrado este mes", valor: pesos.format(cobradoMes), detalle: `${cobrados.length} ${cobrados.length === 1 ? "pago" : "pagos"} desde el 1` },
-          { label: "En línea pendientes", valor: String(enLineaPendientes), detalle: "Enlaces enviados sin pagar" },
-        ].map((metrica) => (
-          <div key={metrica.label} className="rounded-xl border border-border bg-surface px-4 py-3">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">{metrica.label}</p>
-            <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{metrica.valor}</p>
-            <p className="text-xs text-muted-foreground">{metrica.detalle}</p>
-          </div>
-        ))}
+        <MetricCard
+          label="Por cobrar"
+          value={pesos.format(totalPorCobrar)}
+          hint={`${saldos.length} ${saldos.length === 1 ? "ficha con saldo" : "fichas con saldo"}`}
+          icon={Wallet}
+          iconTone="amber"
+        />
+        <MetricCard label="Cobrado hoy" value={pesos.format(cobradoHoy)} hint="Pagos recibidos hoy" icon={HandCoins} iconTone="green" />
+        <MetricCard
+          label="Cobrado este mes"
+          value={pesos.format(cobradoMes)}
+          hint={`${cobrados.length} ${cobrados.length === 1 ? "pago" : "pagos"} desde el 1`}
+          icon={CalendarCheck}
+          iconTone="green"
+        />
+        <MetricCard
+          label="En línea pendientes"
+          value={String(enLineaPendientes)}
+          hint="Enlaces enviados sin pagar"
+          icon={Link2}
+          iconTone="teal"
+          tone={enLineaPendientes > 0 ? "warn" : "default"}
+        />
       </div>
 
       <SectionCard
+        icon={Wallet}
+        tone="green"
         title="Por cobrar"
         description={`Cada fila es ${voc.singular.toLowerCase() === "tutor" ? "un tutor" : "un paciente"} con atenciones sin pagar. Cobrar en el mesón las deja al día; el enlace las deja al día cuando la persona paga.`}
       >
         {error ? (
           <p className="px-4 py-6 text-sm text-danger">No se pudieron leer las atenciones. Vuelve a cargar para reintentar.</p>
         ) : saldos.length === 0 ? (
-          <EmptyState title="Nada por cobrar" description="Todas las atenciones registradas están pagadas." />
+          <EmptyState icon={Wallet} title="Nada por cobrar" description="Todas las atenciones registradas están pagadas." />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -224,9 +237,9 @@ export default async function CajaPage({ searchParams }: { searchParams: Promise
         )}
       </SectionCard>
 
-      <SectionCard title="Pagos del mes" description="Todo lo cobrado y lo que está en camino, del más reciente al más antiguo.">
+      <SectionCard icon={Receipt} tone="green" title="Pagos del mes" description="Todo lo cobrado y lo que está en camino, del más reciente al más antiguo.">
         {pagos.length === 0 ? (
-          <EmptyState title="Sin pagos este mes" description="Aparecen acá al cobrar en el mesón o cuando alguien paga un enlace." />
+          <EmptyState icon={Receipt} title="Sin pagos este mes" description="Aparecen acá al cobrar en el mesón o cuando alguien paga un enlace." />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

@@ -5,13 +5,14 @@ import { setDialerCampaignActive } from "@/app/actions/dialer-config";
 import { DIAL_MODES, type DialMode } from "@/lib/types";
 import { CAMPAIGN_VERTICALS, parseCampaignVertical } from "@/lib/campaign-vertical";
 import Link from "next/link";
-import { Play, Settings2, Square } from "lucide-react";
+import { Bot, Megaphone, Play, Settings2, Square } from "lucide-react";
 import { CampaignCreatePanel } from "@/components/campaign-create-panel";
 import {
   ActionForm,
   ActionSubmit,
   Badge,
   Callout,
+  EmptyState,
   InfoTooltip,
   PageHeader,
   SectionCard,
@@ -22,6 +23,7 @@ import {
   Thead,
   TableEmpty,
   Tr,
+  buttonClasses,
 } from "@/components/ui";
 
 export default async function CampaignsPage({
@@ -83,7 +85,12 @@ export default async function CampaignsPage({
         </Callout>
       )}
 
-      <SectionCard>
+      <SectionCard
+        icon={Megaphone}
+        tone="rose"
+        title="Campañas"
+        description={`${list.length.toLocaleString("es-CL")} ${list.length === 1 ? "campaña" : "campañas"} · base, ejecutivos y discador de cada una`}
+      >
         <Table>
           <Thead>
             <Th>Nombre</Th>
@@ -106,7 +113,12 @@ export default async function CampaignsPage({
           <Tbody>
             {list.length === 0 && (
               <TableEmpty colSpan={8}>
-                Todavía no hay campañas. Crea la primera con el botón &ldquo;Nueva campaña&rdquo;.
+                <EmptyState
+                  icon={Megaphone}
+                  title="Todavía no hay campañas"
+                  description="Crea la primera con el botón “Nueva campaña”."
+                  className="py-6"
+                />
               </TableEmpty>
             )}
             {list.map((campaign) => {
@@ -122,19 +134,30 @@ export default async function CampaignsPage({
               return (
                 <Tr key={campaign.id}>
                   <Td strong>
-                    <span className="flex flex-wrap items-center gap-2">
-                      <Link href={`/dashboard/admin/campanas/${campaign.id}`} className="hover:text-primary">
-                        {campaign.name}
-                      </Link>
-                      {parseCampaignVertical(campaign.vertical) === "cobranza" && (
-                        <Badge tone="info">
-                          {CAMPAIGN_VERTICALS.find((option) => option.value === "cobranza")?.label}
-                        </Badge>
-                      )}
-                    </span>
-                    {campaign.description && (
-                      <p className="mt-0.5 text-xs text-muted-foreground">{campaign.description}</p>
-                    )}
+                    <div className="flex items-start gap-3">
+                      <span
+                        className={`icon-chip mt-0.5 size-8 rounded-lg ${campaign.is_active ? "" : "opacity-50"}`}
+                        data-tone={aiVoice ? "violet" : "rose"}
+                        aria-hidden="true"
+                      >
+                        {aiVoice ? <Bot size={15} /> : <Megaphone size={15} />}
+                      </span>
+                      <div className="min-w-0">
+                        <span className="flex flex-wrap items-center gap-2">
+                          <Link href={`/dashboard/admin/campanas/${campaign.id}`} className="hover:text-primary">
+                            {campaign.name}
+                          </Link>
+                          {parseCampaignVertical(campaign.vertical) === "cobranza" && (
+                            <Badge tone="info">
+                              {CAMPAIGN_VERTICALS.find((option) => option.value === "cobranza")?.label}
+                            </Badge>
+                          )}
+                        </span>
+                        {campaign.description && (
+                          <p className="mt-0.5 text-xs font-normal text-muted-foreground">{campaign.description}</p>
+                        )}
+                      </div>
+                    </div>
                   </Td>
                   <Td muted>
                     {(campaign.workflows as { name: string } | null)?.name ?? (
@@ -179,7 +202,7 @@ export default async function CampaignsPage({
                       {aiVoice ? (
                         <Link
                           href={`/dashboard/admin/campanas/${campaign.id}/ia`}
-                          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-medium text-foreground hover:bg-surface-muted"
+                          className={buttonClasses({ variant: "secondary", size: "sm" })}
                         >
                           <Settings2 className="h-3.5 w-3.5" />
                           Configurar IA
@@ -212,7 +235,7 @@ export default async function CampaignsPage({
                       ) : (
                         <Link
                           href={`/dashboard/admin/campanas/${campaign.id}/discado`}
-                          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-medium text-foreground hover:bg-surface-muted"
+                          className={buttonClasses({ variant: "secondary", size: "sm" })}
                         >
                           <Settings2 className="h-3.5 w-3.5" />
                           {dialer ? "Revisar ruta" : "Configurar"}

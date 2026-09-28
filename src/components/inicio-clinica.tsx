@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { CalendarClock, MessageCircle, Plus, UserPlus } from "lucide-react";
+import { BadgeCheck, CalendarClock, CalendarX2, ChartColumn, CheckCheck, HandCoins, Hourglass, Megaphone, MessageCircle, Percent, PhoneCall, Plus, UserPlus, UserRound } from "lucide-react";
 
-import { Badge, EmptyState, MetricCard, PageHeader, SectionCard, buttonClasses } from "@/components/ui";
+import { Badge, Callout, EmptyState, MetricCard, PageHeader, SectionCard, buttonClasses } from "@/components/ui";
 import { PACIENTES_POR_EDICION, VENTAS_POR_EDICION, type Edicion } from "@/lib/ediciones";
 import { ETIQUETA_ESTADO, ocupaHorario, primero as primeroDe, type Cita } from "@/lib/citas";
 import { REPORT_TIME_ZONE } from "@/lib/report-range";
@@ -51,6 +51,22 @@ function inicioDeHoyEnChile(ahora: Date): Date {
   const mediodia = new Date(`${partes}T12:00:00Z`);
   const desfase = mediodia.getTime() - new Date(mediodia.toLocaleString("en-US", { timeZone: REPORT_TIME_ZONE })).getTime();
   return new Date(new Date(`${partes}T00:00:00Z`).getTime() + desfase);
+}
+
+/** Cifra en baldosa, como en Operación: el borde izquierdo y el número toman el color del estado. */
+function Baldosa({ label, valor, tono = "default" }: { label: string; valor: number; tono?: "default" | "warn" | "good" }) {
+  const estilo =
+    tono === "warn"
+      ? { borde: "border-l-warning", cifra: "text-warning" }
+      : tono === "good"
+        ? { borde: "border-l-success", cifra: "text-success" }
+        : { borde: "border-l-border-strong", cifra: "text-foreground" };
+  return (
+    <div className={`rounded-lg border border-border border-l-2 bg-background px-3 py-2.5 ${estilo.borde}`}>
+      <dt className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</dt>
+      <dd className={`mt-1 text-2xl font-semibold tracking-tight tabular-nums ${estilo.cifra}`}>{valor.toLocaleString("es-CL")}</dd>
+    </div>
+  );
 }
 
 /** Las alertas de la clínica: 7, 15 y 30 días sin respuesta. */
@@ -212,8 +228,8 @@ export async function InicioClinica({
       />
 
       {error && (
-        <div role="status" className="rounded-lg border border-warning/30 bg-warning-bg px-4 py-3 text-sm text-warning">
-          No se pudieron leer los {negociosMinuscula}. Vuelve a cargar para reintentar.
+        <div role="status">
+          <Callout tone="warning">No se pudieron leer los {negociosMinuscula}. Vuelve a cargar para reintentar.</Callout>
         </div>
       )}
 
@@ -224,12 +240,16 @@ export async function InicioClinica({
           hint={`${abiertos.length} ${abiertos.length === 1 ? `${negocioMinuscula} abierto` : `${negociosMinuscula} abiertos`}`}
           href="/dashboard/ventas"
           hrefLabel={`Ver ${negociosMinuscula}`}
+          icon={HandCoins}
+          iconTone="green"
         />
         <MetricCard
           label="Aceptado este mes"
           value={pesos.format(montoMes)}
           hint={`${aceptadosMes.length} ${aceptadosMes.length === 1 ? "aceptado" : "aceptados"}`}
           tone={montoMes > 0 ? "good" : "default"}
+          icon={BadgeCheck}
+          iconTone="green"
         />
         <MetricCard
           label="Tasa de aceptación"
@@ -238,23 +258,29 @@ export async function InicioClinica({
           progress={tasa ?? undefined}
           tone={tasa === null ? "default" : tasa >= 60 ? "good" : "warn"}
           tooltip={`De los ${negociosMinuscula} que se aceptaron o rechazaron en los últimos 90 días, cuántos se aceptaron.`}
+          icon={Percent}
+          iconTone="violet"
         />
         <MetricCard
           label="Para llamar hoy"
           value={paraHoy.length}
           hint={vencidos > 0 ? `${vencidos} ya vencidos` : "al día"}
           tone={vencidos > 0 ? "warn" : "good"}
+          icon={PhoneCall}
+          iconTone="primary"
         />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-3">
         <SectionCard
           className="xl:col-span-3"
+          icon={CalendarClock}
+          tone="amber"
           title={`Agenda de hoy · ${citasActivas.length}`}
           description={`${citasSinConfirmar ? `${citasSinConfirmar} sin confirmar · ` : ""}${citasEnSala ? `${citasEnSala} en sala · ` : ""}${pesos.format(porCobrar)} por cobrar en total`}
         >
           {citasActivas.length === 0 ? (
-            <EmptyState title="Sin citas hoy" description="Agenda la primera desde la agenda." />
+            <EmptyState icon={CalendarX2} title="Sin citas hoy" description="Agenda la primera desde la agenda." />
           ) : (
             <ul className="divide-y divide-border">
               {citasActivas.slice(0, 8).map((cita) => {
@@ -291,11 +317,13 @@ export async function InicioClinica({
 
         <SectionCard
           className="xl:col-span-2"
+          icon={PhoneCall}
+          tone="primary"
           title="Hay que llamar hoy"
           description={`${voc.negocios} con la próxima acción vencida o para hoy, primero los que llevan más días sin respuesta.`}
         >
           {paraHoy.length === 0 ? (
-            <EmptyState title="Nada pendiente para hoy" description={`Todos los ${negociosMinuscula} abiertos tienen su próxima acción más adelante.`} />
+            <EmptyState icon={CheckCheck} title="Nada pendiente para hoy" description={`Todos los ${negociosMinuscula} abiertos tienen su próxima acción más adelante.`} />
           ) : (
             <ul className="divide-y divide-border">
               {paraHoy.slice(0, 8).map((negocio) => {
@@ -338,7 +366,7 @@ export async function InicioClinica({
         </SectionCard>
 
         <div className="space-y-4">
-          <SectionCard title="Sin respuesta" description={`${voc.negocios} abiertos según los días desde el último contacto.`}>
+          <SectionCard icon={Hourglass} tone="amber" title="Sin respuesta" description={`${voc.negocios} abiertos según los días desde el último contacto.`}>
             <div className="space-y-3 px-4 py-4">
               {tramos.map((tramo) => (
                 <div key={tramo.etiqueta}>
@@ -357,19 +385,12 @@ export async function InicioClinica({
             </div>
           </SectionCard>
 
-          <SectionCard title="WhatsApp" description="Conversaciones con pacientes que siguen abiertas.">
-            <div className="flex items-center gap-4 px-4 py-4">
-              <div className="icon-chip size-10 rounded-full" data-tone="primary">
-                <MessageCircle size={20} aria-hidden="true" />
-              </div>
-              <div className="flex-1 text-sm">
-                <p className="text-foreground">
-                  <span className="font-semibold tabular-nums">{abiertas}</span> abiertas
-                </p>
-                <p className={esperando > 0 ? "text-warning" : "text-muted-foreground"}>
-                  {esperando} {esperando === 1 ? "espera" : "esperan"} respuesta
-                </p>
-              </div>
+          <SectionCard icon={MessageCircle} tone="green" title="WhatsApp" description="Conversaciones con pacientes que siguen abiertas.">
+            <div className="flex items-end gap-3 px-4 py-4">
+              <dl className="grid flex-1 grid-cols-2 gap-3">
+                <Baldosa label="Abiertas" valor={abiertas} />
+                <Baldosa label={esperando === 1 ? "Espera respuesta" : "Esperan respuesta"} valor={esperando} tono={esperando > 0 ? "warn" : "good"} />
+              </dl>
               {leeConversaciones && (
                 <Link href="/dashboard/conversaciones" className={buttonClasses({ variant: "secondary", size: "sm" })}>
                   Abrir
@@ -381,10 +402,10 @@ export async function InicioClinica({
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <SectionCard title="Aceptación por profesional" description={`${voc.negocios} de cada profesional y cuánto se aceptó.`}>
+        <SectionCard icon={UserRound} tone="blue" title="Aceptación por profesional" description={`${voc.negocios} de cada profesional y cuánto se aceptó.`}>
           <TablaConversion filas={porProfesional} />
         </SectionCard>
-        <SectionCard title="Por canal de origen" description="De dónde llegan los pacientes que aceptan.">
+        <SectionCard icon={Megaphone} tone="rose" title="Por canal de origen" description="De dónde llegan los pacientes que aceptan.">
           <TablaConversion filas={porOrigen} />
         </SectionCard>
       </div>
@@ -402,7 +423,7 @@ function TablaConversion({
 }: {
   filas: { llave: string; total: number; ganados: number; tasa: number | null; monto: number }[];
 }) {
-  if (filas.length === 0) return <EmptyState title="Sin datos todavía" description="Aparece cuando haya presupuestos decididos." />;
+  if (filas.length === 0) return <EmptyState icon={ChartColumn} title="Sin datos todavía" description="Aparece cuando haya presupuestos decididos." />;
   return (
     <table className="w-full text-sm">
       <thead>

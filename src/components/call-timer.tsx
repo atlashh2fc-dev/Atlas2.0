@@ -32,8 +32,8 @@ export function CallTimer({ startedAt, endedAt }: { startedAt: string; endedAt: 
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
-        endedAt ? "bg-surface-muted text-muted-foreground" : "bg-success-bg text-success"
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium tabular-nums ${
+        endedAt ? "border-border-strong bg-surface-muted text-muted-foreground" : "border-success/35 bg-success-bg text-success"
       }`}
     >
       <Clock size={12} />

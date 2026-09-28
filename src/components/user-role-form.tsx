@@ -80,7 +80,12 @@ export function UserRoleForm({
             {teams.map((team) => {
               const checked = supervisorTeamIds.has(team.id);
               return (
-                <label key={team.id} className="flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground">
+                <label
+                  key={team.id}
+                  className={`flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors ${
+                    checked ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-foreground hover:border-primary/50"
+                  }`}
+                >
                   <input
                     type="checkbox"
                     name="supervisor_team_ids"
@@ -93,6 +98,7 @@ export function UserRoleForm({
                       else next.add(team.id);
                       return next;
                     })}
+                    className="size-3.5 accent-primary"
                   />
                   {team.name}
                 </label>

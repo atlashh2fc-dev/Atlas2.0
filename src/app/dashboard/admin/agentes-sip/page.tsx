@@ -1,7 +1,8 @@
+import { Headset, PhoneCall } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { listAgentSipRows, setAgentExtensionActive } from "@/app/actions/agent-sip";
 import { RevealSipCredentialButton } from "@/components/reveal-sip-credential-button";
-import { ActionForm, ActionSubmit, Callout } from "@/components/ui";
+import { ActionForm, ActionSubmit, Callout, EmptyState, PageHeader, SectionCard } from "@/components/ui";
 import { getAgentSipSyncHealth } from "@/lib/dialer-health";
 
 function formatHealthDate(value: string | null): string {
@@ -29,9 +30,9 @@ export default async function AgentesSipPage() {
   };
 
   const stateClassName = (row: Awaited<ReturnType<typeof listAgentSipRows>>[number]): string => {
-    if (!row.is_active || row.provisioning_status === "error") return "bg-danger-bg text-danger";
-    if (row.provisioning_status === "synced") return "bg-success-bg text-success";
-    return "bg-warning-bg text-warning";
+    if (!row.is_active || row.provisioning_status === "error") return "border-danger/35 bg-danger-bg text-danger";
+    if (row.provisioning_status === "synced") return "border-success/35 bg-success-bg text-success";
+    return "border-warning/35 bg-warning-bg text-warning";
   };
 
   const failureLabel = (code: string | null): string => {
@@ -44,13 +45,10 @@ export default async function AgentesSipPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-foreground">Diagnóstico de telefonía</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Atlas genera y activa la extensión cuando asignas una campaña automática. Esta pantalla no es
-          parte del alta normal: úsala solo para revisar sincronización o resolver una contingencia.
-        </p>
-      </div>
+      <PageHeader
+        title="Diagnóstico de telefonía"
+        description="Atlas genera y activa la extensión cuando asignas una campaña automática. Esta pantalla no es parte del alta normal: úsala solo para revisar sincronización o resolver una contingencia."
+      />
 
       {!syncHealthy && (
         <Callout tone="warning">
@@ -68,21 +66,36 @@ export default async function AgentesSipPage() {
         </Callout>
       )}
 
-      <div className="rounded-xl border border-border bg-surface">
+      <SectionCard
+        icon={PhoneCall}
+        tone="primary"
+        title="Extensiones de los ejecutivos"
+        description={syncHealthy ? "La central está confirmando las extensiones." : "La central no está confirmando las extensiones."}
+        actions={<span className={`inline-block size-2.5 rounded-full ${syncHealthy ? "bg-success" : "bg-warning"}`} aria-hidden="true" />}
+      >
         <div className="divide-y divide-border">
-          {rows.length === 0 && <p className="p-5 text-sm text-muted-foreground">No hay ejecutivos con rol &quot;agente&quot;.</p>}
+          {rows.length === 0 && <EmptyState icon={Headset} title="No hay ejecutivos con rol “agente”." />}
           {rows.map((row) => (
             <div key={row.profile_id} className="flex flex-wrap items-center justify-between gap-4 p-4">
-              <div>
-                <p className="text-sm font-medium text-foreground">{row.full_name}</p>
-                <p className="text-xs text-muted-foreground">{row.email}</p>
+              <div className="flex min-w-0 items-center gap-3">
+                <span
+                  className={`icon-chip size-8 rounded-full ${row.extension && row.is_active ? "" : "opacity-50"}`}
+                  data-tone="primary"
+                  aria-hidden="true"
+                >
+                  <Headset size={15} />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground">{row.full_name}</p>
+                  <p className="text-xs text-muted-foreground">{row.email}</p>
+                </div>
               </div>
 
               <div className="flex flex-wrap items-center justify-end gap-3">
                 {row.extension ? (
                   <>
                     <span
-                      className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                      className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
                         stateClassName(row)
                       }`}
                     >
@@ -94,7 +107,7 @@ export default async function AgentesSipPage() {
                       </span>
                     )}
                     <details>
-                      <summary className="cursor-pointer rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                      <summary className="cursor-pointer rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                         Acciones de contingencia
                       </summary>
                       <div className="mt-2 flex flex-wrap items-center justify-end gap-2 rounded-lg border border-border bg-background p-2">
@@ -121,7 +134,7 @@ export default async function AgentesSipPage() {
             </div>
           ))}
         </div>
-      </div>
+      </SectionCard>
     </div>
   );
 }

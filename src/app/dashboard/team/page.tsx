@@ -5,7 +5,19 @@ import { reassignAgenda } from "@/app/actions/admin";
 import { LEAD_STATUSES } from "@/lib/types";
 import Link from "next/link";
 import {
+  CalendarClock,
+  CalendarX2,
+  Database,
+  Gauge,
+  Handshake,
+  Megaphone,
+  UserPlus,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
+import {
   ActionForm,
+  Callout,
   Button,
   FilterBar,
   Field,
@@ -123,6 +135,7 @@ function AgendaTable({
   agents,
   overdue,
   emptyText,
+  icon,
 }: {
   title: string;
   description?: string;
@@ -130,9 +143,10 @@ function AgendaTable({
   agents: AgentOption[];
   overdue: boolean;
   emptyText: string;
+  icon: LucideIcon;
 }) {
   return (
-    <SectionCard title={title} description={description}>
+    <SectionCard title={title} description={description} icon={icon} tone="amber">
       <Table>
         <Thead>
           <Th>Registro</Th>
@@ -337,6 +351,8 @@ export default async function TeamPage({
           hint={`${activeAgents.length} activos para asignación${historicalAgentsCount ? ` · ${historicalAgentsCount} históricos` : ""}`}
           progress={percent(activeAgents.length, reportedAgentsCount)}
           tone="good"
+          icon={Users}
+          iconTone="blue"
         />
         <MetricCard
           label="Base del equipo"
@@ -345,6 +361,8 @@ export default async function TeamPage({
           href="/dashboard/leads"
           hrefLabel="Ver registros"
           progress={percent(reportKpis?.asignados ?? 0, visibleBaseTotal)}
+          icon={Database}
+          iconTone="blue"
         />
         <MetricCard
           label="Sin asignar"
@@ -354,6 +372,8 @@ export default async function TeamPage({
           hrefLabel="Ver disponibles"
           progress={percent(visibleUnassigned, visibleBaseTotal)}
           tone={visibleUnassigned > 0 ? "warn" : "good"}
+          icon={UserPlus}
+          iconTone="blue"
         />
         <MetricCard
           label="Agendas vencidas"
@@ -362,6 +382,8 @@ export default async function TeamPage({
           href="/dashboard/leads?view=vencidas"
           hrefLabel="Ver vencidas"
           tone={visibleOverdue > 0 ? "danger" : "good"}
+          icon={CalendarX2}
+          iconTone="amber"
         />
       </div>
 
@@ -402,10 +424,12 @@ export default async function TeamPage({
       <SectionCard
         title="Carga por ejecutivo"
         description="Quién está sobrecargado y quién puede recibir más trabajo."
+        icon={Gauge}
+        tone="blue"
       >
         <div className="p-4">
           {loadError ? (
-            <p className="text-sm text-danger">No se pudo calcular la carga del equipo: {loadError.message}</p>
+            <Callout tone="danger">No se pudo calcular la carga del equipo: {loadError.message}</Callout>
           ) : (
             <TeamAgentsTable rows={agentRows} />
           )}
@@ -416,10 +440,12 @@ export default async function TeamPage({
       <SectionCard
         title="Campaña de cada ejecutivo"
         description="Ordena qué campaña se le disca primero a cada uno, o asígnale una y déjala fija: solo tú (o un admin) podrás cambiarla."
+        icon={Megaphone}
+        tone="rose"
       >
         <div className="p-4">
           {campaignBoardError ? (
-            <p className="text-sm text-danger">No se pudo leer la asignación de campañas: {campaignBoardError}</p>
+            <Callout tone="danger">No se pudo leer la asignación de campañas: {campaignBoardError}</Callout>
           ) : (
             <TeamCampaignControl rows={campaignBoard} viewerId={viewer.id} isAdmin={false} />
           )}
@@ -433,6 +459,7 @@ export default async function TeamPage({
         agents={activeAgents}
         overdue
         emptyText="No hay agendas vencidas con estos filtros."
+        icon={CalendarX2}
       />
 
       <AgendaTable
@@ -441,6 +468,7 @@ export default async function TeamPage({
         agents={activeAgents}
         overdue={false}
         emptyText="No hay próximas agendas con estos filtros."
+        icon={CalendarClock}
       />
 
       <SectionCard
@@ -450,6 +478,8 @@ export default async function TeamPage({
             ? `${overdueCallbacks} vencidos y ${callbacks.length - overdueCallbacks} por venir. Reagéndalos, tráspasalos a otro ejecutivo o derívalos al discador para que los tome el primero disponible.`
             : `${callbacks.length} agendados, ninguno vencido. Acá puedes reagendar, traspasar a otro ejecutivo o derivar al discador.`
         }
+        icon={Handshake}
+        tone="amber"
       >
         <div className="p-4">
           <CallbacksPanel rows={callbacks} agents={activeAgents} />
@@ -459,6 +489,8 @@ export default async function TeamPage({
       <SectionCard
         title="Asignación de registros"
         description={`Los ${assignmentRows.length} registros movidos más recientemente. Selecciona varios y asígnalos de una vez, o reparte automáticamente según la carga de cada ejecutivo.`}
+        icon={UserPlus}
+        tone="blue"
       >
         <div className="p-4">
           <TeamLeadsAssignment rows={assignmentRows} agents={activeAgents} />

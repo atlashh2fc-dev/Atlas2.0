@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Plus } from "lucide-react";
 import { createUserAccount } from "@/app/actions/admin";
 import type { AppRole } from "@/lib/types";
-import { ActionForm, ActionSubmit, Button, Field, Input, SlideOver, buttonClasses } from "@/components/ui";
+import { ActionForm, ActionSubmit, Button, Field, Input, Select, SlideOver, buttonClasses } from "@/components/ui";
 
 const ROLE_OPTIONS: { value: AppRole; label: string }[] = [
   { value: "agente", label: "Agente" },
@@ -50,36 +50,28 @@ export function UserCreatePanel({ teams }: { teams: { id: string; name: string }
           </p>
 
           <Field label="Rol">
-            <select
-              name="role"
-              defaultValue="agente"
-              className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
+            <Select name="role" defaultValue="agente">
               {ROLE_OPTIONS.map((role) => (
                 <option key={role.value} value={role.value}>
                   {role.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
 
           <Field label="Equipo">
-            <select
-              name="team_id"
-              defaultValue=""
-              className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
+            <Select name="team_id" defaultValue="">
               <option value="">Sin equipo</option>
               {teams.map((team) => (
                 <option key={team.id} value={team.id}>
                   {team.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
 
-          <label className="flex items-start gap-2 rounded-lg border border-border bg-surface-muted/40 p-3 text-sm text-foreground">
-            <input type="checkbox" name="is_demo" value="1" className="mt-0.5" />
+          <label className="flex items-start gap-2 rounded-xl border border-border bg-surface-muted/40 p-3 text-sm text-foreground">
+            <input type="checkbox" name="is_demo" value="1" className="mt-0.5 accent-primary" />
             <span>
               Cuenta de demostración
               <span className="mt-0.5 block text-xs text-muted-foreground">

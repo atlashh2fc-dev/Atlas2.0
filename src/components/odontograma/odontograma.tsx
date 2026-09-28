@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
-import { Box, ChevronLeft, Maximize2, RotateCcw, ScanLine } from "lucide-react";
+import { Box, ChevronLeft, ClipboardCheck, Maximize2, RotateCcw, ScanLine, Smile, Stethoscope } from "lucide-react";
 
 import { marcarAtencionPagada } from "@/app/actions/atenciones";
 import { registrarEnOdontograma } from "@/app/actions/odontograma";
@@ -10,7 +10,7 @@ import { AtencionForm } from "@/components/atencion-form";
 import { EstudiosPanel } from "@/components/estudios-panel";
 import type { Estudio } from "@/lib/estudios";
 import { pesos, type Atencion, type Procedimiento, resumenMateriales, totalAtencion } from "@/lib/arancel";
-import { ActionForm, ActionSubmit, Badge, Field, Input, Select } from "@/components/ui";
+import { ActionForm, ActionSubmit, Badge, EmptyState, Field, Input, Select } from "@/components/ui";
 import {
   AVANCES,
   ESTADOS,
@@ -176,12 +176,17 @@ export function Odontograma({
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
-        <div>
-          <h2 className="text-sm font-semibold text-foreground">Odontograma</h2>
-          <p className="text-xs text-muted-foreground">
-            Gira con el mouse, acerca con la rueda y toca una pieza para ver su historia o registrar un hallazgo.
-          </p>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-surface-muted/40 px-4 py-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="icon-chip mt-0.5 size-8 rounded-lg" data-tone="blue" aria-hidden="true">
+            <Smile size={16} />
+          </span>
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-foreground">Odontograma</h2>
+            <p className="text-xs text-muted-foreground">
+              Gira con el mouse, acerca con la rueda y toca una pieza para ver su historia o registrar un hallazgo.
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-1 rounded-lg border border-border p-0.5 text-xs">
           {(["permanente", "temporal"] as const).map((opcion) => (
@@ -263,22 +268,20 @@ export function Odontograma({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-px border-t border-border bg-border text-center sm:grid-cols-4">
+          {/* Baldosas con el color del avance, el mismo de los badges del plan. */}
+          <dl className="grid grid-cols-2 gap-2 border-t border-border p-3 sm:grid-cols-4">
             {[
-              { label: "Por tratar", valor: resumen.porTratar, color: "#dc2626" },
-              { label: "En tratamiento", valor: resumen.enTratamiento, color: "#0ea5e9" },
-              { label: "Tratadas", valor: resumen.tratadas, color: "#2563eb" },
-              { label: "Ausentes", valor: resumen.ausentes, color: "#94a3b8" },
+              { label: "Por tratar", valor: resumen.porTratar, borde: "border-l-danger", cifra: "text-danger" },
+              { label: "En tratamiento", valor: resumen.enTratamiento, borde: "border-l-primary", cifra: "text-primary" },
+              { label: "Tratadas", valor: resumen.tratadas, borde: "border-l-success", cifra: "text-success" },
+              { label: "Ausentes", valor: resumen.ausentes, borde: "border-l-border-strong", cifra: "text-foreground" },
             ].map((item) => (
-              <div key={item.label} className="bg-surface px-3 py-2.5">
-                <p className="text-xl font-semibold tabular-nums text-foreground">{item.valor}</p>
-                <p className="flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
-                  <span className="size-2 rounded-full" style={{ background: item.color }} />
-                  {item.label}
-                </p>
+              <div key={item.label} className={`rounded-lg border border-border border-l-2 bg-background px-3 py-2 ${item.borde}`}>
+                <dt className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{item.label}</dt>
+                <dd className={`mt-0.5 text-xl font-semibold tracking-tight tabular-nums ${item.valor > 0 ? item.cifra : "text-foreground"}`}>{item.valor}</dd>
               </div>
             ))}
-          </div>
+          </dl>
 
           <div className="flex flex-wrap gap-x-3 gap-y-1 border-t border-border px-4 py-2.5">
             {ESTADOS.filter((estado) => estado !== "sano").map((estado) => (
@@ -317,9 +320,12 @@ export function Odontograma({
                 <>
                   <p className="px-4 pt-3 text-xs text-muted-foreground">Lo diagnosticado y lo que está en curso. Toca una fila o una pieza para atenderla.</p>
               {plan.length === 0 ? (
-                <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-                  Sin tratamientos pendientes. Toca una pieza en la boca para registrar un hallazgo.
-                </p>
+                <EmptyState
+                  icon={ClipboardCheck}
+                  title="Sin tratamientos pendientes"
+                  description="Toca una pieza en la boca para registrar un hallazgo."
+                  className="py-8"
+                />
               ) : (
                 <ul className="max-h-[560px] divide-y divide-border overflow-y-auto">
                   {plan.map((registro) => {
@@ -348,18 +354,18 @@ export function Odontograma({
               )}
               {modoPanel === "atenciones" && (
                 <div className="flex min-h-0 flex-1 flex-col">
-                  <div className="grid grid-cols-2 gap-px border-b border-border bg-border text-center">
-                    <div className="bg-surface px-3 py-2">
-                      <p className="text-base font-semibold tabular-nums text-foreground">{pesos.format(cobrado)}</p>
-                      <p className="text-[11px] text-muted-foreground">Cobrado</p>
+                  <dl className="grid grid-cols-2 gap-2 border-b border-border p-3">
+                    <div className="rounded-lg border border-border border-l-2 border-l-success bg-background px-3 py-2">
+                      <dt className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Cobrado</dt>
+                      <dd className="mt-0.5 text-base font-semibold tabular-nums text-foreground">{pesos.format(cobrado)}</dd>
                     </div>
-                    <div className="bg-surface px-3 py-2">
-                      <p className={`text-base font-semibold tabular-nums ${porCobrar > 0 ? "text-warning" : "text-foreground"}`}>{pesos.format(porCobrar)}</p>
-                      <p className="text-[11px] text-muted-foreground">Por cobrar</p>
+                    <div className={`rounded-lg border border-border border-l-2 bg-background px-3 py-2 ${porCobrar > 0 ? "border-l-warning" : "border-l-success"}`}>
+                      <dt className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Por cobrar</dt>
+                      <dd className={`mt-0.5 text-base font-semibold tabular-nums ${porCobrar > 0 ? "text-warning" : "text-foreground"}`}>{pesos.format(porCobrar)}</dd>
                     </div>
-                  </div>
+                  </dl>
                   {atenciones.length === 0 ? (
-                    <p className="px-4 py-8 text-center text-sm text-muted-foreground">Todavía no hay atenciones. Toca una pieza y elige Atender.</p>
+                    <EmptyState icon={Stethoscope} title="Todavía no hay atenciones" description="Toca una pieza y elige Atender." className="py-8" />
                   ) : (
                     <ul className="max-h-[520px] divide-y divide-border overflow-y-auto">
                       {atenciones.map((atencion) => (

@@ -1,3 +1,4 @@
+import { CircleCheck, Coffee, Cog, Timer } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import {
   listAllStatusReasons,
@@ -11,11 +12,13 @@ import {
   ActionForm,
   ActionSubmit,
   Badge,
+  EmptyState,
   Field,
   InfoTooltip,
   Input,
   PageHeader,
   SectionCard,
+  StatusDot,
   Table,
   Tbody,
   Td,
@@ -68,6 +71,8 @@ export default async function EstadosAgentePage() {
       />
 
       <SectionCard
+        icon={Timer}
+        tone="amber"
         title="Catálogo de estados"
         description="Cada estado define si el ejecutivo recibe llamadas y cómo se cuenta su tiempo en los reportes."
       >
@@ -103,25 +108,47 @@ export default async function EstadosAgentePage() {
             <Th />
           </Thead>
           <Tbody>
-            {reasons.length === 0 && <TableEmpty colSpan={7}>No hay motivos configurados.</TableEmpty>}
+            {reasons.length === 0 && (
+              <TableEmpty colSpan={7}>
+                <EmptyState icon={Timer} title="No hay motivos configurados." className="py-6" />
+              </TableEmpty>
+            )}
             {reasons.map((reason) => (
               <Tr key={reason.id}>
                 <Td strong>
-                  {reason.is_pause && !reason.is_system ? `AUX · ${reason.label}` : reason.label}
-                  {reason.is_system && (
-                    <Badge tone="neutral" className="ml-2">
-                      Sistema
-                    </Badge>
-                  )}
+                  <span className="flex items-center gap-3">
+                    {/* Chip por tipo: sistema en gris, AUX en ámbar (tiempo fuera), disponible en verde. */}
+                    <span
+                      className={`icon-chip size-8 rounded-lg ${reason.is_active ? "" : "opacity-50"}`}
+                      data-tone={reason.is_system ? "slate" : reason.is_pause ? "amber" : "green"}
+                      aria-hidden="true"
+                    >
+                      {reason.is_system ? <Cog size={15} /> : reason.is_pause ? <Coffee size={15} /> : <CircleCheck size={15} />}
+                    </span>
+                    <span>
+                      {reason.is_pause && !reason.is_system ? `AUX · ${reason.label}` : reason.label}
+                      {reason.is_system && (
+                        <Badge tone="neutral" className="ml-2">
+                          Sistema
+                        </Badge>
+                      )}
+                    </span>
+                  </span>
                 </Td>
-                <Td muted>{reason.code}</Td>
+                <Td muted className="font-mono text-xs">{reason.code}</Td>
                 <Td>
                   {reason.is_system ? (
-                    <span className="text-muted-foreground">Automático</span>
+                    <span className="inline-flex items-center gap-2 text-muted-foreground">
+                      <StatusDot /> Automático
+                    </span>
                   ) : reason.is_pause ? (
-                    <span className="text-warning">Fuera de la cola</span>
+                    <span className="inline-flex items-center gap-2 text-warning">
+                      <StatusDot tone="warning" /> Fuera de la cola
+                    </span>
                   ) : (
-                    <span className="text-success">Recibe llamadas</span>
+                    <span className="inline-flex items-center gap-2 text-success">
+                      <StatusDot tone="success" /> Recibe llamadas
+                    </span>
                   )}
                 </Td>
                 <Td muted>

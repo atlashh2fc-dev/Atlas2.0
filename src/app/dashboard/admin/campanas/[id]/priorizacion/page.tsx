@@ -1,3 +1,4 @@
+import { Activity, CheckCircle2, ListOrdered, Send, Settings2, Workflow } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -11,6 +12,7 @@ import {
   ActionSubmit,
   Badge,
   Callout,
+  EmptyState,
   Field,
   Input,
   MetricCard,
@@ -65,12 +67,14 @@ export default async function CampaignPriorityPage({ params }: { params: Promise
       </Callout>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <MetricCard label="Motor de leads" value={config?.is_active ? "En ejecución" : "Detenido"} tone={config?.is_active ? "good" : "warn"} />
-        <MetricCard label="Asignaciones activas" value={(activeAssignments.count ?? 0).toLocaleString("es-CL")} />
-        <MetricCard label="Últimas completadas" value={deliveredCount.toLocaleString("es-CL")} hint="Dentro de las 10 entregas más recientes" />
+        <MetricCard label="Motor de leads" value={config?.is_active ? "En ejecución" : "Detenido"} tone={config?.is_active ? "good" : "warn"} icon={Activity} iconTone="green" />
+        <MetricCard label="Asignaciones activas" value={(activeAssignments.count ?? 0).toLocaleString("es-CL")} icon={Send} iconTone="blue" />
+        <MetricCard label="Últimas completadas" value={deliveredCount.toLocaleString("es-CL")} hint="Dentro de las 10 entregas más recientes" icon={CheckCircle2} iconTone="green" />
       </div>
 
       <SectionCard
+        icon={Settings2}
+        tone="slate"
         title="Motor de asignación"
         description="Solo entrega registros a ejecutivos asignados a esta campaña, disponibles y con Atlas abierto."
       >
@@ -106,6 +110,8 @@ export default async function CampaignPriorityPage({ params }: { params: Promise
       </SectionCard>
 
       <SectionCard
+        icon={ListOrdered}
+        tone="rose"
         title="Orden de prioridad"
         description="Se evalúa desde el número más bajo. Si un lead no coincide con ninguna regla, entra al fallback configurado arriba."
       >
@@ -121,7 +127,11 @@ export default async function CampaignPriorityPage({ params }: { params: Promise
             <Tbody>
               {(rules ?? []).map((rule) => (
                 <Tr key={rule.id}>
-                  <Td strong>{rule.position}</Td>
+                  <Td strong>
+                    <span className="icon-chip size-7 rounded-md text-xs font-semibold tabular-nums" data-tone="rose">
+                      {rule.position}
+                    </span>
+                  </Td>
                   <Td strong>{rule.name}</Td>
                   <Td muted>
                     {rule.field_name} {OPERATOR_LABELS[rule.operator] ?? rule.operator}{" "}
@@ -146,7 +156,11 @@ export default async function CampaignPriorityPage({ params }: { params: Promise
                 </Tr>
               ))}
               <Tr>
-                <Td strong>—</Td>
+                <Td strong>
+                  <span className="icon-chip size-7 rounded-md text-xs font-semibold" data-tone="slate">
+                    —
+                  </span>
+                </Td>
                 <Td strong>Fallback</Td>
                 <Td muted>Todo lo demás · {config?.fallback_order === "newest_first" ? "más reciente primero" : "más antiguo primero"}</Td>
                 <Td><Badge tone="success">Siempre activo</Badge></Td>
@@ -191,7 +205,7 @@ export default async function CampaignPriorityPage({ params }: { params: Promise
         </ActionForm>
       </SectionCard>
 
-      <SectionCard title="Últimas entregas" description="Trazabilidad del motor, aunque el ejecutivo todavía no haya gestionado el registro.">
+      <SectionCard icon={Workflow} tone="blue" title="Últimas entregas" description="Trazabilidad del motor, aunque el ejecutivo todavía no haya gestionado el registro.">
         <div className="overflow-x-auto">
           <Table>
             <Thead>
@@ -207,7 +221,7 @@ export default async function CampaignPriorityPage({ params }: { params: Promise
                 const agent = Array.isArray(assignment.profiles) ? assignment.profiles[0] : assignment.profiles;
                 return (
                   <Tr key={assignment.id}>
-                    <Td muted>{new Date(assignment.claimed_at).toLocaleString("es-CL")}</Td>
+                    <Td muted>{new Date(assignment.claimed_at).toLocaleString("es-CL", { timeZone: "America/Santiago" })}</Td>
                     <Td strong>{lead?.full_name ?? "—"}</Td>
                     <Td>{agent?.full_name ?? "—"}</Td>
                     <Td muted>{assignment.priority_reason}</Td>
@@ -216,7 +230,16 @@ export default async function CampaignPriorityPage({ params }: { params: Promise
                 );
               })}
               {(assignments.data ?? []).length === 0 && (
-                <Tr><Td colSpan={5} muted className="py-8 text-center">Todavía no hay entregas. El motor queda seguro y detenido hasta que cargues base, asignes ejecutivos y lo actives.</Td></Tr>
+                <Tr>
+                  <Td colSpan={5}>
+                    <EmptyState
+                      icon={Send}
+                      title="Todavía no hay entregas."
+                      description="El motor queda seguro y detenido hasta que cargues base, asignes ejecutivos y lo actives."
+                      className="py-6"
+                    />
+                  </Td>
+                </Tr>
               )}
             </Tbody>
           </Table>

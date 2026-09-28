@@ -3,7 +3,7 @@ import { requireProfile } from "@/lib/auth";
 import { puedeLeerConversaciones } from "@/lib/modules.server";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CalendarClock, PencilLine, RefreshCw } from "lucide-react";
+import { ArrowLeft, Briefcase, CalendarClock, Contact, Database, PencilLine, RefreshCw, ShieldCheck, Wallet } from "lucide-react";
 import { LEAD_STATUSES } from "@/lib/types";
 import { getLeadSupervisionContext, getMyOpenManagement, getOpenCall, getRevisableCall, getSupervisableCall, type LeadSupervisionContext } from "@/app/actions/calls";
 import { fetchCampaignAgendaPolicy } from "@/lib/campaign-agenda-policy";
@@ -28,7 +28,7 @@ import { metricDefinition } from "@/lib/metric-definitions";
 import { completeKovacsDemoAssignment } from "@/app/actions/lead-orchestrator";
 import type { Call, Campaign, Lead, Profile, Team, Workflow, WorkflowStep, WorkflowStepBranch } from "@/lib/types";
 import { ActionForm, ActionSubmit, Badge, Callout, Card, InfoTooltip, PageHeader, buttonClasses } from "@/components/ui";
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
 import { getCampaignAppointmentScheduleUrl } from "@/lib/campaign-appointment-schedules";
 import { getWorkspacePermissions } from "@/lib/workspace-permissions";
 import { LearningMemoryPanel } from "@/components/learning-memory-panel";
@@ -45,6 +45,35 @@ function InfoRow({ label, children }: { label: ReactNode; children: ReactNode })
     <div className="flex justify-between gap-3">
       <dt className="text-muted-foreground">{label}</dt>
       <dd className="text-right text-foreground">{children}</dd>
+    </div>
+  );
+}
+
+type ChipTone = "primary" | "blue" | "teal" | "green" | "amber" | "violet" | "rose" | "slate";
+
+/** Cabecera de tarjeta de la ficha: chip de color del dominio + título + ayuda. */
+function CardHeading({
+  icon: Icon,
+  tone,
+  title,
+  description,
+  className,
+}: {
+  icon: ComponentType<{ size?: number }>;
+  tone: ChipTone;
+  title: ReactNode;
+  description?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`flex min-w-0 items-start gap-3 ${className ?? ""}`}>
+      <span className="icon-chip size-8 shrink-0 rounded-lg" data-tone={tone} aria-hidden="true">
+        <Icon size={16} />
+      </span>
+      <div className="min-w-0">
+        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+        {description && <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>}
+      </div>
     </div>
   );
 }
@@ -416,7 +445,7 @@ export default async function LeadDetailPage({
 
   const contactCard = (
     <Card>
-      <h2 className="mb-3 text-sm font-semibold text-foreground">Datos de contacto</h2>
+      <CardHeading icon={Contact} tone="blue" title="Datos de contacto" className="mb-3 items-center" />
       <dl className="space-y-2 text-sm">
         {contactPerson && <InfoRow label="Contacto">{contactPerson}</InfoRow>}
         <InfoRow label="RUT">{lead.rut ?? "—"}</InfoRow>
@@ -454,19 +483,15 @@ export default async function LeadDetailPage({
   function renderDebt(compact: boolean) {
     if (!debt) return null;
     return (
-      <section className="rounded-2xl border border-border bg-surface p-5">
+      <section className="rounded-xl border border-border bg-surface p-5 shadow-sm">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold text-foreground">Estado de la deuda</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Saldo, mora y contexto del alumno con los que se negocia esta gestión.
-            </p>
-          </div>
-          {debt.estado && (
-            <span className="rounded-full bg-surface-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
-              {debt.estado}
-            </span>
-          )}
+          <CardHeading
+            icon={Wallet}
+            tone="green"
+            title="Estado de la deuda"
+            description="Saldo, mora y contexto del alumno con los que se negocia esta gestión."
+          />
+          {debt.estado && <Badge tone="neutral">{debt.estado}</Badge>}
         </div>
         <dl className={compact ? "grid grid-cols-2 gap-x-6 gap-y-3" : "grid gap-x-8 gap-y-3 sm:grid-cols-2 xl:grid-cols-4"}>
           <div className="min-w-0 border-b border-border/70 pb-2">
@@ -522,17 +547,15 @@ export default async function LeadDetailPage({
 
   function renderCampaignData(compact: boolean) {
     return (
-      <section className="rounded-2xl border border-border bg-surface p-5">
+      <section className="rounded-xl border border-border bg-surface p-5 shadow-sm">
         <div className="mb-4 flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold text-foreground">Datos cargados de la base</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Información disponible para esta gestión.
-            </p>
-          </div>
-          <span className="rounded-full bg-surface-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
-            {campaignData.length} campos
-          </span>
+          <CardHeading
+            icon={Database}
+            tone="slate"
+            title="Datos cargados de la base"
+            description="Información disponible para esta gestión."
+          />
+          <Badge tone="neutral">{campaignData.length} campos</Badge>
         </div>
         <dl className={compact ? "grid grid-cols-2 gap-x-6 gap-y-3" : "grid gap-x-8 gap-y-3 sm:grid-cols-2 xl:grid-cols-3"}>
           {campaignData.map(([key, value], index) => (
@@ -688,15 +711,14 @@ export default async function LeadDetailPage({
       )}
 
       {supervisionContext && (
-        <section className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
+        <section className="rounded-xl border border-border bg-surface p-4 shadow-sm sm:p-5">
           <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-semibold text-foreground">Supervisión de la gestión</h2>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Corrige una tipificación o agrega la última. Una venta que no se marcó como tal entra a la
-                validación de ventas al dejarla como VENTA EN VALIDACION.
-              </p>
-            </div>
+            <CardHeading
+              icon={ShieldCheck}
+              tone="violet"
+              title="Supervisión de la gestión"
+              description="Corrige una tipificación o agrega la última. Una venta que no se marcó como tal entra a la validación de ventas al dejarla como VENTA EN VALIDACION."
+            />
             <Link
               href={`/dashboard/leads/${lead.id}?supervisar=nueva#supervision-form`}
               className={buttonClasses({ variant: supervisionTarget === "nueva" ? "primary" : "secondary", size: "sm" })}
@@ -786,7 +808,7 @@ export default async function LeadDetailPage({
             {/* Cierra la medición de cuánto tardó la ficha en aparecer. */}
             {profile.role === "agente" && <ScreenPopTiming leadId={lead.id} />}
             {call.management_channel && (
-              <p className="mb-3 inline-flex items-center gap-2 rounded-full bg-surface px-3 py-1 text-xs font-medium text-foreground">
+              <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-border-strong bg-surface px-3 py-1 text-xs font-medium text-foreground">
                 Gestión sin llamada · {OFFLINE_CHANNEL_LABEL[call.management_channel] ?? "Otro canal"}
               </p>
             )}
@@ -833,7 +855,7 @@ export default async function LeadDetailPage({
           {!call && contactCard}
 
           <Card>
-            <h2 className="mb-3 text-sm font-semibold text-foreground">Operación</h2>
+            <CardHeading icon={Briefcase} tone="rose" title="Operación" className="mb-3 items-center" />
             <dl className="space-y-2 text-sm">
               <InfoRow label="Campaña">{campaign?.name ?? "Sin campaña"}</InfoRow>
               <InfoRow label="Flujo de gestión">{workflow?.name ?? "Sin flujo asignado"}</InfoRow>
@@ -859,10 +881,7 @@ export default async function LeadDetailPage({
           </Card>
 
           <Card>
-            <div className="mb-3 flex items-center gap-2">
-              <RefreshCw size={15} className="text-muted-foreground" aria-hidden="true" />
-              <h2 className="text-sm font-semibold text-foreground">Sincronización 360</h2>
-            </div>
+            <CardHeading icon={RefreshCw} tone="slate" title="Sincronización 360" className="mb-3 items-center" />
             {externalRefs.length ? (
               <div className="space-y-3">
                 {externalRefs.map((reference) => {
@@ -897,12 +916,14 @@ export default async function LeadDetailPage({
 
         {/* Zona 2: la acción de ahora y el hilo completo */}
         <main className="space-y-5">
-          <Card className={overdue ? "border-danger/40" : undefined}>
+          <Card className={`border-l-2 ${overdue ? "border-danger/40 border-l-danger" : lead.next_action_at ? "border-l-warning" : "border-l-border-strong"}`}>
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <CalendarClock size={16} className={overdue ? "text-danger" : "text-muted-foreground"} />
+              <div className="flex items-center gap-3">
+                <span className="icon-chip size-8 shrink-0 rounded-lg" data-tone={overdue ? "rose" : "amber"} aria-hidden="true">
+                  <CalendarClock size={16} />
+                </span>
                 <div>
-                  <p className="text-xs text-muted-foreground">Próxima acción</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Próxima acción</p>
                   <p className={`text-sm font-medium ${overdue ? "text-danger" : "text-foreground"}`}>
                     {lead.next_action_at
                       ? `${overdue ? "Vencida · " : ""}${formatDateTime(lead.next_action_at)}`

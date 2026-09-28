@@ -61,7 +61,8 @@ export function TeamAgentsTable({ rows }: { rows: TeamAgentRow[] }) {
         header: "Agendas vencidas",
         align: "right",
         value: (row) => row.overdue,
-        cell: (row) => <span className={row.overdue > 0 ? "font-medium text-danger" : undefined}>{row.overdue}</span>,
+        cell: (row) =>
+          row.overdue > 0 ? <Badge tone="danger">{row.overdue}</Badge> : <span className="text-muted-foreground">0</span>,
       },
       {
         id: "detalle",

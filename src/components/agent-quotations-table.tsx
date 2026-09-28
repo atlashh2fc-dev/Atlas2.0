@@ -259,7 +259,7 @@ export function AgentQuotationsTable({ rows, campaigns }: { rows: QuotationRow[]
               "rounded-full border px-3 py-1 text-sm transition-colors",
               filter === option.value
                 ? "border-primary bg-primary/10 font-medium text-primary"
-                : "border-border text-muted-foreground hover:text-foreground"
+                : "border-border bg-surface text-muted-foreground hover:border-border-strong hover:text-foreground"
             )}
           >
             {option.label}
@@ -310,7 +310,12 @@ export function AgentQuotationsTable({ rows, campaigns }: { rows: QuotationRow[]
       >
         {draft && (
           <div className="space-y-4 text-sm">
-            <div className="rounded-lg border border-border bg-surface-muted px-3 py-2">
+            <div
+              className={cn(
+                "rounded-lg border border-border border-l-2 bg-surface-muted px-3 py-2",
+                draft.result === "vendida" ? "border-l-success" : "border-l-danger"
+              )}
+            >
               <p className="font-medium">{draft.row.leadName ?? "Registro sin nombre"}</p>
               <p className="text-xs text-muted-foreground">
                 Cotizada el {dateTime.format(new Date(draft.row.quotedAt))}
@@ -328,12 +333,12 @@ export function AgentQuotationsTable({ rows, campaigns }: { rows: QuotationRow[]
                   aria-checked={draft.result === result}
                   onClick={() => setDraft({ ...draft, result })}
                   className={cn(
-                    "rounded-md border px-3 py-2 text-sm font-medium",
+                    "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
                     draft.result === result
                       ? result === "vendida"
                         ? "border-success bg-success/10 text-success"
                         : "border-danger bg-danger/10 text-danger"
-                      : "border-border text-muted-foreground hover:text-foreground"
+                      : "border-border bg-surface text-muted-foreground hover:border-border-strong hover:text-foreground"
                   )}
                 >
                   {result === "vendida" ? "Se vendió" : "No se vendió"}
@@ -376,7 +381,7 @@ export function AgentQuotationsTable({ rows, campaigns }: { rows: QuotationRow[]
                 placeholder={
                   draft.result === "vendida" ? "Ej.: aceptó el plan mensual, paga con transferencia" : "Ej.: encontró otra opción más barata"
                 }
-                className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             </Field>
           </div>

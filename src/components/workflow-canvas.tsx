@@ -20,7 +20,7 @@ import {
   type NodeHandle,
   useReactFlow,
 } from "@xyflow/react";
-import { X } from "lucide-react";
+import { ListChecks, X } from "lucide-react";
 import "@xyflow/react/dist/style.css";
 import type { WorkflowFieldType, WorkflowStep, WorkflowStepBranch } from "@/lib/types";
 import { WORKFLOW_FIELD_TYPES } from "@/lib/types";
@@ -82,21 +82,31 @@ function StepNode({ data }: NodeProps<StepFlowNode>) {
   return (
     <div
       onClick={() => data.onSelect(step.id)}
-      className={`group relative w-64 cursor-pointer rounded-xl border bg-surface shadow-sm transition-shadow ${
+      className={`group relative w-64 cursor-pointer rounded-xl border bg-surface-solid shadow-sm transition-shadow hover:shadow-md ${
         data.selected ? "border-primary ring-2 ring-ring" : "border-border"
       }`}
     >
+      {/* Línea de acento como las secciones: rosa (flujos) y verde en el paso de inicio.
+          Va absoluta para no cambiar el alto que usan los Handles. */}
+      <div
+        aria-hidden="true"
+        className={`pointer-events-none absolute inset-x-0 top-0 h-0.5 rounded-t-xl ${
+          step.is_start
+            ? "bg-[linear-gradient(90deg,var(--success),transparent_85%)]"
+            : "bg-[linear-gradient(90deg,var(--tone-rose),transparent_85%)]"
+        }`}
+      />
       <Handle
         type="target"
         position={Position.Left}
         id="in"
-        className="!h-3 !w-3 !border-2 !border-primary !bg-surface"
+        className="!h-3 !w-3 !border-2 !border-primary !bg-surface-solid"
       />
       <Handle
         type="source"
         position={Position.Right}
         id="out"
-        className="!h-3 !w-3 !border-2 !border-primary !bg-surface"
+        className="!h-3 !w-3 !border-2 !border-primary !bg-surface-solid"
       />
 
       <button
@@ -108,7 +118,7 @@ function StepNode({ data }: NodeProps<StepFlowNode>) {
           event.stopPropagation();
           data.onDelete(step.id);
         }}
-        className={`nodrag nopan absolute right-2 top-2 z-10 grid size-6 place-items-center rounded-md border border-danger/30 bg-surface text-danger shadow-sm transition hover:bg-danger-bg focus:outline-none focus:ring-2 focus:ring-danger/40 ${
+        className={`nodrag nopan absolute right-2 top-2 z-10 grid size-6 place-items-center rounded-md border border-danger/30 bg-surface-solid text-danger shadow-sm transition hover:bg-danger-bg focus:outline-none focus:ring-2 focus:ring-danger/40 ${
           data.selected ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus:opacity-100"
         }`}
       >
@@ -118,13 +128,15 @@ function StepNode({ data }: NodeProps<StepFlowNode>) {
       <div className="border-b border-border px-3 py-2.5" style={{ height: HEADER_HEIGHT }}>
         <div className="flex items-center gap-1.5">
           {step.is_start && (
-            <span className="rounded-full bg-success-bg px-1.5 py-0.5 text-[10px] font-semibold text-success">
+            <span className="rounded-full border border-success/35 bg-success-bg px-1.5 py-0.5 text-[10px] font-semibold text-success">
               INICIO
             </span>
           )}
           <span
-            className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
-              step.is_mandatory ? "bg-warning-bg text-warning" : "bg-surface-muted text-muted-foreground"
+            className={`rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${
+              step.is_mandatory
+                ? "border-warning/35 bg-warning-bg text-warning"
+                : "border-border-strong bg-surface-muted text-muted-foreground"
             }`}
           >
             {step.is_mandatory ? "Obligatorio" : "Opcional"}
@@ -449,11 +461,11 @@ function WorkflowCanvasInner({
         proOptions={{ hideAttribution: true }}
       >
         <Background gap={20} className="!bg-background" />
-        <Controls showInteractive={false} className="[&_button]:!border-border [&_button]:!bg-surface [&_button]:!text-foreground" />
+        <Controls showInteractive={false} className="[&_button]:!border-border [&_button]:!bg-surface-solid [&_button]:!text-foreground" />
         <MiniMap
           pannable
           zoomable
-          className="!bg-surface"
+          className="!rounded-lg !border !border-border !bg-surface-solid"
           maskColor="rgba(0,0,0,0.15)"
         />
       </ReactFlow>
@@ -465,14 +477,14 @@ function WorkflowCanvasInner({
         >
           + Agregar paso
         </button>
-        <span className="rounded-lg bg-surface/90 px-3 py-2 text-xs text-muted-foreground shadow backdrop-blur">
+        <span className="rounded-lg border border-border bg-surface-solid/90 px-3 py-2 text-xs text-muted-foreground shadow backdrop-blur">
           Arrastra desde el punto junto a cada respuesta hasta el siguiente paso para armar el camino.
         </span>
       </div>
 
       {pendingConnection && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/30">
-          <div className="w-72 rounded-xl border border-border bg-surface p-4 shadow-xl">
+          <div className="w-72 rounded-xl border border-border bg-surface-solid p-4 shadow-xl">
             <p className="mb-3 text-sm font-semibold text-foreground">
               ¿Qué respuesta lleva a este paso?
             </p>
@@ -504,7 +516,7 @@ function WorkflowCanvasInner({
       )}
 
       {errorMsg && (
-        <div className="absolute left-3 top-16 z-10 max-w-md rounded-lg bg-danger-bg px-3 py-2 text-xs font-medium text-danger shadow">
+        <div className="absolute left-3 top-16 z-10 max-w-md rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-xs font-medium text-danger shadow">
           {errorMsg}
           <button onClick={() => setErrorMsg(null)} className="ml-2 underline">
             cerrar
@@ -591,9 +603,14 @@ function StepEditorPanel({
   const needsOptions = fieldType !== "text";
 
   return (
-    <div className="absolute right-0 top-0 flex h-full w-80 flex-col border-l border-border bg-surface shadow-xl">
+    <div className="absolute right-0 top-0 flex h-full w-80 flex-col border-l border-border bg-surface-solid shadow-xl">
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
-        <h3 className="text-sm font-semibold text-foreground">Editar paso</h3>
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+          <span className="icon-chip size-7 rounded-lg" data-tone="rose" aria-hidden="true">
+            <ListChecks size={14} />
+          </span>
+          Editar paso
+        </h3>
         <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
           ✕
         </button>
@@ -676,7 +693,7 @@ function StepEditorPanel({
             type="checkbox"
             checked={isMandatory}
             onChange={(e) => setIsMandatory(e.target.checked)}
-            className="rounded border-border"
+            className="rounded border-border accent-primary"
           />
           Paso obligatorio
         </label>
@@ -719,7 +736,7 @@ function StepEditorPanel({
           <div className="flex gap-2">
             <button
               onClick={onDelete}
-              className="flex-1 rounded-lg bg-danger px-3 py-2 text-xs font-medium text-white hover:opacity-90"
+              className="flex-1 rounded-lg bg-danger px-3 py-2 text-xs font-medium text-primary-foreground hover:opacity-90"
             >
               Confirmar
             </button>

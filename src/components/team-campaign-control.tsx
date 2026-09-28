@@ -115,12 +115,19 @@ export function TeamCampaignControl({
               <Td>{currentLabel(row, viewerId)}</Td>
               <Td>
                 {row.campaigns.length === 0 ? (
-                  <span className="text-xs text-muted-foreground">Sin campañas con discador</span>
+                  <Badge tone="neutral">Sin campañas con discador</Badge>
                 ) : (
                   <ol className="space-y-1">
                     {row.campaigns.map((campaign, index) => (
                       <li key={campaign.campaign_id} className="flex items-center gap-2 text-xs">
-                        <span className="w-4 text-right font-semibold text-muted-foreground">{index + 1}.</span>
+                        <span
+                          className="icon-chip size-5 rounded-full text-[10px] font-semibold tabular-nums"
+                          data-tone={index === 0 ? "rose" : "slate"}
+                          data-active={index === 0 ? "true" : undefined}
+                          aria-label={`Prioridad ${index + 1}`}
+                        >
+                          {index + 1}
+                        </span>
                         <span className="flex-1">{campaign.name}</span>
                         <button
                           type="button"

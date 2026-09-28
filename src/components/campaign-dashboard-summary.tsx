@@ -11,6 +11,34 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import {
+  CalendarClock,
+  CalendarRange,
+  Clock,
+  Coins,
+  Funnel,
+  Headset,
+  Minus,
+  Network,
+  PhoneCall,
+  Trophy,
+  TrendingDown,
+  TrendingUp,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
+import {
+  CHART_AXIS_TICK,
+  CHART_COLOR,
+  CHART_CURSOR,
+  CHART_GRID,
+  CHART_TOOLTIP_LABEL_STYLE,
+  CHART_TOOLTIP_STYLE,
+  chartGradients,
+  gradientUrl,
+  useChartId,
+} from "@/components/chart-theme";
+import { EmptyState, MetricIconChip, SectionCard, type IconTone } from "@/components/ui";
 import type {
   CampaignDashboardSummary as CampaignDashboardSummaryData,
   CampaignDashboardSummaryMetric,
@@ -96,6 +124,7 @@ function formatOperationDate(value: string): string {
  * outbound decide la programación del día: en qué horas contesta la gente.
  */
 function ContactabilityByHour({ data }: { data: ContactabilityHour[] }) {
+  const chartId = useChartId("contactabilidad-hora");
   // Se recorta al tramo con actividad. Mostrar de 00:00 a 23:00 dejaría el
   // gráfico casi todo vacío y aplastaría las horas que importan.
   const active = data.filter((row) => row.gestiones > 0);
@@ -112,56 +141,56 @@ function ContactabilityByHour({ data }: { data: ContactabilityHour[] }) {
   }, null);
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-5">
-      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-sm font-semibold text-foreground">Contactabilidad por hora</h3>
-        {best && (
-          <span className="text-xs text-muted-foreground">
-            Mejor franja: <span className="font-medium text-foreground">{best.label}</span> ·{" "}
+    <SectionCard
+      title="Contactabilidad por hora"
+      icon={Clock}
+      tone="amber"
+      actions={
+        best && (
+          <span className="shrink-0 rounded-full border border-success/30 bg-success-bg px-2.5 py-1 text-[11px] font-medium text-success">
+            Mejor franja: <span className="font-semibold">{best.label}</span> ·{" "}
             {fmtPct((best.contactabilidad ?? 0) / 100)}
           </span>
-        )}
-      </div>
-
+        )
+      }
+    >
+      <div className="p-5">
       {window.length === 0 ? (
-        <p className="py-16 text-center text-sm text-muted-foreground">
-          Sin gestiones cerradas en el período.
-        </p>
+        <EmptyState icon={Clock} title="Sin gestiones cerradas en el período." />
       ) : (
         <ResponsiveContainer width="100%" height={280}>
-          <ComposedChart data={window}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-            <XAxis dataKey="label" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} />
-            <YAxis yAxisId="left" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
+          <ComposedChart data={window} barGap={2}>
+            {chartGradients(chartId, ["slate", "primary"])}
+            <CartesianGrid {...CHART_GRID} vertical={false} />
+            <XAxis dataKey="label" tick={{ ...CHART_AXIS_TICK, fontSize: 10 }} />
+            <YAxis yAxisId="left" tick={CHART_AXIS_TICK} />
             <YAxis
               yAxisId="right"
               orientation="right"
               domain={[0, 100]}
               unit="%"
-              tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+              tick={CHART_AXIS_TICK}
             />
             <Tooltip
-              contentStyle={{
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
-                borderRadius: 8,
-                fontSize: 12,
-              }}
+              contentStyle={CHART_TOOLTIP_STYLE}
+              labelStyle={CHART_TOOLTIP_LABEL_STYLE}
+              cursor={CHART_CURSOR}
               formatter={(value, name) =>
                 name === "contactabilidad"
                   ? [`${Number(value).toFixed(1)}%`, "Contactabilidad"]
                   : [fmtInt(Number(value)), name === "contactos" ? "Contactos" : "Gestiones"]
               }
             />
-            <Bar yAxisId="left" dataKey="gestiones" fill="var(--muted-foreground)" radius={[4, 4, 0, 0]} />
-            <Bar yAxisId="left" dataKey="contactos" fill="var(--primary)" radius={[4, 4, 0, 0]} />
+            <Bar yAxisId="left" dataKey="gestiones" fill={gradientUrl(chartId, "slate")} fillOpacity={0.55} radius={[5, 5, 0, 0]} maxBarSize={22} />
+            <Bar yAxisId="left" dataKey="contactos" fill={gradientUrl(chartId, "primary")} radius={[5, 5, 0, 0]} maxBarSize={22} />
             <Line
               yAxisId="right"
               type="monotone"
               dataKey="contactabilidad"
-              stroke="var(--success)"
-              strokeWidth={2}
+              stroke={CHART_COLOR.green}
+              strokeWidth={2.5}
               dot={false}
+              activeDot={{ r: 4, strokeWidth: 0 }}
               connectNulls={false}
             />
           </ComposedChart>
@@ -172,7 +201,8 @@ function ContactabilityByHour({ data }: { data: ContactabilityHour[] }) {
         Barras: gestiones cerradas y cuántas terminaron en conversación. Línea: porcentaje de
         contacto de esa hora.
       </p>
-    </div>
+      </div>
+    </SectionCard>
   );
 }
 
@@ -220,9 +250,13 @@ function FunnelStages({
               </span>
             </div>
             <div className="mt-1.5 h-2.5 w-full overflow-hidden rounded-full bg-surface-muted">
+              {/* La última etapa es el cierre y va en verde; las demás en la marca. */}
               <div
-                className="h-full rounded-full bg-primary"
-                style={{ width: `${width}%` }}
+                className="h-full rounded-full"
+                style={{
+                  width: `${width}%`,
+                  background: `linear-gradient(90deg, color-mix(in srgb, ${index === stages.length - 1 ? "var(--success)" : "var(--primary)"} 55%, transparent), ${index === stages.length - 1 ? "var(--success)" : "var(--primary)"})`,
+                }}
                 role="presentation"
               />
             </div>
@@ -266,15 +300,13 @@ function DeltaBadge({ metric, invert = false }: { metric: CampaignDashboardSumma
   if (pct === null) return <span className="text-xs text-muted-foreground">vs. período anterior: n/d</span>;
   const positive = invert ? pct < 0 : pct > 0;
   const isZero = Math.abs(pct) < 0.001;
-  const color = isZero
-    ? "text-muted-foreground"
-    : positive
-      ? "text-[color:var(--success)]"
-      : "text-[color:var(--danger)]";
-  const arrow = isZero ? "->" : pct > 0 ? "+" : "-";
+  const color = isZero ? "text-muted-foreground" : positive ? "text-success" : "text-danger";
+  const Arrow = isZero ? Minus : pct > 0 ? TrendingUp : TrendingDown;
   return (
-    <span className={`text-xs font-medium ${color}`}>
-      {arrow} {Math.abs(pct * 100).toFixed(1)}% vs. período anterior
+    <span className={`mt-1 inline-flex items-center gap-1 text-xs font-medium tabular-nums ${color}`}>
+      <Arrow size={13} aria-hidden="true" />
+      {Math.abs(pct * 100).toFixed(1)}%
+      <span className="font-normal text-muted-foreground">vs. período anterior</span>
     </span>
   );
 }
@@ -283,17 +315,28 @@ function KpiCard({
   label,
   value,
   metric,
+  icon,
+  iconTone,
   highlight = false,
 }: {
   label: string;
   value: string;
   metric?: CampaignDashboardSummaryMetric;
+  icon: LucideIcon;
+  iconTone: IconTone;
   highlight?: boolean;
 }) {
   return (
-    <div className={`rounded-xl border border-border bg-surface p-4 ${highlight ? "ring-1 ring-primary/25" : ""}`}>
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-foreground">{value}</p>
+    <div
+      className={`rounded-xl border bg-surface p-4 shadow-sm ${highlight ? "border-success/40 ring-1 ring-success/20" : "border-border"}`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+        <MetricIconChip icon={icon} tone={iconTone} />
+      </div>
+      <p className={`mt-1.5 text-2xl font-semibold tabular-nums tracking-tight ${highlight ? "text-success" : "text-foreground"}`}>
+        {value}
+      </p>
       {metric && <DeltaBadge metric={metric} />}
     </div>
   );
@@ -354,21 +397,26 @@ function ChannelFunnelTable({
   const totalCell = "pt-2.5 text-right tabular-nums";
 
   return (
-    <section className="rounded-xl border border-border bg-surface p-5">
-      <h3 className="text-sm font-semibold text-foreground">Resultado por canal de origen</h3>
-      <p className="mb-4 mt-1 text-xs text-muted-foreground">
-        Atribuye cada lead a su canal de entrada original; una conversación posterior por WhatsApp no cambia su origen.
-        Toca un número para ver esos registros.
-      </p>
-      <div className="overflow-x-auto">
+    <SectionCard
+      title="Resultado por canal de origen"
+      icon={Network}
+      tone="teal"
+      description={
+        <>
+          Atribuye cada lead a su canal de entrada original; una conversación posterior por WhatsApp no cambia su origen.
+          Toca un número para ver esos registros.
+        </>
+      }
+    >
+      <div className="overflow-x-auto px-5 pt-2">
         <table className="w-full min-w-[560px] text-left text-sm">
-          <thead className="border-b border-border text-xs text-muted-foreground">
+          <thead className="border-b border-border text-[11px] uppercase tracking-wider text-muted-foreground">
             <tr>
-              <th className="py-2 font-medium">Canal</th>
-              <th className="py-2 text-right font-medium">Base</th>
-              <th className="py-2 text-right font-medium">Contactados</th>
-              <th className="py-2 text-right font-medium">Interesados</th>
-              <th className="py-2 text-right font-medium">Ventas</th>
+              <th className="py-2 font-semibold">Canal</th>
+              <th className="py-2 text-right font-semibold">Base</th>
+              <th className="py-2 text-right font-semibold">Contactados</th>
+              <th className="py-2 text-right font-semibold">Interesados</th>
+              <th className="py-2 text-right font-semibold">Ventas</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -385,7 +433,7 @@ function ChannelFunnelTable({
                     channel={channel}
                     stage="ventas"
                     range={range}
-                    className="py-2.5 text-right font-semibold tabular-nums text-foreground"
+                    className="py-2.5 text-right font-semibold tabular-nums text-success"
                   />
                 </tr>
               );
@@ -402,10 +450,10 @@ function ChannelFunnelTable({
           </tfoot>
         </table>
       </div>
-      <p className="mt-4 text-xs text-muted-foreground">
+      <p className="px-5 pb-5 pt-4 text-xs text-muted-foreground">
         Contactado: conversación efectiva. Interesado: seguimiento, derivación o agenda. Venta: venta en validación registrada.
       </p>
-    </section>
+    </SectionCard>
   );
 }
 
@@ -429,6 +477,7 @@ export function CampaignDashboardSummary({
   tipificationRows,
 }: Props) {
   const vocabulary = getCampaignVocabulary(vertical);
+  const evolutionChartId = useChartId("evolucion");
   const kpis = summary.kpis;
   // Los vencidos y los compromisos de otros ejecutivos siguen en la base y en
   // su trazabilidad; sólo se ocultan en este panel de campañas.
@@ -449,57 +498,68 @@ export function CampaignDashboardSummary({
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border border-border bg-surface p-4 text-xs text-muted-foreground">
+      <div className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-xs text-muted-foreground shadow-sm">
+        <span className="icon-chip size-7 rounded-lg" data-tone="amber" aria-hidden="true">
+          <CalendarRange size={14} />
+        </span>
         {/* Con la zona del navegador, quien mire desde otro huso vería un día
             distinto al del reporte. El período es el de la operación. */}
-        Período analizado: {formatOperationDate(summary.range.from)} -{" "}
-        {formatOperationDate(summary.range.to)}
+        <span>
+          Período analizado:{" "}
+          <span className="font-medium text-foreground">
+            {formatOperationDate(summary.range.from)} - {formatOperationDate(summary.range.to)}
+          </span>
+        </span>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <KpiCard label={vocabulary.kpi.gestiones} value={fmtInt(kpis.gestionadas.current)} metric={kpis.gestionadas} />
-        <KpiCard label={vocabulary.kpi.contactabilidad} value={fmtPct(contactabilidad.current)} metric={contactabilidad} />
-        <KpiCard label={vocabulary.kpi.cierre} value={fmtInt(kpis.ventas.current)} metric={kpis.ventas} highlight />
-        <KpiCard label={vocabulary.kpi.conversion} value={fmtPct(tasaConversion.current)} metric={tasaConversion} />
-        <KpiCard label={vocabulary.kpi.monto} value={`${Number(kpis.uf_total.current).toFixed(1)} UF`} metric={kpis.uf_total} />
+        <KpiCard label={vocabulary.kpi.gestiones} value={fmtInt(kpis.gestionadas.current)} metric={kpis.gestionadas} icon={Headset} iconTone="primary" />
+        <KpiCard label={vocabulary.kpi.contactabilidad} value={fmtPct(contactabilidad.current)} metric={contactabilidad} icon={PhoneCall} iconTone="teal" />
+        <KpiCard label={vocabulary.kpi.cierre} value={fmtInt(kpis.ventas.current)} metric={kpis.ventas} icon={Trophy} iconTone="green" highlight />
+        <KpiCard label={vocabulary.kpi.conversion} value={fmtPct(tasaConversion.current)} metric={tasaConversion} icon={TrendingUp} iconTone="green" />
+        <KpiCard label={vocabulary.kpi.monto} value={`${Number(kpis.uf_total.current).toFixed(1)} UF`} metric={kpis.uf_total} icon={Coins} iconTone="green" />
       </div>
 
       {channelFunnel && channelFunnel.length > 0 && <ChannelFunnelTable rows={channelFunnel} range={summary.range} />}
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-xl border border-border bg-surface p-5">
-          <h3 className="text-sm font-semibold text-foreground">
-            {vertical === "cobranza" ? "Embudo de recuperación" : "Embudo de gestión"}
-          </h3>
-          {showFunnelOrigins && (
-            <p className="mb-3 mt-1 text-xs text-muted-foreground">
-              Cada etapa se desglosa por la procedencia registrada del lead.
-            </p>
-          )}
-          {!showFunnelOrigins && <div className="mb-3" />}
-          <FunnelStages stages={funnel} showOrigins={showFunnelOrigins} />
-        </div>
+        <SectionCard
+          title={vertical === "cobranza" ? "Embudo de recuperación" : "Embudo de gestión"}
+          description={showFunnelOrigins ? "Cada etapa se desglosa por la procedencia registrada del lead." : undefined}
+          icon={Funnel}
+          tone="violet"
+        >
+          <div className="p-5">
+            <FunnelStages stages={funnel} showOrigins={showFunnelOrigins} />
+          </div>
+        </SectionCard>
 
-        <div className="rounded-xl border border-border bg-surface p-5">
-          <h3 className="mb-3 text-sm font-semibold text-foreground">{vocabulary.evolucionTitle}</h3>
+        <SectionCard title={vocabulary.evolucionTitle} icon={TrendingUp} tone="violet">
+          <div className="p-5">
           <ResponsiveContainer width="100%" height={280}>
             <ComposedChart data={summary.time_series}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="date" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} />
-              <YAxis tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
+              {chartGradients(evolutionChartId, ["primary"], "area")}
+              <CartesianGrid {...CHART_GRID} vertical={false} />
+              <XAxis dataKey="date" tick={{ ...CHART_AXIS_TICK, fontSize: 10 }} />
+              <YAxis tick={CHART_AXIS_TICK} />
               <Tooltip
-                contentStyle={{
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  fontSize: 12,
-                }}
+                contentStyle={CHART_TOOLTIP_STYLE}
+                labelStyle={CHART_TOOLTIP_LABEL_STYLE}
+                cursor={{ stroke: "var(--border-strong)" }}
               />
-              <Area type="monotone" dataKey="gestiones" stroke="var(--primary)" fill="var(--primary)" fillOpacity={0.12} />
-              <Line type="monotone" dataKey="ventas" stroke="var(--success)" strokeWidth={2} dot={false} />
+              <Area
+                type="monotone"
+                dataKey="gestiones"
+                stroke={CHART_COLOR.primary}
+                fill={gradientUrl(evolutionChartId, "primary")}
+                strokeWidth={2.25}
+                activeDot={{ r: 4, strokeWidth: 0 }}
+              />
+              <Line type="monotone" dataKey="ventas" stroke={CHART_COLOR.green} strokeWidth={2.5} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
             </ComposedChart>
           </ResponsiveContainer>
-        </div>
+          </div>
+        </SectionCard>
 
         <ContactabilityByHour data={hourly} />
       </div>
@@ -510,18 +570,17 @@ export function CampaignDashboardSummary({
       <TipificationBreakdown breakdown={tipifications} title={vocabulary.motivosTitle} />
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-xl border border-border bg-surface p-5">
-          <h3 className="mb-3 text-sm font-semibold text-foreground">{vocabulary.agendaTitle}</h3>
-          <div className="max-h-80 overflow-y-auto">
+        <SectionCard title={vocabulary.agendaTitle} icon={CalendarClock} tone="amber">
+          <div className="max-h-80 overflow-y-auto px-5 pb-4">
             <table className="w-full text-left text-xs">
-              <thead className="sticky top-0 bg-surface text-muted-foreground">
+              <thead className="sticky top-0 bg-surface text-[11px] uppercase tracking-wider text-muted-foreground">
                 <tr>
-                  <th className="py-1.5 font-medium">
+                  <th className="py-2 font-semibold">
                     {vertical === "cobranza" ? "Deudor" : "Lead"}
                   </th>
-                  <th className="py-1.5 font-medium">Ejecutivo</th>
-                  <th className="py-1.5 font-medium">Resultado</th>
-                  <th className="py-1.5 font-medium">Próxima acción</th>
+                  <th className="py-2 font-semibold">Ejecutivo</th>
+                  <th className="py-2 font-semibold">Resultado</th>
+                  <th className="py-2 font-semibold">Próxima acción</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -537,7 +596,7 @@ export function CampaignDashboardSummary({
                     <td className="py-1.5 text-foreground">{item.lead_full_name}</td>
                     <td className="py-1.5 text-muted-foreground">{item.agent_name}</td>
                     <td className="py-1.5 text-muted-foreground">{item.reason ? reasonLabel(item.reason) : "-"}</td>
-                    <td className={`py-1.5 font-medium ${item.overdue ? "text-[color:var(--danger)]" : "text-foreground"}`}>
+                    <td className={`py-1.5 font-medium ${item.overdue ? "text-danger" : "text-foreground"}`}>
                       {new Date(item.next_action_at).toLocaleString("es-CL", {
                         day: "2-digit",
                         month: "2-digit",
@@ -551,19 +610,18 @@ export function CampaignDashboardSummary({
               </tbody>
             </table>
           </div>
-        </div>
+        </SectionCard>
 
-        <div className="rounded-xl border border-border bg-surface p-5">
-          <h3 className="mb-3 text-sm font-semibold text-foreground">Ranking de ejecutivos</h3>
-          <div className="max-h-80 overflow-y-auto">
+        <SectionCard title="Ranking de ejecutivos" icon={Users} tone="blue">
+          <div className="max-h-80 overflow-y-auto px-5 pb-4">
             <table className="w-full text-left text-xs">
-              <thead className="sticky top-0 bg-surface text-muted-foreground">
+              <thead className="sticky top-0 bg-surface text-[11px] uppercase tracking-wider text-muted-foreground">
                 <tr>
-                  <th className="py-1.5 font-medium">Ejecutivo</th>
-                  <th className="py-1.5 font-medium text-right">Gestiones</th>
-                  <th className="py-1.5 font-medium text-right">Contactos</th>
-                  <th className="py-1.5 font-medium text-right">{vocabulary.kpi.cierreNota}</th>
-                  <th className="py-1.5 font-medium text-right">UF</th>
+                  <th className="py-2 font-semibold">Ejecutivo</th>
+                  <th className="py-2 font-semibold text-right">Gestiones</th>
+                  <th className="py-2 font-semibold text-right">Contactos</th>
+                  <th className="py-2 font-semibold text-right">{vocabulary.kpi.cierreNota}</th>
+                  <th className="py-2 font-semibold text-right">UF</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -579,14 +637,14 @@ export function CampaignDashboardSummary({
                     <td className="py-1.5 text-foreground">{agent.name}</td>
                     <td className="py-1.5 text-right text-muted-foreground">{fmtInt(agent.gestiones)}</td>
                     <td className="py-1.5 text-right text-muted-foreground">{fmtInt(agent.contactos)}</td>
-                    <td className="py-1.5 text-right font-medium text-foreground">{fmtInt(agent.ventas)}</td>
+                    <td className={`py-1.5 text-right font-semibold tabular-nums ${agent.ventas > 0 ? "text-success" : "text-foreground"}`}>{fmtInt(agent.ventas)}</td>
                     <td className="py-1.5 text-right text-muted-foreground">{Number(agent.uf).toFixed(1)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </div>
+        </SectionCard>
       </div>
 
       <p className="text-xs text-muted-foreground">{vocabulary.disclaimer}</p>

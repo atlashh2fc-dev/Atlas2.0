@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ComponentType, type CSSProperties, type ReactNode } from "react";
 import { ArrowDownRight, ArrowUpRight, ChevronDown, ChevronUp, FileSpreadsheet, Minus, X } from "lucide-react";
 import { Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
+import type { IconTone } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { descargarHoja, type FilaExcel, type FormatoColumna } from "@/lib/reporte-clinica-excel";
 
@@ -13,6 +14,8 @@ import { descargarHoja, type FilaExcel, type FormatoColumna } from "@/lib/report
  *    gris, nunca en otro color que compita.
  *  - Los textos van en tinta, no en el color de la serie.
  *  - Todo lo que se ve como barra es un botón: filtra el tablero.
+ *  - El chip de icono de paneles e indicadores sí lleva el color del dominio
+ *    (dinero verde, agenda ámbar, personas azul...), igual que el menú.
  */
 
 export const clp = new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 });
@@ -41,11 +44,34 @@ export function formatear(valor: number | null, formato: Formato): string {
 // Contenedor
 // ---------------------------------------------------------------------------
 
+type Icono = ComponentType<{ size?: number; "aria-hidden"?: boolean | "true" }>;
+
+const VAR_TONO: Record<IconTone, string> = {
+  primary: "var(--primary)",
+  blue: "var(--tone-blue)",
+  teal: "var(--tone-teal)",
+  green: "var(--tone-green)",
+  amber: "var(--tone-amber)",
+  violet: "var(--tone-violet)",
+  rose: "var(--tone-rose)",
+  slate: "var(--tone-slate)",
+};
+
+function ChipIcono({ icono: Icon, tono = "primary", className, size }: { icono: Icono; tono?: IconTone; className: string; size: number }) {
+  return (
+    <span className={cn("icon-chip", className)} data-tone={tono} aria-hidden="true">
+      <Icon size={size} aria-hidden="true" />
+    </span>
+  );
+}
+
 export function Panel({
   titulo,
   descripcion,
   acciones,
   exportar,
+  icono,
+  tono,
   className,
   children,
 }: {
@@ -53,15 +79,25 @@ export function Panel({
   descripcion?: ReactNode;
   acciones?: ReactNode;
   exportar?: { nombre: string; filas: FilaExcel[]; formatos?: Record<string, FormatoColumna> };
+  /** Chip de la cabecera; con `tono`, además, una línea de acento arriba. */
+  icono?: Icono;
+  tono?: IconTone;
   className?: string;
   children: ReactNode;
 }) {
+  const acento = tono ? ({ "--section-accent": VAR_TONO[tono] } as CSSProperties) : undefined;
   return (
-    <section className={cn("flex min-w-0 flex-col rounded-xl border border-border bg-surface shadow-sm", className)}>
+    <section className={cn("relative flex min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-sm", className)} style={acento}>
+      {tono && (
+        <div aria-hidden="true" className="absolute inset-x-0 top-0 h-0.5 bg-[linear-gradient(90deg,var(--section-accent),transparent_85%)]" />
+      )}
       <header className="flex items-start justify-between gap-3 px-4 pb-2 pt-3.5">
-        <div className="min-w-0">
-          <h3 className="text-[13px] font-semibold text-foreground">{titulo}</h3>
-          {descripcion && <p className="mt-0.5 text-xs text-muted-foreground">{descripcion}</p>}
+        <div className="flex min-w-0 items-start gap-2.5">
+          {icono && <ChipIcono icono={icono} tono={tono} className="size-7 rounded-lg" size={14} />}
+          <div className="min-w-0">
+            <h3 className="text-[13px] font-semibold text-foreground">{titulo}</h3>
+            {descripcion && <p className="mt-0.5 text-xs text-muted-foreground">{descripcion}</p>}
+          </div>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           {acciones}
@@ -152,6 +188,8 @@ export function Kpi({
   puntos,
   detalle,
   destacado = false,
+  icono,
+  tono = "primary",
 }: {
   etiqueta: string;
   valor: string;
@@ -161,11 +199,17 @@ export function Kpi({
   puntos?: number[];
   detalle?: string;
   destacado?: boolean;
+  /** Chip del indicador, con el color de su dominio. */
+  icono?: Icono;
+  tono?: IconTone;
 }) {
   return (
     <div className={cn("flex min-w-0 flex-col justify-between rounded-xl border border-border bg-surface px-4 pt-3 shadow-sm", puntos ? "pb-2" : "pb-3")}>
       <div className="flex items-start justify-between gap-2">
-        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{etiqueta}</p>
+        <p className="flex min-w-0 items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          {icono && <ChipIcono icono={icono} tono={tono} className={destacado ? "size-7 rounded-lg" : "size-6 rounded-md"} size={destacado ? 14 : 13} />}
+          <span className="min-w-0">{etiqueta}</span>
+        </p>
         {delta !== undefined && <Delta valor={delta} inverso={inverso} />}
       </div>
       <p className={cn("mt-1 truncate font-semibold tabular-nums tracking-tight text-foreground", destacado ? "text-[28px] leading-9" : "text-xl")}>{valor}</p>
@@ -244,7 +288,7 @@ export function BarrasRanking({
                 </span>
                 <span className="col-span-2 h-1.5 overflow-hidden rounded-full bg-surface-muted">
                   <span
-                    className="block h-full rounded-full bg-primary transition-[width] duration-500"
+                    className="block h-full rounded-full bg-[linear-gradient(90deg,color-mix(in_oklab,var(--primary)_55%,transparent),var(--primary))] transition-[width] duration-500"
                     style={{ width: `${Math.max(1.5, (item.valor / tope) * 100)}%` }}
                   />
                 </span>
@@ -278,7 +322,7 @@ function TooltipTendencia({ active, payload, formato, contra }: { active?: boole
   const punto = payload[0].payload;
   const cambio = punto.anterior ? ((punto.valor - punto.anterior) / punto.anterior) * 100 : null;
   return (
-    <div className="rounded-lg border border-border bg-surface px-3 py-2 text-xs shadow-md">
+    <div className="rounded-lg border border-border bg-surface-solid px-3 py-2 text-xs shadow-md">
       <p className="mb-1 font-medium text-foreground">{punto.etiqueta}</p>
       <p className="flex items-center gap-2 text-foreground">
         <span className="size-2 rounded-full bg-primary" /> Este período <span className="ml-auto pl-3 tabular-nums">{formatear(punto.valor, formato)}</span>
@@ -313,7 +357,7 @@ export function Tendencia({ puntos, formato, comparar = true, alto = 240, contra
           {comparar && (
             <Line type="monotone" dataKey="anterior" stroke="var(--muted-foreground)" strokeOpacity={0.55} strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls />
           )}
-          <Area type="monotone" dataKey="valor" stroke="var(--primary)" strokeWidth={2} fill="url(#relleno-tendencia)" dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--surface)" }} />
+          <Area type="monotone" dataKey="valor" stroke="var(--primary)" strokeWidth={2} fill="url(#relleno-tendencia)" dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--surface-solid)" }} />
         </ComposedChart>
       </ResponsiveContainer>
     </div>
@@ -369,7 +413,7 @@ export function MapaCalor({
       <div className="mt-3 flex items-center justify-end gap-1.5 text-[10px] text-muted-foreground">
         Menos
         {[0.08, 0.3, 0.55, 0.8, 1].map((n) => (
-          <span key={n} className="size-3 rounded-[3px]" style={{ background: `color-mix(in oklab, var(--primary) ${Math.round(n * 100)}%, var(--surface))` }} />
+          <span key={n} className="size-3 rounded-[3px]" style={{ background: `color-mix(in oklab, var(--primary) ${Math.round(n * 100)}%, var(--surface-solid))` }} />
         ))}
         Más
       </div>
@@ -395,7 +439,7 @@ function FilaCalor({ fila, valores, columnas, maximo, activa, atenuada, onElegir
           title={`${fila} · ${etiquetaColumna(columnas[j])} · ${formato(valor)} ${unidad}`}
           className={cn("flex h-7 items-center justify-center rounded-[4px] text-[10px] tabular-nums transition-opacity", atenuada && "opacity-35")}
           style={{
-            background: valor === 0 ? "var(--surface-muted)" : `color-mix(in oklab, var(--primary) ${Math.round(12 + (valor / maximo) * 88)}%, var(--surface))`,
+            background: valor === 0 ? "var(--surface-muted)" : `color-mix(in oklab, var(--primary) ${Math.round(12 + (valor / maximo) * 88)}%, var(--surface-solid))`,
             color: valor / maximo > 0.55 ? "var(--primary-foreground)" : "var(--muted-foreground)",
           }}
         >
@@ -482,7 +526,7 @@ export function Embudo({ pasos }: { pasos: { etiqueta: string; cantidad: number;
             <span className="relative flex h-9 items-center">
               <span
                 className="absolute inset-y-0 left-0 rounded-md transition-[width] duration-500"
-                style={{ width: `${Math.max(3, (paso.cantidad / tope) * 100)}%`, background: `color-mix(in oklab, var(--primary) ${Math.max(14, 42 - i * 12)}%, var(--surface))` }}
+                style={{ width: `${Math.max(3, (paso.cantidad / tope) * 100)}%`, background: `color-mix(in oklab, var(--primary) ${Math.max(14, 42 - i * 12)}%, var(--surface-solid))` }}
               />
               <span className="relative z-10 flex w-full items-center justify-between px-2.5 text-xs">
                 <span className="font-semibold tabular-nums text-foreground">{entero.format(paso.cantidad)}</span>

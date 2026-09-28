@@ -2,7 +2,7 @@ import Link from "next/link";
 import { EspecieYRaza } from "@/components/especie-y-raza";
 import { razasDe } from "@/lib/anatomia";
 import { unstable_noStore as noStore } from "next/cache";
-import { Search } from "lucide-react";
+import { PawPrint, Search, SearchX, Users } from "lucide-react";
 
 import { crearPaciente } from "@/app/actions/pacientes";
 import { CreatePanel } from "@/components/create-panel";
@@ -216,6 +216,8 @@ export default async function PacientesPage({
       </div>
 
       <SectionCard
+        icon={esVet ? PawPrint : Users}
+        tone="blue"
         title={`${fichas.length} ${fichas.length === 1 ? voc.singular.toLowerCase() : voc.titulo.toLowerCase()}`}
         description={busqueda ? `Resultados para "${busqueda}"` : undefined}
       >
@@ -223,6 +225,7 @@ export default async function PacientesPage({
           <p className="px-4 py-6 text-sm text-danger">No se pudieron leer las fichas. Vuelve a cargar para reintentar.</p>
         ) : fichas.length === 0 ? (
           <EmptyState
+            icon={busqueda ? SearchX : esVet ? PawPrint : Users}
             title={busqueda ? "Nadie coincide con la búsqueda" : `Todavía no hay ${voc.titulo.toLowerCase()} en esta vista`}
             description={busqueda ? "Prueba con el celular o solo el apellido." : `Crea la primera ficha con "${voc.nuevo}".`}
           />

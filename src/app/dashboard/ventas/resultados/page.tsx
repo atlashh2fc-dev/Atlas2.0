@@ -1,7 +1,8 @@
 import { unstable_noStore as noStore } from "next/cache";
+import { BadgeDollarSign, Compass, Layers, MailCheck, Percent, Timer, Users } from "lucide-react";
 
 import { alternarSeguimientoAutomatico } from "@/app/actions/pipeline";
-import { Callout, EmptyState, NavTabs, PageHeader, SectionCard, SubmitButton } from "@/components/ui";
+import { Callout, EmptyState, MetricCard, NavTabs, PageHeader, SectionCard, SubmitButton } from "@/components/ui";
 import { requireProfile } from "@/lib/auth";
 import { VENTAS_POR_EDICION } from "@/lib/ediciones";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
@@ -88,21 +89,24 @@ export default async function ResultadosPage() {
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
-          { label: "Tasa de cierre", valor: tasa === null ? "—" : `${tasa}%`, detalle: `${ganados.length} ganados de ${cerrados.length} cerrados` },
-          { label: "Días hasta cerrar", valor: promedioCierre === null ? "—" : `${promedioCierre} d`, detalle: "Promedio de los ganados" },
-          { label: "En juego", valor: pesos.format(abiertos.reduce((total, negocio) => total + monto(negocio), 0)), detalle: `${pesos.format(ponderado)} ponderado por etapa` },
-          { label: "Seguimientos automáticos", valor: String(seguimientosEnviados), detalle: `${seguimientosRespondidos} respondidos · ${seguimientoActivo ? "activo" : "apagado"}` },
+          { label: "Tasa de cierre", valor: tasa === null ? "—" : `${tasa}%`, detalle: `${ganados.length} ganados de ${cerrados.length} cerrados`, icon: Percent, tono: "violet" as const },
+          { label: "Días hasta cerrar", valor: promedioCierre === null ? "—" : `${promedioCierre} d`, detalle: "Promedio de los ganados", icon: Timer, tono: "amber" as const },
+          { label: "En juego", valor: pesos.format(abiertos.reduce((total, negocio) => total + monto(negocio), 0)), detalle: `${pesos.format(ponderado)} ponderado por etapa`, icon: BadgeDollarSign, tono: "green" as const },
+          { label: "Seguimientos automáticos", valor: String(seguimientosEnviados), detalle: `${seguimientosRespondidos} respondidos · ${seguimientoActivo ? "activo" : "apagado"}`, icon: MailCheck, tono: "teal" as const },
         ].map((metrica) => (
-          <div key={metrica.label} className="rounded-xl border border-border bg-surface px-4 py-3">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">{metrica.label}</p>
-            <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{metrica.valor}</p>
-            <p className="text-xs text-muted-foreground">{metrica.detalle}</p>
-          </div>
+          <MetricCard
+            key={metrica.label}
+            label={metrica.label}
+            value={metrica.valor}
+            hint={metrica.detalle}
+            icon={metrica.icon}
+            iconTone={metrica.tono}
+          />
         ))}
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <SectionCard title="Por etapa" description="Cuántos negocios llegaron a cada etapa y cuántos están hoy en ella.">
+        <SectionCard title="Por etapa" description="Cuántos negocios llegaron a cada etapa y cuántos están hoy en ella." icon={Layers} tone="violet">
           <table className="w-full text-sm">
             <thead><tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground"><th className="px-4 py-2 font-medium">Etapa</th><th className="px-3 py-2 font-medium text-right">Llegaron</th><th className="px-3 py-2 font-medium text-right">Hoy</th><th className="px-4 py-2 font-medium text-right">Monto hoy</th></tr></thead>
             <tbody className="divide-y divide-border">
@@ -120,8 +124,8 @@ export default async function ResultadosPage() {
             </tbody>
           </table>
         </SectionCard>
-        <SectionCard title="Por origen" description="De dónde llegan los negocios y cuáles se cierran.">
-          {porOrigen.length === 0 ? <EmptyState title="Sin datos" description="Aparece cuando haya negocios." /> : (
+        <SectionCard title="Por origen" description="De dónde llegan los negocios y cuáles se cierran." icon={Compass} tone="violet">
+          {porOrigen.length === 0 ? <EmptyState icon={Compass} title="Sin datos" description="Aparece cuando haya negocios." /> : (
             <table className="w-full text-sm">
               <thead><tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground"><th className="px-4 py-2 font-medium">Origen</th><th className="px-3 py-2 font-medium text-right">Total</th><th className="px-3 py-2 font-medium text-right">Abiertos</th><th className="px-3 py-2 font-medium text-right">Ganados</th><th className="px-3 py-2 font-medium text-right">Tasa</th><th className="px-4 py-2 font-medium text-right">Monto ganado</th></tr></thead>
               <tbody className="divide-y divide-border">
@@ -132,7 +136,7 @@ export default async function ResultadosPage() {
             </table>
           )}
         </SectionCard>
-        <SectionCard title="Por responsable" description="Carga abierta y cierres de cada persona.">
+        <SectionCard title="Por responsable" description="Carga abierta y cierres de cada persona." icon={Users} tone="blue">
           <table className="w-full text-sm">
             <thead><tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground"><th className="px-4 py-2 font-medium">Responsable</th><th className="px-3 py-2 font-medium text-right">Abiertos</th><th className="px-3 py-2 font-medium text-right">Ganados</th><th className="px-4 py-2 font-medium text-right">Monto ganado</th></tr></thead>
             <tbody className="divide-y divide-border">
@@ -142,7 +146,7 @@ export default async function ResultadosPage() {
             </tbody>
           </table>
         </SectionCard>
-        <SectionCard title="Seguimiento automático de propuestas" description="Una propuesta o negociación sin avance hace más de 7 días recibe un correo de seguimiento, una vez por semana, por el puente con Atlas Lead. Le escribe a clientes reales: por eso nace apagado.">
+        <SectionCard title="Seguimiento automático de propuestas" description="Una propuesta o negociación sin avance hace más de 7 días recibe un correo de seguimiento, una vez por semana, por el puente con Atlas Lead. Le escribe a clientes reales: por eso nace apagado." icon={MailCheck} tone="teal">
           <div className="space-y-3 px-4 py-4">
             <Callout tone={seguimientoActivo ? "success" : "info"}>
               <p className="font-medium">{seguimientoActivo ? "Activo" : "Apagado"}</p>

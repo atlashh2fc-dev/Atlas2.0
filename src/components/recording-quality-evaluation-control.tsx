@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { BrainCircuit, LoaderCircle, RotateCcw } from "lucide-react";
-import { Badge, Button, Callout, SlideOver, useToast } from "@/components/ui";
+import { BrainCircuit, Lightbulb, ListChecks, LoaderCircle, RotateCcw, ThumbsUp, TriangleAlert } from "lucide-react";
+import { Badge, Button, Callout, EmptyState, SlideOver, useToast } from "@/components/ui";
 import { isSecretariaVirtualAuditCampaign } from "@/lib/secretaria-virtual-quality-rubric";
 
 export type QualityEvaluationStatus = "pending" | "processing" | "completed" | "failed";
@@ -46,6 +46,35 @@ const VERDICT = {
   no_cumple: { label: "No cumple", tone: "danger" as const },
   no_evaluable: { label: "No evaluable", tone: "neutral" as const },
 };
+
+/** Borde de estado de las baldosas: el color del veredicto se lee sin la etiqueta. */
+const TONE_EDGE: Record<"success" | "warning" | "danger" | "neutral" | "info", string> = {
+  success: "border-l-success",
+  warning: "border-l-warning",
+  danger: "border-l-danger",
+  neutral: "border-l-border-strong",
+  info: "border-l-primary",
+};
+
+const TONE_TEXT: Record<"success" | "warning" | "danger" | "neutral" | "info", string> = {
+  success: "text-success",
+  warning: "text-warning",
+  danger: "text-danger",
+  neutral: "text-foreground",
+  info: "text-primary",
+};
+
+/** Encabezado de bloque con chip de color. */
+function BlockTitle({ icon: Icon, tone, children }: { icon: typeof ListChecks; tone: string; children: string }) {
+  return (
+    <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+      <span className="icon-chip size-6 rounded-md" data-tone={tone} aria-hidden="true">
+        <Icon size={13} />
+      </span>
+      {children}
+    </h3>
+  );
+}
 
 const CRITERION_STATUS = {
   cumple: { label: "Cumple", tone: "success" as const },
@@ -245,10 +274,12 @@ export function RecordingQualityEvaluationControl({
               Whisper no identifica hablantes. Mercury infiere los roles por contexto; usa este resultado como apoyo y revisa el audio antes de tomar decisiones sobre una persona.
             </Callout>
 
-            <div className="flex flex-wrap items-end justify-between gap-3 rounded-xl border border-border bg-surface-muted/40 p-4">
+            <div
+              className={`flex flex-wrap items-end justify-between gap-3 rounded-xl border border-border border-l-2 bg-surface-muted/40 p-4 ${TONE_EDGE[verdictMeta?.tone ?? "neutral"]}`}
+            >
               <div>
-                <p className="text-xs text-muted-foreground">Puntaje normalizado</p>
-                <p className="mt-1 text-3xl font-semibold tabular-nums text-foreground">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Puntaje normalizado</p>
+                <p className={`mt-1 text-3xl font-semibold tracking-tight tabular-nums ${TONE_TEXT[verdictMeta?.tone ?? "neutral"]}`}>
                   {evaluation.score?.toLocaleString("es-CL", { maximumFractionDigits: 1 }) ?? "—"}
                   <span className="text-base font-normal text-muted-foreground">/100</span>
                 </p>
@@ -265,16 +296,19 @@ export function RecordingQualityEvaluationControl({
             </div>
 
             <div>
-              <h3 className="text-sm font-semibold text-foreground">Resumen</h3>
+              <BlockTitle icon={BrainCircuit} tone="violet">Resumen</BlockTitle>
               <p className="mt-2 text-sm leading-6 text-foreground">{evaluation.summary}</p>
             </div>
 
             <div className="space-y-3">
-              <h3 className="text-sm font-semibold text-foreground">Criterios</h3>
+              <BlockTitle icon={ListChecks} tone="violet">Criterios</BlockTitle>
               {(evaluation.criteria ?? []).map((criterion) => {
                 const meta = criterion.status ? CRITERION_STATUS[criterion.status] : null;
                 return (
-                  <div key={criterion.id ?? criterion.name} className="rounded-xl border border-border p-4">
+                  <div
+                    key={criterion.id ?? criterion.name}
+                    className={`rounded-xl border border-border border-l-2 bg-background p-4 ${TONE_EDGE[meta?.tone ?? "neutral"]}`}
+                  >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-sm font-medium text-foreground">{criterion.name ?? criterion.id}</p>
                       <div className="flex items-center gap-2">
@@ -302,14 +336,14 @@ export function RecordingQualityEvaluationControl({
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <div className="rounded-xl border border-border p-4">
-                <h3 className="text-sm font-semibold text-foreground">Fortalezas</h3>
+              <div className="rounded-xl border border-border border-l-2 border-l-success bg-background p-4">
+                <BlockTitle icon={ThumbsUp} tone="green">Fortalezas</BlockTitle>
                 <ul className="mt-2 space-y-2 text-sm text-muted-foreground">
                   {(evaluation.strengths ?? []).map((item) => <li key={item}>• {item}</li>)}
                 </ul>
               </div>
-              <div className="rounded-xl border border-border p-4">
-                <h3 className="text-sm font-semibold text-foreground">Oportunidades de mejora</h3>
+              <div className="rounded-xl border border-border border-l-2 border-l-warning bg-background p-4">
+                <BlockTitle icon={Lightbulb} tone="amber">Oportunidades de mejora</BlockTitle>
                 <ul className="mt-2 space-y-2 text-sm text-muted-foreground">
                   {(evaluation.improvements ?? []).map((item) => <li key={item}>• {item}</li>)}
                 </ul>
@@ -318,7 +352,7 @@ export function RecordingQualityEvaluationControl({
 
             {(evaluation.riskFlags ?? []).length > 0 && (
               <div>
-                <h3 className="text-sm font-semibold text-foreground">Alertas para revisión</h3>
+                <BlockTitle icon={TriangleAlert} tone="rose">Alertas para revisión</BlockTitle>
                 <div className="mt-2 space-y-2">
                   {(evaluation.riskFlags ?? []).map((risk, index) => (
                     <Callout key={`${risk.type}-${index}`} tone={risk.severity === "alta" ? "danger" : "warning"}>
@@ -332,7 +366,7 @@ export function RecordingQualityEvaluationControl({
             )}
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">La auditoría todavía no está disponible.</p>
+          <EmptyState icon={BrainCircuit} title="La auditoría todavía no está disponible." />
         )}
       </SlideOver>
     </>
