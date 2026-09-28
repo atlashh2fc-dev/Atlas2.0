@@ -132,7 +132,7 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
                 const celular = celularChileno(p.telefono);
                 const canal = celular ? "whatsapp" : p.telefono ? "llamada" : "correo";
                 const enlace = celular
-                  ? enlaceWhatsapp(celular, mensajeDeWhatsapp({ remitente, empresaPropia: empresaPropia ?? "nuestro equipo", empresa: p.empresa }))
+                  ? enlaceWhatsapp(celular, mensajeDeWhatsapp({ remitente, empresaPropia: empresaPropia ?? "nuestro equipo", empresa: p.empresa, respondio: p.respondio, toques: p.toques }))
                   : p.telefono
                     ? `tel:${p.telefono.replace(/[^\d+]/g, "")}`
                     : p.email

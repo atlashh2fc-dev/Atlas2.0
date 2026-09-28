@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { celularChileno, enlaceWhatsapp, esResultado, mensajeDeWhatsapp, senalDe } from "../src/lib/prospeccion.ts";
+import { celularChileno, enlaceWhatsapp, esResultado, mensajeDeWhatsapp, nombreComoSeDice, senalDe } from "../src/lib/prospeccion.ts";
 
 const leer = (ruta: string) => readFileSync(new URL(`../${ruta}`, import.meta.url), "utf8");
 
@@ -75,13 +75,32 @@ test("WhatsApp solo para celulares; un fijo se llama", () => {
   assert.equal(celularChileno(null), null);
 });
 
-test("el mensaje lo firma quien escribe y va listo en el enlace", () => {
-  const mensaje = mensajeDeWhatsapp({ remitente: "Hugo", empresaPropia: "Altius Ignite", empresa: "Universo Toys Spa" });
-  assert.match(mensaje, /le escribe Hugo de Altius Ignite/);
-  assert.match(mensaje, /a Universo Toys Spa/);
+test("el mensaje lo firma quien escribe, pregunta por el cliente y va listo en el enlace", () => {
+  const mensaje = mensajeDeWhatsapp({ remitente: "Hugo", empresaPropia: "Altius", empresa: "Sociedad de Transportes Hermosilla y Hermosilla Limitada" });
+  assert.equal(
+    mensaje,
+    "Hola, soy Hugo, de Altius, en Santiago. Una pregunta breve para Transportes Hermosilla y Hermosilla: si un cliente les pide una cotización a las 10 de la noche, ¿alguien alcanza a responderle antes de que cotice con otra empresa?",
+  );
+  assert.doesNotMatch(mensaje, /correo|10 minutos/);
   const enlace = enlaceWhatsapp("56994459945", mensaje);
   assert.ok(enlace.startsWith("https://wa.me/56994459945?text="));
   assert.equal(decodeURIComponent(enlace.split("?text=")[1]), mensaje);
+});
+
+test("el nombre queda como lo diría una persona, y sin nombre el mensaje no queda cojo", () => {
+  assert.equal(nombreComoSeDice("Universo Toys Spa"), "Universo Toys");
+  assert.equal(nombreComoSeDice("Proquimsa S A"), "Proquimsa");
+  assert.equal(nombreComoSeDice("Sociedad de Mantenimiento de Equipos Medicos e Industriales Medex Spa"), null);
+  assert.match(mensajeDeWhatsapp({ remitente: "Hugo", empresaPropia: "Altius", empresa: null }), /Una pregunta breve: si un cliente/);
+  assert.match(mensajeDeWhatsapp({ remitente: "Hugo", empresaPropia: "Altius", empresa: "Clínica Dental Sonrisa SpA" }), /les pide una hora .* la reserve en otro lugar\?$/);
+});
+
+test("a quien ya le escribimos va el seguimiento, y a quien respondió se le retoma la conversación", () => {
+  assert.match(mensajeDeWhatsapp({ remitente: "Hugo", empresaPropia: "Altius", empresa: "Securitek Spa", toques: 1 }), /^Le dejo el dato .* no vuelvo a escribirle\.$/);
+  assert.equal(
+    mensajeDeWhatsapp({ remitente: "Hugo", empresaPropia: "Altius", empresa: "Menard Muebles Spa", respondio: true, toques: 2 }),
+    "Hola, soy Hugo, de Altius. Recibí su respuesta de Menard Muebles a nuestro correo y preferí escribirle directamente. ¿Le acomoda que sigamos la conversación por aquí?",
+  );
 });
 
 test("la señal se describe de la más caliente a la más tibia", () => {
