@@ -177,6 +177,27 @@ function numero(valor: number | string | null): number | null {
 
 type Celda = string | number | null | { fecha: string | null };
 
+/**
+ * Excel no acepta más de 32.767 caracteres por celda y la librería aborta el
+ * libro entero si una se pasa: la descarga llegaba rota por una sola empresa.
+ * Pasa con las observaciones de Atlas 1, donde cada nota repetía las
+ * anteriores (una empresa con 48 gestiones sumó 33 mil caracteres).
+ */
+export const MAXIMO_CELDA = 32767;
+
+/**
+ * Las observaciones van de la más antigua a la más reciente. Si no caben se
+ * conservan las últimas, que son las que sirven para seguir el negocio, y se
+ * corta en el límite entre dos notas para no dejar una a medias.
+ */
+function observacionesRecientes(texto: string): string {
+  if (texto.length <= MAXIMO_CELDA) return texto;
+  const prefijo = "… ";
+  const cola = texto.slice(texto.length - (MAXIMO_CELDA - prefijo.length));
+  const corte = cola.indexOf(" / ");
+  return prefijo + (corte >= 0 ? cola.slice(corte + 3) : cola);
+}
+
 export function filaData(negocio: NegocioEquifax): Celda[] {
   const gestion = partesFecha(negocio.fecha_gestion);
   const ultima = negocio.ultima_gestion?.trim()
@@ -201,7 +222,7 @@ export function filaData(negocio: NegocioEquifax): Celda[] {
     negocio.nombre_cliente ?? "",
     negocio.telefono ?? "",
     negocio.email ?? "",
-    negocio.observaciones_equipo ?? "",
+    observacionesRecientes(negocio.observaciones_equipo ?? ""),
     { fecha: diaEnChile(negocio.fecha_seguimiento) },
     null,
     { fecha: negocio.fecha_gestion },
@@ -218,7 +239,7 @@ function celdaXlsx(valor: Celda): XLSX.CellObject | null {
     return serie === null ? null : { t: "n", v: serie, z: FORMATO_FECHA };
   }
   if (typeof valor === "number") return { t: "n", v: valor };
-  return { t: "s", v: valor };
+  return { t: "s", v: valor.length > MAXIMO_CELDA ? valor.slice(0, MAXIMO_CELDA) : valor };
 }
 
 function hojaDesdeFilas(encabezados: readonly string[], filas: Celda[][], anchos: number[]): XLSX.WorkSheet {

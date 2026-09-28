@@ -6,6 +6,7 @@ import * as XLSX from "xlsx";
 import {
   ENCABEZADOS_DATA,
   diaEnChile,
+  MAXIMO_CELDA,
   libroNegociosEquifax,
   nombreArchivoNegocios,
   plataformaDeAsesor,
@@ -121,6 +122,20 @@ test("la hoja TD suma la UF por tipo de contrato y estado", () => {
   assert.deepEqual(td[2], ["ONE TIME", null, 3, 3]);
   assert.deepEqual(td[3], ["RECURRENTE", 2.5, null, 2.5]);
   assert.deepEqual(td[4], ["Total general", 2.5, 3, 5.5]);
+});
+
+test("una celda más larga de lo que acepta Excel no rompe la descarga y deja las notas recientes", () => {
+  // Atlas 1 repetía las notas anteriores en cada gestión: JORGE JOFRE llegó a 33 mil caracteres.
+  const notas = Array.from({ length: 400 }, (_, i) => `${String((i % 28) + 1).padStart(2, "0")}-08-2026: nota ${i} ${"x".repeat(90)}`);
+  const largo = { ...NEGOCIOS[0], observacion: "o".repeat(MAXIMO_CELDA + 50), observaciones_equipo: notas.join(" / ") };
+  assert.ok(largo.observaciones_equipo.length > MAXIMO_CELDA);
+  const hoja = leer(libroNegociosEquifax([largo])).Sheets.Data;
+  const [fila] = XLSX.utils.sheet_to_json<Record<string, string>>(hoja, { defval: null });
+  const observaciones = fila["Obs equipo"];
+  assert.ok(String(observaciones).length <= MAXIMO_CELDA);
+  assert.ok(String(observaciones).startsWith("… "));
+  assert.ok(String(observaciones).endsWith(notas[notas.length - 1]));
+  assert.ok(Object.values(fila).every((v) => String(v ?? "").length <= MAXIMO_CELDA));
 });
 
 test("un libro sin negocios igual se descarga con sus encabezados", () => {
