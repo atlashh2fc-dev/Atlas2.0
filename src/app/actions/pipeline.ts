@@ -1,15 +1,15 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 
 import { requireProfile } from "@/lib/auth";
 import { despacharMensajes } from "@/lib/mensajes/despachar";
 import { createClient } from "@/lib/supabase/server";
 
 /*
- * El puesto de trabajo comercial: asignar un negocio y convertir un prospecto
- * de Atlas Lead en negocio. Todo con la sesión de quien lo hace; la seguridad
+ * El puesto de trabajo comercial: asignar un negocio, fijar su próxima acción,
+ * escribirle y cerrarlo. (Un prospecto pasa a negocio desde la bandeja de
+ * Prospección, con registrar_toque_de_prospeccion.) Todo con la sesión de quien lo hace; la seguridad
  * por fila decide la empresa y el permiso.
  */
 
@@ -53,41 +53,6 @@ export async function fijarProximaAccion(formData: FormData) {
     .eq("id", id);
   if (error) throw new Error(error.message);
   revalidar(id);
-}
-
-/** Un prospecto de Atlas Lead pasa a ser un negocio en la primera etapa, con su empresa y contacto. */
-export async function convertirLeadEnNegocio(formData: FormData) {
-  const profile = await requireProfile(["admin", "supervisor"]);
-  const leadId = texto(formData, "lead_id");
-  if (!UUID.test(leadId)) throw new Error("Prospecto inválido.");
-  const supabase = await createClient();
-
-  const { data: lead, error: leadError } = await supabase.from("leads").select("id, full_name, email, phone, rut, extra, organization_id").eq("id", leadId).single();
-  if (leadError || !lead) throw new Error("No encontramos ese prospecto.");
-  const extra = (lead.extra ?? {}) as Record<string, unknown>;
-  const empresa = String(extra.company ?? extra.empresa ?? extra.razon_social ?? "").trim() || lead.full_name;
-
-  const { data: existente } = await supabase.from("sales_opportunities").select("id").eq("lead_id", leadId).maybeSingle();
-  if (existente) redirect(`/dashboard/ventas/${existente.id}`);
-
-  const { data: etapa } = await supabase.from("sales_stages").select("id").eq("active", true).order("position").limit(1).single();
-  if (!etapa) throw new Error("No hay etapas configuradas.");
-
-  const { data: cuenta, error: cuentaError } = await supabase
-    .from("sales_companies")
-    .insert({ organization_id: lead.organization_id, name: empresa, phone: lead.phone, email: lead.email, rut: lead.rut, source: "atlas_lead", crm_entity_id: null, metadata: { contacto: lead.full_name, lead_id: lead.id }, created_by: profile.id })
-    .select("id")
-    .single();
-  if (cuentaError || !cuenta) throw new Error(cuentaError?.message ?? "No se pudo crear la empresa.");
-
-  const { data: negocio, error: negocioError } = await supabase
-    .from("sales_opportunities")
-    .insert({ organization_id: lead.organization_id, company_id: cuenta.id, name: `${empresa} · desde Atlas Lead`, stage_id: etapa.id, status: "abierta", source: "atlas_lead", lead_id: lead.id, owner_id: profile.id, created_by: profile.id, next_action_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), next_action_note: "Primer contacto" })
-    .select("id")
-    .single();
-  if (negocioError || !negocio) throw new Error(negocioError?.message ?? "No se pudo crear el negocio.");
-  revalidar(negocio.id);
-  redirect(`/dashboard/ventas/${negocio.id}`);
 }
 
 /** Escribirle al contacto del negocio desde Atlas, por correo o WhatsApp; queda en la historia. */

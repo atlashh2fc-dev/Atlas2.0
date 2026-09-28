@@ -1,21 +1,22 @@
 import Link from "next/link";
 import { unstable_noStore as noStore } from "next/cache";
-import { AlertTriangle, ArrowRight, Search } from "lucide-react";
+import { AlertTriangle, ArrowRight, Inbox, Search } from "lucide-react";
 
-import { asignarNegocio, convertirLeadEnNegocio } from "@/app/actions/pipeline";
+import { asignarNegocio } from "@/app/actions/pipeline";
 import { moverEtapa } from "@/app/actions/ventas";
 import { Badge, EmptyState, Input, NavTabs, PageHeader, SectionCard, Select, SubmitButton, buttonClasses } from "@/components/ui";
 import { requireProfile } from "@/lib/auth";
 import { ZONA_CLINICA } from "@/lib/citas";
 import { VENTAS_POR_EDICION } from "@/lib/ediciones";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
+import { PESTANAS_VENTAS } from "@/lib/ventas-pestanas";
 import { createClient } from "@/lib/supabase/server";
 
 /**
  * El pipeline comercial: cada negocio en su etapa, con responsable, monto,
- * origen y próxima acción a la vista, y los prospectos de Atlas Lead en la
- * primera columna esperando convertirse en negocio. Es el puesto de trabajo
- * de quien vende; la lista de siempre queda en la pestaña de al lado.
+ * origen y próxima acción a la vista. Solo negocios: quien abrió o hizo clic
+ * en la campaña de correo es una señal y vive en la bandeja de Prospección,
+ * hasta que alguien lo marca interesado. La lista queda en la pestaña de al lado.
  */
 
 const DIA = 24 * 60 * 60 * 1000;
@@ -30,7 +31,6 @@ type Negocio = {
   sales_companies: { name: string } | { name: string }[] | null;
 };
 type Etapa = { id: string; key: string; name: string; position: number; probability: number | null; is_won: boolean; is_lost: boolean };
-type Prospecto = { id: string; full_name: string; email: string | null; phone: string | null; created_at: string; extra: Record<string, unknown> | null; campaigns: { name: string } | { name: string }[] | null };
 
 function primero<T>(valor: T | T[] | null | undefined): T | null {
   if (Array.isArray(valor)) return valor[0] ?? null;
@@ -50,7 +50,7 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
   const ahora = new Date();
 
   const supabase = await createClient();
-  const [{ data: etapasData }, { data: negociosData, error }, { data: personas }, { data: prospectosData }, { data: cambios }] = await Promise.all([
+  const [{ data: etapasData }, { data: negociosData, error }, { data: personas }, { data: porContactar }, { data: cambios }] = await Promise.all([
     supabase.from("sales_stages").select("id, key, name, position, probability, is_won, is_lost").eq("active", true).order("position"),
     supabase
       .from("sales_opportunities")
@@ -58,7 +58,7 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
       .order("next_action_at", { ascending: true, nullsFirst: false })
       .limit(1000),
     supabase.from("profiles").select("id, full_name").eq("active", true).order("full_name"),
-    supabase.from("leads").select("id, full_name, email, phone, created_at, extra, campaigns!leads_campaign_id_fkey(name)").order("created_at", { ascending: false }).limit(300),
+    supabase.rpc("bandeja_de_prospeccion", { p_dias: 14 }),
     supabase.from("sales_activities").select("opportunity_id, occurred_at").eq("kind", "etapa").order("occurred_at", { ascending: false }).limit(3000),
   ]);
 
@@ -70,9 +70,8 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
     const id = cambio.opportunity_id as string;
     if (id && !ultimoCambio.has(id)) ultimoCambio.set(id, cambio.occurred_at as string);
   }
-  const { data: leadsConvertidos } = await supabase.from("sales_opportunities").select("lead_id").not("lead_id", "is", null).limit(2000);
-  const convertidos = new Set((leadsConvertidos ?? []).map((fila) => fila.lead_id as string));
-  const prospectos = ((prospectosData ?? []) as unknown as Prospecto[]).filter((lead) => !convertidos.has(lead.id));
+  const prospectos = (porContactar ?? []) as { clic: boolean; respondio: boolean }[];
+  const calientes = prospectos.filter((p) => p.clic || p.respondio).length;
 
   const termino = q.trim().toLowerCase();
   const negocios = todos.filter((negocio) => {
@@ -149,7 +148,7 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
           <Link href="/dashboard/ventas" className={buttonClasses()}>{voc.nuevo}</Link>
         }
       />
-      <NavTabs tabs={[{ label: "Pipeline", href: "/dashboard/pipeline" }, { label: "Lista", href: "/dashboard/ventas" }, { label: "Resultados", href: "/dashboard/ventas/resultados" }, { label: "Respuestas del agente", href: "/dashboard/ventas/respuestas" }]} />
+      <NavTabs tabs={PESTANAS_VENTAS} />
 
       <form action="/dashboard/pipeline" className="flex flex-wrap items-end gap-2">
         <div className="relative w-64">
@@ -179,34 +178,20 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
         )}
       </form>
 
+      {prospectos.length > 0 && (
+        <Link href="/dashboard/ventas/prospeccion" className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm hover:bg-surface-muted">
+          <span className="inline-flex items-center gap-2 text-foreground">
+            <Inbox size={15} className="text-primary" aria-hidden="true" />
+            {prospectos.length} {prospectos.length === 1 ? "persona mostró" : "personas mostraron"} interés en la campaña y esperan contacto{calientes > 0 ? ` · ${calientes} hicieron clic o respondieron` : ""}
+          </span>
+          <span className="inline-flex items-center gap-1 text-primary">Ir a Prospección <ArrowRight size={13} aria-hidden="true" /></span>
+        </Link>
+      )}
+
       {error && <p className="rounded-lg border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger">No se pudieron leer los negocios. Vuelve a cargar para reintentar.</p>}
 
       <div className="overflow-x-auto pb-2">
         <div className="flex w-max gap-3">
-          <div className="w-64 flex-shrink-0 rounded-xl border border-dashed border-border bg-surface-muted/30">
-            <div className="flex items-center justify-between border-b border-border px-3 py-2">
-              <p className="text-sm font-medium text-foreground">Prospectos de Atlas Lead</p>
-              <span className="text-xs text-muted-foreground">{prospectos.length}</span>
-            </div>
-            <div className="max-h-[65vh] space-y-2 overflow-y-auto p-2">
-              {prospectos.length === 0 ? (
-                <p className="px-1 py-2 text-xs text-muted-foreground">Sin prospectos pendientes.</p>
-              ) : (
-                prospectos.slice(0, 60).map((lead) => (
-                  <div key={lead.id} className="rounded-lg border border-border bg-surface p-2.5 text-xs">
-                    <p className="truncate font-medium text-foreground">{String((lead.extra as Record<string, unknown> | null)?.company ?? lead.full_name)}</p>
-                    <p className="truncate text-muted-foreground">{lead.full_name} · {lead.email ?? lead.phone ?? "sin contacto"}</p>
-                    <p className="mt-1 text-[11px] text-muted-foreground">{primero(lead.campaigns)?.name ?? "Atlas Lead"} · {fecha.format(new Date(lead.created_at))}</p>
-                    <form action={convertirLeadEnNegocio} className="mt-2">
-                      <input type="hidden" name="lead_id" value={lead.id} />
-                      <SubmitButton size="sm" variant="secondary" pendingLabel="…">Convertir en negocio</SubmitButton>
-                    </form>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
           {etapas.filter((etapa) => !etapa.is_won && !etapa.is_lost).map((etapa) => {
             const propios = abiertos.filter((negocio) => negocio.stage_id === etapa.id);
             return (
@@ -245,9 +230,9 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
         </div>
       </div>
 
-      {negocios.length === 0 && prospectos.length === 0 && (
+      {negocios.length === 0 && (
         <SectionCard title="Sin negocios">
-          <EmptyState title="Todavía no hay negocios" description={`Crea el primero con "${voc.nuevo}" o espera a que lleguen desde la web.`} />
+          <EmptyState title="Todavía no hay negocios" description={`Crea el primero con "${voc.nuevo}", marca interesado a alguien en Prospección o espera a que lleguen desde la web.`} />
         </SectionCard>
       )}
     </div>

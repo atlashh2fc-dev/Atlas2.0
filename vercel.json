@@ -34,10 +34,6 @@
       "schedule": "* * * * *"
     },
     {
-      "path": "/api/agentes/calificador",
-      "schedule": "25 * * * *"
-    },
-    {
       "path": "/api/agentes/vigilante",
       "schedule": "5 14 * * *"
     },

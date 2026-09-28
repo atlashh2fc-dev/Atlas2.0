@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { AlertTriangle, Clock, Handshake, Plus } from "lucide-react";
+import { AlertTriangle, Clock, Handshake, Inbox, Plus } from "lucide-react";
 
 import { Badge, EmptyState, PageHeader, SectionCard, buttonClasses } from "@/components/ui";
 import { ZONA_CLINICA, fechaEnChile, instanteEnChile, sumarDias } from "@/lib/citas";
 import { VENTAS_POR_EDICION, type Edicion } from "@/lib/ediciones";
+import { haceCuanto, senalDe, type Prospecto } from "@/lib/prospeccion";
 import { createClient } from "@/lib/supabase/server";
 import type { Profile } from "@/lib/types";
 
@@ -41,7 +42,7 @@ export async function InicioComercial({ profile, edicion, empresa }: { profile: 
   const finHoy = instanteEnChile(sumarDias(hoy, 1), "00:00");
   const inicioMes = instanteEnChile(`${hoy.slice(0, 7)}-01`, "00:00");
 
-  const [{ data: negociosData }, { data: actividades }, { data: personas }, { count: prospectos }, { data: correoData }, { data: campanasData }] = await Promise.all([
+  const [{ data: negociosData }, { data: actividades }, { data: personas }, { data: bandejaData }, { data: correoData }, { data: campanasData }] = await Promise.all([
     supabase
       .from("sales_opportunities")
       .select("id, name, status, monthly_amount, one_time_amount, next_action_at, next_action_note, stage_id, owner_id, source, created_at, closed_at, sales_companies(name), sales_stages(key, name, is_won, is_lost)")
@@ -49,7 +50,7 @@ export async function InicioComercial({ profile, edicion, empresa }: { profile: 
       .limit(1000),
     supabase.from("sales_activities").select("opportunity_id, kind, occurred_at").in("kind", ["llamada", "correo", "whatsapp", "reunion", "nota"]).order("occurred_at", { ascending: false }).limit(4000),
     supabase.from("profiles").select("id, full_name").eq("active", true),
-    supabase.from("leads").select("id", { count: "exact", head: true }),
+    supabase.rpc("bandeja_de_prospeccion", { p_dias: 14 }),
     supabase.from("lead_mail_status").select("campaign_id, sent_count, opened, clicked, bounced, unsubscribed").limit(5000),
     supabase.from("campaigns").select("id, name"),
   ]);
@@ -66,12 +67,9 @@ export async function InicioComercial({ profile, edicion, empresa }: { profile: 
     const etapa = primero(negocio.sales_stages);
     return etapa && /propuesta|negociaci/i.test(etapa.name) && negocio.next_action_at && ahora.getTime() - new Date(negocio.next_action_at).getTime() > 7 * DIA;
   });
-  // Quien abrió el correo de la campaña: la secuencia le sigue escribiendo
-  // sola, así que no es tarea ni cuenta como "sin contactar", pero es lo más
-  // tibio que hay y tiene que verse.
-  const abrieronCorreo = abiertos
-    .filter((negocio) => negocio.source === "agente_calificador" && !negocio.next_action_at)
-    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  // Quien abrió, hizo clic o respondió la campaña de correo: una señal, no un
+  // negocio. Se trabaja en la bandeja de Prospección, ordenada por temperatura.
+  const porContactar = (bandejaData ?? []) as Prospecto[];
   const nombreCampana = new Map((campanasData ?? []).map((campana) => [campana.id as string, campana.name as string]));
   const porCampana = new Map<string, { personas: number; correos: number; abrieron: number; clic: number; rebotes: number; bajas: number }>();
   for (const fila of correoData ?? []) {
@@ -111,7 +109,10 @@ export async function InicioComercial({ profile, edicion, empresa }: { profile: 
         description={`${empresa ?? "Tu empresa"} · ${fechaLarga.format(ahora)} · ${abiertos.length} ${abiertos.length === 1 ? "negocio abierto" : "negocios abiertos"}`}
         actions={
           <div className="flex flex-wrap gap-2">
-            <Link href="/dashboard/pipeline" className={buttonClasses()}>
+            <Link href="/dashboard/ventas/prospeccion" className={buttonClasses()}>
+              <Inbox size={16} aria-hidden="true" /> Prospección
+            </Link>
+            <Link href="/dashboard/pipeline" className={buttonClasses({ variant: "secondary" })}>
               <Handshake size={16} aria-hidden="true" /> Pipeline
             </Link>
             <Link href="/dashboard/ventas" className={buttonClasses({ variant: "secondary" })}>
@@ -121,13 +122,14 @@ export async function InicioComercial({ profile, edicion, empresa }: { profile: 
         }
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-6">
         {[
+          { label: "Por contactar", valor: porContactar.length, detalle: "Mostraron interés en la campaña", href: "/dashboard/ventas/prospeccion" },
           { label: "Sin contactar", valor: sinContactar.length, detalle: "Negocios sin ninguna gestión", href: "/dashboard/pipeline?responsable=nadie" },
           { label: "Vencidos", valor: vencidos.length, detalle: "Próxima acción pasada", href: "/dashboard/pipeline?vencidas=1" },
           { label: "Hoy", valor: reunionesHoy.length, detalle: "Reuniones y acciones de hoy", href: "/dashboard/pipeline" },
           { label: "En juego", valor: pesos.format(abiertos.reduce((total, negocio) => total + monto(negocio), 0)), detalle: `${mensual ? "mensual" : "único"} de lo abierto`, href: "/dashboard/pipeline" },
-          { label: "Ganado este mes", valor: pesos.format(ganadosMes.reduce((total, negocio) => total + monto(negocio), 0)), detalle: `${ganadosMes.length} ${ganadosMes.length === 1 ? "negocio" : "negocios"} · ${prospectos ?? 0} prospectos en Atlas Lead`, href: "/dashboard/pipeline" },
+          { label: "Ganado este mes", valor: pesos.format(ganadosMes.reduce((total, negocio) => total + monto(negocio), 0)), detalle: `${ganadosMes.length} ${ganadosMes.length === 1 ? "negocio" : "negocios"}`, href: "/dashboard/pipeline" },
         ].map((metrica) => (
           <Link key={metrica.label} href={metrica.href} className="rounded-xl border border-border bg-surface px-4 py-3 transition-colors hover:border-primary/40">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">{metrica.label}</p>
@@ -139,7 +141,7 @@ export async function InicioComercial({ profile, edicion, empresa }: { profile: 
 
       <div className="grid gap-4 xl:grid-cols-2">
         <SectionCard title={`Sin contactar · ${sinContactar.length}`} description="Llegaron y nadie los ha gestionado. Lo que viene de la web debería contactarse en menos de una hora.">
-          {sinContactar.length === 0 ? <EmptyState title="Todo contactado" description="Cada negocio abierto tiene al menos una gestión. Los que solo abrieron el correo están más abajo." /> : (
+          {sinContactar.length === 0 ? <EmptyState title="Todo contactado" description="Cada negocio abierto tiene al menos una gestión. Los que solo abrieron el correo están en Prospección." /> : (
             <ul className="divide-y divide-border">
               {sinContactar.slice(0, 10).map((negocio) => {
                 const horas = horasDesde(negocio.created_at);
@@ -201,18 +203,21 @@ export async function InicioComercial({ profile, edicion, empresa }: { profile: 
             </ul>
           )}
         </SectionCard>
-        <SectionCard title={`Abrieron el correo · ${abrieronCorreo.length}`} description="La secuencia les sigue escribiendo sola. No son tarea todavía, pero son lo más tibio: si alguno te suena, escríbele tú.">
-          {abrieronCorreo.length === 0 ? <EmptyState title="Nadie ha abierto aún" description="Cuando alguien abra un correo de la campaña, aparece acá." /> : (
+        <SectionCard title={`Por contactar · ${porContactar.length}`} description="Abrieron, hicieron clic o respondieron la campaña y esperan que les escribas. Los más calientes primero.">
+          {porContactar.length === 0 ? <EmptyState title="Bandeja al día" description="Nadie con interés espera gestión." /> : (
             <ul className="divide-y divide-border">
-              {abrieronCorreo.slice(0, 10).map((negocio) => {
-                const horas = horasDesde(negocio.created_at);
-                return <Fila key={negocio.id} negocio={negocio} detalle={horas < 24 ? `hace ${horas} h` : `hace ${Math.floor(horas / 24)} d`} tono="info" />;
-              })}
+              {porContactar.slice(0, 8).map((p) => (
+                <li key={p.lead_id} className="flex items-center gap-3 px-4 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-foreground">{p.empresa ?? p.contacto ?? "Sin nombre"}</p>
+                    <p className="truncate text-xs text-muted-foreground">{senalDe(p)} · {haceCuanto(p.ultima_senal_at, ahora)}</p>
+                  </div>
+                  <Badge tone={p.respondio || p.clic ? "success" : p.estado === "volvio" ? "warning" : "info"}>{p.estado === "nuevo" ? "Sin contactar" : p.estado === "volvio" ? "Volvió a abrir" : "Seguimiento"}</Badge>
+                </li>
+              ))}
             </ul>
           )}
-          {abrieronCorreo.length > 10 && (
-            <p className="border-t border-border px-4 py-2 text-xs"><Link href="/dashboard/pipeline?origen=agente_calificador" className="text-primary hover:underline">Ver los {abrieronCorreo.length} en el pipeline</Link></p>
-          )}
+          <p className="border-t border-border px-4 py-2 text-xs"><Link href="/dashboard/ventas/prospeccion" className="text-primary hover:underline">Gestionar en Prospección</Link></p>
         </SectionCard>
       </div>
       {sinContactar.some((negocio) => negocio.source === "agenda_web" && horasDesde(negocio.created_at) >= 1) && (

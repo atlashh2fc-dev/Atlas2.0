@@ -203,9 +203,10 @@ const CONSOLE: NavSpace = {
           href: "/dashboard/pipeline",
           icon: Handshake,
           roles: ["admin", "supervisor"],
-          description: "Pipeline B2B: negocios por etapa, responsable, origen y próxima acción",
+          description: "Prospección de quienes mostraron interés y pipeline B2B: negocios por etapa, responsable, origen y próxima acción",
           match: ["/dashboard/pipeline", "/dashboard/ventas"],
           tabs: [
+            { label: "Prospección", href: "/dashboard/ventas/prospeccion" },
             { label: "Pipeline", href: "/dashboard/pipeline" },
             { label: "Lista", href: "/dashboard/ventas" },
             { label: "Resultados", href: "/dashboard/ventas/resultados" },

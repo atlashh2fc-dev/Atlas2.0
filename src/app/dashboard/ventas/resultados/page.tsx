@@ -6,6 +6,7 @@ import { requireProfile } from "@/lib/auth";
 import { VENTAS_POR_EDICION } from "@/lib/ediciones";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
 import { createClient } from "@/lib/supabase/server";
+import { PESTANAS_VENTAS } from "@/lib/ventas-pestanas";
 
 /**
  * Resultados del pipeline: conversión por etapa y por origen, tiempos y
@@ -83,7 +84,7 @@ export default async function ResultadosPage() {
   return (
     <div className="space-y-5">
       <PageHeader title="Resultados" description={`${empresa ?? voc.titulo} · ${negocios.length} negocios en total · ${abiertos.length} abiertos`} />
-      <NavTabs tabs={[{ label: "Pipeline", href: "/dashboard/pipeline" }, { label: "Lista", href: "/dashboard/ventas" }, { label: "Resultados", href: "/dashboard/ventas/resultados" }, { label: "Respuestas del agente", href: "/dashboard/ventas/respuestas" }]} />
+      <NavTabs tabs={PESTANAS_VENTAS} />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
