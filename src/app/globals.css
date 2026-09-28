@@ -15,6 +15,8 @@
 
   --background: #eef1f5;
   --surface: #ffffff;
+  /* Capas flotantes (menús, modales, cabeceras pegadas): siempre opacas. */
+  --surface-solid: #ffffff;
   --surface-muted: #e8eff6;
   --foreground: #0f172a;
   --muted-foreground: #4b5563;
@@ -60,14 +62,18 @@
   --auth-panel-foreground: var(--grey-light);
 }
 
+/* Oscuro como Atlas Suite: negro puro con resplandores de marca detrás y
+   tarjetas de vidrio translúcido encima. La tarjeta deja ver el halo; lo que
+   flota sobre otro contenido usa --surface-solid (ver más abajo). */
 .dark {
-  --background: #07090d;
-  --surface: #0e1420;
-  --surface-muted: #172031;
-  --foreground: #f5f7fa;
+  --background: #000000;
+  --surface: rgba(17, 24, 39, 0.62);
+  --surface-solid: #0c121e;
+  --surface-muted: #141c2c;
+  --foreground: #f8fafc;
   --muted-foreground: #a3adbd;
-  --border: #253146;
-  --border-strong: #34425b;
+  --border: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.2);
   --primary: #049dd9;
   --primary-foreground: #ffffff;
   --primary-hover: #20b4ec;
@@ -80,11 +86,11 @@
   --danger: #f87171;
   --danger-bg: #3b0d0d;
   --ring: #79f2e6;
-  --shadow-contact: rgba(0, 0, 0, 0.55);
-  --shadow-ambient: rgba(0, 0, 0, 0.35);
-  --shadow-highlight: rgba(255, 255, 255, 0.04);
-  --halo-a: rgba(4, 157, 217, 0.12);
-  --halo-b: rgba(16, 185, 129, 0.07);
+  --shadow-contact: rgba(0, 0, 0, 0.6);
+  --shadow-ambient: rgba(0, 0, 0, 0.45);
+  --shadow-highlight: rgba(255, 255, 255, 0.07);
+  --halo-a: rgba(4, 157, 217, 0.32);
+  --halo-b: rgba(16, 185, 129, 0.16);
   --tone-blue: #38bdf8;
   --tone-teal: #2dd4bf;
   --tone-green: #34d399;
@@ -92,7 +98,7 @@
   --tone-violet: #a78bfa;
   --tone-rose: #fb7185;
   --tone-slate: #cbd5e1;
-  --auth-panel: #0b0f17;
+  --auth-panel: #05080f;
   --auth-panel-foreground: #f2f2f2;
 }
 
@@ -115,14 +121,14 @@
 }
 
 .dark [data-edicion="center"] {
-  --background: #07090d;
-  --surface-muted: #172031;
+  --background: #000000;
+  --surface-muted: #141c2c;
   --primary: #049dd9;
   --primary-foreground: #ffffff;
   --primary-hover: #20b4ec;
   --accent: #79f2e6;
   --ring: #79f2e6;
-  --halo-a: rgba(4, 157, 217, 0.12);
+  --halo-a: rgba(4, 157, 217, 0.32);
 }
 
 [data-edicion="dental"] {
@@ -148,30 +154,31 @@
 }
 
 .dark [data-edicion="dental"] {
-  --background: #060b0b;
-  --surface-muted: #12272a;
+  --background: #000000;
+  --surface-muted: #10242a;
   --primary: #2cc2b3;
   --primary-foreground: #07090d;
   --primary-hover: #4fd6c8;
   --accent: #5eead4;
   --ring: #5eead4;
-  --halo-a: rgba(44, 194, 179, 0.11);
+  --halo-a: rgba(44, 194, 179, 0.22);
 }
 
 .dark [data-edicion="vet"] {
-  --background: #0c0907;
-  --surface-muted: #2a1f19;
+  --background: #000000;
+  --surface-muted: #261c17;
   --primary: #f59258;
   --primary-foreground: #07090d;
   --primary-hover: #f8a676;
   --accent: #ffb57a;
   --ring: #ffb57a;
-  --halo-a: rgba(245, 146, 88, 0.1);
+  --halo-a: rgba(245, 146, 88, 0.2);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);
+  --color-surface-solid: var(--surface-solid);
   --color-surface-muted: var(--surface-muted);
   --color-foreground: var(--foreground);
   --color-muted-foreground: var(--muted-foreground);
@@ -213,9 +220,30 @@ body {
    el contenido va siempre sobre tarjetas opacas. */
 .atlas-halo {
   background:
-    radial-gradient(900px 520px at 100% 0%, var(--halo-a), transparent 70%),
-    radial-gradient(760px 480px at 0% 100%, var(--halo-b), transparent 70%),
+    radial-gradient(900px 560px at 100% 0%, var(--halo-a), transparent 70%),
+    radial-gradient(820px 520px at 0% 100%, var(--halo-b), transparent 70%),
+    radial-gradient(1200px 700px at 55% 30%, color-mix(in srgb, var(--halo-a) 45%, transparent), transparent 75%),
     var(--background);
+}
+
+/* El vidrio es para tarjetas que descansan sobre el fondo. Lo que flota sobre
+   otro contenido (menús, modales, tooltips, cabeceras pegadas de tabla) queda
+   opaco, o se leería lo de abajo a través. */
+:is(.sticky, .absolute, .fixed, .shadow-lg, .shadow-xl, .shadow-2xl, [role="dialog"], [role="menu"], [role="listbox"], [role="tooltip"]):is(.bg-surface, .bg-surface\/80, .bg-surface\/95) {
+  background-color: var(--surface-solid);
+}
+
+/* Brillo diagonal de las tarjetas de vidrio, como el `inset-px from-white/4`
+   de Atlas Suite. */
+.dark :is(.rounded-lg, .rounded-xl, .rounded-2xl).border.bg-surface {
+  background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.055), transparent 45%);
+}
+
+/* Menú lateral de Atlas Suite: vidrio con un brillo arriba a la izquierda. */
+.dark .atlas-sidebar {
+  background:
+    radial-gradient(circle at 0 0, rgba(148, 163, 184, 0.14), transparent 55%),
+    linear-gradient(180deg, rgba(17, 24, 39, 0.55), rgba(2, 6, 23, 0.8));
 }
 
 /* Chip de icono: el icono va en una cajita tintada de su propio tono, con borde.
@@ -239,11 +267,31 @@ body {
 .icon-chip[data-tone="rose"] { --chip: var(--tone-rose); }
 .icon-chip[data-tone="slate"] { --chip: var(--tone-slate); }
 
+/* En oscuro el chip es un degradado con borde encendido, como los KPI de Atlas Suite. */
+.dark .icon-chip {
+  border-color: color-mix(in srgb, var(--chip) 42%, transparent);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--chip) 30%, transparent),
+    color-mix(in srgb, var(--chip) 8%, transparent)
+  );
+}
+
 /* Activo: el chip se llena con su tono, como el ítem activo de Atlas Suite. */
 .icon-chip[data-active="true"] {
   border-color: color-mix(in srgb, var(--chip) 60%, transparent);
   background: color-mix(in srgb, var(--chip) 22%, transparent);
   box-shadow: 0 2px 10px -2px color-mix(in srgb, var(--chip) 45%, transparent);
+}
+
+.dark .icon-chip[data-active="true"] {
+  border-color: color-mix(in srgb, var(--chip) 70%, transparent);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--chip) 45%, transparent),
+    color-mix(in srgb, var(--chip) 15%, transparent)
+  );
+  box-shadow: 0 0 16px -2px color-mix(in srgb, var(--chip) 60%, transparent);
 }
 
 ::selection {

@@ -607,7 +607,7 @@ export function Sidebar({
   return (
     <aside
       aria-label="Navegación principal"
-      className={`hidden flex-shrink-0 flex-col border-r border-border bg-surface transition-[width] duration-200 md:flex ${
+      className={`atlas-sidebar hidden flex-shrink-0 flex-col border-r border-border bg-surface transition-[width] duration-200 md:flex ${
         rail ? "w-16" : "w-64"
       }`}
     >

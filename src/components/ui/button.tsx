@@ -8,7 +8,7 @@ const BASE =
   "inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50";
 
 const VARIANTS: Record<ButtonVariant, string> = {
-  primary: "bg-primary text-primary-foreground shadow-sm hover:bg-primary-hover",
+  primary: "bg-primary text-primary-foreground shadow-sm transition-[background-color,box-shadow] hover:bg-primary-hover hover:shadow-[0_6px_20px_-6px_var(--primary)]",
   secondary: "border border-border bg-surface text-foreground hover:bg-surface-muted",
   ghost: "text-muted-foreground hover:bg-surface-muted hover:text-foreground",
   danger: "bg-danger text-primary-foreground shadow-sm hover:opacity-90",

@@ -94,7 +94,7 @@ export function MobileNav({
             role="dialog"
             aria-modal="true"
             aria-label="Navegación principal"
-            className="relative flex h-full w-72 max-w-[85vw] flex-col border-r border-border bg-surface"
+            className="relative flex h-full w-72 max-w-[85vw] flex-col border-r border-border bg-surface-solid"
           >
             <div className="flex h-16 items-center gap-2 border-b border-border px-4">
               <Image
