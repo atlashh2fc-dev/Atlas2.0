@@ -10,12 +10,14 @@ import { ZONA_CLINICA, fechaEnChile, instanteEnChile } from "@/lib/citas";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
 import {
   ETIQUETA_RESULTADO,
+  asuntoLegible,
   celularChileno,
   enlaceWhatsapp,
   esResultado,
   haceCuanto,
   mensajeDeWhatsapp,
   senalDe,
+  temaDeLosCorreos,
   type Prospecto,
 } from "@/lib/prospeccion";
 import { createClient } from "@/lib/supabase/server";
@@ -32,10 +34,11 @@ import { PESTANAS_VENTAS } from "@/lib/ventas-pestanas";
 const fechaHora = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 const fechaCorta = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, day: "numeric", month: "short" });
 
-const ESTADO: Record<Prospecto["estado"], { texto: string; tono: "info" | "warning" | "neutral" }> = {
+const ESTADO: Record<Prospecto["estado"], { texto: string; tono: "info" | "warning" | "neutral" | "danger" }> = {
   nuevo: { texto: "Sin contactar", tono: "info" },
   volvio: { texto: "Volvió a abrir", tono: "warning" },
   seguimiento: { texto: "Toca seguimiento", tono: "neutral" },
+  no_contactar: { texto: "No contactar", tono: "danger" },
 };
 
 type Toque = {
@@ -76,7 +79,9 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
       .limit(300),
   ]);
 
-  const cola = (colaData ?? []) as Prospecto[];
+  // Los marcados "no contactar" se ven en la lista (al final), pero no son trabajo pendiente.
+  const todos = (colaData ?? []) as Prospecto[];
+  const cola = todos.filter((p) => !p.no_contactar);
   const toques = (toquesData ?? []) as unknown as Toque[];
   const calientes = cola.filter((p) => p.respondio || p.clic || p.estado === "volvio");
   const sinGestionUnDia = cola.filter((p) => p.estado === "nuevo" && p.primera_senal_at && ahora.getTime() - new Date(p.primera_senal_at).getTime() > 24 * 60 * 60 * 1000);
@@ -126,15 +131,16 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
           tone="teal"
           description="Ordenado por temperatura: quien respondió, quien hizo clic, quien volvió a abrir y quien abrió más de una vez. Al escribirle vuelve en 3 días si no pasa nada; si vuelve a abrir antes, sube."
         >
-          {cola.length === 0 ? (
+          {todos.length === 0 ? (
             <EmptyState icon={Inbox} title="Bandeja al día" description="Nadie con interés espera gestión. Cuando alguien abra o haga clic en la campaña, aparece acá." />
           ) : (
             <BandejaProspeccion
-              filas={cola.map((p): FilaProspecto => {
+              filas={todos.map((p): FilaProspecto => {
                 const celular = celularChileno(p.telefono);
+                const correos = p.correos ?? [];
                 const canal = celular ? "whatsapp" : p.telefono ? "llamada" : "correo";
                 const enlace = celular
-                  ? enlaceWhatsapp(celular, mensajeDeWhatsapp({ remitente, empresaPropia: empresaPropia ?? "nuestro equipo", empresa: p.empresa, respondio: p.respondio, toques: p.toques }))
+                  ? enlaceWhatsapp(celular, mensajeDeWhatsapp({ remitente, empresaPropia: empresaPropia ?? "nuestro equipo", empresa: p.empresa, respondio: p.respondio, toques: p.toques, tema: temaDeLosCorreos(correos) }))
                   : p.telefono
                     ? `tel:${p.telefono.replace(/[^\d+]/g, "")}`
                     : p.email
@@ -158,6 +164,14 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
                   enlace,
                   etiqueta: celular ? "WhatsApp" : p.telefono ? `Llamar ${p.telefono}` : "Escribir correo",
                   telefono: Boolean(p.telefono),
+                  abiertos: correos.filter((c) => c.abierto_at).length,
+                  correos: correos.map((c) => ({
+                    asunto: asuntoLegible(c.asunto),
+                    enviado: c.enviado_at ? fechaHora.format(new Date(c.enviado_at)) : null,
+                    abierto: c.abierto_at ? fechaHora.format(new Date(c.abierto_at)) : null,
+                    clic: c.clic,
+                  })),
+                  noContactar: p.no_contactar,
                 };
               })}
             />

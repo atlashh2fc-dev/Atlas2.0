@@ -69,7 +69,7 @@ export async function InicioComercial({ profile, edicion, empresa }: { profile: 
   });
   // Quien abrió, hizo clic o respondió la campaña de correo: una señal, no un
   // negocio. Se trabaja en la bandeja de Prospección, ordenada por temperatura.
-  const porContactar = (bandejaData ?? []) as Prospecto[];
+  const porContactar = ((bandejaData ?? []) as Prospecto[]).filter((p) => !p.no_contactar);
   const nombreCampana = new Map((campanasData ?? []).map((campana) => [campana.id as string, campana.name as string]));
   const porCampana = new Map<string, { personas: number; correos: number; abrieron: number; clic: number; rebotes: number; bajas: number }>();
   for (const fila of correoData ?? []) {

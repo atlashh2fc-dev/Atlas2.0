@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { CheckCircle2 } from "lucide-react";
+import { Ban, CheckCircle2, Mail, MailOpen } from "lucide-react";
 
 import { registrarToque } from "@/app/actions/prospeccion";
 import { ContactarProspecto } from "@/components/contactar-prospecto";
@@ -11,7 +11,7 @@ import { Badge, SubmitButton } from "@/components/ui";
 export type FilaProspecto = {
   leadId: string;
   nombre: string;
-  estado: { texto: string; tono: "info" | "warning" | "neutral" };
+  estado: { texto: string; tono: "info" | "warning" | "neutral" | "danger" };
   datos: string;
   senal: string;
   tonoSenal: "success" | "neutral";
@@ -23,6 +23,11 @@ export type FilaProspecto = {
   enlace: string | null;
   etiqueta: string;
   telefono: boolean;
+  abiertos: number;
+  /** Los correos de la secuencia, ya en hora Chile. */
+  correos: { asunto: string; enviado: string | null; abierto: string | null; clic: boolean }[];
+  /** Si está, no se le escribe: la fila se ve, con el motivo, y sin acciones. */
+  noContactar: string | null;
 };
 
 const HECHO: Record<string, string> = {
@@ -74,6 +79,23 @@ export function BandejaProspeccion({ filas }: { filas: FilaProspecto[] }) {
             </li>
           );
         }
+        if (p.noContactar) {
+          return (
+            <li key={leadId} className="space-y-1.5 border-l-4 border-l-danger bg-danger-bg px-4 py-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Link href={`/dashboard/leads/${p.leadId}`} className="truncate text-sm font-medium text-foreground hover:underline">
+                  {p.nombre}
+                </Link>
+                <Badge tone="danger">{p.estado.texto}</Badge>
+              </div>
+              <p className="flex items-start gap-1.5 text-sm font-medium text-danger">
+                <Ban size={14} aria-hidden="true" className="mt-0.5 flex-shrink-0" />
+                {p.noContactar}
+              </p>
+              <Correos correos={p.correos} />
+            </li>
+          );
+        }
         return (
           <li key={leadId} className="flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0 space-y-1">
@@ -86,6 +108,7 @@ export function BandejaProspeccion({ filas }: { filas: FilaProspecto[] }) {
               <p className="truncate text-xs text-muted-foreground">{p.datos}</p>
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                 <Badge tone={p.tonoSenal}>{p.senal}</Badge>
+                {p.correos.length > 0 && <Badge tone="neutral">Abrió {p.abiertos} de {p.correos.length} correos</Badge>}
                 <span>{p.haceCuanto}</span>
                 {p.campana && <span className="truncate">· {p.campana}</span>}
                 {p.ultimoToque && <span>· {p.ultimoToque}</span>}
@@ -93,6 +116,7 @@ export function BandejaProspeccion({ filas }: { filas: FilaProspecto[] }) {
                   <Link href="/dashboard/ventas/respuestas" className="text-primary hover:underline">Ver su respuesta</Link>
                 )}
               </div>
+              <Correos correos={p.correos} />
             </div>
             <div className="flex flex-shrink-0 flex-wrap items-center gap-1.5">
               <span onClickCapture={() => anotar(p.leadId, p.canal)}>
@@ -103,6 +127,31 @@ export function BandejaProspeccion({ filas }: { filas: FilaProspecto[] }) {
               {p.telefono && <Resultado leadId={p.leadId} resultado="numero_malo" texto="Número no sirve" alAnotar={anotar} />}
               <Resultado leadId={p.leadId} resultado="posponer" texto="En una semana" alAnotar={anotar} />
             </div>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** Qué se le mandó y qué leyó, para saber de qué hablarle antes de escribirle. */
+function Correos({ correos }: { correos: FilaProspecto["correos"] }) {
+  if (correos.length === 0) return null;
+  return (
+    <ul className="space-y-0.5 pt-0.5 text-xs">
+      {correos.map((correo, i) => {
+        const Icono = correo.abierto ? MailOpen : Mail;
+        return (
+          <li key={i} className="flex flex-wrap items-baseline gap-x-2">
+            <span className={`inline-flex items-center gap-1.5 ${correo.abierto ? "text-foreground" : "text-muted-foreground"}`}>
+              <Icono size={12} aria-hidden="true" className={`flex-shrink-0 self-center ${correo.abierto ? "text-success" : ""}`} />
+              {correo.asunto}
+            </span>
+            <span className="tabular-nums text-muted-foreground">
+              {correo.enviado ? `enviado ${correo.enviado}` : "sin fecha de envío"}
+              {correo.abierto ? ` · abierto ${correo.abierto}` : " · sin abrir"}
+              {correo.clic ? " · hizo clic" : ""}
+            </span>
           </li>
         );
       })}

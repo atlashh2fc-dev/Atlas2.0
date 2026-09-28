@@ -70,7 +70,7 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
     const id = cambio.opportunity_id as string;
     if (id && !ultimoCambio.has(id)) ultimoCambio.set(id, cambio.occurred_at as string);
   }
-  const prospectos = (porContactar ?? []) as { clic: boolean; respondio: boolean }[];
+  const prospectos = ((porContactar ?? []) as { clic: boolean; respondio: boolean; no_contactar: string | null }[]).filter((p) => !p.no_contactar);
   const calientes = prospectos.filter((p) => p.clic || p.respondio).length;
 
   const termino = q.trim().toLowerCase();

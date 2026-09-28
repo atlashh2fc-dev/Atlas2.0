@@ -21,8 +21,20 @@ export type Prospecto = {
   ultimo_toque_at: string | null;
   seguir_at: string | null;
   toques: number;
-  estado: "nuevo" | "volvio" | "seguimiento";
+  estado: "nuevo" | "volvio" | "seguimiento" | "no_contactar";
   prioridad: number;
+  /** Los correos de la secuencia, del primero al último. */
+  correos: CorreoEnviado[];
+  /** Motivo por el que no se le escribe (leads.extra.no_contactar), o null. */
+  no_contactar: string | null;
+};
+
+/** Un correo de la secuencia; abierto_at es la primera apertura de una persona (no la de un escáner). */
+export type CorreoEnviado = {
+  asunto: string | null;
+  enviado_at: string | null;
+  abierto_at: string | null;
+  clic: boolean;
 };
 
 export const RESULTADOS = ["whatsapp", "llamada", "correo", "posponer", "interesado", "no_interesa", "numero_malo"] as const;
@@ -80,18 +92,39 @@ function loQuePide(empresa: string | null): { pide: string; pierde: string } {
   return { pide: "una cotización", pierde: "cotice con otra empresa" };
 }
 
+// De qué le hablamos, según el asunto. El cierre ("¿lo dejamos para más
+// adelante?") es igual en todas las secuencias y no dice nada: se salta.
+const TEMAS: { patron: RegExp; tema: string }[] = [
+  { patron: /(atlas pulso|11 de la noche|pregunta r[aá]pida)/i, tema: "Atlas Pulso, un sitio web con una IA que responde a sus clientes a cualquier hora" },
+  { patron: /(chatgpt|google|la ia\b)/i, tema: "tener un sitio web que Google y ChatGPT puedan recomendar" },
+];
+
+/** El tema del último correo que leyó; si no leyó ninguno reconocible, el del último que se le mandó. */
+export function temaDeLosCorreos(correos: CorreoEnviado[] | null | undefined): string | null {
+  const recientes = [...(correos ?? [])].reverse();
+  for (const lista of [recientes.filter((c) => c.abierto_at), recientes]) {
+    for (const correo of lista) {
+      const encontrado = TEMAS.find(({ patron }) => patron.test(correo.asunto ?? ""));
+      if (encontrado) return encontrado.tema;
+    }
+  }
+  return null;
+}
+
 /**
  * El mismo mensaje que propone el resumen de Atlas Lead, firmado por quien
- * escribe. Habla del cliente y no de nosotros, hace una sola pregunta y nunca
- * menciona que abrió el correo. Si ya le escribimos, va el seguimiento; si
- * respondió el correo, se retoma esa conversación.
+ * escribe. Hace una sola pregunta y nunca menciona que abrió el correo: si se
+ * sabe de qué le hablamos, se retoma ese tema ("le escribimos por correo
+ * sobre…"). Si ya le escribimos, va el seguimiento; si respondió el correo, se
+ * retoma esa conversación.
  */
-export function mensajeDeWhatsapp({ remitente, empresaPropia, empresa, respondio = false, toques = 0 }: {
+export function mensajeDeWhatsapp({ remitente, empresaPropia, empresa, respondio = false, toques = 0, tema = null }: {
   remitente: string;
   empresaPropia: string;
   empresa: string | null;
   respondio?: boolean;
   toques?: number;
+  tema?: string | null;
 }): string {
   const nombre = nombreComoSeDice(empresa);
   if (respondio) {
@@ -108,12 +141,26 @@ export function mensajeDeWhatsapp({ remitente, empresaPropia, empresa, respondio
       "Si no es un tema para ustedes, me avisa y no vuelvo a escribirle.",
     ].join(" ");
   }
+  if (tema) {
+    return [
+      `Hola, soy ${remitente}, de ${empresaPropia}.`,
+      `Hace unos días le escribimos por correo${nombre ? ` a ${nombre}` : ""} sobre ${tema}.`,
+      "¿Le muestro en 10 minutos cómo quedaría el suyo?",
+    ].join(" ");
+  }
   const { pide, pierde } = loQuePide(empresa);
   return [
     `Hola, soy ${remitente}, de ${empresaPropia}, en Santiago.`,
     `Una pregunta breve${nombre ? ` para ${nombre}` : ""}:`,
     `si un cliente les pide ${pide} a las 10 de la noche, ¿alguien alcanza a responderle antes de que ${pierde}?`,
   ].join(" ");
+}
+
+/** "Proquimsa S A: una pregunta rápida" → "Una pregunta rápida". El nombre de la empresa ya está en la fila. */
+export function asuntoLegible(asunto: string | null | undefined): string {
+  const limpio = (asunto ?? "").replace(/^[^:?¿]{3,}:\s+/, "").trim();
+  if (!limpio) return "Sin asunto";
+  return limpio.charAt(0).toUpperCase() + limpio.slice(1);
 }
 
 export function enlaceWhatsapp(celular: string, mensaje: string): string {

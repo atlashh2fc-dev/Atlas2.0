@@ -9,11 +9,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { celularChileno, enlaceWhatsapp, esResultado, mensajeDeWhatsapp, nombreComoSeDice, senalDe } from "../src/lib/prospeccion.ts";
+import { asuntoLegible, celularChileno, enlaceWhatsapp, esResultado, mensajeDeWhatsapp, nombreComoSeDice, senalDe, temaDeLosCorreos } from "../src/lib/prospeccion.ts";
 
 const leer = (ruta: string) => readFileSync(new URL(`../${ruta}`, import.meta.url), "utf8");
 
 const MIGRACION = leer("supabase/migrations/20260928120000_bandeja_de_prospeccion.sql");
+const CORREOS_Y_BLOQUEO = leer("supabase/migrations/20260928220000_bandeja_muestra_los_correos_y_bloquea.sql");
+const BANDEJA = leer("src/components/bandeja-prospeccion.tsx");
 const PIPELINE = leer("src/app/dashboard/pipeline/page.tsx");
 const CRONS = JSON.parse(leer("vercel.json")) as { crons: { path: string }[] };
 
@@ -110,4 +112,38 @@ test("la señal se describe de la más caliente a la más tibia", () => {
   assert.equal(senalDe({ respondio: false, clic: false, aperturas: 1 }), "Abrió el correo");
   assert.ok(esResultado("whatsapp"));
   assert.ok(!esResultado("borrar"));
+});
+
+test("antes de escribirle se sabe qué correo leyó, y el mensaje retoma ese tema sin decir que lo abrió", () => {
+  const correos = [
+    { asunto: "Improfor Limitada: alternativa para b", enviado_at: "2026-09-21T12:40:00Z", abierto_at: "2026-09-22T17:27:00Z", clic: false },
+    { asunto: "¿Le mostramos cómo quedaría su sitio con Atlas Pulso?", enviado_at: "2026-09-23T16:41:00Z", abierto_at: "2026-09-24T14:08:00Z", clic: false },
+    { asunto: "Improfor Limitada: ¿lo dejamos para más adelante?", enviado_at: "2026-09-28T18:40:00Z", abierto_at: "2026-09-28T19:47:00Z", clic: false },
+  ];
+  // El cierre no dice de qué se habló: manda el último correo con tema.
+  assert.match(temaDeLosCorreos(correos) ?? "", /^Atlas Pulso/);
+  assert.match(temaDeLosCorreos([{ asunto: "Universo Toys Spa: ¿los recomienda ChatGPT cuando buscan su rubro?", enviado_at: null, abierto_at: null, clic: false }]) ?? "", /Google y ChatGPT/);
+  assert.equal(temaDeLosCorreos([]), null);
+  const mensaje = mensajeDeWhatsapp({ remitente: "Hugo", empresaPropia: "Altius Ignite", empresa: "Universo Toys Spa", tema: temaDeLosCorreos(correos) });
+  assert.equal(
+    mensaje,
+    "Hola, soy Hugo, de Altius Ignite. Hace unos días le escribimos por correo a Universo Toys sobre Atlas Pulso, un sitio web con una IA que responde a sus clientes a cualquier hora. ¿Le muestro en 10 minutos cómo quedaría el suyo?",
+  );
+  assert.doesNotMatch(mensaje, /abri[óo]/i);
+  assert.equal(asuntoLegible("Proquimsa S A: una pregunta rápida"), "Una pregunta rápida");
+  assert.equal(asuntoLegible("¿Quién le contesta a sus clientes a las 11 de la noche?"), "¿Quién le contesta a sus clientes a las 11 de la noche?");
+  // La apertura de un escáner tampoco cuenta como correo leído.
+  assert.match(soloCodigo(CORREOS_Y_BLOQUEO), /coalesce\(d\.enviado_at, '-infinity'::timestamptz\) \+ interval '60 seconds'/);
+});
+
+test("a quien se marcó no contactar se le ve, pero no se le escribe ni cuenta como pendiente", () => {
+  const codigo = soloCodigo(CORREOS_Y_BLOQUEO);
+  assert.match(codigo, /when nullif\(btrim\(l\.extra->>'no_contactar'\), ''\) is not null then 'no_contactar'/);
+  // El vigilante cuenta estado 'nuevo': el marcado no le suma.
+  assert.match(soloCodigo(MIGRACION), /count\(\*\) filter \(where b\.estado = 'nuevo'/);
+  // Sin botón de WhatsApp ni resultados en la fila marcada.
+  const fila = BANDEJA.slice(BANDEJA.indexOf("if (p.noContactar)"), BANDEJA.indexOf("if (p.noContactar)") + 900);
+  assert.doesNotMatch(fila, /ContactarProspecto|<Resultado/);
+  // Los 12 del correo con error del 21-09 se marcan por su id de Atlas Lead.
+  assert.equal((codigo.match(/'[0-9a-f-]{36}'/g) ?? []).length, 12);
 });
