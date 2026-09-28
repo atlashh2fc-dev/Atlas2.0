@@ -91,20 +91,37 @@ type MailReportRow = {
 const one = <T,>(value: Relation<T>): T | null =>
   Array.isArray(value) ? (value[0] ?? null) : value;
 
+const DATA_TONE = {
+  default: { value: "text-foreground", edge: "border-l-border-strong" },
+  warn: { value: "text-warning", edge: "border-l-warning" },
+  danger: { value: "text-danger", edge: "border-l-danger" },
+  good: { value: "text-success", edge: "border-l-success" },
+} as const;
+
+type DataTone = keyof typeof DATA_TONE;
+
+/** Pendiente que pide acción: ámbar si hay algo, verde si está en cero. */
+const pendingTone = (value: number | null | undefined): DataTone =>
+  value === null || value === undefined ? "default" : value > 0 ? "warn" : "good";
+
+/** Cifra en baldosa: el borde izquierdo y el número toman el color del estado. */
 function DataNumber({
   label,
   value,
   hint,
+  tone = "default",
 }: {
   label: string;
   value: number | string | null;
   hint?: string;
+  tone?: DataTone;
 }) {
+  const style = DATA_TONE[value === null ? "default" : tone];
   return (
-    <div>
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">
-        {value ?? "No disponible"}
+    <div className={`rounded-lg border border-border border-l-2 bg-background px-3 py-2.5 ${style.edge}`}>
+      <dt className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</dt>
+      <dd className={`mt-1 text-2xl font-semibold tracking-tight tabular-nums ${value === null ? "text-base text-muted-foreground" : style.value}`}>
+        {typeof value === "number" ? value.toLocaleString("es-CL") : (value ?? "No disponible")}
       </dd>
       {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
     </div>
@@ -555,9 +572,11 @@ export default async function OperationsPage({
 
       {showAutomation && (
         <SectionCard
+          icon={Bot}
+          tone="teal"
           title={
             <span className="flex items-center gap-2">
-              <Bot size={16} /> Automatización general de WhatsApp{" "}
+              Automatización general de WhatsApp{" "}
               <Badge
                 tone={
                   automationState === "Activa"
@@ -684,9 +703,10 @@ export default async function OperationsPage({
       )}
 
       <SectionCard
+        icon={Users}
+        tone="blue"
         title={
           <span className="flex items-center gap-2">
-            <Users size={16} />
             {matchingQueues.length === 1
               ? matchingQueues[0].name
               : "Unidades operativas"}
@@ -718,14 +738,13 @@ export default async function OperationsPage({
       >
         {viewWhatsApp && (
           <SectionCard
-            title={
-              <span className="flex items-center gap-2">
-                <MessageCircle size={16} /> WhatsApp · Stock actual
-              </span>
-            }
+            icon={MessageCircle}
+            tone="green"
+            title="WhatsApp · Stock actual"
+            className="@container"
             description="Conversaciones abiertas y pendientes; no equivale a chats activos ni a ocupación simultánea."
           >
-            <dl className="grid grid-cols-2 gap-5 p-5 sm:grid-cols-4">
+            <dl className="grid grid-cols-2 gap-3 p-4 @xl:grid-cols-4">
               <DataNumber
                 label="Sin cerrar"
                 value={stockUnavailable ? null : (stock?.total ?? null)}
@@ -733,12 +752,14 @@ export default async function OperationsPage({
               <DataNumber
                 label="Sin asignar"
                 value={stockUnavailable ? null : (stock?.unassigned ?? null)}
+                tone={pendingTone(stock?.unassigned)}
               />
               <DataNumber
                 label="Sin respuesta posterior"
                 value={
                   stockUnavailable ? null : (stock?.awaitingResponse ?? null)
                 }
+                tone={pendingTone(stock?.awaitingResponse)}
               />
               <DataNumber
                 label="Mayor antigüedad"
@@ -751,20 +772,20 @@ export default async function OperationsPage({
                       )
                 }
                 hint="Último inbound sin respuesta"
+                tone={stock?.oldestUnansweredAt ? "danger" : "good"}
               />
             </dl>
           </SectionCard>
         )}
         {viewVoice && (
           <SectionCard
-            title={
-              <span className="flex items-center gap-2">
-                <Phone size={16} /> Voz · Operación actual
-              </span>
-            }
+            icon={Phone}
+            tone="primary"
+            title="Voz · Operación actual"
+            className="@container"
             description="Campañas activas del marcador. Contactabilidad COPC: registros con aló ÷ registros recorridos hoy."
           >
-            <dl className="grid grid-cols-2 gap-5 p-5 sm:grid-cols-4">
+            <dl className="grid grid-cols-2 gap-3 p-4 @xl:grid-cols-4">
               <DataNumber
                 label="En curso"
                 value={
@@ -813,20 +834,20 @@ export default async function OperationsPage({
         )}
         {viewMail && (
           <SectionCard
-            title={
-              <span className="flex items-center gap-2">
-                <Mail size={16} /> Correo · Operación actual
-              </span>
-            }
+            icon={Mail}
+            tone="violet"
+            title="Correo · Operación actual"
+            className="@container"
             description="Resultados y oportunidades de las campañas de correo conectadas a la cola seleccionada."
           >
-            <dl className="grid grid-cols-2 gap-5 p-5 sm:grid-cols-4">
+            <dl className="grid grid-cols-2 gap-3 p-4 @xl:grid-cols-4">
               <DataNumber label="Enviados" value={mailUnavailable ? null : mailTotals.sent} />
               <DataNumber label="Aperturas" value={mailUnavailable ? null : mailTotals.opened} />
               <DataNumber label="Clicks" value={mailUnavailable ? null : mailTotals.clicked} />
               <DataNumber
                 label="Sin asignar"
                 value={mailUnavailable ? null : Math.max(mailTotals.prioritized - mailTotals.assigned, 0)}
+                tone={mailUnavailable ? "default" : pendingTone(Math.max(mailTotals.prioritized - mailTotals.assigned, 0))}
               />
             </dl>
           </SectionCard>
@@ -835,6 +856,8 @@ export default async function OperationsPage({
 
       {viewWhatsApp && (
         <SectionCard
+          icon={MessageCircle}
+          tone="green"
           title="WhatsApp · detalle interno"
           description="Carga y estado del canal WhatsApp dentro de la unidad seleccionada."
         >
@@ -982,6 +1005,8 @@ export default async function OperationsPage({
 
       {viewVoice && (
         <SectionCard
+          icon={Phone}
+          tone="primary"
           title="Voz outbound · detalle interno"
           description="Contadores de hoy según America/Santiago. Fuente: motor de discado; no incluye contenido ni grabaciones."
         >
@@ -1053,6 +1078,8 @@ export default async function OperationsPage({
 
       {viewMail && (
         <SectionCard
+          icon={Mail}
+          tone="violet"
           title="Correo · detalle interno"
           description="Las oportunidades conservan su campaña y responsable CRM; la asignación se realiza sin duplicar contactos."
         >
@@ -1106,11 +1133,9 @@ export default async function OperationsPage({
       )}
 
       <SectionCard
-        title={
-          <span className="flex items-center gap-2">
-            <Users size={16} /> Equipo omnicanal y carga por canal
-          </span>
-        }
+        icon={Users}
+        tone="blue"
+        title="Equipo omnicanal y carga por canal"
         description="La presencia telefónica no prueba disponibilidad para WhatsApp. Los miembros habilitados son configuración, no presencia en línea."
       >
         <div className="overflow-x-auto">

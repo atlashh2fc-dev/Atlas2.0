@@ -1,5 +1,5 @@
 export { Button, buttonClasses, type ButtonProps, type ButtonVariant, type ButtonSize } from "./button";
-export { Card, SectionCard, Callout } from "./card";
+export { Card, SectionCard, Callout, type SectionTone } from "./card";
 export { Input, Select, Field, type InputProps, type SelectProps, type FieldSize } from "./field";
 export { Badge, StatusDot, type BadgeTone } from "./badge";
 export { PageHeader } from "./page-header";
