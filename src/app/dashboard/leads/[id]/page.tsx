@@ -5,10 +5,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, CalendarClock, PencilLine, RefreshCw } from "lucide-react";
 import { LEAD_STATUSES } from "@/lib/types";
-import { getLeadSupervisionContext, getOpenCall, getRevisableCall, getSupervisableCall, type LeadSupervisionContext } from "@/app/actions/calls";
+import { getLeadSupervisionContext, getMyOpenManagement, getOpenCall, getRevisableCall, getSupervisableCall, type LeadSupervisionContext } from "@/app/actions/calls";
 import { fetchCampaignAgendaPolicy } from "@/lib/campaign-agenda-policy";
 import { AgendaCallButton } from "@/components/agenda-call-button";
-import { OFFLINE_CHANNEL_LABEL } from "@/lib/call-management-navigation";
+import { OFFLINE_CHANNEL_LABEL, OPEN_CALL_FORM_ATTRIBUTE } from "@/lib/call-management-navigation";
 import { LeadPhonesPanel } from "@/components/lead-phones-panel";
 import { OfflineManagementButton } from "@/components/offline-management-button";
 import { ScreenPopTiming } from "@/components/screen-pop-timing";
@@ -309,8 +309,12 @@ export default async function LeadDetailPage({
       ).data,
     );
   const call = canManageCall ? await getOpenCall(id) : null;
+  // Con otra gestión abierta, la base rechaza llamar, registrar una gestión
+  // sin llamada y corregir: esos botones sólo llevaban a un loop de errores.
+  const otherOpenManagement =
+    canManageCall && !call && profile.role === "agente" ? await getMyOpenManagement() : null;
   const revisableCall =
-    canManageCall && !call && lead.managed_by === profile.id
+    canManageCall && !call && !otherOpenManagement && lead.managed_by === profile.id
       ? await getRevisableCall(id)
       : null;
 
@@ -579,7 +583,7 @@ export default async function LeadDetailPage({
             {/* Sin gestión abierta, un compromiso propio se puede marcar desde
                 aquí aunque la campaña sea automática: el discador solo entrega
                 el callback dentro de su ventana y después queda incallable. */}
-            {canManageCall && !call && (canOperateAssigned || ownsManagedRecord || ownsAgenda) && lead.phone && (
+            {canManageCall && !call && !otherOpenManagement && (canOperateAssigned || ownsManagedRecord || ownsAgenda) && lead.phone && (
               <AgendaCallButton
                 leadId={lead.id}
                 fullName={lead.full_name}
@@ -592,7 +596,7 @@ export default async function LeadDetailPage({
             )}
             {/* Contacto por otro canal (WhatsApp propio, correo, presencial):
                 se tipifica sin volver a llamar. */}
-            {profile.role === "agente" && canManageCall && !call &&
+            {profile.role === "agente" && canManageCall && !call && !otherOpenManagement &&
               (lead.managed_by === profile.id || lead.assigned_to === profile.id) && (
               <OfflineManagementButton leadId={lead.id} />
             )}
@@ -626,6 +630,23 @@ export default async function LeadDetailPage({
         <Callout tone="info">
           Vista de consulta y control. La atención y la tipificación pertenecen al ejecutivo responsable.
           {!leeConversaciones && " El contenido de las conversaciones WhatsApp no se consulta desde Administración."}
+        </Callout>
+      )}
+
+      {otherOpenManagement && (
+        <Callout tone="warning">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span>
+              Tienes una gestión pendiente con {otherOpenManagement.leadName ?? "otro registro"}. Tipifícala antes de
+              llamar o registrar otra gestión.
+            </span>
+            <Link
+              href={`/dashboard/leads/${otherOpenManagement.leadId}?tipificar=1`}
+              className={buttonClasses({ size: "sm" })}
+            >
+              Ir a tipificarla
+            </Link>
+          </div>
         </Callout>
       )}
 
@@ -759,6 +780,7 @@ export default async function LeadDetailPage({
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(300px,360px)] xl:items-start">
           <section
             id="gestion-en-curso"
+            {...{ [OPEN_CALL_FORM_ATTRIBUTE]: call.id }}
             className="min-w-0 scroll-mt-4 rounded-2xl border-2 border-primary/20 bg-primary/[0.025] p-3 sm:p-5"
           >
             {/* Cierra la medición de cuánto tardó la ficha en aparecer. */}

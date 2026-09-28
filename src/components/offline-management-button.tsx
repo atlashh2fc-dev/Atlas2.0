@@ -4,7 +4,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { MessageSquare } from "lucide-react";
 import { buttonClasses } from "@/components/ui";
-import { beginOfflineManagement, type OfflineManagementChannel } from "@/app/actions/calls";
+import { beginOfflineManagement, getMyOpenManagement, type OfflineManagementChannel } from "@/app/actions/calls";
+import { isPendingManagementError } from "@/lib/call-management-navigation";
 
 const CHANNELS: { value: OfflineManagementChannel; label: string }[] = [
   { value: "whatsapp", label: "WhatsApp" },
@@ -30,8 +31,20 @@ export function OfflineManagementButton({ leadId }: { leadId: string }) {
     startTransition(async () => {
       const result = await beginOfflineManagement(leadId, channel);
       if (!result.ok) {
-        setError(result.error);
-        return;
+        // Ya hay una gestión abierta: se lleva a ella en vez de repetir el
+        // rechazo. Si es de este mismo registro, la ficha estaba desactualizada.
+        const management = isPendingManagementError(result.error)
+          ? await getMyOpenManagement().catch(() => null)
+          : null;
+        if (!management) {
+          setError(result.error);
+          return;
+        }
+        setOpen(false);
+        if (management.leadId !== leadId) {
+          router.push(`/dashboard/leads/${management.leadId}?tipificar=1`);
+          return;
+        }
       }
       setOpen(false);
       router.refresh();

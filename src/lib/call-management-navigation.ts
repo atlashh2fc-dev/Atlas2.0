@@ -37,6 +37,20 @@ export function resolveManualCallManagementAction(
 }
 
 /**
+ * Marca del formulario de la gestión abierta en la ficha. El teléfono la busca
+ * para saber si lo que muestra la pantalla coincide con la base: la ficha se
+ * puede dibujar antes de que exista la llamada (un compromiso agendado hace
+ * sonar primero al ejecutivo y la llamada se crea recién al contestar el
+ * cliente) y quedaba sin formulario, con sólo botones que la base rechaza.
+ */
+export const OPEN_CALL_FORM_ATTRIBUTE = "data-open-call-id";
+
+export function isOpenCallFormOnScreen(callId: string): boolean {
+  if (typeof document === "undefined") return false;
+  return document.querySelector(`[${OPEN_CALL_FORM_ATTRIBUTE}="${CSS.escape(callId)}"]`) !== null;
+}
+
+/**
  * Mensajes con que la base rechaza marcar o corregir mientras otra gestión
  * del ejecutivo sigue abierta (ver begin_agent_* y revise_call_management).
  */

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -53,4 +54,20 @@ test("los rechazos por otra gestión abierta se reconocen para llevar al ejecuti
   assert.equal(isPendingManagementError("No puedes corregir una gestión mientras tienes una llamada o tipificación en curso."), true);
   assert.equal(isPendingManagementError("Este número ya tiene una llamada en curso."), false);
   assert.equal(isPendingManagementError(null), false);
+});
+
+// 28-09-2026: un compromiso agendado abría la ficha antes de que existiera la
+// llamada. Al colgar no se recargaba, «Completar» quedaba oculto por la URL y
+// el ejecutivo sólo tenía botones que la base rechaza (loop «gestión
+// pendiente» ↔ «completa primero la llamada activa»).
+test("the phone follows the open management in the database, not the URL", () => {
+  const page = readFileSync(new URL("../src/app/dashboard/leads/[id]/page.tsx", import.meta.url), "utf8");
+  const cti = readFileSync(new URL("../src/components/cti-bar.tsx", import.meta.url), "utf8");
+
+  assert.match(page, /id="gestion-en-curso"\s*\{\.\.\.\{ \[OPEN_CALL_FORM_ATTRIBUTE\]: call\.id \}\}/);
+  assert.match(page, /!call && !otherOpenManagement && \(canOperateAssigned/);
+  assert.match(cti, /isOpenCallFormOnScreen\(openManagement\.callId\)/);
+  assert.match(cti, /!activeCall &&\s*!openFormOnScreen;/);
+  assert.doesNotMatch(cti, /pathname !== `\/dashboard\/leads\/\$\{openManagement\.leadId\}`;/);
+  assert.equal((cti.match(/openAutomaticManagement\([a-zA-Z]+Context, true\)/g) ?? []).length, 2);
 });

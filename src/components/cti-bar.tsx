@@ -48,6 +48,7 @@ import {
 } from "@/lib/intercall-break";
 import { cn } from "@/lib/utils";
 import {
+  isOpenCallFormOnScreen,
   isPendingManagementError,
   OFFLINE_CHANNEL_LABEL,
   resolveCallManagementNavigation,
@@ -190,6 +191,10 @@ export function CtiBar({ profile }: { profile: Profile }) {
   const [pendingTypificationOpening, setPendingTypificationOpening] = useState(false);
   /** Gestión abierta (llamada o sin llamada) que bloquea marcar otra. */
   const [openManagement, setOpenManagement] = useState<OpenManagement | null>(null);
+  // Si el formulario de esa gestión está de verdad en pantalla (lo marca la
+  // ficha con OPEN_CALL_FORM_ATTRIBUTE), no si "debería" estarlo por la URL.
+  const [openFormOnScreen, setOpenFormOnScreen] = useState(false);
+  const lastFormReconcileRef = useRef<{ callId: string; at: number } | null>(null);
 
   const [statusReasons, setStatusReasons] = useState<AgentStatusReason[]>([]);
   const [currentReasonId, setCurrentReasonId] = useState<string | null>(null);
@@ -584,6 +589,37 @@ export function CtiBar({ profile }: { profile: Profile }) {
   // discador. Sin este sondeo una llamada manual o una gestión sin llamada
   // abierta dejaba al ejecutivo en un loop: "tienes una gestión pendiente"
   // sin decir cuál, y el teléfono sin nada que abrir.
+  // La pantalla sigue a la base, no al orden de los eventos. La ficha puede
+  // haberse dibujado antes de que existiera la llamada (compromiso agendado:
+  // suena primero el ejecutivo y la llamada nace al contestar el cliente) y
+  // quedaba sin formulario, con «Completar» oculto porque la URL ya era la de
+  // la gestión: el ejecutivo sólo tenía botones que la base rechaza. Cada vez
+  // que se relee la gestión abierta se comprueba el formulario y, si falta en
+  // la ficha de esa misma gestión, se vuelve a pedir la página.
+  useEffect(() => {
+    if (profile.role !== "agente") return;
+    const check = () => {
+      const onScreen = openManagement ? isOpenCallFormOnScreen(openManagement.callId) : false;
+      setOpenFormOnScreen(onScreen);
+      if (!openManagement || onScreen) return;
+      if (pathname !== `/dashboard/leads/${openManagement.leadId}`) return;
+      const last = lastFormReconcileRef.current;
+      if (last && last.callId === openManagement.callId && Date.now() - last.at < 4_000) return;
+      lastFormReconcileRef.current = { callId: openManagement.callId, at: Date.now() };
+      router.refresh();
+    };
+    const timer = setTimeout(check, 0);
+    // El refresco tarda en pintar: se vuelve a mirar para mostrar u ocultar
+    // «Completar» sin esperar el próximo sondeo.
+    const recheck = setTimeout(() => {
+      setOpenFormOnScreen(openManagement ? isOpenCallFormOnScreen(openManagement.callId) : false);
+    }, 1_500);
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(recheck);
+    };
+  }, [openManagement, pathname, profile.role, router]);
+
   useEffect(() => {
     if (profile.role !== "agente") return;
     queueMicrotask(() => void refreshOpenManagement());
@@ -1224,9 +1260,14 @@ export function CtiBar({ profile }: { profile: Profile }) {
     router.push(navigation.href);
   }
 
-  function openAutomaticManagement(context: IncomingDialContext | null) {
+  /**
+   * `afterHangup` vuelve a pedir la ficha aunque ya se haya abierto con el
+   * INVITE: en ese momento la llamada quizá todavía no existía en la base y
+   * la ficha quedó sin formulario.
+   */
+  function openAutomaticManagement(context: IncomingDialContext | null, afterHangup = false) {
     if (!context) return;
-    if (automaticManagementOpenedRef.current === context.dial_attempt_id) return;
+    if (!afterHangup && automaticManagementOpenedRef.current === context.dial_attempt_id) return;
     automaticManagementOpenedRef.current = context.dial_attempt_id;
     // El screen-pop debe ocurrir apenas el motor confirma qué ejecutivo tomó
     // la llamada. Así la ficha 360 completa queda visible durante la
@@ -1442,7 +1483,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
               // Una llamada automática no puede terminar dejando al agente en
               // el teclado o en otra pantalla: siempre vuelve a su gestión.
               if (finishedContext) {
-                openAutomaticManagement(finishedContext);
+                openAutomaticManagement(finishedContext, true);
               } else {
                 // El contexto no alcanzó a llegar durante la llamada: se abre
                 // la gestión que quedó pendiente para que pueda tipificar.
@@ -1726,7 +1767,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
         void startLegalIntercallBreak().catch((err) =>
           console.error("CTI: no se pudo registrar la interrupción legal", err)
         );
-        if (isIncomingCall) openAutomaticManagement(automaticContext);
+        if (isIncomingCall) openAutomaticManagement(automaticContext, true);
       }
       if (management) {
         finishManualManagement(
@@ -1957,7 +1998,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
   const pendingElsewhere =
     openManagement !== null &&
     !activeCall &&
-    pathname !== `/dashboard/leads/${openManagement.leadId}`;
+    !openFormOnScreen;
   // En modo automático marcar exige salir de la cola; sin campañas manuales no hay cómo.
   const canOpenDialer =
     Boolean(credential) &&
