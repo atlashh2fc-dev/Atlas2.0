@@ -2,9 +2,9 @@ import Link from "next/link";
 import { unstable_noStore as noStore } from "next/cache";
 import { Undo2 } from "lucide-react";
 
-import { deshacerToque, registrarToque } from "@/app/actions/prospeccion";
-import { ContactarProspecto } from "@/components/contactar-prospecto";
-import { Badge, Callout, EmptyState, NavTabs, PageHeader, SectionCard, StatCard, SubmitButton } from "@/components/ui";
+import { deshacerToque } from "@/app/actions/prospeccion";
+import { BandejaProspeccion, type FilaProspecto } from "@/components/bandeja-prospeccion";
+import { Callout, EmptyState, NavTabs, PageHeader, SectionCard, StatCard, SubmitButton } from "@/components/ui";
 import { requireProfile } from "@/lib/auth";
 import { ZONA_CLINICA, fechaEnChile, instanteEnChile } from "@/lib/citas";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
@@ -127,8 +127,8 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
           {cola.length === 0 ? (
             <EmptyState title="Bandeja al día" description="Nadie con interés espera gestión. Cuando alguien abra o haga clic en la campaña, aparece acá." />
           ) : (
-            <ul className="divide-y divide-border">
-              {cola.map((p) => {
+            <BandejaProspeccion
+              filas={cola.map((p): FilaProspecto => {
                 const celular = celularChileno(p.telefono);
                 const canal = celular ? "whatsapp" : p.telefono ? "llamada" : "correo";
                 const enlace = celular
@@ -138,44 +138,27 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
                     : p.email
                       ? `mailto:${p.email}`
                       : null;
-                const etiqueta = celular ? "WhatsApp" : p.telefono ? `Llamar ${p.telefono}` : "Escribir correo";
-                const estado = ESTADO[p.estado];
-                const tono = p.respondio || p.clic ? "success" : "neutral";
-                return (
-                  <li key={p.lead_id} className="flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="min-w-0 space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Link href={`/dashboard/leads/${p.lead_id}`} className="truncate text-sm font-medium text-foreground hover:text-primary hover:underline">
-                          {p.empresa ?? p.contacto ?? p.email ?? "Sin nombre"}
-                        </Link>
-                        <Badge tone={estado.tono}>{estado.texto}</Badge>
-                      </div>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {[p.contacto && p.contacto !== p.empresa ? p.contacto : null, p.telefono, p.email].filter(Boolean).join(" · ") || "Sin datos de contacto"}
-                      </p>
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                        <Badge tone={tono}>{senalDe(p)}</Badge>
-                        <span>{haceCuanto(p.ultima_senal_at, ahora)}</span>
-                        {p.campana && <span className="truncate">· {p.campana}</span>}
-                        {p.ultimo_resultado && esResultado(p.ultimo_resultado) && p.ultimo_toque_at && (
-                          <span>· {ETIQUETA_RESULTADO[p.ultimo_resultado]} el {fechaCorta.format(new Date(p.ultimo_toque_at))}{p.toques > 1 ? ` (${p.toques} intentos)` : ""}</span>
-                        )}
-                        {p.respondio && (
-                          <Link href="/dashboard/ventas/respuestas" className="text-primary hover:underline">Ver su respuesta</Link>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex flex-shrink-0 flex-wrap items-center gap-1.5">
-                      <ContactarProspecto leadId={p.lead_id} canal={canal} enlace={enlace} etiqueta={etiqueta} />
-                      <Resultado leadId={p.lead_id} resultado="interesado" texto="Interesado" />
-                      <Resultado leadId={p.lead_id} resultado="no_interesa" texto="No interesa" />
-                      {p.telefono && <Resultado leadId={p.lead_id} resultado="numero_malo" texto="Número no sirve" />}
-                      <Resultado leadId={p.lead_id} resultado="posponer" texto="En una semana" />
-                    </div>
-                  </li>
-                );
+                return {
+                  leadId: p.lead_id,
+                  nombre: p.empresa ?? p.contacto ?? p.email ?? "Sin nombre",
+                  estado: ESTADO[p.estado],
+                  datos: [p.contacto && p.contacto !== p.empresa ? p.contacto : null, p.telefono, p.email].filter(Boolean).join(" · ") || "Sin datos de contacto",
+                  senal: senalDe(p),
+                  tonoSenal: p.respondio || p.clic ? "success" : "neutral",
+                  haceCuanto: haceCuanto(p.ultima_senal_at, ahora),
+                  campana: p.campana,
+                  ultimoToque:
+                    p.ultimo_resultado && esResultado(p.ultimo_resultado) && p.ultimo_toque_at
+                      ? `${ETIQUETA_RESULTADO[p.ultimo_resultado]} el ${fechaCorta.format(new Date(p.ultimo_toque_at))}${p.toques > 1 ? ` (${p.toques} intentos)` : ""}`
+                      : null,
+                  respondio: p.respondio,
+                  canal,
+                  enlace,
+                  etiqueta: celular ? "WhatsApp" : p.telefono ? `Llamar ${p.telefono}` : "Escribir correo",
+                  telefono: Boolean(p.telefono),
+                };
               })}
-            </ul>
+            />
           )}
         </SectionCard>
       ) : (
@@ -218,15 +201,5 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
         </SectionCard>
       )}
     </div>
-  );
-}
-
-function Resultado({ leadId, resultado, texto }: { leadId: string; resultado: string; texto: string }) {
-  return (
-    <form action={registrarToque}>
-      <input type="hidden" name="lead_id" value={leadId} />
-      <input type="hidden" name="resultado" value={resultado} />
-      <SubmitButton size="sm" variant={resultado === "interesado" ? "secondary" : "ghost"} pendingLabel="…">{texto}</SubmitButton>
-    </form>
   );
 }
