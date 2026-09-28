@@ -81,7 +81,7 @@ test("el mensaje lo firma quien escribe, pregunta por el cliente y va listo en e
   const mensaje = mensajeDeWhatsapp({ remitente: "Hugo", empresaPropia: "Altius", empresa: "Sociedad de Transportes Hermosilla y Hermosilla Limitada" });
   assert.equal(
     mensaje,
-    "Hola, soy Hugo, de Altius, en Santiago. Una pregunta breve para Transportes Hermosilla y Hermosilla: si un cliente les pide una cotización a las 10 de la noche, ¿alguien alcanza a responderle antes de que cotice con otra empresa?",
+    "Hola, soy Hugo, de Altius, en Santiago. Una pregunta corta sobre Transportes Hermosilla y Hermosilla: si un cliente te pide una cotización a las 10 de la noche, ¿alguien alcanza a responderle antes de que cotice con otra empresa?",
   );
   assert.doesNotMatch(mensaje, /correo|10 minutos/);
   const enlace = enlaceWhatsapp("56994459945", mensaje);
@@ -93,15 +93,15 @@ test("el nombre queda como lo diría una persona, y sin nombre el mensaje no que
   assert.equal(nombreComoSeDice("Universo Toys Spa"), "Universo Toys");
   assert.equal(nombreComoSeDice("Proquimsa S A"), "Proquimsa");
   assert.equal(nombreComoSeDice("Sociedad de Mantenimiento de Equipos Medicos e Industriales Medex Spa"), null);
-  assert.match(mensajeDeWhatsapp({ remitente: "Hugo", empresaPropia: "Altius", empresa: null }), /Una pregunta breve: si un cliente/);
-  assert.match(mensajeDeWhatsapp({ remitente: "Hugo", empresaPropia: "Altius", empresa: "Clínica Dental Sonrisa SpA" }), /les pide una hora .* la reserve en otro lugar\?$/);
+  assert.match(mensajeDeWhatsapp({ remitente: "Hugo", empresaPropia: "Altius", empresa: null }), /Una pregunta corta: si un cliente te pide/);
+  assert.match(mensajeDeWhatsapp({ remitente: "Hugo", empresaPropia: "Altius", empresa: "Clínica Dental Sonrisa SpA" }), /te pide una hora .* la reserve en otro lugar\?$/);
 });
 
 test("a quien ya le escribimos va el seguimiento, y a quien respondió se le retoma la conversación", () => {
-  assert.match(mensajeDeWhatsapp({ remitente: "Hugo", empresaPropia: "Altius", empresa: "Securitek Spa", toques: 1 }), /^Le dejo el dato .* no vuelvo a escribirle\.$/);
+  assert.match(mensajeDeWhatsapp({ remitente: "Hugo", empresaPropia: "Altius", empresa: "Securitek Spa", toques: 1 }), /^Te dejo el dato .* no te vuelvo a escribir\.$/);
   assert.equal(
     mensajeDeWhatsapp({ remitente: "Hugo", empresaPropia: "Altius", empresa: "Menard Muebles Spa", respondio: true, toques: 2 }),
-    "Hola, soy Hugo, de Altius. Recibí su respuesta de Menard Muebles a nuestro correo y preferí escribirle directamente. ¿Le acomoda que sigamos la conversación por aquí?",
+    "Hola, soy Hugo, de Altius. Vi tu respuesta de Menard Muebles a nuestro correo y preferí escribirte directo. ¿Te acomoda que sigamos por aquí?",
   );
 });
 
@@ -127,9 +127,16 @@ test("antes de escribirle se sabe qué correo leyó, y el mensaje retoma ese tem
   const mensaje = mensajeDeWhatsapp({ remitente: "Hugo", empresaPropia: "Altius Ignite", empresa: "Universo Toys Spa", tema: temaDeLosCorreos(correos) });
   assert.equal(
     mensaje,
-    "Hola, soy Hugo, de Altius Ignite. Hace unos días le escribimos por correo a Universo Toys sobre Atlas Pulso, un sitio web con una IA que responde a sus clientes a cualquier hora. ¿Le muestro en 10 minutos cómo quedaría el suyo?",
+    "Hola, soy Hugo, de Altius Ignite. Hace unos días te mandamos un correo sobre Atlas Pulso, un sitio web con una IA que responde a tus clientes a cualquier hora. ¿Te muestro en 10 minutos cómo quedaría el de Universo Toys?",
   );
   assert.doesNotMatch(mensaje, /abri[óo]/i);
+  // De tú en todos los casos: el usted aleja.
+  for (const variante of [
+    mensaje,
+    mensajeDeWhatsapp({ remitente: "Hugo", empresaPropia: "Altius", empresa: "Securitek Spa" }),
+    mensajeDeWhatsapp({ remitente: "Hugo", empresaPropia: "Altius", empresa: "Securitek Spa", toques: 1 }),
+    mensajeDeWhatsapp({ remitente: "Hugo", empresaPropia: "Altius", empresa: "Securitek Spa", respondio: true }),
+  ]) assert.doesNotMatch(variante, /\b(usted|le muestro|le envío|le interesa|le acomoda|escribirle|su respuesta|la suya|el suyo)\b/i);
   assert.equal(asuntoLegible("Proquimsa S A: una pregunta rápida"), "Una pregunta rápida");
   assert.equal(asuntoLegible("¿Quién le contesta a sus clientes a las 11 de la noche?"), "¿Quién le contesta a sus clientes a las 11 de la noche?");
   // La apertura de un escáner tampoco cuenta como correo leído.

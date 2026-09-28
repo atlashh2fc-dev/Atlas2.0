@@ -95,7 +95,7 @@ function loQuePide(empresa: string | null): { pide: string; pierde: string } {
 // De qué le hablamos, según el asunto. El cierre ("¿lo dejamos para más
 // adelante?") es igual en todas las secuencias y no dice nada: se salta.
 const TEMAS: { patron: RegExp; tema: string }[] = [
-  { patron: /(atlas pulso|11 de la noche|pregunta r[aá]pida)/i, tema: "Atlas Pulso, un sitio web con una IA que responde a sus clientes a cualquier hora" },
+  { patron: /(atlas pulso|11 de la noche|pregunta r[aá]pida)/i, tema: "Atlas Pulso, un sitio web con una IA que responde a tus clientes a cualquier hora" },
   { patron: /(chatgpt|google|la ia\b)/i, tema: "tener un sitio web que Google y ChatGPT puedan recomendar" },
 ];
 
@@ -113,9 +113,9 @@ export function temaDeLosCorreos(correos: CorreoEnviado[] | null | undefined): s
 
 /**
  * El mismo mensaje que propone el resumen de Atlas Lead, firmado por quien
- * escribe. Hace una sola pregunta y nunca menciona que abrió el correo: si se
- * sabe de qué le hablamos, se retoma ese tema ("le escribimos por correo
- * sobre…"). Si ya le escribimos, va el seguimiento; si respondió el correo, se
+ * escribe, de tú: por WhatsApp el usted suena a call center. Hace una sola
+ * pregunta y nunca menciona que abrió el correo: si se sabe de qué le
+ * hablamos, se retoma ese tema ("te mandamos un correo sobre…"). Si ya le escribimos, va el seguimiento; si respondió el correo, se
  * retoma esa conversación.
  */
 export function mensajeDeWhatsapp({ remitente, empresaPropia, empresa, respondio = false, toques = 0, tema = null }: {
@@ -130,29 +130,29 @@ export function mensajeDeWhatsapp({ remitente, empresaPropia, empresa, respondio
   if (respondio) {
     return [
       `Hola, soy ${remitente}, de ${empresaPropia}.`,
-      `Recibí su respuesta${nombre ? ` de ${nombre}` : ""} a nuestro correo y preferí escribirle directamente.`,
-      "¿Le acomoda que sigamos la conversación por aquí?",
+      `Vi tu respuesta${nombre ? ` de ${nombre}` : ""} a nuestro correo y preferí escribirte directo.`,
+      "¿Te acomoda que sigamos por aquí?",
     ].join(" ");
   }
   if (toques > 0) {
     return [
-      "Le dejo el dato por si le sirve: hacemos que la web y el WhatsApp de empresas como la suya respondan solos, con la información que ustedes aprueban.",
-      "¿Le interesa que le envíe un ejemplo de cómo quedaría?",
-      "Si no es un tema para ustedes, me avisa y no vuelvo a escribirle.",
+      "Te dejo el dato por si te sirve: hacemos que la web y el WhatsApp de empresas como la tuya respondan solos, con la información que ustedes aprueban.",
+      "¿Te mando un ejemplo de cómo quedaría?",
+      "Si no es tema para ustedes, me avisas y no te vuelvo a escribir.",
     ].join(" ");
   }
   if (tema) {
     return [
       `Hola, soy ${remitente}, de ${empresaPropia}.`,
-      `Hace unos días le escribimos por correo${nombre ? ` a ${nombre}` : ""} sobre ${tema}.`,
-      "¿Le muestro en 10 minutos cómo quedaría el suyo?",
+      `Hace unos días te mandamos un correo sobre ${tema}.`,
+      `¿Te muestro en 10 minutos cómo quedaría el ${nombre ? `de ${nombre}` : "tuyo"}?`,
     ].join(" ");
   }
   const { pide, pierde } = loQuePide(empresa);
   return [
     `Hola, soy ${remitente}, de ${empresaPropia}, en Santiago.`,
-    `Una pregunta breve${nombre ? ` para ${nombre}` : ""}:`,
-    `si un cliente les pide ${pide} a las 10 de la noche, ¿alguien alcanza a responderle antes de que ${pierde}?`,
+    `Una pregunta corta${nombre ? ` sobre ${nombre}` : ""}:`,
+    `si un cliente te pide ${pide} a las 10 de la noche, ¿alguien alcanza a responderle antes de que ${pierde}?`,
   ].join(" ");
 }
 
