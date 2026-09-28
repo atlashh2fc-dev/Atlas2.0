@@ -24,18 +24,28 @@ function agendaChannelLabel(channel: AgendaItem["next_action_channel"]): string 
 interface AgendaContextValue {
   items: AgendaItem[];
   overdue: AgendaItem[];
+  overdueTotal: number;
   nowTick: number;
 }
 
 const AgendaContext = createContext<AgendaContextValue | null>(null);
 
+/** Por grupo: la campana muestra las próximas y las vencidas más recientes. */
+const AGENDA_BELL_LIMIT = 10;
+
 /**
  * Agendas del ejecutivo logueado (managed_by = userId): trae próximas y
  * vencidas, se mantiene al día con realtime sobre `leads` + un tick cada
  * 30s para recalcular qué está vencido sin depender de refetch.
+ *
+ * Próximas y vencidas se piden por separado: con una sola lista ordenada por
+ * fecha y un límite, quien acumulaba vencidas (82 en Equifax el 28-09-2026)
+ * llenaba el cupo con ellas y nunca veía lo que acababa de agendar.
  */
 function useAgendaSubscription(userId: string): AgendaContextValue {
-  const [items, setItems] = useState<AgendaItem[]>([]);
+  const [upcoming, setUpcoming] = useState<AgendaItem[]>([]);
+  const [overdueRecent, setOverdueRecent] = useState<AgendaItem[]>([]);
+  const [overdueCount, setOverdueCount] = useState(0);
   const [nowTick, setNowTick] = useState(() => Date.now());
 
   const refresh = useCallback(async () => {
@@ -43,16 +53,25 @@ function useAgendaSubscription(userId: string): AgendaContextValue {
     // Solo la campaña en la que está trabajando: se pregunta en cada refresco
     // porque el ejecutivo o su supervisor pueden cambiarla durante el día.
     const agendaCampaignId = await getMyAgendaCampaignId(supabase);
-    const query = supabase
-      .from("leads")
-      .select("id, full_name, next_action_at, next_action_channel, extra")
-      .eq("managed_by", userId)
-      .not("next_action_at", "is", null)
-      .order("next_action_at", { ascending: true })
-      .limit(15);
-    if (agendaCampaignId) query.eq("campaign_id", agendaCampaignId);
-    const { data } = await query;
-    setItems((data ?? []) as AgendaItem[]);
+    const nowIso = new Date().toISOString();
+    const base = () => {
+      const query = supabase
+        .from("leads")
+        .select("id, full_name, next_action_at, next_action_channel, extra", { count: "exact" })
+        .eq("managed_by", userId)
+        .not("next_action_at", "is", null);
+      if (agendaCampaignId) query.eq("campaign_id", agendaCampaignId);
+      return query;
+    };
+    const [next, late] = await Promise.all([
+      base().gt("next_action_at", nowIso).order("next_action_at", { ascending: true }).limit(AGENDA_BELL_LIMIT),
+      base().lte("next_action_at", nowIso).order("next_action_at", { ascending: false }).limit(AGENDA_BELL_LIMIT),
+    ]);
+    if (!next.error) setUpcoming((next.data ?? []) as AgendaItem[]);
+    if (!late.error) {
+      setOverdueRecent((late.data ?? []) as AgendaItem[]);
+      setOverdueCount(late.count ?? late.data?.length ?? 0);
+    }
   }, [userId]);
 
   useEffect(() => {
@@ -88,12 +107,16 @@ function useAgendaSubscription(userId: string): AgendaContextValue {
     };
   }, [userId, refresh]);
 
+  // Próximas arriba: es lo recién comprometido con el cliente.
+  const items = useMemo(() => [...upcoming, ...overdueRecent], [upcoming, overdueRecent]);
   const overdue = useMemo(
     () => items.filter((i) => new Date(i.next_action_at).getTime() <= nowTick),
     [items, nowTick]
   );
+  // Las próximas que vencieron desde el último refresco también cuentan.
+  const overdueTotal = overdueCount + (overdue.length - overdueRecent.length);
 
-  return { items, overdue, nowTick };
+  return { items, overdue, overdueTotal, nowTick };
 }
 
 function useAgenda() {
@@ -111,7 +134,7 @@ export function AgendaProvider({ userId, children }: { userId: string; children:
 
 /** Campana en el header: contador + dropdown con las próximas/vencidas agendas del ejecutivo. */
 export function AgendaBell() {
-  const { items, overdue, nowTick } = useAgenda();
+  const { items, overdue, overdueTotal, nowTick } = useAgenda();
   const [open, setOpen] = useState(false);
 
   return (
@@ -130,7 +153,9 @@ export function AgendaBell() {
               overdue.length > 0 ? "bg-danger" : "bg-primary"
             }`}
           >
-            {items.length > 9 ? "9+" : items.length}
+            {overdueTotal > 0
+              ? overdueTotal > 9 ? "9+" : overdueTotal
+              : items.length > 9 ? "9+" : items.length}
           </span>
         )}
       </button>
@@ -141,6 +166,11 @@ export function AgendaBell() {
           <div className="absolute right-0 top-11 z-20 w-72 rounded-xl border border-border bg-surface shadow-lg">
             <div className="border-b border-border px-4 py-3">
               <p className="text-sm font-semibold text-foreground">Mis agendas</p>
+              {overdueTotal > overdue.length && (
+                <p className="text-xs text-muted-foreground">
+                  Próximas y las {overdue.length} vencidas más recientes de {overdueTotal}.
+                </p>
+              )}
             </div>
             <ul className="max-h-80 divide-y divide-border overflow-y-auto">
               {items.length === 0 && (
@@ -188,17 +218,17 @@ export function AgendaBell() {
 
 /** Banner que aparece debajo del header en todas las pantallas cuando hay agendas vencidas. */
 export function AgendaBanner() {
-  const { overdue } = useAgenda();
+  const { overdueTotal } = useAgenda();
   const [dismissedCount, setDismissedCount] = useState<number | null>(null);
 
-  if (overdue.length === 0 || dismissedCount === overdue.length) return null;
+  if (overdueTotal <= 0 || dismissedCount === overdueTotal) return null;
 
   return (
     <div className="flex items-center justify-between gap-3 border-b border-danger/30 bg-danger-bg px-6 py-2 text-sm">
       <div className="flex items-center gap-2 text-danger">
         <AlertTriangle size={16} />
         <span>
-          Tienes {overdue.length} agenda{overdue.length > 1 ? "s" : ""} vencida{overdue.length > 1 ? "s" : ""}.
+          Tienes {overdueTotal} agenda{overdueTotal > 1 ? "s" : ""} vencida{overdueTotal > 1 ? "s" : ""}.
         </span>
       </div>
       <div className="flex items-center gap-3">
@@ -207,7 +237,7 @@ export function AgendaBanner() {
         </Link>
         <button
           type="button"
-          onClick={() => setDismissedCount(overdue.length)}
+          onClick={() => setDismissedCount(overdueTotal)}
           className="text-xs text-danger/70 hover:text-danger"
         >
           Ocultar

@@ -108,14 +108,14 @@ const COLUMNS: Column<AgendaRow>[] = [
   },
 ];
 
-export function AgendaTable({ rows }: { rows: AgendaRow[] }) {
+export function AgendaTable({ rows, storageKey = "agenda" }: { rows: AgendaRow[]; storageKey?: string }) {
   return (
     <DataTable
       rows={rows}
       columns={COLUMNS}
       getRowId={(row) => row.id}
       rowHref={(row) => `/dashboard/leads/${row.id}`}
-      storageKey="agenda"
+      storageKey={storageKey}
       exportFilename="mi-agenda"
       emptyTitle="No tienes agendas pendientes"
       emptyDescription="Cuando agendes un seguimiento desde la ficha de un registro, aparecerá acá ordenado por urgencia."

@@ -59,9 +59,13 @@ export default async function MyAgendaPage({
     };
   });
 
-  // Vencidas primero; dentro de cada grupo, la más urgente arriba.
-  const ordered = [...rows.filter((row) => row.overdue), ...rows.filter((row) => !row.overdue)];
-  const overdueCount = rows.filter((row) => row.overdue).length;
+  // Próximas y vencidas en tablas separadas: con una sola lista paginada y las
+  // vencidas primero, quien acumulaba muchas no encontraba lo que acababa de
+  // agendar (82 vencidas empujaban las próximas a la página 4).
+  const upcoming = rows.filter((row) => !row.overdue);
+  // La vencida más reciente arriba: es la que todavía se puede recuperar.
+  const overdueRows = rows.filter((row) => row.overdue).reverse();
+  const overdueCount = overdueRows.length;
 
   return (
     <div className="space-y-5">
@@ -86,7 +90,18 @@ export default async function MyAgendaPage({
           No se pudo cargar tu agenda: {error.message}
         </p>
       ) : (
-        <AgendaTable rows={ordered} />
+        <>
+          <section className="space-y-3">
+            <h2 className="text-sm font-semibold text-foreground">Próximas ({upcoming.length})</h2>
+            <AgendaTable rows={upcoming} storageKey="agenda" />
+          </section>
+          {overdueCount > 0 && (
+            <section className="space-y-3">
+              <h2 className="text-sm font-semibold text-danger">Vencidas por recuperar ({overdueCount})</h2>
+              <AgendaTable rows={overdueRows} storageKey="agenda-vencidas" />
+            </section>
+          )}
+        </>
       )}
     </div>
   );
