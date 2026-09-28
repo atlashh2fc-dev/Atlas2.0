@@ -154,6 +154,46 @@ function sectionsFor(
   }));
 }
 
+/**
+ * Tono del chip de cada destino. Agrupa por naturaleza y no por sección, para
+ * que el mismo destino tenga el mismo color en cualquier menú y rol: comunicación
+ * en turquesa, agenda en ámbar, dinero en verde, análisis en violeta, personas
+ * en azul, campañas en rosa y configuración en gris.
+ */
+const NAV_TONE: Record<string, string> = {
+  inicio: "primary",
+  operacion: "teal",
+  correo: "teal",
+  "correo-clinica": "teal",
+  conversaciones: "teal",
+  "conversaciones-clinica": "teal",
+  recordatorios: "teal",
+  agenda: "amber",
+  "agenda-clinica": "amber",
+  ventas: "green",
+  caja: "green",
+  "validacion-ventas": "green",
+  aranceles: "green",
+  reportes: "violet",
+  "reportes-clinica": "violet",
+  calidad: "violet",
+  pacientes: "blue",
+  registros: "blue",
+  equipo: "blue",
+  "usuarios-equipo": "blue",
+  usuarios: "blue",
+  empresas: "blue",
+  campanas: "rose",
+  "campanas-clinica": "rose",
+  "campanas-operativas": "rose",
+  colas: "rose",
+  flujos: "rose",
+};
+
+const NAV_ROW_ACTIVE =
+  "bg-surface-muted text-foreground ring-1 ring-inset ring-border before:absolute before:-left-2 before:top-1/2 before:h-6 before:w-[3px] before:-translate-y-1/2 before:rounded-full before:bg-primary";
+const NAV_ROW_IDLE = "text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground";
+
 const ITEM_ACTION =
   "flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/[0.07] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
@@ -195,15 +235,13 @@ function NavLink({
         className={`relative flex items-center gap-3 rounded-lg text-sm font-medium transition-colors duration-150 ${
           rail ? "justify-center px-2 py-2" : "px-3 py-2"
         } ${showActions ? (editing ? "pr-20" : "group-hover:pr-9") : ""} ${
-          active
-            ? "bg-foreground/[0.08] text-foreground"
-            : "text-muted-foreground hover:bg-foreground/[0.045] hover:text-foreground"
+          active ? NAV_ROW_ACTIVE : NAV_ROW_IDLE
         }`}
       >
         <span
-          className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors ${
-            active ? "bg-primary/12 text-primary" : "text-muted-foreground/80 group-hover:text-foreground"
-          }`}
+          className="icon-chip h-7 w-7 rounded-md transition-shadow"
+          data-tone={NAV_TONE[item.id] ?? "slate"}
+          data-active={active}
         >
           <Icon size={16} />
         </span>
@@ -427,6 +465,7 @@ function FooterEntry({
   rail,
   icon: Icon,
   label,
+  tone = "slate",
 }: {
   href?: string;
   onClick?: () => void;
@@ -434,19 +473,14 @@ function FooterEntry({
   rail: boolean;
   icon: typeof Settings;
   label: string;
+  tone?: string;
 }) {
   const className = `${FOOTER_LINK} ${rail ? "justify-center px-2 py-2" : "px-3 py-2"} ${
-    active
-      ? "bg-foreground/[0.08] text-foreground"
-      : "text-muted-foreground hover:bg-foreground/[0.045] hover:text-foreground"
+    active ? NAV_ROW_ACTIVE : NAV_ROW_IDLE
   }`;
   const body = (
     <>
-      <span
-        className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors ${
-          active ? "bg-primary/12 text-primary" : "text-muted-foreground/80 group-hover:text-foreground"
-        }`}
-      >
+      <span className="icon-chip h-7 w-7 rounded-md transition-shadow" data-tone={tone} data-active={active}>
         <Icon size={16} />
       </span>
       {!rail && label}
@@ -532,11 +566,11 @@ export function NavFooter({
       {personalization && onToggleEditing && !rail && !editing && (
         <FooterEntry onClick={onToggleEditing} rail={rail} icon={SlidersHorizontal} label="Personalizar menú" />
       )}
-      <FooterEntry href={HELP_HREF} onClick={onNavigate} active={helpActive} rail={rail} icon={CircleHelp} label="Ayuda" />
+      <FooterEntry href={HELP_HREF} onClick={onNavigate} active={helpActive} rail={rail} icon={CircleHelp} label="Ayuda" tone="blue" />
 
       <div className={`mt-1 flex items-center gap-2.5 border-t border-border pt-3 ${rail ? "justify-center" : "px-1"}`}>
         <div className="relative flex-shrink-0">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full border border-primary/30 bg-gradient-to-br from-primary/20 to-accent/20 text-xs font-semibold text-primary">
             {initials(profile.full_name)}
           </div>
         </div>

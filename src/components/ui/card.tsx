@@ -10,7 +10,7 @@ export function Card({
   children: ReactNode;
 }) {
   return (
-    <div className={cn("rounded-lg border border-border bg-surface p-4 shadow-sm", className)}>{children}</div>
+    <div className={cn("rounded-xl border border-border bg-surface p-4 shadow-sm", className)}>{children}</div>
   );
 }
 
@@ -33,9 +33,9 @@ export function SectionCard({
 }) {
   const hasHeader = title || description || actions;
   return (
-    <div className={cn("overflow-hidden rounded-lg border border-border bg-surface shadow-sm", className)}>
+    <div className={cn("overflow-hidden rounded-xl border border-border bg-surface shadow-sm", className)}>
       {hasHeader && (
-        <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
+        <div className="flex items-start justify-between gap-3 border-b border-border bg-surface-muted/40 px-4 py-3">
           <div>
             {title && <h2 className="text-sm font-semibold text-foreground">{title}</h2>}
             {description && <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>}

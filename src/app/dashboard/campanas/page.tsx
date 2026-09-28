@@ -90,7 +90,7 @@ export default async function OperationalCampaignsPage() {
                 href={`/dashboard/campanas/${campaign.id}`}
                 className="group flex items-center gap-4 px-5 py-4 transition-colors hover:bg-surface-muted/60"
               >
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <span className="icon-chip h-10 w-10 rounded-lg" data-tone="primary">
                   <Megaphone size={19} />
                 </span>
                 <div className="min-w-0 flex-1">

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
 import Link from "next/link";
 import { ArrowRight, Minus, TrendingDown, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -7,6 +7,23 @@ import type { MetricId } from "@/lib/metric-definitions";
 import { metricDefinition } from "@/lib/metric-definitions";
 
 export type MetricTone = "default" | "good" | "warn" | "danger";
+
+/** Tono del chip de icono (ver `.icon-chip` en globals.css). */
+export type IconTone = "primary" | "blue" | "teal" | "green" | "amber" | "violet" | "rose" | "slate";
+
+type MetricIcon = ComponentType<{ size?: number; "aria-hidden"?: boolean | "true" }>;
+
+/** Con tono de alerta el chip toma el color del estado; si no, el propio. */
+const TONE_CHIP: Partial<Record<MetricTone, IconTone>> = { warn: "amber", danger: "rose" };
+
+/** Chip de icono de las tarjetas de métrica, arriba a la derecha. */
+export function MetricIconChip({ icon: Icon, tone }: { icon: MetricIcon; tone: IconTone }) {
+  return (
+    <span className="icon-chip size-8 rounded-full" data-tone={tone} aria-hidden="true">
+      <Icon size={16} aria-hidden="true" />
+    </span>
+  );
+}
 
 export type MetricDelta = {
   /** Variación respecto del período anterior, en la unidad que se muestre. */
@@ -65,6 +82,8 @@ export function MetricCard({
   tone = "default",
   target,
   progress,
+  icon,
+  iconTone = "primary",
   className,
 }: {
   label: ReactNode;
@@ -80,6 +99,9 @@ export function MetricCard({
   /** Meta a alcanzar, se muestra bajo el valor. */
   target?: string;
   progress?: number;
+  /** Icono de lucide para el chip de la esquina. */
+  icon?: MetricIcon;
+  iconTone?: IconTone;
   className?: string;
 }) {
   const definition = metric ? metricDefinition(metric) : null;
@@ -89,12 +111,15 @@ export function MetricCard({
 
   const body = (
     <>
-      <p className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-        {label ?? definition?.label}
-        {(tooltip || definition) && (
-          <InfoTooltip text={tooltip ?? definition!.definition} formula={definition?.formula} />
-        )}
-      </p>
+      <div className="flex items-start justify-between gap-2">
+        <p className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          {label ?? definition?.label}
+          {(tooltip || definition) && (
+            <InfoTooltip text={tooltip ?? definition!.definition} formula={definition?.formula} />
+          )}
+        </p>
+        {icon && <MetricIconChip icon={icon} tone={TONE_CHIP[tone] ?? iconTone} />}
+      </div>
 
       <p className={cn("mt-1.5 text-2xl font-semibold tabular-nums tracking-tight", TONE_TEXT[tone])}>{value}</p>
 
@@ -122,14 +147,14 @@ export function MetricCard({
     </>
   );
 
-  const base = "block rounded-lg border border-border bg-surface p-4 shadow-sm";
+  const base = "block rounded-xl border border-border bg-surface p-4 shadow-sm";
 
   if (!href) return <div className={cn(base, className)}>{body}</div>;
 
   return (
     <Link
       href={href}
-      className={cn(base, "transition-colors hover:bg-surface-muted/50", className)}
+      className={cn(base, "transition-[border-color,box-shadow,transform] hover:-translate-y-0.5 hover:border-border-strong hover:shadow-md", className)}
     >
       {body}
     </Link>

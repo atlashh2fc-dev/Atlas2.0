@@ -5,7 +5,20 @@ import { MetricCard, PageHeader, SectionCard, buttonClasses } from "@/components
 import Link from "next/link";
 import type { AgentPerformance, HomeDashboardSummary, Profile } from "@/lib/types";
 import { endOfDay, REPORT_TIME_ZONE, startOfDay } from "@/lib/report-range";
-import { Activity, ArrowUpRight, BarChart3, Settings2 } from "lucide-react";
+import {
+  Activity,
+  ArrowUpRight,
+  BarChart3,
+  CalendarClock,
+  CalendarX2,
+  Database,
+  Megaphone,
+  Settings2,
+  UserPlus,
+  UserRoundX,
+  Users,
+  Workflow,
+} from "lucide-react";
 import { getSupervisedTeamIds } from "@/lib/supervisor-scope";
 import { InicioClinica } from "@/components/inicio-clinica";
 import { InicioComercial } from "@/components/inicio-comercial";
@@ -157,6 +170,8 @@ export default async function DashboardPage() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <MetricCard
             label="Agendas vencidas"
+            icon={CalendarX2}
+            iconTone="rose"
             value={countValue(overdueResult)}
             hint="Compromisos vencidos a esta hora"
             href="/dashboard/leads?view=vencidas"
@@ -165,6 +180,8 @@ export default async function DashboardPage() {
           />
           <MetricCard
             label="Agendas de hoy"
+            icon={CalendarClock}
+            iconTone="amber"
             value={countValue(todayResult)}
             hint="Día calendario en Chile; puede incluir vencidas"
             href="/dashboard/leads?view=hoy"
@@ -172,6 +189,8 @@ export default async function DashboardPage() {
           />
           <MetricCard
             label="Sin asignar"
+            icon={UserPlus}
+            iconTone="teal"
             value={countValue(unassignedResult)}
             hint="Listo para repartir"
             href="/dashboard/team"
@@ -180,12 +199,16 @@ export default async function DashboardPage() {
           />
           <MetricCard
             label="Base del equipo"
+            icon={Database}
+            iconTone="blue"
             value={countValue(totalLeadsResult)}
             href="/dashboard/leads"
             hrefLabel="Ver registros"
           />
           <MetricCard
             label="Ejecutivos"
+            icon={Users}
+            iconTone="violet"
             value={countValue(agentsResult)}
             href="/dashboard/team"
             hrefLabel="Ver carga"
@@ -303,6 +326,8 @@ export default async function DashboardPage() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <MetricCard
             label="Campañas sin flujo"
+            icon={Workflow}
+            iconTone="teal"
             value={campaignsResult.error ? "Sin datos" : campaignsWithoutWorkflow.length}
             hint="Activas sin guion; revisar según su canal"
             href="/dashboard/admin/campanas"
@@ -311,6 +336,8 @@ export default async function DashboardPage() {
           />
           <MetricCard
             label="Campañas sin ejecutivos"
+            icon={UserRoundX}
+            iconTone="violet"
             value={configurationAvailable ? campaignsWithoutAgents.length : "Sin datos"}
             hint="Sin ejecutivos de campaña; revisar miembros ACD"
             href="/dashboard/admin/campanas"
@@ -319,6 +346,8 @@ export default async function DashboardPage() {
           />
           <MetricCard
             label="Registros sin asignar"
+            icon={UserPlus}
+            iconTone="blue"
             value={countValue(unassignedLeadsResult)}
             href="/dashboard/leads?view=disponibles"
             hrefLabel="Consultar registros"
@@ -326,12 +355,16 @@ export default async function DashboardPage() {
           />
           <MetricCard
             label="Campañas activas"
+            icon={Megaphone}
+            iconTone="rose"
             value={countValue(activeCampaignsResult)}
             href="/dashboard/admin/campanas"
             hrefLabel="Administrar"
           />
           <MetricCard
             label="Usuarios activos"
+            icon={Users}
+            iconTone="green"
             value={countValue(activeUsersResult)}
             href="/dashboard/admin/usuarios?active=si"
             hrefLabel="Ver usuarios"

@@ -167,7 +167,7 @@ export function InboundMailbox({
     <>
       <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
         <header className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-4">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <div className="icon-chip h-10 w-10 rounded-lg" data-tone="primary">
             <Mail size={20} aria-hidden />
           </div>
           <div className="min-w-0">

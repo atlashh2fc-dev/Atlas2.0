@@ -7,7 +7,7 @@ export { NavTabs, type NavTabItem } from "./nav-tabs";
 export { DataTable, type Column, type BulkAction, type CellValue } from "./data-table";
 export { SlideOver } from "./slide-over";
 export { FilterBar } from "./filter-bar";
-export { MetricCard, type MetricDelta, type MetricTone } from "./metric-card";
+export { MetricCard, MetricIconChip, type IconTone, type MetricDelta, type MetricTone } from "./metric-card";
 export { InfoTooltip, MetricLabel } from "./info-tooltip";
 export { EmptyState } from "./empty-state";
 export { Table, Thead, Th, Tbody, Tr, Td, TableEmpty } from "./table";

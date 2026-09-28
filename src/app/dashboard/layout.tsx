@@ -62,7 +62,7 @@ export default async function DashboardLayout({
     // ningún componente sabe en qué edición está, solo pinta `bg-primary`.
     <div data-edicion={edicion} className="contents">
     <ToastProvider>
-      <div className="flex h-screen w-full overflow-hidden bg-background">
+      <div className="atlas-halo flex h-screen w-full overflow-hidden">
         {profile.role === "agente" && <ForceLogoutGuard userId={profile.id} />}
         {canAttendCustomers && <DialerListener userId={profile.id} />}
         <Sidebar profile={profile} badges={badges} modules={modules} edicion={edicion} duenio={duenio} />

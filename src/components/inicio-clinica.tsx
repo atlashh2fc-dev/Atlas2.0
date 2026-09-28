@@ -359,7 +359,7 @@ export async function InicioClinica({
 
           <SectionCard title="WhatsApp" description="Conversaciones con pacientes que siguen abiertas.">
             <div className="flex items-center gap-4 px-4 py-4">
-              <div className="flex size-10 items-center justify-center rounded-full bg-surface-muted text-primary">
+              <div className="icon-chip size-10 rounded-full" data-tone="primary">
                 <MessageCircle size={20} aria-hidden="true" />
               </div>
               <div className="flex-1 text-sm">

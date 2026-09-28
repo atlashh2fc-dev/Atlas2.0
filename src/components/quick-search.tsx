@@ -262,7 +262,7 @@ export function QuickSearch({
                 const Icon = item.icon;
                 return (
                   <button key={item.id} onClick={() => goToAction(item.href)} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-surface-muted">
-                    <span className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary"><Icon size={15} /></span>
+                    <span className="icon-chip size-8 rounded-lg" data-tone="primary"><Icon size={15} /></span>
                     <span className="min-w-0 flex-1">
                       <span className="block text-sm font-medium text-foreground">{navLabel(item, role)}</span>
                       <span className="block text-xs text-muted-foreground">{item.description}</span>
