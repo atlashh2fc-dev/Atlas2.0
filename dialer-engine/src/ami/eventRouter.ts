@@ -8,7 +8,7 @@ import {
   updateAgentDialerStatus,
 } from "../supabaseClient";
 import { getProfileIdForExtension } from "../dialer/agentDirectory";
-import { pauseAgentForWrapUp } from "../dialer/agentPause";
+import { isHeldForBusy, pauseAgentForWrapUp } from "../dialer/agentPause";
 import {
   normalizeAmiUniqueId,
   normalizeCallDisconnectParty,
@@ -569,7 +569,13 @@ export function registerEventRouter(
         // Paused=0 no implica que el softphone esté registrado. Antes se
         // marcaba "available" incluso con Status=5 (Unavailable), generando
         // capacidad ficticia y clientes abandonados en una cola sin agente.
-        const status = queueMemberDialerStatus(evt.paused, evt.status);
+        // Pausa por ocupación (agentPause.ts): solo cierra la cola mientras
+        // atiende otra gestión. Para la sesión se lee como si no estuviera
+        // pausado, igual que antes de existir esa pausa.
+        const status = queueMemberDialerStatus(
+          isHeldForBusy(extension) ? "0" : evt.paused,
+          evt.status
+        );
         if (!status) return;
 
         updateAgentDialerStatus({ profileId, campaignId, extension, status }).catch((err) =>

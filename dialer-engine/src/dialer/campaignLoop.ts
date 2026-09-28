@@ -5,7 +5,7 @@ import { originateCall } from "../ami/originate";
 import { originatePersonalCallback } from "../ami/originatePersonalCallback";
 import { forgetPersonalCallback, trackPersonalCallback } from "../ami/personalCallbacks";
 import { ensureQueue, syncQueueMembers } from "../asterisk/configSync";
-import { syncAgentPauseStates } from "./agentPause";
+import { holdAgentWhileBusy, syncAgentPauseStates } from "./agentPause";
 import { callerIdPool, pickCallerId } from "./callerId";
 import {
   claimDuePersonalCallbacks,
@@ -222,6 +222,14 @@ export async function runCampaignTick(
               extension: callback.agent_extension,
               campaignId: cfg.campaign_id,
             });
+            // Fuera de la cola antes de que le suene su agenda: si no, el
+            // cliente que el predictivo marcó para otro le entraba encima.
+            await holdAgentWhileBusy(ami, callback.agent_extension).catch((err) =>
+              logger.warn(
+                { err, extension: callback.agent_extension },
+                "No se pudo pausar al ejecutivo antes de su agenda; el sync periódico lo cubre"
+              )
+            );
             try {
               await originatePersonalCallback({
                 ami,

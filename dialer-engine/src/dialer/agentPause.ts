@@ -2,6 +2,7 @@ import type AmiClient from "asterisk-manager";
 import { logger } from "../logger";
 import { getAgentPauseStates } from "../supabaseClient";
 import { amiAction } from "../asterisk/configSync";
+import { BUSY_HOLD_REASON } from "./pauseDecision";
 
 /**
  * Sincroniza el estado del agente (Disponible o un motivo AUX concreto,
@@ -16,6 +17,30 @@ import { amiAction } from "../asterisk/configSync";
 
 const lastPausedByExtension = new Map<string, boolean>();
 
+/** Cuánto manda una pausa por evento antes de que la base la refleje. */
+const BUSY_HOLD_GRACE_MS = 20_000;
+
+/** Extensiones cuya última pausa fue por ocupación, no por AUX ni cierre. */
+const busyHoldExtensions = new Set<string>();
+/** Pausas recién dadas por evento: el sync no las levanta antes de tiempo. */
+const busyHoldUntil = new Map<string, number>();
+
+function heldByRecentEvent(extension: string, now = Date.now()): boolean {
+  const until = busyHoldUntil.get(extension);
+  if (until === undefined) return false;
+  if (until > now) return true;
+  busyHoldUntil.delete(extension);
+  return false;
+}
+
+/**
+ * true si Asterisk tiene al ejecutivo pausado por ocupación. El router de
+ * eventos lo usa para no escribir 'paused' en su sesión de discado.
+ */
+export function isHeldForBusy(extension: string): boolean {
+  return busyHoldExtensions.has(extension);
+}
+
 export async function pauseAgentForWrapUp(ami: AmiClient, extension: string): Promise<void> {
   await amiAction(ami, {
     Action: "QueuePause",
@@ -23,6 +48,33 @@ export async function pauseAgentForWrapUp(ami: AmiClient, extension: string): Pr
     Paused: "true",
     Reason: "Cierre y tipificación",
   });
+  lastPausedByExtension.set(extension, true);
+  busyHoldExtensions.delete(extension);
+}
+
+/**
+ * Pausa inmediata en la cola porque el ejecutivo acaba de tomar otra
+ * gestión (le va a sonar su agenda o empezó una llamada manual). No espera
+ * al sync periódico: en esos segundos el predictivo ya le podía entregar un
+ * cliente. El sync la mantiene mientras la base diga que sigue ocupado.
+ */
+export async function holdAgentWhileBusy(ami: AmiClient, extension: string): Promise<void> {
+  busyHoldUntil.set(extension, Date.now() + BUSY_HOLD_GRACE_MS);
+  // Marcada antes de la acción: el evento QueueMemberPause puede llegar
+  // antes que la respuesta y no debe dejar la sesión en 'paused'.
+  busyHoldExtensions.add(extension);
+  try {
+    await amiAction(ami, {
+      Action: "QueuePause",
+      Interface: `PJSIP/${extension}`,
+      Paused: "true",
+      Reason: BUSY_HOLD_REASON,
+    });
+  } catch (err) {
+    busyHoldUntil.delete(extension);
+    if (lastPausedByExtension.get(extension) !== true) busyHoldExtensions.delete(extension);
+    throw err;
+  }
   lastPausedByExtension.set(extension, true);
 }
 
@@ -32,8 +84,12 @@ export async function pauseAgentForWrapUp(ami: AmiClient, extension: string): Pr
  * de hasta 10 s era una ventana en la que el motor ya contaba al ejecutivo
  * como libre pero Asterisk todavía no le entregaba llamadas, y un cliente
  * que contestaba en ese lapso quedaba en la cola escuchando silencio.
+ *
+ * Devuelve false si no despausó porque el ejecutivo acaba de tomar otra
+ * gestión (su agenda empezó a sonar justo al cerrar la anterior).
  */
-export async function resumeAgentAfterWrapUp(ami: AmiClient, extension: string): Promise<void> {
+export async function resumeAgentAfterWrapUp(ami: AmiClient, extension: string): Promise<boolean> {
+  if (heldByRecentEvent(extension)) return false;
   await amiAction(ami, {
     Action: "QueuePause",
     Interface: `PJSIP/${extension}`,
@@ -41,6 +97,8 @@ export async function resumeAgentAfterWrapUp(ami: AmiClient, extension: string):
     Reason: "",
   });
   lastPausedByExtension.set(extension, false);
+  busyHoldExtensions.delete(extension);
+  return true;
 }
 
 export async function syncAgentPauseStates(
@@ -56,7 +114,20 @@ export async function syncAgentPauseStates(
   }
 
   for (const state of states) {
+    // Una pausa por evento recién dada manda sobre una lectura de la base
+    // que todavía no ve la gestión nueva.
+    if (!state.paused && heldByRecentEvent(state.extension)) continue;
+
     const previous = lastPausedByExtension.get(state.extension);
+    const holdChanged = state.busyHold !== busyHoldExtensions.has(state.extension);
+    if (!options.force && previous === state.paused && !holdChanged) continue;
+
+    // Antes de la acción, igual que en holdAgentWhileBusy: el evento de
+    // pausa puede llegar antes que la respuesta.
+    if (state.busyHold) busyHoldExtensions.add(state.extension);
+    else busyHoldExtensions.delete(state.extension);
+
+    // Solo cambió el motivo entre dos pausas: Asterisk ya lo tiene pausado.
     if (!options.force && previous === state.paused) continue;
 
     try {

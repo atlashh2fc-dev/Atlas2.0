@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { desiredPauseState } from "./dialer/pauseDecision";
 export { supabase } from "./supabase";
 
 export type AgentSipProvisioningState = {
@@ -647,7 +648,13 @@ export async function expireStaleAgentHeartbeats(): Promise<string[]> {
   return profileIds;
 }
 
-export type AgentPauseState = { extension: string; paused: boolean; reasonLabel: string | null };
+export type AgentPauseState = {
+  extension: string;
+  paused: boolean;
+  reasonLabel: string | null;
+  /** Pausado solo porque está ocupado con otra gestión (ver agentPause.ts). */
+  busyHold: boolean;
+};
 
 export type AgentControlCommand = {
   command_id: string;
@@ -770,14 +777,52 @@ export async function getAgentPauseStates(): Promise<AgentPauseState[]> {
     })
   );
   const wrapUpProfiles = new Set((sessionResult.data ?? []).map((s) => s.profile_id));
+  const busyProfiles = await getBusyAgentIds(profileIds);
 
   return creds.map((c) => {
     const reason = statusByProfile.get(c.profile_id) ?? null;
-    const inWrapUp = wrapUpProfiles.has(c.profile_id);
     return {
       extension: c.extension,
-      paused: inWrapUp || (reason?.is_pause ?? false),
-      reasonLabel: inWrapUp ? "Cierre y tipificación" : (reason?.label ?? null),
+      ...desiredPauseState({
+        inWrapUp: wrapUpProfiles.has(c.profile_id),
+        pauseReasonLabel: reason?.label ?? null,
+        isPauseReason: reason?.is_pause ?? false,
+        busy: busyProfiles.has(c.profile_id),
+      }),
     };
   });
+}
+
+/**
+ * Ejecutivos ocupados con otra gestión aunque su sesión diga 'available':
+ * una llamada abierta (manual, agenda rescatada o una del discador sin
+ * cerrar) o una agenda personal en vuelo. Mismo criterio que
+ * countAvailableAgents, que ya no les origina clientes; aquí sirve para que
+ * la cola tampoco les pase el cliente que el predictivo marcó para otro.
+ */
+export async function getBusyAgentIds(profileIds: string[]): Promise<Set<string>> {
+  if (profileIds.length === 0) return new Set();
+  const since = new Date(Date.now() - OPEN_CALL_MAX_AGE_MS).toISOString();
+  const [openCalls, callbackAttempts] = await Promise.all([
+    supabase
+      .from("calls")
+      .select("agent_id")
+      .in("agent_id", profileIds)
+      .is("ended_at", null)
+      .gte("started_at", since),
+    supabase
+      .from("dial_attempts")
+      .select("agent_id")
+      .eq("attempt_kind", "personal_callback")
+      .in("status", ["queued", "originating", "ringing", "answered", "bridged"])
+      .in("agent_id", profileIds)
+      .gte("created_at", since),
+  ]);
+  if (openCalls.error) throw new Error(`calls (ocupados): ${openCalls.error.message}`);
+  if (callbackAttempts.error) throw new Error(`dial_attempts (agendas ocupadas): ${callbackAttempts.error.message}`);
+  return new Set(
+    [...(openCalls.data ?? []), ...(callbackAttempts.data ?? [])]
+      .map((row) => row.agent_id)
+      .filter((id): id is string => Boolean(id))
+  );
 }
