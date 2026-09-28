@@ -262,6 +262,9 @@ const LIVE_DIAL_ATTEMPT_STATUSES = [
   "bridged",
 ] as const;
 
+/** Un intento sin novedades por más de esto ya no va a abrir una gestión. */
+const LIVE_ATTEMPT_MAX_IDLE_MS = 10 * 60_000;
+
 /**
  * Destino único del botón "Completar tipificación" del CTI. Recupera la
  * gestión abierta del ejecutivo; si no existe ninguna y tampoco hay un intento
@@ -301,12 +304,17 @@ export async function getMyPendingCallManagement(): Promise<PendingCallManagemen
 
   // Un intento en curso significa que el screen-pop todavía puede crear la
   // gestión: ahí sí conviene abrir la ficha y esperar, no liberar el ACW.
+  // Solo cuenta si aún no tiene gestión y se movió hace poco: un puente que
+  // el motor perdió al reiniciarse seguía 'bridged' horas después y dejaba al
+  // ejecutivo en cierre para siempre.
   const { data: liveAttempts, error: liveError } = await admin
     .from("dial_attempts")
     .select("lead_id")
     .eq("agent_id", userId)
     .eq("campaign_id", session.campaign_id)
     .in("status", LIVE_DIAL_ATTEMPT_STATUSES)
+    .is("call_id", null)
+    .gte("updated_at", new Date(Date.now() - LIVE_ATTEMPT_MAX_IDLE_MS).toISOString())
     .order("updated_at", { ascending: false })
     .limit(1);
   if (liveError) throw new Error(liveError.message);
