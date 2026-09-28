@@ -1,5 +1,6 @@
 import type AmiClient from "asterisk-manager";
 import { logger } from "../logger";
+import { AmiActionTimeoutError, sendAmiAction } from "../ami/sendAction";
 
 /**
  * Sincroniza configuración de Asterisk (PJSIP de agentes + colas) a partir
@@ -14,22 +15,21 @@ export function amiAction(
   ami: AmiClient,
   action: Record<string, string | number | boolean | undefined>
 ): Promise<Record<string, unknown>> {
-  return new Promise((resolve, reject) => {
-    ami.action(action, (err, res) => {
-      if (err) {
-        reject(new Error(typeof err === "object" ? JSON.stringify(err) : String(err)));
-        return;
-      }
+  return sendAmiAction(ami, action).then(
+    (res) => {
       const response = res as Record<string, unknown>;
       const responseStatus = response?.Response ?? response?.response;
       if (String(responseStatus ?? "").toLowerCase() === "error") {
         const responseMessage = response?.Message ?? response?.message;
-        reject(new Error(String(responseMessage ?? "AMI rechazó la acción")));
-        return;
+        throw new Error(String(responseMessage ?? "AMI rechazó la acción"));
       }
-      resolve(response);
-    });
-  });
+      return response;
+    },
+    (err) => {
+      if (err instanceof AmiActionTimeoutError) throw err;
+      throw new Error(typeof err === "object" ? JSON.stringify(err) : String(err));
+    }
+  );
 }
 
 type ConfigSnapshot = {

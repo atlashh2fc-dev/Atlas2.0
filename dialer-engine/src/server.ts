@@ -28,6 +28,11 @@ const AGENT_PAUSE_SYNC_MS = 5_000;
 /** Varias liberaciones o fallos seguidos se agrupan en un solo ciclo rápido. */
 const PACING_WAKE_DEBOUNCE_MS = 300;
 const AGENT_HEARTBEAT_CHECK_MS = 30_000;
+/** Una vuelta normal dura segundos. Si pasa de esto, algo quedó esperando
+ * sin plazo y el ciclo single-flight no vuelve a agendarse: el proceso sale
+ * y systemd (Restart=always) lo levanta limpio. */
+const CAMPAIGN_TICK_HANG_MS = 120_000;
+const CAMPAIGN_TICK_WATCHDOG_MS = 15_000;
 
 async function main() {
   const health = new OperationalHealthTracker();
@@ -192,6 +197,7 @@ async function main() {
   // soltó) puede adelantar un ciclo rápido de sólo pacing: si ya hay uno
   // corriendo, queda anotado y se ejecuta apenas termine.
   let campaignTickRunning = false;
+  let campaignTickStartedAt = 0;
   let pendingWake: { reason: PacingWakeReason; campaignId?: string } | null = null;
   let nextFullTickTimer: NodeJS.Timeout | null = null;
   let wakeDebounceTimer: NodeJS.Timeout | null = null;
@@ -199,6 +205,7 @@ async function main() {
 
   const runCampaignTickOnce = async (mode: "full" | "fast", campaignId?: string) => {
     campaignTickRunning = true;
+    campaignTickStartedAt = Date.now();
     if (nextFullTickTimer) {
       clearTimeout(nextFullTickTimer);
       nextFullTickTimer = null;
@@ -249,6 +256,14 @@ async function main() {
   });
 
   nextFullTickTimer = setTimeout(() => void runCampaignTickOnce("full"), config.tickMs);
+
+  setInterval(() => {
+    if (!campaignTickRunning) return;
+    const elapsedMs = Date.now() - campaignTickStartedAt;
+    if (elapsedMs < CAMPAIGN_TICK_HANG_MS) return;
+    logger.fatal({ elapsedMs }, "El ciclo de campañas quedó colgado; se reinicia el motor");
+    process.exit(1);
+  }, CAMPAIGN_TICK_WATCHDOG_MS).unref();
 
   // Liberación de ejecutivos por evento (call.closed vía Realtime): despausa
   // en Asterisk y despierta el pacing sin esperar los ciclos periódicos.

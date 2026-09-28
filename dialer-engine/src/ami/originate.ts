@@ -1,6 +1,7 @@
 import type AmiClient from "asterisk-manager";
 import { config } from "../config";
 import { logger } from "../logger";
+import { sendAmiAction } from "./sendAction";
 import type { ClaimedTarget } from "../supabaseClient";
 
 export type OriginateParams = {
@@ -90,14 +91,11 @@ export function originateCall(params: OriginateParams): Promise<void> {
     action.Variable = `DIAL_ATTEMPT_ID=${target.dial_attempt_id}`;
   }
 
-  return new Promise((resolve, reject) => {
-    ami.action(action, (err) => {
-      if (err) {
-        logger.error({ err, target }, "Fallo al enviar Originate");
-        reject(err);
-        return;
-      }
-      resolve();
-    });
-  });
+  return sendAmiAction(ami, action).then(
+    () => undefined,
+    (err) => {
+      logger.error({ err, target }, "Fallo al enviar Originate");
+      throw err;
+    }
+  );
 }

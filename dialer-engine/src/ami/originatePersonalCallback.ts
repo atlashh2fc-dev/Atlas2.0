@@ -1,6 +1,7 @@
 import type AmiClient from "asterisk-manager";
 import { config } from "../config";
 import { logger } from "../logger";
+import { sendAmiAction } from "./sendAction";
 import { toInternational } from "./originate";
 
 export type PersonalCallbackTarget = {
@@ -61,13 +62,8 @@ export function originatePersonalCallback(params: {
   // El cliente ve el número de la campaña, no la extensión interna.
   if (callerId) action.CallerID = callerId;
 
-  return new Promise((resolve, reject) => {
-    ami.action(action, (err) => {
-      if (err) {
-        logger.error({ err, target }, "Fallo al entregar el compromiso agendado");
-        reject(err);
-        return;
-      }
+  return sendAmiAction(ami, action).then(
+    () => {
       logger.info(
         {
           dialAttemptId: target.dial_attempt_id,
@@ -76,7 +72,10 @@ export function originatePersonalCallback(params: {
         },
         "Compromiso agendado entregado a su ejecutivo"
       );
-      resolve();
-    });
-  });
+    },
+    (err) => {
+      logger.error({ err, target }, "Fallo al entregar el compromiso agendado");
+      throw err;
+    }
+  );
 }
