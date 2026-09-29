@@ -1,5 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { normalizeWhatsAppPhone, type ParsedWhatsAppEvent } from "@/lib/whatsapp";
+import { normalizeWhatsAppPhone, type ParsedWhatsAppEvent, type ParsedWhatsAppMessage } from "@/lib/whatsapp";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -95,6 +95,22 @@ async function channelForEvent(admin: AdminClient, event: ParsedWhatsAppEvent) {
   }
 
   return null;
+}
+
+/**
+ * Si el contacto es un prospecto de campaña, el mensaje queda ligado a él: lo
+ * que contesta por WhatsApp lo sube en Por contactar como «Respondió».
+ */
+async function registrarWhatsAppDeProspecto(admin: AdminClient, organizationId: string, event: ParsedWhatsAppMessage) {
+  const { error } = await admin.rpc("registrar_whatsapp_de_prospecto", {
+    p_organization_id: organizationId,
+    p_telefono: event.contactPhone,
+    p_direction: event.direction,
+    p_wamid: event.providerMessageId,
+    p_texto: event.textBody,
+    p_at: event.timestamp,
+  });
+  if (error) console.error("whatsapp_prospecto_sin_registrar", { code: error.code, message: error.message.slice(0, 200) });
 }
 
 async function anotarEnvioDesdeElTelefono(admin: AdminClient, organizationId: string, telefono: string, enviadoAt: string) {
@@ -199,8 +215,11 @@ export async function processWhatsAppEvents(
       // Un mensaje saliente que llega por el webhook se escribió fuera de Atlas:
       // desde la app WhatsApp Business del teléfono. Si va a alguien de Por
       // contactar, queda anotado como «Le escribí» sin que nadie lo marque.
-      if (event.direction === "outbound" && channel.organization_id) {
-        await anotarEnvioDesdeElTelefono(admin, channel.organization_id as string, event.contactPhone, event.timestamp);
+      if (channel.organization_id) {
+        await registrarWhatsAppDeProspecto(admin, channel.organization_id as string, event);
+        if (event.direction === "outbound") {
+          await anotarEnvioDesdeElTelefono(admin, channel.organization_id as string, event.contactPhone, event.timestamp);
+        }
       }
 
       const campaignId = await campaignForEvent(admin, channel.id, event);

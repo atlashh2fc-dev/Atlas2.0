@@ -72,7 +72,7 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
   const haceSieteDias = new Date(ahora.getTime() - 7 * 24 * 60 * 60 * 1000);
 
   const supabase = await createClient();
-  const [{ data: colaData, error }, { data: toquesData }, { data: configAgente }, { data: borradoresData }] = await Promise.all([
+  const [{ data: colaData, error }, { data: toquesData }, { data: configAgente }, { data: borradoresData }, { data: porWhatsappData }] = await Promise.all([
     supabase.rpc("bandeja_de_prospeccion", { p_dias: 14 }),
     supabase
       .from("prospeccion_toques")
@@ -87,7 +87,15 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
       .eq("estado", "pendiente")
       .order("created_at", { ascending: false })
       .limit(50),
+    // Quién contestó por WhatsApp: ese ya está conversando en el teléfono.
+    supabase
+      .from("prospeccion_whatsapp")
+      .select("lead_id")
+      .eq("direction", "inbound")
+      .gte("occurred_at", new Date(ahora.getTime() - 14 * 24 * 60 * 60 * 1000).toISOString())
+      .limit(1000),
   ]);
+  const respondieronPorWhatsapp = new Set((porWhatsappData ?? []).map((fila) => fila.lead_id as string));
 
   // Los marcados "no contactar" se ven en la lista (al final), pero no son trabajo pendiente.
   const todos = (colaData ?? []) as Prospecto[];
@@ -151,10 +159,11 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
             <BandejaProspeccion
               filas={todos.map((p): FilaProspecto => {
                 const celular = celularChileno(p.telefono);
+                const porWhatsapp = respondieronPorWhatsapp.has(p.lead_id);
                 const correos = p.correos ?? [];
                 const canal = celular ? "whatsapp" : p.telefono ? "llamada" : "correo";
                 const enlace = celular
-                  ? enlaceWhatsapp(celular, mensajeDeWhatsapp({ remitente, empresaPropia: empresaPropia ?? "nuestro equipo", empresa: p.empresa, respondio: p.respondio, toques: p.toques, tema: temaDeLosCorreos(correos) }))
+                  ? enlaceWhatsapp(celular, porWhatsapp ? "" : mensajeDeWhatsapp({ remitente, empresaPropia: empresaPropia ?? "nuestro equipo", empresa: p.empresa, respondio: p.respondio, toques: p.toques, tema: temaDeLosCorreos(correos) }))
                   : p.telefono
                     ? `tel:${p.telefono.replace(/[^\d+]/g, "")}`
                     : p.email
@@ -165,7 +174,7 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
                   nombre: p.empresa ?? p.contacto ?? p.email ?? "Sin nombre",
                   estado: ESTADO[p.estado],
                   datos: [p.contacto && p.contacto !== p.empresa ? p.contacto : null, p.telefono, p.email].filter(Boolean).join(" · ") || "Sin datos de contacto",
-                  senal: senalDe(p),
+                  senal: senalDe(p, porWhatsapp),
                   tonoSenal: p.respondio || p.clic ? "success" : "neutral",
                   haceCuanto: haceCuanto(p.ultima_senal_at, ahora),
                   campana: p.campana,
@@ -173,7 +182,8 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
                     p.ultimo_resultado && esResultado(p.ultimo_resultado) && p.ultimo_toque_at
                       ? `${ETIQUETA_RESULTADO[p.ultimo_resultado]} el ${fechaCorta.format(new Date(p.ultimo_toque_at))}${p.toques > 1 ? ` (${p.toques} intentos)` : ""}`
                       : null,
-                  respondio: p.respondio,
+                  // «Ver su respuesta» abre la del agente de correo; la de WhatsApp está en el teléfono.
+                  respondio: p.respondio && !porWhatsapp,
                   canal,
                   enlace,
                   etiqueta: celular ? "WhatsApp" : p.telefono ? `Llamar ${p.telefono}` : "Escribir correo",

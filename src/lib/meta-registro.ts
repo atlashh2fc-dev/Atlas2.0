@@ -81,3 +81,17 @@ export async function sincronizarAppDelTelefono(phoneNumberId: string, token: st
   }
   return pendientes;
 }
+
+/** Cuándo vence el token (null: no vence o Meta no lo dijo). */
+export async function vencimientoDelToken(token: string): Promise<string | null> {
+  const { appId } = registroDeMeta();
+  const appSecret = process.env.ATLAS_META_APP_SECRET?.trim();
+  if (!appSecret) return null;
+  try {
+    const datos = await graph("debug_token", { query: { input_token: token, access_token: `${appId}|${appSecret}` } });
+    const expira = Number(((datos.data ?? {}) as Json).expires_at ?? 0);
+    return Number.isFinite(expira) && expira > 0 ? new Date(expira * 1000).toISOString() : null;
+  } catch {
+    return null;
+  }
+}

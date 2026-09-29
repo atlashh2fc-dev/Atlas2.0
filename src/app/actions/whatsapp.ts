@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { requireProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { canjearCodigo, datosDelNumero, sincronizarAppDelTelefono, suscribirApp } from "@/lib/meta-registro";
+import { canjearCodigo, datosDelNumero, sincronizarAppDelTelefono, suscribirApp, vencimientoDelToken } from "@/lib/meta-registro";
 import { olvidarTokenDelCanal } from "@/lib/whatsapp-credenciales";
 import { assertCanOperateAssignedConversation } from "@/lib/workspace-permissions";
 import {
@@ -663,7 +663,7 @@ export async function conectarWhatsAppDesdeMeta(entrada: {
   try {
     const token = await canjearCodigo(codigo);
     await suscribirApp(wabaId, token);
-    const { numero, nombre } = await datosDelNumero(phoneNumberId, token);
+    const [{ numero, nombre }, venceAt] = await Promise.all([datosDelNumero(phoneNumberId, token), vencimientoDelToken(token)]);
 
     const { data: canal, error: canalError } = await admin
       .from("whatsapp_channels")
@@ -678,6 +678,7 @@ export async function conectarWhatsAppDesdeMeta(entrada: {
           status: "active",
           coexistencia: entrada.coexistencia,
           conectado_at: new Date().toISOString(),
+          token_vence_at: venceAt,
           last_error: null,
           created_by: profile.id,
           updated_by: profile.id,

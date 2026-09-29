@@ -22,6 +22,7 @@ type Channel = {
   status: "pending" | "active" | "paused" | "error";
   provider: string | null;
   coexistencia: boolean | null;
+  token_vence_at: string | null;
   last_webhook_at: string | null;
   last_error: string | null;
 };
@@ -53,6 +54,12 @@ export default async function WhatsAppIntegrationPage() {
   const hasYCloudWebhookSecret = Boolean(process.env.WHATSAPP_YCLOUD_WEBHOOK_SECRET);
   const provider = channel ? whatsappProvider(channel.provider) : "meta";
   const registro = registroDeMeta();
+  // Con el token a punto de vencer, el canal se corta sin aviso: se vuelve a
+  // conectar antes, con el mismo botón.
+  const diasParaVencer = channel?.token_vence_at
+    ? Math.floor((new Date(channel.token_vence_at).getTime() - new Date().getTime()) / (24 * 60 * 60 * 1000))
+    : null;
+  const porVencer = diasParaVencer !== null && diasParaVencer <= 10;
   const providerConfigured = isWhatsAppProviderConfigured(provider);
   const ready = providerConfigured && channel?.status === "active";
   const webhookUrl = provider === "ycloud" ? YCLOUD_WEBHOOK_URL : META_WEBHOOK_URL;
@@ -83,7 +90,15 @@ export default async function WhatsAppIntegrationPage() {
         />
       </div>
 
-      {!ready && (
+      {porVencer && (
+        <p className="rounded-lg border border-warning/40 bg-warning-bg p-3 text-sm text-foreground">
+          {diasParaVencer !== null && diasParaVencer < 0
+            ? "El acceso de Meta a este número venció: los mensajes dejaron de entrar. Vuelve a conectarlo abajo."
+            : `El acceso de Meta a este número vence en ${diasParaVencer} ${diasParaVencer === 1 ? "día" : "días"}. Vuelve a conectarlo abajo para que no se corte.`}
+        </p>
+      )}
+
+      {(!ready || porVencer) && (
         <SectionCard
           icon={Smartphone}
           tone="teal"

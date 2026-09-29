@@ -163,12 +163,14 @@ export function asuntoLegible(asunto: string | null | undefined): string {
   return limpio.charAt(0).toUpperCase() + limpio.slice(1);
 }
 
+/** Sin mensaje abre el chat tal cual: sirve para seguir una conversación que ya empezó. */
 export function enlaceWhatsapp(celular: string, mensaje: string): string {
-  return `https://wa.me/${celular}?text=${encodeURIComponent(mensaje)}`;
+  return mensaje ? `https://wa.me/${celular}?text=${encodeURIComponent(mensaje)}` : `https://wa.me/${celular}`;
 }
 
 /** Lo que hizo la persona, en una frase corta y en orden de temperatura. */
-export function senalDe(prospecto: Pick<Prospecto, "respondio" | "clic" | "aperturas">): string {
+export function senalDe(prospecto: Pick<Prospecto, "respondio" | "clic" | "aperturas">, respondioPorWhatsapp = false): string {
+  if (respondioPorWhatsapp) return "Respondió por WhatsApp";
   if (prospecto.respondio) return "Respondió el correo";
   if (prospecto.clic) return "Hizo clic en el correo";
   if (prospecto.aperturas > 1) return `Abrió ${prospecto.aperturas} veces`;
