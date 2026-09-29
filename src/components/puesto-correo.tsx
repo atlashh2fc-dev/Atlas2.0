@@ -10,9 +10,9 @@ import { isPendingManagementError } from "@/lib/call-management-navigation";
 
 /**
  * Cierra la conversación de correo con la tipificación de siempre: abre una
- * gestión sin llamada por correo y lleva al formulario de la ficha. Al
- * guardarla, los correos pendientes de ese cliente quedan atendidos y el
- * formulario devuelve a la bandeja de correo.
+ * gestión sin llamada por correo y el formulario aparece en la misma bandeja,
+ * sobre el hilo. Al guardarla, los correos pendientes de ese cliente quedan
+ * atendidos y se vuelve a la bandeja.
  */
 export function TipificarCorreo({ leadId, pendiente: porAtender }: { leadId: string; pendiente: boolean }) {
   const router = useRouter();
@@ -30,10 +30,19 @@ export function TipificarCorreo({ leadId, pendiente: porAtender }: { leadId: str
           setError(resultado.error);
           return;
         }
-        router.push(`/dashboard/leads/${abierta.leadId}?tipificar=1`);
+        // Si es de este mismo cliente, la bandeja estaba desactualizada: se
+        // repinta con el formulario. Si es de otro, se va a cerrarla primero.
+        if (abierta.leadId === leadId) router.refresh();
+        else router.push(`/dashboard/leads/${abierta.leadId}?tipificar=1`);
         return;
       }
-      router.push(`/dashboard/leads/${leadId}?tipificar=1`);
+      // El formulario aparece en la misma bandeja, sobre el hilo.
+      router.refresh();
+      for (const espera of [300, 900, 1800]) {
+        window.setTimeout(() => {
+          document.getElementById("gestion-en-curso")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, espera);
+      }
     });
   }
 

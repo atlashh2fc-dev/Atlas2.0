@@ -4,7 +4,11 @@ import { ExternalLink, Inbox, Mail } from "lucide-react";
 
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { getOpenCall } from "@/app/actions/calls";
+import { CallTypificationForm } from "@/components/call-typification-form";
 import { CorreoRegistroPanel, type CorreoEnviado, type CorreoRecibido } from "@/components/correo-registro-panel";
+import { OPEN_CALL_FORM_ATTRIBUTE } from "@/lib/call-management-navigation";
+import { contextoDeTipificacion } from "@/lib/tipificacion-contexto.server";
 import { EsperaDelCliente, RefrescoDeBandeja, TipificarCorreo } from "@/components/puesto-correo";
 import { EmptyState, SectionCard } from "@/components/ui";
 import { cn } from "@/lib/utils";
@@ -160,6 +164,11 @@ async function BandejaDelEjecutivo({ profileId, params }: { profileId: string; p
       ])
     : [{ data: null }, { data: null }, { data: null }];
 
+  // La conversación se tipifica acá mismo: si hay una gestión abierta de este
+  // cliente, el formulario de siempre aparece sobre el hilo.
+  const gestion = elegida ? await getOpenCall(elegida.leadId).catch(() => null) : null;
+  const tipificacion = gestion && elegida ? await contextoDeTipificacion(supabase, elegida.leadId) : null;
+
   const ficha = fichaData as {
     full_name: string | null;
     rut: string | null;
@@ -232,7 +241,28 @@ async function BandejaDelEjecutivo({ profileId, params }: { profileId: string; p
         )}
       </nav>
 
-      <section aria-label="Conversación" className="min-w-0">
+      <section aria-label="Conversación" className="min-w-0 space-y-4">
+        {gestion && tipificacion && (
+          <div
+            id="gestion-en-curso"
+            {...{ [OPEN_CALL_FORM_ATTRIBUTE]: gestion.id }}
+            className="scroll-mt-4 rounded-2xl border-2 border-primary/20 bg-primary/[0.025] p-3 sm:p-5"
+          >
+            <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-border-strong bg-surface px-3 py-1 text-xs font-medium text-foreground">
+              Tipificación de la conversación por correo
+            </p>
+            <CallTypificationForm
+              key={gestion.id}
+              lead={tipificacion.lead}
+              call={gestion}
+              reasonCatalog={tipificacion.reasonCatalog}
+              equifaxCommercialFieldsEnabled={tipificacion.equifaxCommercialFieldsEnabled}
+              appointmentScheduleUrl={tipificacion.appointmentScheduleUrl}
+              agendaPolicy={tipificacion.agendaPolicy}
+              quoteClient={tipificacion.quoteClient}
+            />
+          </div>
+        )}
         {elegida ? (
           <CorreoRegistroPanel
             leadId={elegida.leadId}
@@ -272,7 +302,7 @@ async function BandejaDelEjecutivo({ profileId, params }: { profileId: string; p
               )}
             </dl>
             <div className="space-y-2 border-t border-border p-4">
-              <TipificarCorreo leadId={elegida.leadId} pendiente={elegida.pendientes > 0} />
+              {!gestion && <TipificarCorreo leadId={elegida.leadId} pendiente={elegida.pendientes > 0} />}
               <Link href={`/dashboard/leads/${elegida.leadId}`} className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline">
                 Abrir la ficha completa <ExternalLink size={12} aria-hidden="true" />
               </Link>

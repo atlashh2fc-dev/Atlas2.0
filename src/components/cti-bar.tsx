@@ -75,7 +75,7 @@ import {
   subscriberFromPhone,
 } from "@/components/phone/format";
 import { Elapsed, StatusMenu, type StatusTone } from "@/components/phone/status-menu";
-import { CanalesDigitales } from "@/components/phone/canales-digitales";
+import { CanalesDigitales, IndicadorDigital } from "@/components/phone/canales-digitales";
 
 const HEARTBEAT_MS = 20_000;
 const SIP_DOMAIN = process.env.NEXT_PUBLIC_SIP_DOMAIN ?? "ws-atlas.geimser.cl";
@@ -2209,6 +2209,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
           audio={<AudioSettings value={audioPreference} onChange={changeAudioPreference} disabled={activeCall} />}
         />
       )}
+      {showStatusSelector && <IndicadorDigital onAbrir={() => setStatusMenuOpen(true)} />}
       {credential && (
         <span
           className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-muted-foreground"

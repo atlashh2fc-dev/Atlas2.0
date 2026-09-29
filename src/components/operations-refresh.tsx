@@ -9,7 +9,8 @@ import { buttonClasses } from "@/components/ui";
 export function OperationsRefresh({ observedAt }: { observedAt: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [auto, setAuto] = useState(false);
+  // Un tablero en vivo se mueve solo; quien quiera congelarlo lo apaga.
+  const [auto, setAuto] = useState(true);
   const [checkedAt, setCheckedAt] = useState(() => Date.parse(observedAt));
   const stale = checkedAt - Date.parse(observedAt) > 60_000;
   const refresh = () => startTransition(() => router.refresh());

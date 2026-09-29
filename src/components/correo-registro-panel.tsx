@@ -1,6 +1,7 @@
-import { Check, Mail, Reply } from "lucide-react";
+import { Check, Mail } from "lucide-react";
 
-import { marcarCorreoAtendido, responderCorreoDeRegistro } from "@/app/actions/correo-registro";
+import { marcarCorreoAtendido } from "@/app/actions/correo-registro";
+import { RespuestaDeCorreo } from "@/components/respuesta-de-correo";
 import { ActionForm, ActionSubmit, Badge, SectionCard } from "@/components/ui";
 import { sinCita } from "@/lib/correo/sin-cita";
 
@@ -115,28 +116,7 @@ export function CorreoRegistroPanel({
         })}
 
         {puedeResponder && (
-          <ActionForm action={responderCorreoDeRegistro} success="Respuesta enviada" className="border-t border-border pt-4">
-            <input type="hidden" name="lead_id" value={leadId} />
-            <input type="hidden" name="correo_id" value={ultimo.id} />
-            <label className="block text-sm font-medium text-foreground" htmlFor="correo-registro-texto">
-              Responder a {ultimo.from_name || ultimo.from_address}
-            </label>
-            <textarea
-              id="correo-registro-texto"
-              name="texto"
-              required
-              minLength={2}
-              maxLength={20000}
-              rows={4}
-              placeholder="Tu firma se agrega sola al final."
-              className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15"
-            />
-            <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
-              <ActionSubmit pendingLabel="Enviando…">
-                <Reply size={15} aria-hidden="true" /> Enviar respuesta
-              </ActionSubmit>
-            </div>
-          </ActionForm>
+          <RespuestaDeCorreo leadId={leadId} correoId={ultimo.id} destinatario={ultimo.from_name || ultimo.from_address} />
         )}
         {puedeResponder && pendientes.length > 0 && (
           <ActionForm action={marcarCorreoAtendido} success="Marcada como atendida" className="flex justify-end">

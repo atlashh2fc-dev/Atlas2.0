@@ -13,6 +13,8 @@ import {
 import { cn } from "@/lib/utils";
 
 const REFRESCO_MS = 30_000;
+/** Avisa al indicador de la barra que un canal se prendió o apagó. */
+const EVENTO_PRESENCIA = "atlas:presencia-digital";
 
 const CANALES: { canal: CanalDigital; label: string; href: string; icon: typeof Mail }[] = [
   { canal: "correo", label: "Correo", href: "/dashboard/conversaciones/correo", icon: Mail },
@@ -59,8 +61,10 @@ export function CanalesDigitales({ abierto }: { abierto: boolean }) {
     setPresencia((actual) => (actual ? { ...actual, [canal]: activo } : actual));
     startTransition(async () => {
       try {
-        setPresencia(await cambiarMiPresenciaDigital(canal, activo));
+        const nueva = await cambiarMiPresenciaDigital(canal, activo);
+        setPresencia(nueva);
         setError(null);
+        window.dispatchEvent(new CustomEvent<PresenciaDigital>(EVENTO_PRESENCIA, { detail: nueva }));
       } catch (e) {
         setPresencia(anterior);
         setError(e instanceof Error ? e.message : "No se pudo cambiar el canal.");
@@ -119,5 +123,65 @@ export function CanalesDigitales({ abierto }: { abierto: boolean }) {
       })}
       {error && <p role="alert" className="px-2 pt-1 text-xs text-danger">{error}</p>}
     </section>
+  );
+}
+
+/**
+ * Correo y WhatsApp a la vista, junto al estado de voz: verde si la cola le
+ * está entregando, ámbar si está prendido pero su estado no recibe, gris si
+ * lo apagó. Con el número de clientes que esperan. Un clic abre el menú.
+ */
+export function IndicadorDigital({ onAbrir }: { onAbrir: () => void }) {
+  const [presencia, setPresencia] = useState<PresenciaDigital | null>(null);
+
+  useEffect(() => {
+    let vigente = true;
+    const cargar = () => {
+      obtenerMiPresenciaDigital()
+        .then((dato) => {
+          if (vigente) setPresencia(dato);
+        })
+        .catch(() => undefined);
+    };
+    cargar();
+    const id = window.setInterval(cargar, REFRESCO_MS);
+    const alCambiar = (evento: Event) => setPresencia((evento as CustomEvent<PresenciaDigital>).detail);
+    window.addEventListener(EVENTO_PRESENCIA, alCambiar);
+    return () => {
+      vigente = false;
+      window.clearInterval(id);
+      window.removeEventListener(EVENTO_PRESENCIA, alCambiar);
+    };
+  }, []);
+
+  if (!presencia || (!presencia.tieneCorreo && !presencia.tieneWhatsapp)) return null;
+  const visibles = CANALES.filter(({ canal }) => (canal === "correo" ? presencia.tieneCorreo : presencia.tieneWhatsapp));
+
+  return (
+    <button
+      type="button"
+      onClick={onAbrir}
+      className="inline-flex h-8 shrink-0 items-center gap-2 rounded-lg border border-border bg-surface px-2 text-xs font-medium text-foreground transition hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      aria-label={visibles
+        .map(({ canal, label }) => {
+          const prendido = canal === "correo" ? presencia.correo : presencia.whatsapp;
+          const recibe = canal === "correo" ? presencia.recibeCorreo : presencia.recibeWhatsapp;
+          const pendientes = canal === "correo" ? presencia.pendientesCorreo : presencia.pendientesWhatsapp;
+          return `${label} ${!prendido ? "apagado" : recibe ? "recibiendo" : "sin recibir"}, ${pendientes} pendientes`;
+        })
+        .join("; ")}
+    >
+      {visibles.map(({ canal, icon: Icon }) => {
+        const prendido = canal === "correo" ? presencia.correo : presencia.whatsapp;
+        const recibe = canal === "correo" ? presencia.recibeCorreo : presencia.recibeWhatsapp;
+        const pendientes = canal === "correo" ? presencia.pendientesCorreo : presencia.pendientesWhatsapp;
+        return (
+          <span key={canal} className={cn("inline-flex items-center gap-1", !prendido ? "text-muted-foreground" : recibe ? "text-success" : "text-warning")}>
+            <Icon size={14} aria-hidden />
+            {pendientes > 0 && <span className="tabular-nums text-foreground">{pendientes}</span>}
+          </span>
+        );
+      })}
+    </button>
   );
 }
