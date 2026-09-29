@@ -33,6 +33,7 @@ import {
 } from "@/lib/intercall-break";
 import { decideShortCallClosure, shortCallNotice } from "@/lib/short-call-closure";
 import { AppointmentScheduleEmbed } from "@/components/appointment-schedule-embed";
+import { CotizadorEquifax, type ResultadoCotizacion } from "@/components/cotizador-equifax";
 
 function isoToLocalInput(iso: string | null): string {
   if (!iso) return "";
@@ -67,6 +68,7 @@ export function CallTypificationForm({
   agendaPolicy = null,
   revision: revisionProp = false,
   supervision = null,
+  quoteClient = null,
 }: {
   lead: Lead;
   call: Call;
@@ -95,6 +97,18 @@ export function CallTypificationForm({
     callId: string | null;
     agents: { id: string; name: string }[];
     defaultAgentId: string | null;
+  } | null;
+  /**
+   * Datos del cliente para el cotizador Equifax. Solo lo recibe la gestión
+   * abierta; al enviar la propuesta, deja productos, UF, Q y correo listos
+   * en el bloque comercial.
+   */
+  quoteClient?: {
+    empresa: string | null;
+    rut: string | null;
+    contacto: string | null;
+    correo: string | null;
+    telefono: string | null;
   } | null;
 }) {
   const revision = revisionProp || supervision !== null;
@@ -264,6 +278,25 @@ export function CallTypificationForm({
     }
     setMessage(null);
     setAttemptedClose(false);
+  }
+
+  function applyQuote(result: ResultadoCotizacion) {
+    setEquifaxProducts((prev) => [...new Set([...prev, ...result.productos])]);
+    if (result.uf != null) setEquifaxUf(String(result.uf));
+    if (result.q != null) setEquifaxQ(String(result.q));
+    if (result.correo) setEquifaxEmail(result.correo);
+    setNotes((prev) =>
+      prev.trim()
+        ? prev
+        : `Propuesta ${result.canal === "correo" ? "enviada por correo a" : "enviada por WhatsApp a"} ${result.destinatario}: ${result.productos.join(", ")} (${result.resumen}).`
+    );
+    // Lo natural después de enviar es tipificar la cotización; si ya eligió
+    // otro motivo (una venta, por ejemplo), se respeta.
+    const quoteReason = catalog.find((option) => option.value === "COTIZACION ENVIADA");
+    if (!reason && quoteReason) {
+      handleReasonSelect(quoteReason);
+      setReasonPath([quoteReason.stateLabel, ...(quoteReason.groupPath ?? [])]);
+    }
   }
 
   function toggleEquifaxProduct(product: string) {
@@ -705,6 +738,9 @@ export function CallTypificationForm({
             <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">{lead.observacion_actual}</p>
           </div>
         </div>
+      )}
+      {quoteClient && equifaxCommercialFieldsEnabled && !revision && (
+        <CotizadorEquifax leadId={lead.id} callId={call.id} cliente={quoteClient} onEnviada={applyQuote} />
       )}
       {armed && shortClosure && (
         <div

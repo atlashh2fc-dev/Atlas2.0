@@ -52,6 +52,7 @@ test("Control opera por tarea y deja la configuración en su propio espacio", ()
     "Flujos de gestión",
     "Estados de agente",
     "Cargas y listas",
+    "Correo de envío",
     "Procedimientos y precios",
     "Materiales e insumos",
     "Empresas",

@@ -17,7 +17,10 @@ const cuando = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, day: "
 
 export default async function CorreoPage() {
   noStore();
-  const { empresa } = await contextoDeMiEmpresa();
+  const { empresa, edicion } = await contextoDeMiEmpresa();
+  // En las clínicas es "el correo de la clínica"; en el contact center, el
+  // buzón desde el que salen las propuestas (cotizador Equifax) y se leen las respuestas.
+  const clinica = edicion !== "center";
   const supabase = await createClient();
   const { data: buzon } = await supabase
     .from("inbound_mailboxes")
@@ -28,7 +31,14 @@ export default async function CorreoPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Correo de la clínica" description={`El buzón desde el que ${empresa ?? "la clínica"} lee y responde. Lo que llega se liga a la ficha; las respuestas salen por el mismo buzón.`} />
+      <PageHeader
+        title={clinica ? "Correo de la clínica" : "Correo de envío"}
+        description={
+          clinica
+            ? `El buzón desde el que ${empresa ?? "la clínica"} lee y responde. Lo que llega se liga a la ficha; las respuestas salen por el mismo buzón.`
+            : `El buzón desde el que ${empresa ?? "la empresa"} envía las propuestas del cotizador. Atlas lee cada diez minutos lo que llega, incluidas las respuestas de los clientes.`
+        }
+      />
 
       {buzon ? (
         <Callout tone={buzon.last_sync_error ? "warning" : "success"}>
@@ -47,17 +57,21 @@ export default async function CorreoPage() {
       ) : (
         <Callout tone="info">
           <p className="font-medium">Todavía no hay buzón</p>
-          <p>Sin buzón, los correos de recordatorio se simulan en la demostración y no salen en una clínica real. Conecta la casilla de la clínica acá.</p>
+          <p>
+            {clinica
+              ? "Sin buzón, los correos de recordatorio se simulan en la demostración y no salen en una clínica real. Conecta la casilla de la clínica acá."
+              : "Sin buzón, los ejecutivos solo pueden mandar propuestas por WhatsApp. Conecta la casilla desde la que deben salir los correos."}
+          </p>
         </Callout>
       )}
 
       <SectionCard icon={Mail} tone="teal" title="Buzón" description="Los datos que te entrega tu proveedor de correo. Si el servidor IMAP y el SMTP son el mismo, repítelo. Gmail y Outlook exigen una contraseña de aplicación.">
         <form action={guardarBuzon} className="grid gap-4 px-4 py-4 sm:grid-cols-2">
           <Field label="Dirección">
-            <Input name="address" type="email" required defaultValue={buzon?.address ?? ""} placeholder="contacto@clinica.cl" />
+            <Input name="address" type="email" required defaultValue={buzon?.address ?? ""} placeholder={clinica ? "contacto@clinica.cl" : "ventas@empresa.cl"} />
           </Field>
           <Field label="Nombre para mostrar">
-            <Input name="remitente" defaultValue={buzon?.remitente ?? empresa ?? ""} placeholder={empresa ?? "Clínica"} />
+            <Input name="remitente" defaultValue={buzon?.remitente ?? empresa ?? ""} placeholder={empresa ?? (clinica ? "Clínica" : "Empresa")} />
           </Field>
           <Field label="Servidor IMAP (lectura)">
             <Input name="imap_host" required defaultValue={buzon?.imap_host ?? ""} placeholder="imap.proveedor.cl" />
@@ -78,7 +92,7 @@ export default async function CorreoPage() {
             <Input name="clave" type="password" autoComplete="new-password" placeholder="••••••••" />
           </Field>
           <Field label="Etiqueta">
-            <Input name="label" defaultValue={buzon?.label ?? "Correo de la clínica"} />
+            <Input name="label" defaultValue={buzon?.label ?? (clinica ? "Correo de la clínica" : "Correo de envío")} />
           </Field>
           <div className="flex items-end">
             <SubmitButton pendingLabel="Guardando…">Guardar buzón</SubmitButton>

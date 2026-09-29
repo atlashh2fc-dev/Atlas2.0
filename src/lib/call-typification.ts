@@ -440,6 +440,7 @@ export const EQUIFAX_PRODUCTS = [
   "Documento Unico",
   "DataFinder",
   "Malla Societaria",
+  "Partner Check",
   "BBDD",
 ] as const;
 

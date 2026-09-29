@@ -49,6 +49,7 @@ function fixture(options: {
     "@/lib/agent-control": { notifyAgentManagementClosed: () => { closedEvents++; }, requestAgentHangup: () => { hangupRequests++; } },
     "@/lib/intercall-break": { readLegalIntercallBreakUntil: () => options.breakActive ? Date.now() + 10000 : 0 },
     "@/components/appointment-schedule-embed": { AppointmentScheduleEmbed: "calendar-fixture" },
+    "@/components/cotizador-equifax": { CotizadorEquifax: "cotizador-fixture" },
     "@/app/actions/calls": {
       closeCall: (payload: Record<string, unknown>) => {
         submissions.push(payload);

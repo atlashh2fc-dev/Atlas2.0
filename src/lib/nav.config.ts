@@ -393,7 +393,7 @@ const WORKSPACE_SECTIONS: Record<AppRole, Record<NavSpaceId, SectionSpec[]>> = {
       { id: "control-analysis", label: "Análisis y calidad", itemIds: ["conversaciones", "conversaciones-clinica", "reportes", "reportes-clinica", "calidad"] },
     ],
     admin: [
-      { id: "setup-contact-center", label: "Contact center", itemIds: ["campanas", "colas", "flujos", "estados-agente", "cargas"] },
+      { id: "setup-contact-center", label: "Contact center", itemIds: ["campanas", "colas", "flujos", "estados-agente", "cargas", "correo-empresa"] },
       { id: "setup-clinic", label: "Clínica", itemIds: ["aranceles", "insumos", "correo-clinica"] },
       { id: "setup-platform", label: "Plataforma", itemIds: ["empresas", "usuarios", "extensiones", "integraciones"] },
     ],
@@ -500,6 +500,19 @@ const ADMIN: NavSpace = {
           roles: ["admin"],
           description: "Importación de bases y su historial",
           modules: ["leads"],
+        },
+        {
+          // El mismo buzón que en las clínicas: desde él salen las propuestas
+          // del cotizador Equifax y se leen las respuestas.
+          id: "correo-empresa",
+          label: "Correo de envío",
+          href: "/dashboard/admin/correo",
+          icon: Mail,
+          roles: ["admin"],
+          description: "El buzón desde el que salen las propuestas y se leen las respuestas",
+          match: ["/dashboard/admin/correo"],
+          modules: ["leads"],
+          ediciones: ["center"],
         },
       ],
     },

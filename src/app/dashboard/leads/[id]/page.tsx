@@ -78,6 +78,25 @@ function CardHeading({
   );
 }
 
+type EquifaxQuoteRow = {
+  id: string;
+  canal: "correo" | "whatsapp";
+  destinatario: string;
+  productos: string[] | null;
+  uf_mensual: number | string;
+  uf_unico: number | string;
+  uf_anual: number | string;
+  clp_total: number | string;
+  estado: "enviando" | "enviada" | "fallida" | "whatsapp_abierto";
+  error: string | null;
+  created_at: string;
+  profiles: { full_name: string } | { full_name: string }[] | null;
+};
+
+function formatUfAmount(value: number): string {
+  return value.toLocaleString("es-CL", { maximumFractionDigits: 4 });
+}
+
 type LeadContact = {
   id: string;
   contact_type: "phone" | "email";
@@ -258,6 +277,7 @@ export default async function LeadDetailPage({
     { data: whatsAppMessagesData },
     { data: mailMessagesData },
     { data: mailReplyCommandsData },
+    { data: quotesData },
     { data: saleValidationData },
   ] = await Promise.all([
     supabase
@@ -287,6 +307,12 @@ export default async function LeadDetailPage({
     leeConversaciones ? supabase
       .from("mail_reply_commands")
       .select("id, subject, body_text, status, last_error, created_at")
+      .eq("lead_id", id)
+      .order("created_at", { ascending: false })
+      .limit(20) : Promise.resolve({ data: [] }),
+    equifaxCommercialFieldsEnabled ? supabase
+      .from("equifax_cotizaciones")
+      .select("id, canal, destinatario, productos, uf_mensual, uf_unico, uf_anual, clp_total, estado, error, created_at, profiles!equifax_cotizaciones_agent_id_fkey(full_name)")
       .eq("lead_id", id)
       .order("created_at", { ascending: false })
       .limit(20) : Promise.resolve({ data: [] }),
@@ -430,6 +456,30 @@ export default async function LeadDetailPage({
         notes: message.text_body || `[${message.message_type}]`,
         agenda: null,
         agent: inbound ? lead.full_name : sender?.full_name ?? "Equipo Atlas",
+      };
+    }),
+    ...((quotesData ?? []) as EquifaxQuoteRow[]).map((quote): TimelineEntry => {
+      const amounts = [
+        Number(quote.uf_mensual) > 0 ? `${formatUfAmount(Number(quote.uf_mensual))} UF/mes` : null,
+        Number(quote.uf_unico) > 0 ? `${formatUfAmount(Number(quote.uf_unico))} UF pago único` : null,
+        Number(quote.uf_anual) > 0 ? `${formatUfAmount(Number(quote.uf_anual))} UF/año` : null,
+        Number(quote.clp_total) > 0 ? formatClp(Number(quote.clp_total)) : null,
+      ].filter(Boolean).join(" · ");
+      const failed = quote.estado === "fallida";
+      return {
+        key: `cotizacion-${quote.id}`,
+        source: quote.canal === "correo" ? "email" : "whatsapp",
+        date: quote.created_at,
+        title: failed
+          ? "Propuesta Equifax: el correo no salió"
+          : quote.canal === "correo" ? "Propuesta Equifax enviada por correo" : "Propuesta Equifax por WhatsApp",
+        notes: [
+          `${(quote.productos ?? []).join(", ")}${amounts ? ` · ${amounts}` : ""}`,
+          `Para ${quote.destinatario}`,
+          failed && quote.error ? quote.error : null,
+        ].filter(Boolean).join(" · "),
+        agenda: null,
+        agent: relationOne(quote.profiles)?.full_name ?? "Ejecutivo",
       };
     }),
   ].sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime());
@@ -820,6 +870,13 @@ export default async function LeadDetailPage({
               equifaxCommercialFieldsEnabled={equifaxCommercialFieldsEnabled}
               appointmentScheduleUrl={appointmentScheduleUrl}
               agendaPolicy={agendaPolicy}
+              quoteClient={{
+                empresa: lead.full_name,
+                rut: lead.rut,
+                contacto: contactPerson,
+                correo: lead.email,
+                telefono: lead.phone,
+              }}
             />
           </section>
           <aside className="space-y-4 xl:sticky xl:top-0" aria-label="Datos del cliente">
