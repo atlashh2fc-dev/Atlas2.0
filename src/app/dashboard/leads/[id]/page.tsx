@@ -13,6 +13,7 @@ import { LeadPhonesPanel } from "@/components/lead-phones-panel";
 import { OfflineManagementButton } from "@/components/offline-management-button";
 import { ScreenPopTiming } from "@/components/screen-pop-timing";
 import { CallTypificationForm } from "@/components/call-typification-form";
+import { CotizadorEquifax } from "@/components/cotizador-equifax";
 import { CallTimer } from "@/components/call-timer";
 import { LeadTimeline, type TimelineEntry } from "@/components/lead-timeline";
 import { buildCallReasonCatalogFromWorkflow, getReasonConfig } from "@/lib/call-typification";
@@ -483,6 +484,12 @@ export default async function LeadDetailPage({
       };
     }),
   ].sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime());
+
+  // Mismo criterio que registrar_cotizacion_equifax: el ejecutivo cotiza lo
+  // que está a su nombre; supervisión y administración, cualquier registro.
+  const canQuoteWithoutManagement = equifaxCommercialFieldsEnabled
+    && profile.active
+    && (profile.role !== "agente" || lead.assigned_to === profile.id || lead.managed_by === profile.id);
 
   const statusLabel = LEAD_STATUSES.find((status) => status.value === lead.status)?.label ?? lead.status;
   const overdue = lead.next_action_at ? new Date(lead.next_action_at).getTime() <= new Date().getTime() : false;
@@ -973,6 +980,21 @@ export default async function LeadDetailPage({
 
         {/* Zona 2: la acción de ahora y el hilo completo */}
         <main className="space-y-5">
+          {/* Sin gestión abierta también se cotiza: la propuesta queda en el
+              registro. Durante la gestión va dentro de la tipificación. */}
+          {!call && canQuoteWithoutManagement && (
+            <CotizadorEquifax
+              leadId={lead.id}
+              callId={null}
+              cliente={{
+                empresa: lead.full_name,
+                rut: lead.rut,
+                contacto: contactPerson,
+                correo: lead.email,
+                telefono: lead.phone,
+              }}
+            />
+          )}
           <Card className={`border-l-2 ${overdue ? "border-danger/40 border-l-danger" : lead.next_action_at ? "border-l-warning" : "border-l-border-strong"}`}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3">

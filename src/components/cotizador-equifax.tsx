@@ -79,9 +79,10 @@ export function CotizadorEquifax({
   onEnviada,
 }: {
   leadId: string;
-  callId: string;
+  /** La gestión abierta; sin ella la propuesta queda ligada solo al registro. */
+  callId: string | null;
   cliente: { empresa: string | null; rut: string | null; contacto: string | null; correo: string | null; telefono: string | null };
-  onEnviada: (resultado: ResultadoCotizacion) => void;
+  onEnviada?: (resultado: ResultadoCotizacion) => void;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [contexto, setContexto] = useState<ContextoCotizador | null>(null);
@@ -141,7 +142,7 @@ export function CotizadorEquifax({
       resumen: resumenTotales(cotizadas),
     };
     setEnviada(resultado);
-    onEnviada(resultado);
+    onEnviada?.(resultado);
     setContexto(null); // recarga el historial la próxima vez que se abra
     setAbierto(false);
   }
@@ -192,7 +193,7 @@ export function CotizadorEquifax({
           <p className="text-sm font-bold text-foreground">{enviada ? "Propuesta enviada" : "Cotizador Equifax"}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             {enviada
-              ? `${enviada.canal === "correo" ? "Por correo a" : "WhatsApp abierto para"} ${enviada.destinatario} · ${enviada.resumen}. Productos y UF quedaron listos en la tipificación.`
+              ? `${enviada.canal === "correo" ? "Por correo a" : "WhatsApp abierto para"} ${enviada.destinatario} · ${enviada.resumen}.${onEnviada ? " Productos y UF quedaron listos en la tipificación." : " Quedó en el historial del registro."}`
               : "Arma la propuesta con los precios vigentes y envíala por correo o WhatsApp sin salir de la ficha."}
           </p>
         </div>
