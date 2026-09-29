@@ -2,6 +2,7 @@ import { Check, Mail, Reply } from "lucide-react";
 
 import { marcarCorreoAtendido, responderCorreoDeRegistro } from "@/app/actions/correo-registro";
 import { ActionForm, ActionSubmit, Badge, SectionCard } from "@/components/ui";
+import { sinCita } from "@/lib/correo/sin-cita";
 
 /**
  * El correo con el cliente dentro de la ficha: lo que respondió al buzón de la
@@ -17,7 +18,7 @@ export type CorreoRecibido = {
   body_text: string;
   received_at: string;
   status: "new" | "converted";
-  asignacion: "agenda" | "cotizacion" | "propietario" | null;
+  asignacion: "agenda" | "cotizacion" | "propietario" | "supervision" | null;
   profiles: { full_name: string } | { full_name: string }[] | null;
 };
 
@@ -34,23 +35,16 @@ export type CorreoEnviado = {
 };
 
 const MOTIVO: Record<NonNullable<CorreoRecibido["asignacion"]>, string> = {
-  agenda: "tiene la agenda",
-  cotizacion: "envió la propuesta",
-  propietario: "es el ejecutivo del registro",
+  agenda: ", que tiene la agenda",
+  cotizacion: ", que envió la propuesta",
+  propietario: ", que es el ejecutivo del registro",
+  supervision: " por supervisión",
 };
 
 const cuando = new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 
 function uno<T>(valor: T | T[] | null): T | null {
   return Array.isArray(valor) ? valor[0] ?? null : valor;
-}
-
-/** Corta lo citado del correo anterior («El … escribió:», «> …») para no repetir la propuesta entera. */
-function sinCita(texto: string): string {
-  const lineas = texto.split("\n");
-  const corte = lineas.findIndex((linea) => /^\s*>/.test(linea) || /^(El|On) .{6,120}(escribió|wrote):\s*$/i.test(linea.trim()) || /^-{2,}\s*(Mensaje original|Original Message)/i.test(linea.trim()));
-  const propio = (corte > 0 ? lineas.slice(0, corte) : lineas).join("\n").trim();
-  return propio || texto.trim();
 }
 
 export function CorreoRegistroPanel({
@@ -98,7 +92,7 @@ export function CorreoRegistroPanel({
                 <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-foreground">{sinCita(correo.body_text)}</p>
                 <p className="mt-3 text-xs text-muted-foreground">
                   {dueno
-                    ? `Asignada a ${dueno}${correo.asignacion ? `, que ${MOTIVO[correo.asignacion]}` : ""}.`
+                    ? `Asignada a ${dueno}${correo.asignacion ? MOTIVO[correo.asignacion] : ""}.`
                     : "Sin ejecutivo asignado: la atiende supervisión."}
                   {correo.status === "converted" ? " Atendida." : ""}
                 </p>

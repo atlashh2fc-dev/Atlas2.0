@@ -1,31 +1,42 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { BarChart3, BriefcaseBusiness, UsersRound } from "lucide-react";
+import { BarChart3, BriefcaseBusiness, Inbox, UsersRound } from "lucide-react";
 
-type WorkspaceTab = "operation" | "team" | "reports";
+export type WorkspaceTab = "operation" | "inbox" | "team" | "reports";
 
-/** Cada pestaña lleva el tono de su dominio: colas en rosa, equipo en azul, reportes en violeta. */
-const tabs: Array<{ id: WorkspaceTab; label: string; icon: typeof BriefcaseBusiness; tone: "rose" | "blue" | "violet" }> = [
+/** Cada pestaña lleva el tono de su dominio: colas en rosa, buzón en verde azulado, equipo en azul, reportes en violeta. */
+const tabs: Array<{ id: WorkspaceTab; label: string; icon: typeof BriefcaseBusiness; tone: "rose" | "teal" | "blue" | "violet" }> = [
   { id: "operation", label: "Operación", icon: BriefcaseBusiness, tone: "rose" },
+  { id: "inbox", label: "Buzón", icon: Inbox, tone: "teal" },
   { id: "team", label: "Equipo", icon: UsersRound, tone: "blue" },
   { id: "reports", label: "Reportes", icon: BarChart3, tone: "violet" },
 ];
 
-/** Mantiene una sola superficie de trabajo visible: no apila tres tableros. */
+/**
+ * Mantiene una sola superficie de trabajo visible: no apila tableros. Buzón es
+ * la casilla de la cuenta (cotizaciones y respuestas del ejecutivo); Operación,
+ * la cola de las campañas masivas.
+ */
 export function MailWorkspace({
   operation,
+  inbox,
   team,
   reports,
   attentionCount,
+  inboxCount,
+  initialTab = "operation",
 }: {
   operation: ReactNode;
+  inbox: ReactNode;
   team: ReactNode;
   reports: ReactNode;
   attentionCount: number;
+  inboxCount: number;
+  initialTab?: WorkspaceTab;
 }) {
-  const [active, setActive] = useState<WorkspaceTab>("operation");
-  const content = active === "operation" ? operation : active === "team" ? team : reports;
+  const [active, setActive] = useState<WorkspaceTab>(initialTab);
+  const content = active === "operation" ? operation : active === "inbox" ? inbox : active === "team" ? team : reports;
 
   return (
     <section className="space-y-3">
@@ -46,6 +57,7 @@ export function MailWorkspace({
               </span>
               {tab.label}
               {tab.id === "team" && attentionCount > 0 && <span className="rounded-full bg-danger-bg px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-danger">{attentionCount}</span>}
+              {tab.id === "inbox" && inboxCount > 0 && <span className="rounded-full bg-warning-bg px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-warning">{inboxCount}</span>}
             </button>
           );
         })}

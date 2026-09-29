@@ -10,6 +10,7 @@ import {
 } from "@/components/mail-control-center";
 import { MailAgentControl } from "@/components/mail-agent-control";
 import { MailWorkspace } from "@/components/mail-workspace";
+import { MailBuzon, type BuzonRow } from "@/components/mail-buzon";
 import {
   Button,
   PageHeader,
@@ -243,6 +244,7 @@ export default async function MailDashboardPage({
     mailCampaign?: string;
     queue?: string;
     cursor?: string;
+    vista?: string;
   }>;
 }) {
   const profile = await requireProfile(["supervisor", "admin"]);
@@ -253,6 +255,7 @@ export default async function MailDashboardPage({
     mailCampaign,
     queue: queueParam,
     cursor: cursorParam,
+    vista,
   } = await searchParams;
   const selectedCampaignId = campaign || null;
   const selectedMailCampaignId = mailCampaign || null;
@@ -484,11 +487,70 @@ export default async function MailDashboardPage({
     { assigned: 0, clicked: 0, contacted: 0, uncontacted: 0, clickedUncontacted: 0, interactions: 0, agendas: 0, pending: 0, overdue: 0, noNextAction: 0 }
   );
 
+  // Buzón: la casilla de la cuenta (cotizaciones y respuestas del ejecutivo),
+  // distinta de las campañas masivas. Últimos 30 días, como cola de tickets.
+  // Página dinámica de servidor: la hora se toma una vez por solicitud.
+  // eslint-disable-next-line react-hooks/purity
+  const ahora = Date.now();
+  const { data: buzonesEnvio } = await supabase.from("inbound_mailboxes").select("id, address").is("campaign_id", null).eq("active", true);
+  const direccionBuzon = new Map((buzonesEnvio ?? []).map((buzon) => [buzon.id as string, buzon.address as string]));
+  const { data: correosBuzonData } = direccionBuzon.size
+    ? await supabase
+        .from("inbound_emails")
+        .select("id, mailbox_id, from_name, from_address, subject, body_text, received_at, status, asignacion, lead_id, assigned_to, leads(full_name, rut), profiles!inbound_emails_assigned_to_fkey(full_name)")
+        .in("mailbox_id", [...direccionBuzon.keys()])
+        .gte("received_at", new Date(ahora - 30 * 86_400_000).toISOString())
+        .order("received_at", { ascending: false })
+        .limit(300)
+    : { data: [] };
+  const correosBuzon = (correosBuzonData ?? []) as unknown as Array<{
+    id: string; mailbox_id: string; from_name: string | null; from_address: string; subject: string; body_text: string; received_at: string;
+    status: "new" | "converted"; asignacion: BuzonRow["asignacion"]; lead_id: string | null; assigned_to: string | null;
+    leads: { full_name: string | null; rut: string | null } | { full_name: string | null; rut: string | null }[] | null;
+    profiles: { full_name: string } | { full_name: string }[] | null;
+  }>;
+  const { data: respuestasBuzonData } = correosBuzon.length
+    ? await supabase
+        .from("correos_de_registro")
+        .select("respuesta_a, created_at, estado, profiles!correos_de_registro_agent_id_fkey(full_name)")
+        .in("respuesta_a", correosBuzon.map((correo) => correo.id))
+        .order("created_at", { ascending: true })
+    : { data: [] };
+  const primeraRespuesta = new Map<string, BuzonRow["respuesta"]>();
+  for (const respuesta of (respuestasBuzonData ?? []) as unknown as Array<{ respuesta_a: string; created_at: string; estado: "enviando" | "enviado" | "fallido"; profiles: { full_name: string } | { full_name: string }[] | null }>) {
+    const actual = primeraRespuesta.get(respuesta.respuesta_a);
+    if (actual && actual.estado !== "fallido") continue;
+    const perfil = Array.isArray(respuesta.profiles) ? respuesta.profiles[0] : respuesta.profiles;
+    primeraRespuesta.set(respuesta.respuesta_a, { agente: perfil?.full_name ?? "Ejecutivo", created_at: respuesta.created_at, estado: respuesta.estado });
+  }
+  const buzonRows: BuzonRow[] = correosBuzon.map((correo) => {
+    const lead = Array.isArray(correo.leads) ? correo.leads[0] : correo.leads;
+    const dueno = Array.isArray(correo.profiles) ? correo.profiles[0] : correo.profiles;
+    return {
+      id: correo.id,
+      mailbox: direccionBuzon.get(correo.mailbox_id) ?? "",
+      from_name: correo.from_name,
+      from_address: correo.from_address,
+      subject: correo.subject,
+      body_text: correo.body_text,
+      received_at: correo.received_at,
+      status: correo.status,
+      asignacion: correo.asignacion,
+      lead_id: correo.lead_id,
+      lead_name: lead?.full_name ?? null,
+      lead_rut: lead?.rut ?? null,
+      assigned_to: correo.assigned_to,
+      assigned_name: dueno?.full_name ?? null,
+      respuesta: primeraRespuesta.get(correo.id) ?? null,
+    };
+  });
+  const buzonPorAtender = buzonRows.filter((row) => row.status === "new" && !(row.respuesta && row.respuesta.estado !== "fallido")).length;
+
   return (
     <div className="space-y-6">
       <PageHeader
         title={selectedCampaign ? `Correo · ${selectedCampaign.name}` : "Correo"}
-        description="Cola omnicanal de correo: respuestas de clientes, atención del agente, aperturas y clicks."
+        description="Cola de las campañas de correo (aperturas, clicks, respuestas) y el buzón de la cuenta, donde los clientes responden las cotizaciones."
         actions={
           <CampaignFilterForm
             campaigns={campaigns}
@@ -503,6 +565,9 @@ export default async function MailDashboardPage({
       <MailWorkspace
         attentionCount={agentTotals.overdue + agentTotals.clickedUncontacted + agentTotals.noNextAction}
         operation={<MailControlCenter rows={queue} agents={agentOptions} buckets={buckets} activeBucket={activeBucket} total={totalPrioritized} nextHref={nextQueueHref} resetHref={resetQueueHref} />}
+        inbox={<MailBuzon rows={buzonRows} agents={agentOptions} ahora={ahora} />}
+        inboxCount={buzonPorAtender}
+        initialTab={vista === "buzon" ? "inbox" : "operation"}
         team={<MailAgentControl rows={agentSummaryForDisplay} />}
         reports={
           <SectionCard tone="violet">

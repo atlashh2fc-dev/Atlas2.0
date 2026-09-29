@@ -126,3 +126,27 @@ export async function marcarCorreoAtendido(formData: FormData) {
   revalidatePath(`/dashboard/leads/${leadId}`);
   revalidatePath("/dashboard/leads");
 }
+
+/**
+ * Supervisión en Correo › Buzón: asignar o reasignar una respuesta, ligarla a
+ * un registro por RUT o cerrarla si no es de un cliente.
+ */
+export async function gestionarCorreoDeBuzon(input: { correoId: string; agenteId?: string | null; rut?: string | null; cerrar?: boolean }): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await requireProfile(["supervisor", "admin"]);
+    if (!UUID.test(input.correoId)) return { ok: false, error: "Falta el correo." };
+    if (input.agenteId && !UUID.test(input.agenteId)) return { ok: false, error: "Elige un ejecutivo." };
+    const supabase = await createClient();
+    const { error } = await supabase.rpc("gestionar_correo_de_buzon", {
+      p_email: input.correoId,
+      p_agente: input.agenteId || null,
+      p_rut: input.rut?.trim() || null,
+      p_cerrar: Boolean(input.cerrar),
+    });
+    if (error) return { ok: false, error: error.message };
+    revalidatePath("/dashboard/mail");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error && error.message ? error.message : "No se pudo guardar." };
+  }
+}

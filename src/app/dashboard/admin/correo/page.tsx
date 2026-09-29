@@ -1,9 +1,10 @@
 import { unstable_noStore as noStore } from "next/cache";
-import { Mail } from "lucide-react";
+import Link from "next/link";
+import { Inbox, Mail } from "lucide-react";
 
 import { guardarBuzon, guardarBuzonDeEnvio } from "@/app/actions/buzon";
 import { CampanasDelBuzon, type OpcionCampana } from "@/components/campanas-del-buzon";
-import { ActionForm, ActionSubmit, Badge, Callout, Field, Input, PageHeader, SectionCard, SubmitButton } from "@/components/ui";
+import { ActionForm, ActionSubmit, Badge, Callout, Field, Input, PageHeader, SectionCard, SubmitButton, buttonClasses } from "@/components/ui";
 import { ZONA_CLINICA } from "@/lib/citas";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
 import { createClient } from "@/lib/supabase/server";
@@ -157,6 +158,13 @@ async function BuzonesDeEnvio({ empresa }: { empresa: string | null }) {
       <PageHeader
         title="Correo de envío"
         description={`Un buzón por cuenta de ${empresa ?? "la empresa"}. Las propuestas y respuestas de sus campañas salen de ahí con el nombre y la firma de cada ejecutivo; lo que llega se lee cada diez minutos, se liga al registro y se asigna a quien tiene la agenda o envió la propuesta.`}
+        actions={
+          buzones.length > 0 ? (
+            <Link href="/dashboard/mail?vista=buzon" className={buttonClasses({ variant: "secondary" })}>
+              <Inbox size={15} aria-hidden="true" /> Ver lo que llegó
+            </Link>
+          ) : undefined
+        }
       />
 
       {buzones.map((buzon) => {
