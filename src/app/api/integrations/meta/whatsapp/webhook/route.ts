@@ -13,13 +13,29 @@ export const maxDuration = 60;
 
 const MAX_WEBHOOK_BYTES = 1024 * 1024;
 
+/**
+ * Dos apps de Meta escriben a esta misma URL: la antigua de Geimser, con la que
+ * se conectó su número a mano, y «Atlas CRM» de Altius, el proveedor de
+ * tecnología con que cada empresa conecta el suyo desde Atlas. Cada una firma
+ * con su secreto y se verifica con su propio token.
+ */
+function secretosDeApps(): string[] {
+  return [process.env.WHATSAPP_META_APP_SECRET, process.env.ATLAS_META_APP_SECRET]
+    .map((valor) => valor?.trim() ?? "")
+    .filter(Boolean);
+}
+
+function tokensDeVerificacion(): string[] {
+  return [process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN, process.env.ATLAS_META_WEBHOOK_VERIFY_TOKEN]
+    .map((valor) => valor?.trim() ?? "")
+    .filter(Boolean);
+}
+
 export async function GET(request: NextRequest) {
   const mode = request.nextUrl.searchParams.get("hub.mode");
   const suppliedToken = request.nextUrl.searchParams.get("hub.verify_token");
   const challenge = request.nextUrl.searchParams.get("hub.challenge");
-  const expectedToken = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN;
-
-  if (mode === "subscribe" && expectedToken && suppliedToken === expectedToken && challenge) {
+  if (mode === "subscribe" && suppliedToken && tokensDeVerificacion().includes(suppliedToken) && challenge) {
     return new Response(challenge, {
       status: 200,
       headers: { "content-type": "text/plain; charset=utf-8" },
@@ -40,11 +56,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Payload inválido." }, { status: rawBody.length ? 413 : 400 });
   }
 
-  const appSecret = process.env.WHATSAPP_META_APP_SECRET;
-  if (!appSecret) {
+  const secretos = secretosDeApps();
+  if (secretos.length === 0) {
     return NextResponse.json({ error: "Integración no configurada." }, { status: 503 });
   }
-  if (!verifyMetaWebhookSignature(appSecret, rawBody, request.headers.get("x-hub-signature-256"))) {
+  const firma = request.headers.get("x-hub-signature-256");
+  if (!secretos.some((secreto) => verifyMetaWebhookSignature(secreto, rawBody, firma))) {
     return NextResponse.json({ error: "Firma no válida." }, { status: 401 });
   }
 

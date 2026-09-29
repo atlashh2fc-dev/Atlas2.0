@@ -93,6 +93,11 @@ function harness(role: AppRole, assignedTo: string | null = agentId, aiState = "
       validateWhatsAppMedia: () => ({ extension: "jpg", messageType: "image", mimeType: "image/jpeg" }),
       captureWhatsAppMessageMedia: async () => {},
     },
+    "@/lib/meta-registro": {
+      canjearCodigo: async () => "token", suscribirApp: async () => {},
+      datosDelNumero: async () => ({ numero: null, nombre: null }), sincronizarAppDelTelefono: async () => [],
+    },
+    "@/lib/whatsapp-credenciales": { olvidarTokenDelCanal: () => {} },
     "@/lib/whatsapp-provider": {
       isWhatsAppProviderConfigured: () => true, whatsappProvider: () => "test",
       sendWhatsAppText: async () => { providerCalls++; return { providerMessageId: "fake", payload: {} }; },

@@ -1,6 +1,8 @@
 import { CheckCircle2, CircleAlert, Copy, MessageCircle, Send, Smartphone, Webhook, type LucideIcon } from "lucide-react";
 
 import { saveWhatsAppChannelConfig } from "@/app/actions/whatsapp";
+import { ConectarWhatsAppMeta } from "@/components/conectar-whatsapp-meta";
+import { registroDeMeta } from "@/lib/meta-registro";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { isWhatsAppProviderConfigured, whatsappProvider } from "@/lib/whatsapp-provider";
@@ -19,6 +21,7 @@ type Channel = {
   meta_ad_account_id: string | null;
   status: "pending" | "active" | "paused" | "error";
   provider: string | null;
+  coexistencia: boolean | null;
   last_webhook_at: string | null;
   last_error: string | null;
 };
@@ -48,8 +51,8 @@ export default async function WhatsAppIntegrationPage() {
   const hasVerifyToken = Boolean(process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN);
   const hasYCloudApiKey = Boolean(process.env.WHATSAPP_YCLOUD_API_KEY);
   const hasYCloudWebhookSecret = Boolean(process.env.WHATSAPP_YCLOUD_WEBHOOK_SECRET);
-  // Un canal nuevo nace por YCloud: es lo que deja seguir usando el teléfono.
-  const provider = channel ? whatsappProvider(channel.provider) : "ycloud";
+  const provider = channel ? whatsappProvider(channel.provider) : "meta";
+  const registro = registroDeMeta();
   const providerConfigured = isWhatsAppProviderConfigured(provider);
   const ready = providerConfigured && channel?.status === "active";
   const webhookUrl = provider === "ycloud" ? YCLOUD_WEBHOOK_URL : META_WEBHOOK_URL;
@@ -62,7 +65,7 @@ export default async function WhatsAppIntegrationPage() {
           label="Número corporativo"
           value={channel?.display_phone_number ?? "Sin conectar"}
           ok={Boolean(channel)}
-          detail={channel ? `Phone ID ${channel.phone_number_id}` : "Sigue los pasos de abajo"}
+          detail={channel ? (channel.coexistencia ? "También sigue en la app del teléfono" : `Phone ID ${channel.phone_number_id}`) : "Conéctalo con el botón de abajo"}
         />
         <StatusCard
           icon={Webhook}
@@ -80,22 +83,30 @@ export default async function WhatsAppIntegrationPage() {
         />
       </div>
 
-      {provider === "ycloud" && !ready && (
+      {!ready && (
         <SectionCard
           icon={Smartphone}
           tone="teal"
-          title="Conectar el número de tu WhatsApp Business"
-          description="Sigues usando la app en el teléfono; Atlas ve lo que envías y recibes, y anota solo a quién le escribiste en Por contactar."
+          title="Conectar tu WhatsApp Business"
+          description="Inicias sesión con tu Facebook, eliges el WhatsApp Business de la empresa y escaneas un código con el teléfono. El número sigue en la app y Atlas ve lo que envías y recibes."
         >
-          <ol className="list-decimal space-y-2 py-4 pl-9 pr-4 text-sm text-foreground">
-            <li>En <strong>ycloud.com</strong> crea la cuenta y entra a <strong>Create channels › WhatsApp Business App Coexistence</strong>. Escribe tu número, escanea el código con la app WhatsApp Business del teléfono y acepta sincronizar el historial.</li>
-            <li>En <strong>Developers › Webhooks</strong> crea un endpoint con la URL de abajo y marca los eventos de mensajes entrantes, de estado y <strong>whatsapp.smb.message.echoes</strong>.</li>
-            <li>En <strong>Developers › API Keys</strong> copia la clave. En Vercel (proyecto atlas2-0) agrega <code>WHATSAPP_YCLOUD_API_KEY</code> y <code>WHATSAPP_YCLOUD_WEBHOOK_SECRET</code> con la clave y el secreto del webhook. No los pegues en el chat.</li>
-            <li>Completa este formulario con el WABA ID y el Phone Number ID que muestra YCloud, y guarda.</li>
-          </ol>
+          <div className="p-4">
+            {registro.listo && registro.configId ? (
+              <ConectarWhatsAppMeta appId={registro.appId} configId={registro.configId} version={registro.version} />
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                La conexión con Meta todavía no está habilitada en este servidor: falta la configuración de la app de Altius
+                (<code>ATLAS_META_ES_CONFIG_ID</code> y <code>ATLAS_META_APP_SECRET</code>).
+              </p>
+            )}
+          </div>
         </SectionCard>
       )}
 
+      <details className="group rounded-xl border border-border bg-surface shadow-sm" open={Boolean(channel) || undefined}>
+        <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-foreground">
+          {channel ? "Datos del canal" : "Configuración manual (avanzado)"}
+        </summary>
       <SectionCard
         icon={MessageCircle}
         tone="green"
@@ -109,8 +120,8 @@ export default async function WhatsAppIntegrationPage() {
         >
           <Field label="Cómo se conecta" className="md:col-span-2 xl:col-span-3">
             <Select name="provider" defaultValue={provider}>
-              <option value="ycloud">YCloud · el mismo número en la app del teléfono y en Atlas</option>
-              <option value="meta">Meta directo · el número vive solo en Atlas</option>
+              <option value="meta">Meta</option>
+              <option value="ycloud">YCloud</option>
             </Select>
           </Field>
           <Field label="Cuenta de WhatsApp (WABA ID)">
@@ -146,6 +157,8 @@ export default async function WhatsAppIntegrationPage() {
           </div>
         </ActionForm>
       </SectionCard>
+
+      </details>
 
       <SectionCard
         icon={Webhook}

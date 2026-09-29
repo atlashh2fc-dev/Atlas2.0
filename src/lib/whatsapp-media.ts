@@ -7,6 +7,7 @@ import {
   whatsappMediaSpec,
   type WhatsAppMediaMessageType,
 } from "@/lib/whatsapp-media-format";
+import { accesoDeMeta } from "@/lib/whatsapp-credenciales";
 import { whatsappProvider, type WhatsAppProvider } from "@/lib/whatsapp-provider";
 
 export const WHATSAPP_MEDIA_BUCKET = "whatsapp-media";
@@ -62,8 +63,8 @@ function descriptor(payload: JsonRecord, messageType: WhatsAppMediaMessageType) 
   };
 }
 
-async function metaMediaUrl(mediaId: string) {
-  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN?.trim();
+async function metaMediaUrl(mediaId: string, channelId: string | null) {
+  const accessToken = await accesoDeMeta(channelId);
   if (!accessToken) throw new Error("Falta el acceso de Meta para descargar el adjunto.");
   const response = await fetch(
     `https://graph.facebook.com/${whatsappGraphApiVersion()}/${encodeURIComponent(mediaId)}`,
@@ -108,6 +109,7 @@ async function downloadMedia(input: {
   url: string | null;
   mediaId: string | null;
   maxBytes: number;
+  channelId: string | null;
 }) {
   let url = input.url;
   const headers: Record<string, string> = {};
@@ -121,9 +123,9 @@ async function downloadMedia(input: {
       fallbackUrls.push(`https://api.ycloud.com/v2/whatsapp/media/download/${encodeURIComponent(input.mediaId)}`);
     }
   } else {
-    const accessToken = process.env.WHATSAPP_ACCESS_TOKEN?.trim();
+    const accessToken = await accesoDeMeta(input.channelId);
     if (input.mediaId) {
-      const resolved = await metaMediaUrl(input.mediaId);
+      const resolved = await metaMediaUrl(input.mediaId, input.channelId);
       url = resolved.url;
       headers.authorization = `Bearer ${resolved.accessToken}`;
     } else {
@@ -189,7 +191,13 @@ export async function captureWhatsAppMessageMedia(messageId: string) {
       sourceProvider = providerFromPayload(record(webhookEvent?.payload) ?? {});
     }
 
+    const { data: conversacion } = await admin
+      .from("whatsapp_conversations")
+      .select("channel_id")
+      .eq("id", message.conversation_id)
+      .maybeSingle();
     const downloaded = await downloadMedia({
+      channelId: (conversacion?.channel_id as string | undefined) ?? null,
       provider: sourceProvider ?? whatsappProvider(),
       url: media.url,
       mediaId: media.id,

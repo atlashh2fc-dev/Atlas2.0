@@ -6,6 +6,8 @@ import { revalidatePath } from "next/cache";
 import { requireProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { canjearCodigo, datosDelNumero, sincronizarAppDelTelefono, suscribirApp } from "@/lib/meta-registro";
+import { olvidarTokenDelCanal } from "@/lib/whatsapp-credenciales";
 import { assertCanOperateAssignedConversation } from "@/lib/workspace-permissions";
 import {
   WHATSAPP_MEDIA_BUCKET,
@@ -122,6 +124,7 @@ export async function sendWhatsAppMessage(formData: FormData) {
   try {
     const { provider, providerMessageId, payload } = await sendWhatsAppText({
       provider: channel.provider,
+      channelId: conversation.channel_id,
       phoneNumberId: channel.phone_number_id,
       from: channel.display_phone_number,
       to: conversation.contact_phone,
@@ -305,6 +308,7 @@ export async function sendPreparedWhatsAppMedia(input: {
   try {
     const sent = await sendWhatsAppMedia({
       provider: channel.provider,
+      channelId: conversation.channel_id,
       phoneNumberId: channel.phone_number_id,
       from: channel.display_phone_number,
       to: conversation.contact_phone,
@@ -616,4 +620,86 @@ export async function saveWhatsAppChannelConfig(formData: FormData) {
 
   revalidatePath("/dashboard/admin/integraciones/whatsapp");
   revalidatePath("/dashboard/conversaciones/whatsapp");
+}
+
+export type ResultadoConexionMeta =
+  | { ok: true; numero: string; coexistencia: boolean; avisos: string[] }
+  | { ok: false; error: string };
+
+/**
+ * Cierra el registro insertado de Meta: canjea el código por el token de la
+ * empresa, suscribe la app de Altius a su WhatsApp, guarda el canal en la
+ * empresa que se está mirando con el token en la bóveda y, si el número sigue
+ * en la app del teléfono, pide a Meta los contactos y el historial.
+ */
+export async function conectarWhatsAppDesdeMeta(entrada: {
+  codigo: string;
+  wabaId: string;
+  phoneNumberId: string;
+  coexistencia: boolean;
+}): Promise<ResultadoConexionMeta> {
+  const profile = await requireProfile(["admin"]);
+  const codigo = entrada.codigo?.trim();
+  const wabaId = entrada.wabaId?.trim();
+  const phoneNumberId = entrada.phoneNumberId?.trim();
+  if (!codigo || !/^\d+$/.test(wabaId ?? "") || !/^\d+$/.test(phoneNumberId ?? "")) {
+    return { ok: false, error: "Meta no devolvió los datos del número. Vuelve a intentarlo." };
+  }
+
+  const supabase = await createClient();
+  const { data: organizationId } = await supabase.rpc("current_org_id");
+  if (typeof organizationId !== "string") return { ok: false, error: "No se pudo saber en qué empresa estás." };
+
+  const admin = createAdminClient();
+  const { data: existente } = await admin
+    .from("whatsapp_channels")
+    .select("id, organization_id")
+    .eq("phone_number_id", phoneNumberId)
+    .maybeSingle();
+  if (existente && existente.organization_id !== organizationId) {
+    return { ok: false, error: "Ese número ya está conectado a otra empresa." };
+  }
+
+  try {
+    const token = await canjearCodigo(codigo);
+    await suscribirApp(wabaId, token);
+    const { numero, nombre } = await datosDelNumero(phoneNumberId, token);
+
+    const { data: canal, error: canalError } = await admin
+      .from("whatsapp_channels")
+      .upsert(
+        {
+          organization_id: organizationId,
+          provider: "meta",
+          waba_id: wabaId,
+          phone_number_id: phoneNumberId,
+          display_phone_number: numero ?? phoneNumberId,
+          business_name: nombre ?? "WhatsApp Business",
+          status: "active",
+          coexistencia: entrada.coexistencia,
+          conectado_at: new Date().toISOString(),
+          last_error: null,
+          created_by: profile.id,
+          updated_by: profile.id,
+        },
+        { onConflict: "phone_number_id" },
+      )
+      .select("id")
+      .single();
+    if (canalError || !canal) throw new Error(canalError?.message ?? "No se pudo guardar el canal.");
+
+    const { error: tokenError } = await admin.rpc("guardar_token_de_canal_whatsapp", { p_channel_id: canal.id, p_token: token });
+    if (tokenError) throw new Error("No se pudo guardar la credencial del número.");
+    olvidarTokenDelCanal(canal.id);
+
+    const avisos = entrada.coexistencia ? await sincronizarAppDelTelefono(phoneNumberId, token) : [];
+
+    revalidatePath("/dashboard/admin/integraciones/whatsapp");
+    revalidatePath("/dashboard/conversaciones/whatsapp");
+    return { ok: true, numero: numero ?? phoneNumberId, coexistencia: entrada.coexistencia, avisos };
+  } catch (error) {
+    const mensaje = error instanceof Error ? error.message : "Meta no respondió.";
+    console.error("whatsapp_registro_meta_fallido", { message: mensaje.slice(0, 300) });
+    return { ok: false, error: mensaje };
+  }
 }

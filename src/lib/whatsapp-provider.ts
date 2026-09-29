@@ -1,4 +1,5 @@
 import { normalizeWhatsAppPhone, whatsappGraphApiVersion } from "@/lib/whatsapp";
+import { accesoDeMeta } from "@/lib/whatsapp-credenciales";
 
 export type WhatsAppProvider = "meta" | "ycloud";
 
@@ -7,7 +8,11 @@ export type WhatsAppProvider = "meta" | "ycloud";
  * por YCloud, que es quien permite usar el mismo número en la app Business del
  * teléfono y en el CRM (coexistencia). Sin canal, manda la variable de entorno.
  */
-type ConProveedor = { provider?: WhatsAppProvider | string | null };
+type ConProveedor = {
+  provider?: WhatsAppProvider | string | null;
+  /** Con Meta, el canal decide el token: los conectados desde Atlas traen el suyo. */
+  channelId?: string | null;
+};
 
 type SendTextInput = ConProveedor & {
   phoneNumberId: string;
@@ -103,7 +108,7 @@ export async function sendWhatsAppText(input: SendTextInput): Promise<SendTextRe
     return { provider, providerMessageId, payload };
   }
 
-  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN?.trim();
+  const accessToken = await accesoDeMeta(input.channelId);
   if (!accessToken) throw new Error("Falta completar el acceso de Meta para enviar desde Atlas.");
   const response = await fetch(
     `https://graph.facebook.com/${whatsappGraphApiVersion()}/${encodeURIComponent(input.phoneNumberId)}/messages`,
@@ -165,7 +170,7 @@ export async function sendWhatsAppTypingIndicator(input: SendTypingIndicatorInpu
     return;
   }
 
-  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN?.trim();
+  const accessToken = await accesoDeMeta(input.channelId);
   if (!accessToken) throw new Error("Falta completar el acceso de Meta para mostrar el indicador de escritura.");
   const response = await fetch(
     `https://graph.facebook.com/${whatsappGraphApiVersion()}/${encodeURIComponent(input.phoneNumberId)}/messages`,
@@ -231,7 +236,7 @@ export async function sendWhatsAppMedia(input: SendMediaInput): Promise<SendText
     return { provider, providerMessageId, payload };
   }
 
-  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN?.trim();
+  const accessToken = await accesoDeMeta(input.channelId);
   if (!accessToken) throw new Error("Falta completar el acceso de Meta para enviar desde Atlas.");
   const response = await fetch(
     `https://graph.facebook.com/${whatsappGraphApiVersion()}/${encodeURIComponent(input.phoneNumberId)}/messages`,

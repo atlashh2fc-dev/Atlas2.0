@@ -34,7 +34,7 @@ test("la captura histórica resuelve el proveedor desde el evento original", () 
   assert.match(mediaCapture, /whatsapp_webhook_events/);
   assert.match(mediaCapture, /\.eq\("provider_event_key", `message:\$\{message\.provider_message_id\}`\)/);
   assert.match(mediaCapture, /sourceProvider \?\? whatsappProvider\(\)/);
-  assert.match(mediaCapture, /if \(input\.mediaId\)[\s\S]*?metaMediaUrl\(input\.mediaId\)/);
+  assert.match(mediaCapture, /if \(input\.mediaId\)[\s\S]*?metaMediaUrl\(input\.mediaId, input\.channelId\)/);
 });
 
 test("acepta notas de voz de WhatsApp y audios M4A del iPhone", () => {

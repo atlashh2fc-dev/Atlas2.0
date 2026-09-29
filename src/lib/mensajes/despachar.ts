@@ -113,6 +113,7 @@ export async function enviarAFicha(admin: Admin, entrada: { organizationId: stri
   try {
     const { provider, providerMessageId, payload } = await sendWhatsAppText({
       provider: canal.provider,
+      channelId: canal.id,
       phoneNumberId: canal.phone_number_id,
       from: canal.display_phone_number,
       to: normalizeWhatsAppPhone(entrada.destinatario),
