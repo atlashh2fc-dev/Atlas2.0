@@ -86,10 +86,6 @@ export async function sendWhatsAppMessage(formData: FormData) {
   assertCanOperateAssignedConversation(profile, conversation.assigned_to);
   await assertHumanAttentionAllowed(conversation);
 
-  if (!isWhatsAppProviderConfigured()) {
-    throw new Error("Falta completar el acceso del proveedor de WhatsApp para enviar desde Atlas.");
-  }
-
   const admin = createAdminClient();
 
   // Human intervention owns the thread immediately, including while Mercury
@@ -98,11 +94,14 @@ export async function sendWhatsAppMessage(formData: FormData) {
 
   const { data: channel, error: channelError } = await admin
     .from("whatsapp_channels")
-    .select("phone_number_id, display_phone_number, status")
+    .select("phone_number_id, display_phone_number, status, provider")
     .eq("id", conversation.channel_id)
     .single();
   if (channelError || !channel) throw new Error("El canal de WhatsApp no está configurado.");
   if (channel.status !== "active") throw new Error("El canal de WhatsApp todavía no está conectado.");
+  if (!isWhatsAppProviderConfigured(channel.provider)) {
+    throw new Error("Falta completar el acceso del proveedor de WhatsApp para enviar desde Atlas.");
+  }
 
   const clientReference = randomUUID();
   const { data: pendingMessage, error: pendingError } = await admin
@@ -114,7 +113,7 @@ export async function sendWhatsAppMessage(formData: FormData) {
       text_body: body,
       status: "pending",
       sent_by: profile.id,
-      provider_payload: { provider: whatsappProvider(), client_reference: clientReference },
+      provider_payload: { provider: whatsappProvider(channel.provider), client_reference: clientReference },
     })
     .select("id")
     .single();
@@ -122,6 +121,7 @@ export async function sendWhatsAppMessage(formData: FormData) {
 
   try {
     const { provider, providerMessageId, payload } = await sendWhatsAppText({
+      provider: channel.provider,
       phoneNumberId: channel.phone_number_id,
       from: channel.display_phone_number,
       to: conversation.contact_phone,
@@ -220,9 +220,6 @@ export async function sendPreparedWhatsAppMedia(input: {
   if (caption.length > MAX_MEDIA_CAPTION_LENGTH) {
     throw new Error("El texto de la imagen supera los 1.024 caracteres.");
   }
-  if (!isWhatsAppProviderConfigured()) {
-    throw new Error("Falta completar el acceso del proveedor de WhatsApp para enviar desde Atlas.");
-  }
 
   const admin = createAdminClient();
   const { data: upload, error: uploadError } = await admin
@@ -268,11 +265,14 @@ export async function sendPreparedWhatsAppMedia(input: {
 
   const { data: channel, error: channelError } = await admin
     .from("whatsapp_channels")
-    .select("phone_number_id, display_phone_number, status")
+    .select("phone_number_id, display_phone_number, status, provider")
     .eq("id", conversation.channel_id)
     .single();
   if (channelError || !channel) throw new Error("El canal de WhatsApp no está configurado.");
   if (channel.status !== "active") throw new Error("El canal de WhatsApp todavía no está conectado.");
+  if (!isWhatsAppProviderConfigured(channel.provider)) {
+    throw new Error("Falta completar el acceso del proveedor de WhatsApp para enviar desde Atlas.");
+  }
 
   await claimHumanAttention(conversation, profile.id, "El ejecutivo envió un adjunto manualmente.");
 
@@ -292,7 +292,7 @@ export async function sendPreparedWhatsAppMedia(input: {
       media_file_name: upload.file_name,
       media_status: "ready",
       provider_payload: {
-        provider: whatsappProvider(),
+        provider: whatsappProvider(channel.provider),
         client_reference: upload.client_reference,
         upload_id: upload.id,
       },
@@ -304,6 +304,7 @@ export async function sendPreparedWhatsAppMedia(input: {
   await admin.from("whatsapp_media_uploads").update({ message_id: pendingMessage.id }).eq("id", upload.id);
   try {
     const sent = await sendWhatsAppMedia({
+      provider: channel.provider,
       phoneNumberId: channel.phone_number_id,
       from: channel.display_phone_number,
       to: conversation.contact_phone,
@@ -534,27 +535,44 @@ export async function saveWhatsAppChannelConfig(formData: FormData) {
   const metaBusinessId = String(formData.get("meta_business_id") ?? "").trim() || null;
   const metaAdAccountId = String(formData.get("meta_ad_account_id") ?? "").trim() || null;
   const campaignId = String(formData.get("campaign_id") ?? "").trim();
+  const provider = whatsappProvider(String(formData.get("provider") ?? "").trim() || null);
 
-  if (![wabaId, phoneNumberId, displayPhoneNumber, businessName, campaignId].every(Boolean)) {
-    throw new Error("Completa el número, la cuenta de WhatsApp y la campaña.");
+  if (![wabaId, phoneNumberId, displayPhoneNumber, businessName].every(Boolean)) {
+    throw new Error("Completa el número y la cuenta de WhatsApp.");
   }
   if (!/^\d+$/.test(wabaId) || !/^\d+$/.test(phoneNumberId)) {
     throw new Error("Los identificadores de Meta deben ser numéricos.");
   }
 
-  const admin = createAdminClient();
-  const { data: campaign, error: campaignError } = await admin
-    .from("campaigns")
-    .select("id, is_active")
-    .eq("id", campaignId)
-    .single();
-  if (campaignError || !campaign?.is_active) throw new Error("Selecciona una campaña activa.");
+  // El canal es de la empresa que se está mirando. Antes quedaba en la empresa
+  // por defecto de la base (Geimser) aunque se configurara desde otra.
+  const supabase = await createClient();
+  const { data: organizationId } = await supabase.rpc("current_org_id");
+  if (typeof organizationId !== "string") throw new Error("No se pudo saber en qué empresa estás.");
 
-  const status = isWhatsAppProviderConfigured() ? "active" : "pending";
+  const admin = createAdminClient();
+  if (campaignId) {
+    // Leída con la sesión: una campaña de otra empresa no aparece.
+    const { data: campaign } = await supabase.from("campaigns").select("id, is_active").eq("id", campaignId).maybeSingle();
+    if (!campaign?.is_active) throw new Error("Selecciona una campaña activa de esta empresa.");
+  }
+
+  const { data: existente } = await admin
+    .from("whatsapp_channels")
+    .select("organization_id")
+    .eq("phone_number_id", phoneNumberId)
+    .maybeSingle();
+  if (existente && existente.organization_id !== organizationId) {
+    throw new Error("Ese número ya está conectado a otra empresa.");
+  }
+
+  const status = isWhatsAppProviderConfigured(provider) ? "active" : "pending";
   const { data: channel, error: channelError } = await admin
     .from("whatsapp_channels")
     .upsert(
       {
+        organization_id: organizationId,
+        provider,
         waba_id: wabaId,
         phone_number_id: phoneNumberId,
         display_phone_number: displayPhoneNumber,
@@ -570,6 +588,11 @@ export async function saveWhatsAppChannelConfig(formData: FormData) {
     .select("id")
     .single();
   if (channelError || !channel) throw new Error(channelError?.message ?? "No se pudo guardar el canal.");
+
+  if (!campaignId) {
+    revalidatePath("/dashboard/admin/integraciones/whatsapp");
+    return;
+  }
 
   const { data: defaultRoute, error: routeReadError } = await admin
     .from("whatsapp_campaign_routes")

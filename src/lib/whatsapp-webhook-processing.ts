@@ -97,6 +97,16 @@ async function channelForEvent(admin: AdminClient, event: ParsedWhatsAppEvent) {
   return null;
 }
 
+async function anotarEnvioDesdeElTelefono(admin: AdminClient, organizationId: string, telefono: string, enviadoAt: string) {
+  const { error } = await admin.rpc("anotar_whatsapp_desde_el_telefono", {
+    p_organization_id: organizationId,
+    p_telefono: telefono,
+    p_enviado_at: enviadoAt,
+  });
+  // Anotar es un extra: si falla, el mensaje igual se guarda en su conversación.
+  if (error) console.error("whatsapp_eco_sin_anotar", { code: error.code, message: error.message.slice(0, 200) });
+}
+
 async function markWebhookEvent(
   admin: AdminClient,
   id: string,
@@ -184,6 +194,13 @@ export async function processWhatsAppEvents(
         await markWebhookEvent(admin, storedEvent.id, "unmapped", "Número sin canal operativo en Atlas.");
         result.unmapped += 1;
         continue;
+      }
+
+      // Un mensaje saliente que llega por el webhook se escribió fuera de Atlas:
+      // desde la app WhatsApp Business del teléfono. Si va a alguien de Por
+      // contactar, queda anotado como «Le escribí» sin que nadie lo marque.
+      if (event.direction === "outbound" && channel.organization_id) {
+        await anotarEnvioDesdeElTelefono(admin, channel.organization_id as string, event.contactPhone, event.timestamp);
       }
 
       const campaignId = await campaignForEvent(admin, channel.id, event);

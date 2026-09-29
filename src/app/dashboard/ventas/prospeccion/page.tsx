@@ -200,7 +200,8 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
               {toques.map((t) => {
                 const lead = primero(t.leads);
                 const nombre = String(lead?.extra?.company_name ?? lead?.full_name ?? "Prospecto");
-                const quien = primero(t.profiles)?.full_name ?? "—";
+                // Sin autor: lo anotó el eco de un mensaje enviado desde la app del teléfono.
+                const quien = primero(t.profiles)?.full_name ?? (t.hecho_por ? "—" : "Desde tu WhatsApp");
                 const deshacible = t.hecho_por === profile.id && t.resultado !== "interesado" && ahora.getTime() - new Date(t.created_at).getTime() < 24 * 60 * 60 * 1000;
                 return (
                   <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">

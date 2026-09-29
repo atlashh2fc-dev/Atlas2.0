@@ -18,6 +18,7 @@ type Channel = {
   meta_business_id: string | null;
   meta_ad_account_id: string | null;
   status: "pending" | "active" | "paused" | "error";
+  provider: string | null;
   last_webhook_at: string | null;
   last_error: string | null;
 };
@@ -31,25 +32,25 @@ function formatDateTime(value: string | null) {
 export default async function WhatsAppIntegrationPage() {
   await requireProfile(["admin"]);
   const supabase = await createClient();
-  const [{ data: channelData }, { data: campaigns }, { data: route }] = await Promise.all([
-    supabase.from("whatsapp_channels").select("*").order("created_at").limit(1).maybeSingle(),
+  // Solo el canal de la empresa que se está mirando: el dueño de la plataforma
+  // ve todas por RLS, y antes esta página mostraba el de Geimser en cualquiera.
+  const { data: organizationId } = await supabase.rpc("current_org_id");
+  const [{ data: channelData }, { data: campaigns }] = await Promise.all([
+    supabase.from("whatsapp_channels").select("*").eq("organization_id", organizationId as string).order("created_at").limit(1).maybeSingle(),
     supabase.from("campaigns").select("id, name").eq("is_active", true).order("name"),
-    supabase
-      .from("whatsapp_campaign_routes")
-      .select("campaign_id")
-      .eq("is_default", true)
-      .eq("is_active", true)
-      .limit(1)
-      .maybeSingle(),
   ]);
   const channel = channelData as Channel | null;
+  const { data: route } = channel
+    ? await supabase.from("whatsapp_campaign_routes").select("campaign_id").eq("channel_id", channel.id).eq("is_default", true).eq("is_active", true).limit(1).maybeSingle()
+    : { data: null };
   const hasAppSecret = Boolean(process.env.WHATSAPP_META_APP_SECRET);
   const hasAccessToken = Boolean(process.env.WHATSAPP_ACCESS_TOKEN);
   const hasVerifyToken = Boolean(process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN);
   const hasYCloudApiKey = Boolean(process.env.WHATSAPP_YCLOUD_API_KEY);
   const hasYCloudWebhookSecret = Boolean(process.env.WHATSAPP_YCLOUD_WEBHOOK_SECRET);
-  const provider = whatsappProvider();
-  const providerConfigured = isWhatsAppProviderConfigured();
+  // Un canal nuevo nace por YCloud: es lo que deja seguir usando el teléfono.
+  const provider = channel ? whatsappProvider(channel.provider) : "ycloud";
+  const providerConfigured = isWhatsAppProviderConfigured(provider);
   const ready = providerConfigured && channel?.status === "active";
   const webhookUrl = provider === "ycloud" ? YCLOUD_WEBHOOK_URL : META_WEBHOOK_URL;
 
@@ -59,9 +60,9 @@ export default async function WhatsAppIntegrationPage() {
         <StatusCard
           icon={Smartphone}
           label="Número corporativo"
-          value={channel?.display_phone_number ?? "+56 9 7415 8774"}
+          value={channel?.display_phone_number ?? "Sin conectar"}
           ok={Boolean(channel)}
-          detail={channel ? `Phone ID ${channel.phone_number_id}` : "Activo identificado en Meta"}
+          detail={channel ? `Phone ID ${channel.phone_number_id}` : "Sigue los pasos de abajo"}
         />
         <StatusCard
           icon={Webhook}
@@ -79,42 +80,60 @@ export default async function WhatsAppIntegrationPage() {
         />
       </div>
 
+      {provider === "ycloud" && !ready && (
+        <SectionCard
+          icon={Smartphone}
+          tone="teal"
+          title="Conectar el número de tu WhatsApp Business"
+          description="Sigues usando la app en el teléfono; Atlas ve lo que envías y recibes, y anota solo a quién le escribiste en Por contactar."
+        >
+          <ol className="list-decimal space-y-2 py-4 pl-9 pr-4 text-sm text-foreground">
+            <li>En <strong>ycloud.com</strong> crea la cuenta y entra a <strong>Create channels › WhatsApp Business App Coexistence</strong>. Escribe tu número, escanea el código con la app WhatsApp Business del teléfono y acepta sincronizar el historial.</li>
+            <li>En <strong>Developers › Webhooks</strong> crea un endpoint con la URL de abajo y marca los eventos de mensajes entrantes, de estado y <strong>whatsapp.smb.message.echoes</strong>.</li>
+            <li>En <strong>Developers › API Keys</strong> copia la clave. En Vercel (proyecto atlas2-0) agrega <code>WHATSAPP_YCLOUD_API_KEY</code> y <code>WHATSAPP_YCLOUD_WEBHOOK_SECRET</code> con la clave y el secreto del webhook. No los pegues en el chat.</li>
+            <li>Completa este formulario con el WABA ID y el Phone Number ID que muestra YCloud, y guarda.</li>
+          </ol>
+        </SectionCard>
+      )}
+
       <SectionCard
         icon={MessageCircle}
         tone="green"
         title="Canal y campaña de destino"
-        description="Cada conversación nueva crea o reutiliza un lead en esta campaña. Los secretos del proveedor no se guardan en la base."
+        description="Los mensajes que te lleguen crean o reutilizan un lead en la campaña elegida. Las claves del proveedor no se guardan en la base."
       >
         <ActionForm
           action={saveWhatsAppChannelConfig}
           success="Canal de WhatsApp guardado"
           className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3"
         >
-          <Field label="Cuenta de WhatsApp (WABA ID)">
-            <Input name="waba_id" defaultValue={channel?.waba_id ?? "1111675941525164"} required />
+          <Field label="Cómo se conecta" className="md:col-span-2 xl:col-span-3">
+            <Select name="provider" defaultValue={provider}>
+              <option value="ycloud">YCloud · el mismo número en la app del teléfono y en Atlas</option>
+              <option value="meta">Meta directo · el número vive solo en Atlas</option>
+            </Select>
           </Field>
-          <Field label="Identificador del número">
-            <Input name="phone_number_id" defaultValue={channel?.phone_number_id ?? "1245124622024399"} required />
+          <Field label="Cuenta de WhatsApp (WABA ID)">
+            <Input name="waba_id" defaultValue={channel?.waba_id ?? ""} inputMode="numeric" placeholder="1111675941525164" required />
+          </Field>
+          <Field label="Identificador del número (Phone Number ID)">
+            <Input name="phone_number_id" defaultValue={channel?.phone_number_id ?? ""} inputMode="numeric" placeholder="1245124622024399" required />
           </Field>
           <Field label="Número visible">
-            <Input
-              name="display_phone_number"
-              defaultValue={channel?.display_phone_number ?? "+56 9 7415 8774"}
-              required
-            />
+            <Input name="display_phone_number" defaultValue={channel?.display_phone_number ?? ""} placeholder="+56 9 1234 5678" required />
           </Field>
           <Field label="Nombre del negocio">
-            <Input name="business_name" defaultValue={channel?.business_name ?? "Geimser"} required />
+            <Input name="business_name" defaultValue={channel?.business_name ?? ""} placeholder="Altius Ignite" required />
           </Field>
-          <Field label="Portfolio comercial de Meta">
-            <Input name="meta_business_id" defaultValue={channel?.meta_business_id ?? "1231030185256498"} />
+          <Field label="Portfolio comercial de Meta (opcional)">
+            <Input name="meta_business_id" defaultValue={channel?.meta_business_id ?? ""} inputMode="numeric" />
           </Field>
-          <Field label="Cuenta publicitaria">
-            <Input name="meta_ad_account_id" defaultValue={channel?.meta_ad_account_id ?? "1479484023229361"} />
+          <Field label="Cuenta publicitaria (opcional)">
+            <Input name="meta_ad_account_id" defaultValue={channel?.meta_ad_account_id ?? ""} inputMode="numeric" />
           </Field>
-          <Field label="Campaña de Atlas" className="md:col-span-2 xl:col-span-3">
-            <Select name="campaign_id" defaultValue={route?.campaign_id ?? ""} required>
-              <option value="">Selecciona una campaña</option>
+          <Field label="Campaña para los mensajes que te lleguen (opcional)" className="md:col-span-2 xl:col-span-3">
+            <Select name="campaign_id" defaultValue={route?.campaign_id ?? ""}>
+              <option value="">Ninguna por ahora</option>
               {(campaigns ?? []).map((campaign) => (
                 <option key={campaign.id} value={campaign.id}>
                   {campaign.name}

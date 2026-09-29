@@ -66,14 +66,14 @@ export type EnvioAConversacion =
  */
 export async function enviarAFicha(admin: Admin, entrada: { organizationId: string; cuentaId: string; destinatario: string; cuerpo: string; sentBy?: string | null; origen?: Record<string, unknown> }): Promise<EnvioAConversacion> {
   const [{ data: canal }, { data: organizacion }] = await Promise.all([
-    admin.from("whatsapp_channels").select("id, phone_number_id, display_phone_number, status").eq("organization_id", entrada.organizationId).order("created_at").limit(1).maybeSingle(),
+    admin.from("whatsapp_channels").select("id, phone_number_id, display_phone_number, status, provider").eq("organization_id", entrada.organizationId).order("created_at").limit(1).maybeSingle(),
     admin.from("organizations").select("slug").eq("id", entrada.organizationId).single(),
   ]);
   const esDemo = typeof organizacion?.slug === "string" && organizacion.slug.startsWith("demo-");
   if (!canal) {
     return { estado: "fallido", error: "La empresa no tiene un canal de WhatsApp. Configúralo en Integraciones.", conversationId: null, whatsappMessageId: null };
   }
-  const canalListo = canal.status === "active" && isWhatsAppProviderConfigured();
+  const canalListo = canal.status === "active" && isWhatsAppProviderConfigured(canal.provider);
   if (!canalListo && !esDemo) {
     return { estado: "fallido", error: "El canal de WhatsApp de la empresa no está conectado. Actívalo en Integraciones.", conversationId: null, whatsappMessageId: null };
   }
@@ -94,7 +94,7 @@ export async function enviarAFicha(admin: Admin, entrada: { organizationId: stri
       text_body: entrada.cuerpo,
       status: "pending",
       sent_by: entrada.sentBy ?? null,
-      provider_payload: { provider: canalListo ? whatsappProvider() : "simulado", client_reference: clientReference, ...(entrada.origen ?? {}) },
+      provider_payload: { provider: canalListo ? whatsappProvider(canal.provider) : "simulado", client_reference: clientReference, ...(entrada.origen ?? {}) },
     })
     .select("id")
     .single();
@@ -112,6 +112,7 @@ export async function enviarAFicha(admin: Admin, entrada: { organizationId: stri
 
   try {
     const { provider, providerMessageId, payload } = await sendWhatsAppText({
+      provider: canal.provider,
       phoneNumberId: canal.phone_number_id,
       from: canal.display_phone_number,
       to: normalizeWhatsAppPhone(entrada.destinatario),

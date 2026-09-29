@@ -2,7 +2,14 @@ import { normalizeWhatsAppPhone, whatsappGraphApiVersion } from "@/lib/whatsapp"
 
 export type WhatsAppProvider = "meta" | "ycloud";
 
-type SendTextInput = {
+/**
+ * Cada canal dice por dónde sale: Geimser habla directo con Meta y Altius pasa
+ * por YCloud, que es quien permite usar el mismo número en la app Business del
+ * teléfono y en el CRM (coexistencia). Sin canal, manda la variable de entorno.
+ */
+type ConProveedor = { provider?: WhatsAppProvider | string | null };
+
+type SendTextInput = ConProveedor & {
   phoneNumberId: string;
   from: string;
   to: string;
@@ -16,7 +23,7 @@ type SendTextResult = {
   payload: Record<string, unknown>;
 };
 
-type SendMediaInput = {
+type SendMediaInput = ConProveedor & {
   phoneNumberId: string;
   from: string;
   to: string;
@@ -26,7 +33,7 @@ type SendMediaInput = {
   clientReference: string;
 };
 
-type SendTypingIndicatorInput = {
+type SendTypingIndicatorInput = ConProveedor & {
   phoneNumberId: string;
   providerMessageId: string;
 };
@@ -41,12 +48,13 @@ function text(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-export function whatsappProvider(): WhatsAppProvider {
+export function whatsappProvider(delCanal?: WhatsAppProvider | string | null): WhatsAppProvider {
+  if (delCanal === "ycloud" || delCanal === "meta") return delCanal;
   return process.env.WHATSAPP_PROVIDER?.trim().toLowerCase() === "ycloud" ? "ycloud" : "meta";
 }
 
-export function isWhatsAppProviderConfigured(): boolean {
-  if (whatsappProvider() === "ycloud") {
+export function isWhatsAppProviderConfigured(delCanal?: WhatsAppProvider | string | null): boolean {
+  if (whatsappProvider(delCanal) === "ycloud") {
     return Boolean(
       process.env.WHATSAPP_YCLOUD_API_KEY?.trim()
       && process.env.WHATSAPP_YCLOUD_WEBHOOK_SECRET?.trim(),
@@ -60,7 +68,7 @@ export function isWhatsAppProviderConfigured(): boolean {
 }
 
 export async function sendWhatsAppText(input: SendTextInput): Promise<SendTextResult> {
-  const provider = whatsappProvider();
+  const provider = whatsappProvider(input.provider);
   if (provider === "ycloud") {
     const apiKey = process.env.WHATSAPP_YCLOUD_API_KEY?.trim();
     if (!apiKey) throw new Error("Falta completar la clave API de YCloud.");
@@ -128,7 +136,7 @@ export async function sendWhatsAppText(input: SendTextInput): Promise<SendTextRe
 }
 
 export async function sendWhatsAppTypingIndicator(input: SendTypingIndicatorInput): Promise<void> {
-  const provider = whatsappProvider();
+  const provider = whatsappProvider(input.provider);
   if (provider === "ycloud") {
     const apiKey = process.env.WHATSAPP_YCLOUD_API_KEY?.trim();
     if (!apiKey) throw new Error("Falta completar la clave API de YCloud.");
@@ -185,7 +193,7 @@ export async function sendWhatsAppTypingIndicator(input: SendTypingIndicatorInpu
 }
 
 export async function sendWhatsAppMedia(input: SendMediaInput): Promise<SendTextResult> {
-  const provider = whatsappProvider();
+  const provider = whatsappProvider(input.provider);
   const media = input.messageType === "image"
     ? { link: input.mediaUrl, ...(input.caption?.trim() ? { caption: input.caption.trim() } : {}) }
     : { link: input.mediaUrl };
