@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   ReactFlow,
   Background,
@@ -20,7 +20,7 @@ import {
   type NodeHandle,
   useReactFlow,
 } from "@xyflow/react";
-import { ListChecks, X } from "lucide-react";
+import { ListChecks, Redo2, Undo2, X } from "lucide-react";
 import "@xyflow/react/dist/style.css";
 import type { WorkflowFieldType, WorkflowStep, WorkflowStepBranch } from "@/lib/types";
 import { WORKFLOW_FIELD_TYPES } from "@/lib/types";
@@ -31,10 +31,13 @@ import {
   createWorkflowStepNode,
   deleteBranch,
   deleteWorkflowStepNode,
+  restoreBranch,
+  restoreWorkflowStepNode,
   setStartStep,
   updateWorkflowStepNode,
   updateWorkflowStepPosition,
   upsertBranch,
+  type DeletedStepSnapshot,
 } from "@/app/actions/workflows";
 
 const ROW_HEIGHT = 30;
@@ -64,10 +67,15 @@ function stepRows(step: WorkflowStep): { id: string; label: string }[] {
 
 interface StepNodeData extends Record<string, unknown> {
   step: WorkflowStep;
-  onSelect: (id: string) => void;
-  onDelete: (id: string) => void;
   selected: boolean;
 }
+
+// Las acciones de la tarjeta llegan por contexto y no dentro de `data`: así los
+// nodos solo cargan datos y las acciones pueden usar el historial del lienzo.
+const StepActionsContext = createContext<{
+  onSelect: (id: string) => void;
+  onDelete: (id: string) => void;
+}>({ onSelect: () => {}, onDelete: () => {} });
 
 type StepFlowNode = Node<StepNodeData, "stepNode">;
 
@@ -77,11 +85,12 @@ function fieldTypeLabel(t: WorkflowFieldType) {
 
 function StepNode({ data }: NodeProps<StepFlowNode>) {
   const { step } = data;
+  const actions = useContext(StepActionsContext);
   const rows = stepRows(step);
 
   return (
     <div
-      onClick={() => data.onSelect(step.id)}
+      onClick={() => actions.onSelect(step.id)}
       className={`group relative w-64 cursor-pointer rounded-xl border bg-surface-solid shadow-sm transition-shadow hover:shadow-md ${
         data.selected ? "border-primary ring-2 ring-ring" : "border-border"
       }`}
@@ -116,7 +125,7 @@ function StepNode({ data }: NodeProps<StepFlowNode>) {
         onMouseDown={(event) => event.stopPropagation()}
         onClick={(event) => {
           event.stopPropagation();
-          data.onDelete(step.id);
+          actions.onDelete(step.id);
         }}
         className={`nodrag nopan absolute right-2 top-2 z-10 grid size-6 place-items-center rounded-md border border-danger/30 bg-surface-solid text-danger shadow-sm transition hover:bg-danger-bg focus:outline-none focus:ring-2 focus:ring-danger/40 ${
           data.selected ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus:opacity-100"
@@ -204,8 +213,6 @@ function buildHandles(step: WorkflowStep): NodeHandle[] {
 
 function stepToNode(
   step: WorkflowStep,
-  onSelect: (id: string) => void,
-  onDelete: (id: string) => void,
   selectedId: string | null
 ): StepFlowNode {
   const height = HEADER_HEIGHT + stepRows(step).length * ROW_HEIGHT;
@@ -213,7 +220,7 @@ function stepToNode(
     id: step.id,
     type: "stepNode",
     position: { x: step.pos_x, y: step.pos_y },
-    data: { step, onSelect, onDelete, selected: step.id === selectedId },
+    data: { step, selected: step.id === selectedId },
     draggable: true,
     width: NODE_WIDTH,
     height,
@@ -236,7 +243,7 @@ function branchToEdge(b: WorkflowStepBranch): Edge | null {
     style: { strokeWidth: 2 },
     labelBgPadding: [4, 2],
     labelBgBorderRadius: 4,
-    data: { branchId: b.id, fromOption: b.from_option },
+    data: { branchId: b.id, fromOption: b.from_option, createdAt: b.created_at },
   };
 }
 
@@ -250,6 +257,52 @@ export function WorkflowCanvas(props: {
       <WorkflowCanvasInner {...props} />
     </ReactFlowProvider>
   );
+}
+
+// Cada cambio del lienzo se guarda al instante, así que deshacer no puede ser
+// solo visual: cada entrada del historial sabe revertir su cambio en la base y
+// devuelve la entrada que lo vuelve a aplicar (la que va a "Rehacer").
+interface HistoryEntry {
+  label: string;
+  run: () => Promise<HistoryEntry>;
+}
+
+const HISTORY_LIMIT = 100;
+const NOTICE_MS = 8000;
+
+type StepFields = Pick<WorkflowStep, "name" | "description" | "field_type" | "options" | "is_mandatory">;
+type Position2D = { id: string; x: number; y: number };
+
+function fromOptionOf(edge: Edge): string | null {
+  return (edge.data as { fromOption?: string | null } | undefined)?.fromOption ?? null;
+}
+
+function edgeToBranch(edge: Edge, workflowId: string): WorkflowStepBranch {
+  return {
+    id: edge.id,
+    workflow_id: workflowId,
+    from_step_id: edge.source,
+    from_option: fromOptionOf(edge),
+    to_step_id: edge.target,
+    created_at: (edge.data as { createdAt?: string } | undefined)?.createdAt ?? new Date().toISOString(),
+  };
+}
+
+// Reemplaza la conexión por id y cualquier otra que salga del mismo paso con la
+// misma respuesta: cada salida lleva a un solo paso.
+function withBranch(edges: Edge[], branch: WorkflowStepBranch): Edge[] {
+  const kept = edges.filter(
+    (e) => e.id !== branch.id && !(e.source === branch.from_step_id && fromOptionOf(e) === branch.from_option)
+  );
+  const edge = branchToEdge(branch);
+  return edge ? [...kept, edge] : kept;
+}
+
+const noSubscription = () => () => {};
+
+function isTypingTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
 }
 
 function WorkflowCanvasInner({
@@ -270,35 +323,229 @@ function WorkflowCanvasInner({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const { setCenter, fitView } = useReactFlow();
 
+  // Las operaciones del historial se ejecutan fuera del render (atajos,
+  // botones, respuestas del servidor) y necesitan el estado del momento.
+  const stepsRef = useRef(steps);
+  const edgesRef = useRef(edges);
+  useEffect(() => {
+    stepsRef.current = steps;
+    edgesRef.current = edges;
+  }, [steps, edges]);
+
   const onSelect = useCallback((id: string) => setSelectedId(id), []);
 
-  const deleteStep = useCallback(
-    async (stepId: string) => {
+  // ---- Operaciones reversibles ----
+  // Cada una aplica el cambio (base + lienzo) y devuelve la entrada que lo revierte.
+  const ops = useMemo(() => {
+    const removeStep = async (stepId: string, label: string): Promise<HistoryEntry> => {
+      const snapshot = await deleteWorkflowStepNode({ stepId, workflowId });
+      setSteps((prev) => prev.filter((s) => s.id !== stepId));
+      setEdges((prev) => prev.filter((e) => e.source !== stepId && e.target !== stepId));
+      setSelectedId((selected) => (selected === stepId ? null : selected));
+      return { label, run: () => restoreStep(snapshot, label) };
+    };
+
+    const restoreStep = async (snapshot: DeletedStepSnapshot, label: string): Promise<HistoryEntry> => {
+      const { step, branches } = await restoreWorkflowStepNode({ workflowId, snapshot });
+      setSteps((prev) => [
+        ...(step.is_start ? prev.map((s) => ({ ...s, is_start: false })) : prev).filter((s) => s.id !== step.id),
+        step,
+      ]);
+      setEdges((prev) => branches.reduce(withBranch, prev));
+      setSelectedId(step.id);
+      return { label, run: () => removeStep(step.id, label) };
+    };
+
+    const moveSteps = async (positions: Position2D[], label: string): Promise<HistoryEntry> => {
+      const previous = positions
+        .map((p) => stepsRef.current.find((s) => s.id === p.id))
+        .filter((s): s is WorkflowStep => Boolean(s))
+        .map((s) => ({ id: s.id, x: s.pos_x, y: s.pos_y }));
+      setSteps((prev) =>
+        prev.map((s) => {
+          const p = positions.find((item) => item.id === s.id);
+          return p ? { ...s, pos_x: p.x, pos_y: p.y } : s;
+        })
+      );
+      await Promise.all(
+        positions.map((p) => updateWorkflowStepPosition({ stepId: p.id, posX: p.x, posY: p.y }))
+      );
+      return { label, run: () => moveSteps(previous, label) };
+    };
+
+    const updateStep = async (stepId: string, fields: StepFields, label: string): Promise<HistoryEntry> => {
+      const current = stepsRef.current.find((s) => s.id === stepId);
+      if (!current) throw new Error("El paso ya no está en el lienzo.");
+      const previous: StepFields = {
+        name: current.name,
+        description: current.description,
+        field_type: current.field_type,
+        options: current.options,
+        is_mandatory: current.is_mandatory,
+      };
+      await updateWorkflowStepNode({
+        stepId,
+        workflowId,
+        name: fields.name,
+        description: fields.description,
+        fieldType: fields.field_type,
+        options: fields.options,
+        isMandatory: fields.is_mandatory,
+      });
+      setSteps((prev) => prev.map((s) => (s.id === stepId ? { ...s, ...fields } : s)));
+      return { label, run: () => updateStep(stepId, previous, label) };
+    };
+
+    const setStart = async (stepId: string | null, label: string): Promise<HistoryEntry> => {
+      const previous = stepsRef.current.find((s) => s.is_start)?.id ?? null;
+      await setStartStep({ workflowId, stepId });
+      setSteps((prev) => prev.map((s) => ({ ...s, is_start: s.id === stepId })));
+      return { label, run: () => setStart(previous, label) };
+    };
+
+    const removeBranch = async (branchId: string, label: string): Promise<HistoryEntry> => {
+      const edge = edgesRef.current.find((e) => e.id === branchId);
+      if (!edge) throw new Error("La conexión ya no está en el lienzo.");
+      const branch = edgeToBranch(edge, workflowId);
+      await deleteBranch({ branchId, workflowId });
+      setEdges((prev) => prev.filter((e) => e.id !== branchId));
+      return { label, run: () => putBranch(branch, label) };
+    };
+
+    const putBranch = async (branch: WorkflowStepBranch, label: string): Promise<HistoryEntry> => {
+      const restored = await restoreBranch({ workflowId, branch });
+      setEdges((prev) => withBranch(prev, restored));
+      return { label, run: () => removeBranch(restored.id, label) };
+    };
+
+    const connect = async (
+      source: string,
+      target: string,
+      fromOption: string | null,
+      label: string
+    ): Promise<HistoryEntry> => {
+      const replaced = edgesRef.current.find((e) => e.source === source && fromOptionOf(e) === fromOption);
+      const previous = replaced ? edgeToBranch(replaced, workflowId) : null;
+      const branch = await upsertBranch({ workflowId, fromStepId: source, fromOption, toStepId: target });
+      setEdges((prev) => withBranch(prev, branch));
+      return {
+        label,
+        run: async () => {
+          if (previous) await putBranch(previous, label);
+          else await removeBranch(branch.id, label);
+          return { label, run: () => connect(source, target, fromOption, label) };
+        },
+      };
+    };
+
+    return { removeStep, moveSteps, updateStep, setStart, removeBranch, connect };
+  }, [workflowId]);
+
+  // ---- Historial ----
+  const undoStackRef = useRef<HistoryEntry[]>([]);
+  const redoStackRef = useRef<HistoryEntry[]>([]);
+  const busyRef = useRef(false);
+  const [history, setHistory] = useState<{ undo: string | null; redo: string | null }>({
+    undo: null,
+    redo: null,
+  });
+  const [notice, setNotice] = useState<{ text: string; action: "undo" | "redo" } | null>(null);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMac = useSyncExternalStore(
+    noSubscription,
+    () => /Mac|iPhone|iPad/.test(navigator.platform),
+    () => false
+  );
+  const mod = isMac ? "⌘" : "Ctrl+";
+
+  const syncHistory = useCallback(() => {
+    setHistory({
+      undo: undoStackRef.current.at(-1)?.label ?? null,
+      redo: redoStackRef.current.at(-1)?.label ?? null,
+    });
+  }, []);
+
+  const showNotice = useCallback((text: string, action: "undo" | "redo") => {
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    setNotice({ text, action });
+    noticeTimer.current = setTimeout(() => setNotice(null), NOTICE_MS);
+  }, []);
+
+  useEffect(() => () => {
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+  }, []);
+
+  const record = useCallback(
+    (entry: HistoryEntry) => {
+      undoStackRef.current = [...undoStackRef.current, entry].slice(-HISTORY_LIMIT);
+      redoStackRef.current = [];
+      syncHistory();
+    },
+    [syncHistory]
+  );
+
+  const travel = useCallback(
+    async (direction: "undo" | "redo") => {
+      const from = direction === "undo" ? undoStackRef : redoStackRef;
+      const to = direction === "undo" ? redoStackRef : undoStackRef;
+      const entry = from.current.at(-1);
+      if (!entry || busyRef.current) return;
+      busyRef.current = true;
+      from.current = from.current.slice(0, -1);
+      syncHistory();
       try {
-        await deleteWorkflowStepNode({ stepId, workflowId });
-        setSteps((prev) => prev.filter((s) => s.id !== stepId));
-        setEdges((prev) => prev.filter((e) => e.source !== stepId && e.target !== stepId));
-        setSelectedId((selected) => (selected === stepId ? null : selected));
+        const inverse = await entry.run();
+        to.current = [...to.current, inverse].slice(-HISTORY_LIMIT);
+        setErrorMsg(null);
+        showNotice(
+          direction === "undo" ? `Se deshizo: ${entry.label}.` : `Se rehízo: ${entry.label}.`,
+          direction === "undo" ? "redo" : "undo"
+        );
+      } catch (err) {
+        // Queda en su pila para poder reintentarlo.
+        from.current = [...from.current, entry];
+        setErrorMsg(
+          `No se pudo ${direction === "undo" ? "deshacer" : "rehacer"}: ${
+            err instanceof Error ? err.message : "error desconocido"
+          }`
+        );
+      } finally {
+        busyRef.current = false;
+        syncHistory();
+      }
+    },
+    [showNotice, syncHistory]
+  );
+
+  const undo = useCallback(() => void travel("undo"), [travel]);
+  const redo = useCallback(() => void travel("redo"), [travel]);
+
+  // ---- Acciones del usuario (cada una deja su entrada en el historial) ----
+  const deleteStep = useCallback(
+    async (stepId: string, name: string) => {
+      try {
+        record(await ops.removeStep(stepId, `eliminar el paso “${name}”`));
+        showNotice(`Eliminaste el paso “${name}”.`, "undo");
       } catch (err) {
         setErrorMsg(err instanceof Error ? err.message : "No se pudo eliminar el paso.");
       }
     },
-    [workflowId]
+    [ops, record, showNotice]
   );
 
   const requestDeleteStep = useCallback(
     (stepId: string) => {
-      const step = steps.find((item) => item.id === stepId);
-      if (window.confirm(`¿Eliminar el paso “${step?.name ?? "sin nombre"}” y sus conexiones?`)) {
-        void deleteStep(stepId);
+      const name = steps.find((item) => item.id === stepId)?.name ?? "sin nombre";
+      if (window.confirm(`¿Eliminar el paso “${name}” y sus conexiones?\nPodrás deshacerlo con ${mod}Z.`)) {
+        void deleteStep(stepId, name);
       }
     },
-    [deleteStep, steps]
+    [deleteStep, mod, steps]
   );
 
   const nodes = useMemo(
-    () => steps.map((s) => stepToNode(s, onSelect, requestDeleteStep, selectedId)),
-    [steps, selectedId, onSelect, requestDeleteStep]
+    () => steps.map((s) => stepToNode(s, selectedId)),
+    [steps, selectedId]
   );
 
   // El prop declarativo `fitView` solo corre una vez al montar y puede
@@ -313,10 +560,13 @@ function WorkflowCanvasInner({
     return () => cancelAnimationFrame(id);
   }, [steps.length, fitView]);
 
+  // Los borrados pasan por onBeforeDelete (con historial); aquí solo llegan
+  // arrastres y selección.
   const onNodesChange = useCallback((changes: NodeChange[]) => {
+    const kept = changes.filter((c) => c.type !== "remove");
     setSteps((prev) => {
-      const asNodes = prev.map((s) => stepToNode(s, onSelect, requestDeleteStep, selectedId));
-      const updated = applyNodeChanges(changes, asNodes);
+      const asNodes = prev.map((s) => stepToNode(s, selectedId));
+      const updated = applyNodeChanges(kept, asNodes);
       return updated
         .map((n) => {
           const original = prev.find((s) => s.id === n.id);
@@ -325,23 +575,59 @@ function WorkflowCanvasInner({
         })
         .filter((s): s is WorkflowStep => s !== null);
     });
-  }, [onSelect, requestDeleteStep, selectedId]);
+  }, [selectedId]);
 
-  const onNodeDragStop = useCallback((_: unknown, node: Node) => {
-    updateWorkflowStepPosition({ stepId: node.id, posX: node.position.x, posY: node.position.y });
+  const dragStartRef = useRef<Position2D[]>([]);
+
+  const onNodeDragStart = useCallback((_: unknown, _node: Node, dragged: Node[]) => {
+    dragStartRef.current = dragged
+      .map((n) => stepsRef.current.find((s) => s.id === n.id))
+      .filter((s): s is WorkflowStep => Boolean(s))
+      .map((s) => ({ id: s.id, x: s.pos_x, y: s.pos_y }));
   }, []);
 
-  const onEdgesChange = useCallback((changes: EdgeChange[]) => {
-    setEdges((prev) => {
-      const removed = changes.filter((c) => c.type === "remove").map((c) => (c as { id: string }).id);
-      removed.forEach((id) => {
-        const edge = prev.find((e) => e.id === id);
-        const branchId = (edge?.data as { branchId?: string } | undefined)?.branchId;
-        if (branchId) deleteBranch({ branchId, workflowId });
+  const onNodeDragStop = useCallback(
+    (_: unknown, _node: Node, dragged: Node[]) => {
+      const before = dragStartRef.current;
+      dragStartRef.current = [];
+      const after = dragged.map((n) => ({ id: n.id, x: n.position.x, y: n.position.y }));
+      after.forEach((p) => updateWorkflowStepPosition({ stepId: p.id, posX: p.x, posY: p.y }));
+      const moved = after.some((p) => {
+        const b = before.find((item) => item.id === p.id);
+        return b && (b.x !== p.x || b.y !== p.y);
       });
-      return applyEdgeChanges(changes, prev);
-    });
-  }, [workflowId]);
+      if (!moved || before.length === 0) return;
+      const label = after.length === 1 ? "mover el paso" : "mover los pasos";
+      record({ label, run: () => ops.moveSteps(before, label) });
+    },
+    [ops, record]
+  );
+
+  const onEdgesChange = useCallback((changes: EdgeChange[]) => {
+    setEdges((prev) => applyEdgeChanges(changes.filter((c) => c.type !== "remove"), prev));
+  }, []);
+
+  // Suprimir/Retroceso sobre algo seleccionado: se borra por las mismas
+  // operaciones del historial y se cancela el borrado propio de React Flow.
+  const onBeforeDelete = useCallback(
+    async ({ nodes: toDelete, edges: edgesToDelete }: { nodes: Node[]; edges: Edge[] }) => {
+      if (toDelete.length > 0) {
+        toDelete.forEach((n) => requestDeleteStep(n.id));
+        return false;
+      }
+      for (const edge of edgesToDelete) {
+        const label = `quitar la conexión “${edge.label ?? "Por defecto"}”`;
+        try {
+          record(await ops.removeBranch(edge.id, label));
+          showNotice(`Quitaste la conexión “${edge.label ?? "Por defecto"}”.`, "undo");
+        } catch (err) {
+          setErrorMsg(err instanceof Error ? err.message : "No se pudo quitar la conexión.");
+        }
+      }
+      return false;
+    },
+    [ops, record, requestDeleteStep, showNotice]
+  );
 
   const [pendingConnection, setPendingConnection] = useState<{
     source: string;
@@ -350,31 +636,16 @@ function WorkflowCanvasInner({
   } | null>(null);
 
   const commitConnection = useCallback(
-    (source: string, target: string, fromOption: string | null) => {
-      // Reemplaza cualquier rama existente que salga de este paso con la
-      // misma opcion (la identidad de la opcion ahora vive en data.fromOption,
-      // ya que el handle visual "out" es compartido por todas las opciones).
-      setEdges((prev) =>
-        prev.filter(
-          (e) =>
-            !(
-              e.source === source &&
-              ((e.data as { fromOption?: string | null } | undefined)?.fromOption ?? null) === fromOption
-            )
-        )
-      );
-
-      upsertBranch({
-        workflowId,
-        fromStepId: source,
-        fromOption,
-        toStepId: target,
-      }).then((branch) => {
-        const edge = branchToEdge(branch);
-        if (edge) setEdges((prev) => [...prev.filter((e) => e.id !== edge.id), edge]);
-      });
+    async (source: string, target: string, fromOption: string | null) => {
+      const name = (id: string) => stepsRef.current.find((s) => s.id === id)?.name ?? "paso";
+      const label = `conectar “${name(source)}” con “${name(target)}”`;
+      try {
+        record(await ops.connect(source, target, fromOption, label));
+      } catch (err) {
+        setErrorMsg(err instanceof Error ? err.message : "No se pudo guardar la conexión.");
+      }
     },
-    [workflowId]
+    [ops, record]
   );
 
   const onConnect = useCallback(
@@ -387,7 +658,7 @@ function WorkflowCanvasInner({
       if (rows.length <= 1) {
         const onlyRow = rows[0];
         const fromOption = !onlyRow || onlyRow.id === DEFAULT_OPTION_ID ? null : onlyRow.id.replace(/^opt::/, "");
-        commitConnection(connection.source, connection.target, fromOption);
+        void commitConnection(connection.source, connection.target, fromOption);
         return;
       }
 
@@ -412,13 +683,33 @@ function WorkflowCanvasInner({
       setSteps((prev) => [...prev, newStep]);
       setSelectedId(newStep.id);
       setErrorMsg(null);
+      record({ label: "agregar un paso", run: () => ops.removeStep(newStep.id, "agregar un paso") });
       requestAnimationFrame(() => {
         setCenter(newStep.pos_x + 130, newStep.pos_y + 60, { zoom: 1, duration: 400 });
       });
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "No se pudo crear el paso.");
     }
-  }, [workflowId, steps.length, setCenter]);
+  }, [workflowId, steps.length, setCenter, ops, record]);
+
+  // Ctrl+Z / ⌘Z deshace; Ctrl+Shift+Z, ⌘⇧Z o Ctrl+Y rehace. Dentro de un campo
+  // de texto se deja el deshacer propio del navegador.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+      if (isTypingTarget(event.target) || pendingConnection) return;
+      const key = event.key.toLowerCase();
+      if (key === "z" && !event.shiftKey) {
+        event.preventDefault();
+        undo();
+      } else if ((key === "z" && event.shiftKey) || (key === "y" && !event.metaKey)) {
+        event.preventDefault();
+        redo();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [undo, redo, pendingConnection]);
 
   const selectedStep = steps.find((s) => s.id === selectedId) ?? null;
 
@@ -426,15 +717,7 @@ function WorkflowCanvasInner({
   // con el mismo código que usa la ficha: los cambios se guardan al instante y
   // llegan de inmediato a la operación, así que aquí se ve lo que se tipifica.
   const liveBranches = useMemo<WorkflowStepBranch[]>(
-    () =>
-      edges.map((edge) => ({
-        id: edge.id,
-        workflow_id: workflowId,
-        from_step_id: edge.source,
-        from_option: (edge.data as { fromOption?: string | null } | undefined)?.fromOption ?? null,
-        to_step_id: edge.target,
-        created_at: "",
-      })),
+    () => edges.map((edge) => ({ ...edgeToBranch(edge, workflowId), created_at: "" })),
     [edges, workflowId]
   );
   const liveCatalog = useMemo(
@@ -443,7 +726,13 @@ function WorkflowCanvasInner({
   );
   const liveIssues = useMemo(() => validateWorkflow(steps, liveBranches), [steps, liveBranches]);
 
+  const historyButton =
+    "grid size-9 place-items-center rounded-lg border border-border bg-surface-solid text-foreground shadow transition hover:bg-surface-muted focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-surface-solid";
+
+  const stepActions = useMemo(() => ({ onSelect, onDelete: requestDeleteStep }), [onSelect, requestDeleteStep]);
+
   return (
+    <StepActionsContext.Provider value={stepActions}>
     <div className="space-y-4">
     <div className="relative h-[70vh] overflow-hidden rounded-xl border border-border bg-background">
       <ReactFlow
@@ -452,8 +741,11 @@ function WorkflowCanvasInner({
         edges={edges}
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
+        onNodeDragStart={onNodeDragStart}
         onNodeDragStop={onNodeDragStop}
         onEdgesChange={onEdgesChange}
+        onBeforeDelete={onBeforeDelete}
+        deleteKeyCode={["Backspace", "Delete"]}
         onConnect={onConnect}
         onPaneClick={() => setSelectedId(null)}
         minZoom={0.1}
@@ -477,6 +769,32 @@ function WorkflowCanvasInner({
         >
           + Agregar paso
         </button>
+        <div className="flex items-center gap-1" role="group" aria-label="Historial de cambios">
+          <button
+            type="button"
+            onClick={undo}
+            disabled={!history.undo}
+            aria-label={history.undo ? `Deshacer: ${history.undo}` : "Nada que deshacer"}
+            title={history.undo ? `Deshacer: ${history.undo} (${mod}Z)` : `Nada que deshacer (${mod}Z)`}
+            className={historyButton}
+          >
+            <Undo2 className="size-4" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={redo}
+            disabled={!history.redo}
+            aria-label={history.redo ? `Rehacer: ${history.redo}` : "Nada que rehacer"}
+            title={
+              history.redo
+                ? `Rehacer: ${history.redo} (${isMac ? "⌘⇧Z" : "Ctrl+Y"})`
+                : `Nada que rehacer (${isMac ? "⌘⇧Z" : "Ctrl+Y"})`
+            }
+            className={historyButton}
+          >
+            <Redo2 className="size-4" aria-hidden="true" />
+          </button>
+        </div>
         <span className="rounded-lg border border-border bg-surface-solid/90 px-3 py-2 text-xs text-muted-foreground shadow backdrop-blur">
           Arrastra desde el punto junto a cada respuesta hasta el siguiente paso para armar el camino.
         </span>
@@ -494,7 +812,7 @@ function WorkflowCanvasInner({
                   key={row.id}
                   onClick={() => {
                     const fromOption = row.id === DEFAULT_OPTION_ID ? null : row.id.replace(/^opt::/, "");
-                    commitConnection(pendingConnection.source, pendingConnection.target, fromOption);
+                    void commitConnection(pendingConnection.source, pendingConnection.target, fromOption);
                     setPendingConnection(null);
                   }}
                   className={`w-full rounded-lg border border-border px-3 py-2 text-left text-sm hover:bg-surface-muted ${
@@ -524,39 +842,57 @@ function WorkflowCanvasInner({
         </div>
       )}
 
+      <div
+        role="status"
+        aria-live="polite"
+        className="pointer-events-none absolute inset-x-0 bottom-4 z-10 flex justify-center px-4"
+      >
+        {notice && (
+          <div className="pointer-events-auto flex items-center gap-3 rounded-lg border border-border bg-surface-solid px-3 py-2 text-xs text-foreground shadow-lg">
+            <span>{notice.text}</span>
+            <button
+              type="button"
+              onClick={notice.action === "undo" ? undo : redo}
+              disabled={notice.action === "undo" ? !history.undo : !history.redo}
+              className="rounded-md px-2 py-1 font-semibold text-primary hover:bg-surface-muted disabled:opacity-40"
+            >
+              {notice.action === "undo" ? `Deshacer (${mod}Z)` : "Rehacer"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setNotice(null)}
+              aria-label="Cerrar aviso"
+              className="grid size-6 place-items-center rounded-md text-muted-foreground hover:bg-surface-muted hover:text-foreground"
+            >
+              <X className="size-3.5" aria-hidden="true" />
+            </button>
+          </div>
+        )}
+      </div>
+
       {selectedStep && (
         <StepEditorPanel
-          key={selectedStep.id}
+          // Se remonta si los datos guardados cambian (p. ej. al deshacer una
+          // edición), para que el panel no muestre valores viejos.
+          key={`${selectedStep.id}:${selectedStep.name}:${selectedStep.description ?? ""}:${selectedStep.field_type}:${selectedStep.options.join("|")}:${selectedStep.is_mandatory}`}
           step={selectedStep}
           workflowId={workflowId}
           saving={saving}
           onClose={() => setSelectedId(null)}
           onSetStart={async () => {
             try {
-              await setStartStep({ workflowId, stepId: selectedStep.id });
-              setSteps((prev) => prev.map((s) => ({ ...s, is_start: s.id === selectedStep.id })));
+              record(await ops.setStart(selectedStep.id, `marcar “${selectedStep.name}” como inicio`));
             } catch (err) {
               setErrorMsg(err instanceof Error ? err.message : "No se pudo marcar el inicio.");
             }
           }}
           onDelete={async () => {
-            await deleteStep(selectedStep.id);
+            await deleteStep(selectedStep.id, selectedStep.name);
           }}
           onSave={async (patch) => {
             setSaving(true);
             try {
-              await updateWorkflowStepNode({
-                stepId: selectedStep.id,
-                workflowId,
-                name: patch.name,
-                description: patch.description,
-                fieldType: patch.field_type,
-                options: patch.options,
-                isMandatory: patch.is_mandatory,
-              });
-              setSteps((prev) =>
-                prev.map((s) => (s.id === selectedStep.id ? { ...s, ...patch } : s))
-              );
+              record(await ops.updateStep(selectedStep.id, patch, `editar el paso “${patch.name}”`));
               setErrorMsg(null);
             } catch (err) {
               setErrorMsg(err instanceof Error ? err.message : "No se pudo guardar el paso.");
@@ -568,6 +904,7 @@ function WorkflowCanvasInner({
     </div>
     <TypificationPreview catalog={liveCatalog} issues={liveIssues} />
     </div>
+    </StepActionsContext.Provider>
   );
 }
 

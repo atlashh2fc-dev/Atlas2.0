@@ -352,10 +352,19 @@ export async function updateWorkflowStepPosition(input: {
 
 export async function setStartStep(input: {
   workflowId: string;
-  stepId: string;
+  // null solo lo usa el deshacer del lienzo, para volver a un flujo sin inicio.
+  stepId: string | null;
 }): Promise<void> {
   await requireProfile(["admin"]);
   const supabase = await createClient();
+  if (input.stepId === null) {
+    const { error } = await supabase
+      .from("workflow_steps")
+      .update({ is_start: false })
+      .eq("workflow_id", input.workflowId);
+    if (error) throw new Error(error.message);
+    return;
+  }
   // Marcar como inicio un paso intermedio corta la cascada que ve el ejecutivo
   // y reclasifica cada cierre; el lienzo no debe permitirlo.
   const { data: incoming, error: incomingError } = await supabase
@@ -379,14 +388,167 @@ export async function setStartStep(input: {
   if (error) throw new Error(error.message);
 }
 
+// Lo que se pierde al borrar un paso: la fila, sus conexiones (caen en
+// cascada) y el vínculo del diccionario legado (queda en null). El lienzo lo
+// guarda para que Ctrl+Z pueda devolverlo con el mismo id.
+export interface DeletedStepSnapshot {
+  step: WorkflowStep;
+  branches: WorkflowStepBranch[];
+  legacyMapIds: string[];
+}
+
 export async function deleteWorkflowStepNode(input: {
   stepId: string;
   workflowId: string;
-}): Promise<void> {
+}): Promise<DeletedStepSnapshot> {
   await requireProfile(["admin"]);
   const supabase = await createClient();
+
+  const { data: step, error: stepError } = await supabase
+    .from("workflow_steps")
+    .select("*")
+    .eq("id", input.stepId)
+    .eq("workflow_id", input.workflowId)
+    .single();
+  if (stepError || !step) throw new Error(stepError?.message ?? "El paso ya no existe.");
+
+  const { data: branches, error: branchesError } = await supabase
+    .from("workflow_step_branches")
+    .select("*")
+    .eq("workflow_id", input.workflowId)
+    .or(`from_step_id.eq.${input.stepId},to_step_id.eq.${input.stepId}`);
+  if (branchesError) throw new Error(branchesError.message);
+
+  // Si no se puede leer el diccionario legado, el borrado sigue: solo se
+  // perdería ese vínculo al deshacer.
+  const { data: legacy } = await supabase
+    .from("legacy_tipificacion_map")
+    .select("id")
+    .eq("workflow_step_id", input.stepId);
+
   const { error } = await supabase.from("workflow_steps").delete().eq("id", input.stepId);
   if (error) throw new Error(error.message);
+
+  return {
+    step: step as WorkflowStep,
+    branches: (branches ?? []) as WorkflowStepBranch[],
+    legacyMapIds: (legacy ?? []).map((row) => row.id as string),
+  };
+}
+
+// Devuelve una conexión tal como estaba. Si en su salida (paso + respuesta)
+// hay ahora otra conexión, esa se reemplaza: deshacer significa que vuelve a
+// valer la de antes.
+async function putBranch(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  branch: WorkflowStepBranch
+): Promise<WorkflowStepBranch> {
+  let clash = supabase
+    .from("workflow_step_branches")
+    .delete()
+    .eq("workflow_id", branch.workflow_id)
+    .eq("from_step_id", branch.from_step_id)
+    .neq("id", branch.id);
+  clash = branch.from_option === null ? clash.is("from_option", null) : clash.eq("from_option", branch.from_option);
+  const { error: clashError } = await clash;
+  if (clashError) throw new Error(clashError.message);
+
+  const { data, error } = await supabase
+    .from("workflow_step_branches")
+    .upsert(
+      {
+        id: branch.id,
+        workflow_id: branch.workflow_id,
+        from_step_id: branch.from_step_id,
+        from_option: branch.from_option,
+        to_step_id: branch.to_step_id,
+        created_at: branch.created_at,
+      },
+      { onConflict: "id" }
+    )
+    .select("*")
+    .single();
+  if (error) throw new Error(error.message);
+  return data as WorkflowStepBranch;
+}
+
+export async function restoreWorkflowStepNode(input: {
+  workflowId: string;
+  snapshot: DeletedStepSnapshot;
+}): Promise<{ step: WorkflowStep; branches: WorkflowStepBranch[] }> {
+  await requireProfile(["admin"]);
+  const supabase = await createClient();
+  const { step, branches, legacyMapIds } = input.snapshot;
+  if (step.workflow_id !== input.workflowId || branches.some((b) => b.workflow_id !== input.workflowId)) {
+    throw new Error("El paso no pertenece a este flujo.");
+  }
+
+  // Su número de orden pudo tomarlo un paso creado después; en ese caso va al final.
+  const { data: taken } = await supabase
+    .from("workflow_steps")
+    .select("id")
+    .eq("workflow_id", input.workflowId)
+    .eq("step_order", step.step_order)
+    .maybeSingle();
+  let stepOrder = step.step_order;
+  if (taken) {
+    const { data: last } = await supabase
+      .from("workflow_steps")
+      .select("step_order")
+      .eq("workflow_id", input.workflowId)
+      .order("step_order", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    stepOrder = (last?.step_order ?? 0) + 1;
+  }
+
+  if (step.is_start) {
+    await supabase.from("workflow_steps").update({ is_start: false }).eq("workflow_id", input.workflowId);
+  }
+
+  // La fila vuelve completa (incluye columnas que el lienzo no usa, como
+  // result_kind), tal como la leyó el borrado.
+  const { data: restored, error } = await supabase
+    .from("workflow_steps")
+    .insert({ ...step, step_order: stepOrder })
+    .select("*")
+    .single();
+  if (error) throw new Error(error.message);
+
+  // Una conexión hacia o desde un paso que ya no está no se puede devolver.
+  const { data: alive } = await supabase
+    .from("workflow_steps")
+    .select("id")
+    .eq("workflow_id", input.workflowId);
+  const aliveIds = new Set((alive ?? []).map((row) => row.id as string));
+  const restoredBranches: WorkflowStepBranch[] = [];
+  for (const branch of branches) {
+    if (!aliveIds.has(branch.from_step_id)) continue;
+    if (branch.to_step_id && !aliveIds.has(branch.to_step_id)) continue;
+    restoredBranches.push(await putBranch(supabase, branch));
+  }
+
+  if (legacyMapIds.length > 0) {
+    await supabase
+      .from("legacy_tipificacion_map")
+      .update({ workflow_step_id: step.id })
+      .in("id", legacyMapIds)
+      .is("workflow_step_id", null);
+  }
+
+  return { step: restored as WorkflowStep, branches: restoredBranches };
+}
+
+export async function restoreBranch(input: {
+  workflowId: string;
+  branch: WorkflowStepBranch;
+}): Promise<WorkflowStepBranch> {
+  await requireProfile(["admin"]);
+  if (input.branch.workflow_id !== input.workflowId) {
+    throw new Error("La conexión no pertenece a este flujo.");
+  }
+  const supabase = await createClient();
+  return putBranch(supabase, input.branch);
 }
 
 export async function upsertBranch(input: {
