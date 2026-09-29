@@ -52,7 +52,7 @@ function persistRemembered(email: string, remember: boolean) {
   }
 }
 
-export function LoginForm({ linkExpired }: { linkExpired?: boolean }) {
+export function LoginForm({ linkExpired, destino = "/dashboard" }: { linkExpired?: boolean; destino?: string }) {
   const router = useRouter();
   const remembered = useSyncExternalStore(subscribeRemembered, readRemembered, readRememberedOnServer);
 
@@ -109,7 +109,8 @@ export function LoginForm({ linkExpired }: { linkExpired?: boolean }) {
     }
 
     persistRemembered(email.trim(), remember);
-    router.push("/dashboard");
+    // Quien llegó desde un enlace (el aviso de un correo) vuelve a él.
+    router.push(destino);
     router.refresh();
     // No apagamos `loading`: el botón queda en "Entrando…" mientras navega.
   }

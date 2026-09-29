@@ -1,6 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { CABECERA_RUTA } from "@/lib/ruta-pedida";
+
 // `/reset-password` entra acá aunque exija sesión: si el enlace venció, la
 // propia pantalla lo explica y ofrece pedir otro, en vez de rebotar al login sin
 // decir nada. `/api/status` tiene que responder antes de autenticar: es lo que
@@ -60,6 +62,12 @@ export async function updateSession(request: NextRequest) {
   if (MACHINE_ONLY_PATHS.has(request.nextUrl.pathname)) {
     return NextResponse.next({ request });
   }
+  // La ruta pedida viaja a las páginas: un layout no la conoce, y la necesita
+  // para volver a ella tras cambiar a la empresa que tiene esa pantalla.
+  const busqueda = new URLSearchParams(request.nextUrl.search);
+  busqueda.delete("_rsc");
+  const pedida = request.nextUrl.pathname + (busqueda.size > 0 ? `?${busqueda}` : "");
+  request.headers.set(CABECERA_RUTA, pedida);
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -92,6 +100,9 @@ export async function updateSession(request: NextRequest) {
   if (!identified && !isPublic) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    // El enlace de un correo abre con la sesión vencida: tras entrar hay que
+    // llegar a donde apuntaba, no al inicio.
+    url.search = path.startsWith("/dashboard") ? `?next=${encodeURIComponent(pedida)}` : "";
     const redirectResponse = NextResponse.redirect(url);
     for (const cookie of supabaseResponse.cookies.getAll()) {
       redirectResponse.cookies.set(cookie);

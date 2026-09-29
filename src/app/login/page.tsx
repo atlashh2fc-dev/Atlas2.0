@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
+import { rutaSegura } from "@/lib/ruta-pedida";
 import { sesionActual } from "@/lib/sesion.server";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { LoginForm } from "@/components/auth/login-form";
@@ -13,15 +14,16 @@ export const metadata: Metadata = {
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; reason?: string }>;
+  searchParams: Promise<{ error?: string; reason?: string; next?: string }>;
 }) {
-  const { error, reason } = await searchParams;
+  const { error, reason, next } = await searchParams;
+  const destino = rutaSegura(next);
   const forcedLogout = reason === "forced_logout";
 
   // Quien ya tiene sesión abierta no ve esta pantalla. La decisión se toma acá
   // y no en el proxy: el proxy solo mira el token, y un token válido de una
   // sesión cerrada a distancia lo mandaría al panel y de vuelta, en un bucle.
-  if ((await sesionActual()).estado === "activa") redirect("/dashboard");
+  if ((await sesionActual()).estado === "activa") redirect(destino);
 
   return (
     <AuthShell
@@ -33,7 +35,7 @@ export default async function LoginPage({
       }
       footer={<SupportLine />}
     >
-      <LoginForm linkExpired={error === "enlace_invalido"} />
+      <LoginForm linkExpired={error === "enlace_invalido"} destino={destino} />
     </AuthShell>
   );
 }

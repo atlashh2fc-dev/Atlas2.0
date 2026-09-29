@@ -161,9 +161,10 @@ test("middleware exempts exactly the machine endpoints, never adjacent routes", 
   const dependencies = {
     "@supabase/ssr": { createServerClient: () => ({ auth: { getClaims: async () => { authCalls++; return { data: null, error: null }; } } }) },
     "next/server": { NextResponse: { next: () => ({ cookies: { getAll: () => [] }, kind: "next" }), redirect: () => ({ cookies: { set() {} }, kind: "redirect" }) } },
+    "@/lib/ruta-pedida": { CABECERA_RUTA: "x-atlas-ruta" },
   };
   const update = load("../src/lib/supabase/middleware.ts", dependencies).updateSession as (request: unknown) => Promise<{ kind: string }>;
-  const request = (pathname: string) => ({ nextUrl: { pathname, clone: () => new URL(`http://localhost${pathname}`) } });
+  const request = (pathname: string) => ({ headers: new Headers(), nextUrl: { pathname, search: "", clone: () => new URL(`http://localhost${pathname}`) } });
   assert.equal((await update(request("/api/ai/learning-loop/worker"))).kind, "next");
   assert.equal((await update(request("/api/integrations/meta/whatsapp/ai-worker"))).kind, "next");
   assert.equal((await update(request("/api/integrations/meta/whatsapp/timeouts"))).kind, "next");

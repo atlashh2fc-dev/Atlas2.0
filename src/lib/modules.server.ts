@@ -1,12 +1,15 @@
 import { cache } from "react";
-import { notFound } from "next/navigation";
+import { headers } from "next/headers";
+import { notFound, redirect } from "next/navigation";
 
 import type { EmpresaDisponible } from "@/components/selector-empresa";
 import { parseEdicion, type Edicion } from "@/lib/ediciones";
 import { APP_MODULES, type AppModule } from "@/lib/modules";
 import type { AppRole } from "@/lib/types";
 import { getWorkspacePermissions } from "@/lib/workspace-permissions";
+import { CABECERA_RUTA, esPrecarga, rutaSegura } from "@/lib/ruta-pedida";
 import { sesionActual } from "@/lib/sesion.server";
+import { createClient } from "@/lib/supabase/server";
 
 /**
  * Lectura de módulos contra la base. Vive aparte de `modules.ts` porque el menú
@@ -79,10 +82,26 @@ export async function modulosActivos(): Promise<AppModule[]> {
 /**
  * Cierra una página que no corresponde a la empresa activa.
  *
- * Responde 404 y no 403 a propósito: para esta empresa esa pantalla no existe,
- * y decir "existe pero no puedes" ya revela algo del otro negocio.
+ * Si otra de las empresas de la persona sí tiene la pantalla, se cambia a esa
+ * y se vuelve a la misma ruta: un enlace de correo (el aviso de Prospección de
+ * Altius abierto estando en Geimser) tiene que abrir, no dar 404. Solo cuando
+ * ninguna de sus empresas la tiene responde 404, y no 403 a propósito: para
+ * ella esa pantalla no existe, y decir "existe pero no puedes" ya revela algo
+ * del otro negocio.
  */
 export async function requireModule(...permitidos: AppModule[]): Promise<void> {
   const activos = await modulosActivos();
-  if (!permitidos.some((modulo) => activos.includes(modulo))) notFound();
+  if (permitidos.some((modulo) => activos.includes(modulo))) return;
+
+  const cabeceras = await headers();
+  const ruta = rutaSegura(cabeceras.get(CABECERA_RUTA), "");
+  if (ruta && !esPrecarga(cabeceras)) {
+    const supabase = await createClient();
+    const { data: empresa, error } = await supabase.rpc("empresa_con_modulo", { p_modulos: permitidos });
+    if (error) console.error("[empresa] no se pudo buscar la empresa con la pantalla", error.message);
+    if (typeof empresa === "string") {
+      redirect(`/cambiar-empresa?empresa=${empresa}&volver=${encodeURIComponent(ruta)}`);
+    }
+  }
+  notFound();
 }
