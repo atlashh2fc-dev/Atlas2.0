@@ -36,7 +36,7 @@ export default async function CorreoPage() {
         description={
           clinica
             ? `El buzón desde el que ${empresa ?? "la clínica"} lee y responde. Lo que llega se liga a la ficha; las respuestas salen por el mismo buzón.`
-            : `El buzón desde el que ${empresa ?? "la empresa"} envía las propuestas del cotizador. Atlas lee cada diez minutos lo que llega, incluidas las respuestas de los clientes.`
+            : `El buzón único de la cuenta Equifax. Las propuestas y respuestas salen de acá con el nombre y la firma de cada ejecutivo; Atlas lee lo que llega cada diez minutos, lo liga al registro y se lo asigna a quien tiene la agenda o envió la propuesta.`
         }
       />
 
@@ -68,7 +68,7 @@ export default async function CorreoPage() {
       <SectionCard icon={Mail} tone="teal" title="Buzón" description="Los datos que te entrega tu proveedor de correo. Si el servidor IMAP y el SMTP son el mismo, repítelo. Gmail y Outlook exigen una contraseña de aplicación.">
         <form action={guardarBuzon} className="grid gap-4 px-4 py-4 sm:grid-cols-2">
           <Field label="Dirección">
-            <Input name="address" type="email" required defaultValue={buzon?.address ?? ""} placeholder={clinica ? "contacto@clinica.cl" : "ventas@empresa.cl"} />
+            <Input name="address" type="email" required defaultValue={buzon?.address ?? ""} placeholder={clinica ? "contacto@clinica.cl" : "propuestas@empresa.cl"} />
           </Field>
           <Field label="Nombre para mostrar">
             <Input name="remitente" defaultValue={buzon?.remitente ?? empresa ?? ""} placeholder={empresa ?? (clinica ? "Clínica" : "Empresa")} />

@@ -6,7 +6,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { cotizarLinea, normalizarConfig, totales } from "../src/lib/equifax-cotizador/catalogo.ts";
-import { asuntoPropuesta, correoHtml, mensajeWhatsapp, vocativo, type DatosPropuesta } from "../src/lib/equifax-cotizador/propuesta.ts";
+import { asuntoDeRespuesta, respuestaHtml } from "../src/lib/equifax-cotizador/correo-cuenta.ts";
+import { asuntoPropuesta, correoHtml, mensajeWhatsapp, remitenteDeEjecutivo, vocativo, type DatosPropuesta } from "../src/lib/equifax-cotizador/propuesta.ts";
 
 test("Mora Control 4100 con DOA 15 % queda en 2,2525 UF mensual", () => {
   const linea = cotizarLinea({ producto: "mc", plan: "4100", doa: 15 });
@@ -89,4 +90,30 @@ test("la propuesta lleva asunto, precio, firma y escapa lo que viene de la base"
   assert.ok(whatsapp.startsWith("Estimada Carolina:"));
   assert.ok(whatsapp.includes("*Precio ofrecido: 1,10 UF*"));
   assert.ok(whatsapp.includes("Aprox. $43.450 mensual + IVA"));
+});
+
+test("con buzón de la cuenta, la firma y el botón de aceptar apuntan al buzón y no al correo personal", () => {
+  const html = correoHtml({ ...datos, correoRespuesta: "propuestas@geimser.cl", folio: "7F3A91C2" }, "cid:logo");
+  assert.ok(html.includes("mailto:propuestas@geimser.cl?subject="));
+  assert.ok(!html.includes("ana@ejemplo.cl"));
+  assert.ok(html.includes("Aceptar la propuesta"));
+  assert.ok(html.includes("N.º 7F3A91C2"));
+  assert.ok(mensajeWhatsapp({ ...datos, correoRespuesta: "propuestas@geimser.cl" }).includes("✉ propuestas@geimser.cl"));
+  assert.equal(remitenteDeEjecutivo(" Ana Rojas "), "Ana Rojas · Equifax");
+});
+
+test("el ahorro que se muestra es la diferencia real con el precio lista", () => {
+  const conDescuento = correoHtml({ ...datos, lineas: [cotizarLinea({ producto: "mc", plan: "4100", doa: 15 })] }, "cid:logo");
+  // 2,65 − 2,2525 = 0,3975 UF al mes.
+  assert.ok(conDescuento.includes("0,3975 UF al mes"));
+  const sinDescuento = correoHtml(datos, "cid:logo");
+  assert.ok(!sinDescuento.includes("Ahorra"));
+});
+
+test("la respuesta desde la ficha no acumula «Re:» y escapa lo que escribe el ejecutivo", () => {
+  assert.equal(asuntoDeRespuesta("Propuesta Comercial Equifax"), "Re: Propuesta Comercial Equifax");
+  assert.equal(asuntoDeRespuesta("RE: Propuesta"), "RE: Propuesta");
+  const html = respuestaHtml("Hola <b>Carolina</b>", datos.ejecutivo, "propuestas@geimser.cl");
+  assert.ok(html.includes("Hola &lt;b&gt;Carolina&lt;/b&gt;"));
+  assert.ok(html.includes("propuestas@geimser.cl"));
 });

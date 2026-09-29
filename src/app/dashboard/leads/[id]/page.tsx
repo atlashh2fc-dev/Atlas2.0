@@ -14,6 +14,7 @@ import { OfflineManagementButton } from "@/components/offline-management-button"
 import { ScreenPopTiming } from "@/components/screen-pop-timing";
 import { CallTypificationForm } from "@/components/call-typification-form";
 import { CotizadorEquifax } from "@/components/cotizador-equifax";
+import { CorreoRegistroPanel, type CorreoEnviado, type CorreoRecibido } from "@/components/correo-registro-panel";
 import { CallTimer } from "@/components/call-timer";
 import { LeadTimeline, type TimelineEntry } from "@/components/lead-timeline";
 import { buildCallReasonCatalogFromWorkflow, getReasonConfig } from "@/lib/call-typification";
@@ -280,6 +281,8 @@ export default async function LeadDetailPage({
     { data: mailReplyCommandsData },
     { data: quotesData },
     { data: saleValidationData },
+    { data: correosRecibidosData },
+    { data: correosEnviadosData },
   ] = await Promise.all([
     supabase
       .from("lead_external_refs")
@@ -327,7 +330,23 @@ export default async function LeadDetailPage({
       .order("sold_at", { ascending: false })
       .limit(1)
       .maybeSingle(),
+    // Respuestas al buzón de la cuenta y lo que se les contestó desde acá. La
+    // RLS deja al ejecutivo ver las suyas y las de sus registros.
+    supabase
+      .from("inbound_emails")
+      .select("id, from_name, from_address, subject, body_text, received_at, status, asignacion, profiles!inbound_emails_assigned_to_fkey(full_name)")
+      .eq("lead_id", id)
+      .order("received_at", { ascending: true })
+      .limit(30),
+    supabase
+      .from("correos_de_registro")
+      .select("id, respuesta_a, destinatario, asunto, cuerpo, estado, error, created_at, profiles!correos_de_registro_agent_id_fkey(full_name)")
+      .eq("lead_id", id)
+      .order("created_at", { ascending: true })
+      .limit(30),
   ]);
+  const correosRecibidos = (correosRecibidosData ?? []) as unknown as CorreoRecibido[];
+  const correosEnviados = (correosEnviadosData ?? []) as unknown as CorreoEnviado[];
   const saleValidation = saleValidationData as {
     status: "pendiente" | "aprobada" | "rechazada";
     decision_note: string | null;
@@ -459,6 +478,24 @@ export default async function LeadDetailPage({
         agent: inbound ? lead.full_name : sender?.full_name ?? "Equipo Atlas",
       };
     }),
+    ...correosRecibidos.map((correo): TimelineEntry => ({
+      key: `correo-recibido-${correo.id}`,
+      source: "email",
+      date: correo.received_at,
+      title: "El cliente respondió por correo",
+      notes: correo.subject,
+      agenda: null,
+      agent: correo.from_name || correo.from_address,
+    })),
+    ...correosEnviados.map((correo): TimelineEntry => ({
+      key: `correo-enviado-${correo.id}`,
+      source: "email",
+      date: correo.created_at,
+      title: correo.estado === "fallido" ? "Respuesta por correo: no salió" : "Respuesta enviada por correo",
+      notes: `Para ${correo.destinatario}`,
+      agenda: null,
+      agent: relationOne(correo.profiles)?.full_name ?? "Ejecutivo",
+    })),
     ...((quotesData ?? []) as EquifaxQuoteRow[]).map((quote): TimelineEntry => {
       const amounts = [
         Number(quote.uf_mensual) > 0 ? `${formatUfAmount(Number(quote.uf_mensual))} UF/mes` : null,
@@ -1015,6 +1052,14 @@ export default async function LeadDetailPage({
               </p>
             </div>
           </Card>
+
+          <CorreoRegistroPanel
+            leadId={lead.id}
+            recibidos={correosRecibidos}
+            enviados={correosEnviados}
+            // Si la RLS le mostró el correo, es suyo o del registro que lleva.
+            puedeResponder={profile.active}
+          />
 
           <MailThreadPanel
             leadId={lead.id}

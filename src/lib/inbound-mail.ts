@@ -69,15 +69,16 @@ export function detectChileanPhone(value: string): string | null {
 }
 
 /**
- * Sincroniza un buzón: trae lo nuevo del INBOX y lo guarda. Si el buzón es de
- * una clínica (sin campaña), cada correo se liga a la ficha por la dirección
- * o abre una ficha nueva.
+ * Sincroniza un buzón: trae lo nuevo del INBOX y lo guarda. Si es el buzón de
+ * una empresa (sin campaña), cada correo se liga: en una clínica, a la ficha
+ * por la dirección o abriendo una nueva; en el contact center, al registro
+ * cuya propuesta responde, y queda asignado a su dueño.
  */
 export async function syncMailbox(buzon: Buzon): Promise<InboundSyncResult> {
   const admin = createAdminClient();
   const client = new ImapFlow({ host: buzon.imap_host, port: buzon.imap_port, secure: true, auth: { user: buzon.usuario, pass: buzon.clave }, logger: false });
   const mailbox = { id: buzon.id, address: buzon.address, last_uid: buzon.last_uid };
-  const deClinica = buzon.campaign_id === null;
+  const deEmpresa = buzon.campaign_id === null;
 
   let imported = 0;
   let skipped = 0;
@@ -139,9 +140,12 @@ export async function syncMailbox(buzon: Buzon): Promise<InboundSyncResult> {
           ).select("id").maybeSingle();
 
           if (error) throw error;
-          if (deClinica && guardado?.id) {
+          if (deEmpresa && guardado?.id) {
+            // Cada función revisa la edición de la empresa y no hace nada fuera de la suya.
             const { error: ligaError } = await admin.rpc("ligar_correo_a_ficha", { p_email: guardado.id });
             if (ligaError) console.error("[correo] no se pudo ligar el correo a la ficha", ligaError.message);
+            const { error: registroError } = await admin.rpc("ligar_respuesta_a_registro", { p_email: guardado.id });
+            if (registroError) console.error("[correo] no se pudo ligar la respuesta al registro", registroError.message);
           }
           imported += 1;
         }

@@ -101,7 +101,7 @@ export default async function LeadsPage({
       ])
     : [{ data: [] }, { data: [] }];
 
-  const [result, tracksQuotations] = await Promise.all([
+  const [result, tracksQuotations, { data: respuestasData }] = await Promise.all([
     fetchLeadsPage<LeadQueueRow>(supabase, {
       role: profile.role,
       filters,
@@ -115,7 +115,28 @@ export default async function LeadsPage({
     profile.role === "agente"
       ? supabase.rpc("agent_tracks_quotations").then(({ data }) => data === true)
       : Promise.resolve(false),
+    // Clientes que respondieron por correo al buzón de la cuenta y quedaron a
+    // nombre del ejecutivo, sin atender todavía.
+    profile.role === "agente"
+      ? supabase
+          .from("inbound_emails")
+          .select("id, lead_id, from_name, from_address, received_at, leads(full_name)")
+          .eq("assigned_to", profile.id)
+          .eq("status", "new")
+          .not("lead_id", "is", null)
+          .order("received_at", { ascending: false })
+          .limit(20)
+      : Promise.resolve({ data: [] }),
   ]);
+  const respuestasPendientes = (respuestasData ?? []) as unknown as {
+    id: string;
+    lead_id: string;
+    from_name: string | null;
+    from_address: string;
+    leads: { full_name: string | null } | { full_name: string | null }[] | null;
+  }[];
+  // Un cliente que escribió dos veces es uno solo en el aviso.
+  const respuestasPorRegistro = [...new Map(respuestasPendientes.map((respuesta) => [respuesta.lead_id, respuesta])).values()];
 
   // Estados presentes en la base + el que esté filtrado, con etiqueta legible
   // cuando el valor pertenece al catálogo del producto.
@@ -168,6 +189,29 @@ export default async function LeadsPage({
         }
       />
       {tracksQuotations && <NavTabs tabs={getTabs("registros", profile.role)} />}
+
+      {respuestasPorRegistro.length > 0 && (
+        <Callout tone="warning">
+          <p className="font-medium">
+            {respuestasPorRegistro.length === 1
+              ? "Un cliente te respondió por correo"
+              : `${respuestasPorRegistro.length} clientes te respondieron por correo`}
+          </p>
+          <ul className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1">
+            {respuestasPorRegistro.slice(0, 6).map((respuesta) => {
+              const lead = Array.isArray(respuesta.leads) ? respuesta.leads[0] : respuesta.leads;
+              return (
+                <li key={respuesta.id}>
+                  <Link href={`/dashboard/leads/${respuesta.lead_id}`} className="font-medium text-primary hover:underline">
+                    {lead?.full_name || respuesta.from_name || respuesta.from_address}
+                  </Link>
+                </li>
+              );
+            })}
+            {respuestasPorRegistro.length > 6 && <li className="text-muted-foreground">y {respuestasPorRegistro.length - 6} más</li>}
+          </ul>
+        </Callout>
+      )}
 
       <FilterBar storageKey="registros">
         <Field label="Buscar" className="min-w-64 flex-1">

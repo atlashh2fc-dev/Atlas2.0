@@ -6,8 +6,9 @@ import { requireProfile } from "@/lib/auth";
 import { buzonDeEmpresa } from "@/lib/correo/buzon";
 import { enviarCorreo } from "@/lib/correo/smtp";
 import { cotizarLinea, normalizarConfig, totales, type ConfigLinea } from "@/lib/equifax-cotizador/catalogo";
+import { COPIA_OCULTA_EQUIFAX } from "@/lib/equifax-cotizador/correo-cuenta";
 import { LOGO_EQUIFAX_CID, LOGO_EQUIFAX_PNG_BASE64 } from "@/lib/equifax-cotizador/logo";
-import { asuntoPropuesta, correoHtml, correoTexto, firmaDesdePerfil, type DatosPropuesta } from "@/lib/equifax-cotizador/propuesta";
+import { asuntoPropuesta, correoHtml, correoTexto, firmaDesdePerfil, remitenteDeEjecutivo, type DatosPropuesta } from "@/lib/equifax-cotizador/propuesta";
 import { leadContactPerson } from "@/lib/lead-extra";
 import { celularChileno } from "@/lib/prospeccion";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -19,9 +20,11 @@ import { valorUfDeHoy } from "@/lib/valor-uf";
  * (correo) o por WhatsApp desde el teléfono del ejecutivo, y queda en
  * equifax_cotizaciones. Toda propuesta por correo lleva copia oculta a la
  * jefatura comercial, como en el cotizador que se usaba antes.
+ *
+ * Un solo buzón para toda la cuenta: el correo sale de la dirección de la
+ * empresa con el nombre del ejecutivo («Ana Pérez · Equifax») y la respuesta
+ * vuelve a ese buzón, donde ligar_respuesta_a_registro la asigna al dueño.
  */
-
-const COPIA_OCULTA_FIJA = ["eduranb@geoinfobusiness.cl"];
 
 export type Resultado<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -233,15 +236,17 @@ export async function enviarCotizacionPorCorreo(entrada: Entrada & { para: strin
 
     const asunto = asuntoPropuesta(preparado.datos);
     const id = await registrar(preparado.supabase, entrada, preparado, "correo", para, asunto);
+    const datos: DatosPropuesta = { ...preparado.datos, correoRespuesta: buzon.address, folio: id.slice(0, 8).toUpperCase() };
     const admin = createAdminClient();
     try {
       const { messageId } = await enviarCorreo(buzon, {
         para,
         nombre: preparado.contacto,
         asunto,
-        texto: correoTexto(preparado.datos),
-        html: correoHtml(preparado.datos, `cid:${LOGO_EQUIFAX_CID}`),
-        copiaOculta: COPIA_OCULTA_FIJA,
+        texto: correoTexto(datos),
+        html: correoHtml(datos, `cid:${LOGO_EQUIFAX_CID}`),
+        remitenteNombre: remitenteDeEjecutivo(preparado.datos.ejecutivo.nombre),
+        copiaOculta: COPIA_OCULTA_EQUIFAX,
         imagenes: [{ cid: LOGO_EQUIFAX_CID, nombre: "equifax.png", base64: LOGO_EQUIFAX_PNG_BASE64, tipo: "image/png" }],
       });
       await admin.from("equifax_cotizaciones").update({ estado: "enviada", proveedor_id: messageId, enviada_at: new Date().toISOString() }).eq("id", id);

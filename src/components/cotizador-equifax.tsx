@@ -123,7 +123,7 @@ export function CotizadorEquifax({
   const listo = Boolean(contexto) && ufValida && cotizadas.length > 0 && !pubIncompleta;
 
   const datos: DatosPropuesta | null = firma && ufValida
-    ? { cliente: { empresa: cliente.empresa, rut: cliente.rut, contacto: contacto.trim() || null }, ejecutivo: firma, lineas: cotizadas, valorUf: uf, fecha: new Date() }
+    ? { cliente: { empresa: cliente.empresa, rut: cliente.rut, contacto: contacto.trim() || null }, ejecutivo: firma, lineas: cotizadas, valorUf: uf, fecha: new Date(), correoRespuesta: contexto?.buzon ?? null }
     : null;
 
   function actualizar(id: number, config: ConfigLinea) {
@@ -285,7 +285,7 @@ export function CotizadorEquifax({
                 </Field>
               </div>
               {contexto.buzon ? (
-                <p className="text-xs text-muted-foreground">El correo sale desde {contexto.buzon}, con copia oculta a la jefatura comercial.</p>
+                <p className="text-xs text-muted-foreground">El correo sale desde {contexto.buzon} con tu nombre y firma, y la respuesta del cliente vuelve a ese buzón y queda en este registro. Va con copia oculta a la jefatura comercial.</p>
               ) : (
                 <Callout tone="warning">La empresa todavía no tiene un buzón para enviar correos. Puedes mandar la propuesta por WhatsApp; para el correo, un administrador debe conectar el buzón.</Callout>
               )}

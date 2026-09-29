@@ -22,8 +22,13 @@ export async function enviarCorreo(
     copiaOculta?: string[];
     imagenes?: ImagenIncrustada[];
     inReplyTo?: string | null;
+    /** Nombre visible del remitente, si no es el del buzón (p. ej. "Ana Pérez · Equifax"). */
+    remitenteNombre?: string | null;
+    /** A dónde vuelven las respuestas; por defecto, el mismo buzón. */
+    responderA?: string | null;
   },
 ) {
+  const nombre = correo.remitenteNombre?.trim() || buzon.remitente;
   const transporte = nodemailer.createTransport({
     host: buzon.smtp_host,
     port: buzon.smtp_port,
@@ -34,7 +39,8 @@ export async function enviarCorreo(
     socketTimeout: 20_000,
   });
   const resultado = await transporte.sendMail({
-    from: buzon.remitente ? `"${buzon.remitente.replace(/"/g, "")}" <${buzon.address}>` : buzon.address,
+    from: nombre ? `"${nombre.replace(/"/g, "")}" <${buzon.address}>` : buzon.address,
+    replyTo: correo.responderA?.trim() || buzon.address,
     to: correo.nombre ? `"${correo.nombre.replace(/"/g, "")}" <${correo.para}>` : correo.para,
     subject: correo.asunto,
     text: correo.texto,
