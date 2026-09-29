@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { requireProfile } from "@/lib/auth";
-import { buzonDeEmpresa } from "@/lib/correo/buzon";
+import { buzonDeCampana } from "@/lib/correo/buzon";
 import { enviarCorreo } from "@/lib/correo/smtp";
 import { cotizarLinea, normalizarConfig, totales, type ConfigLinea } from "@/lib/equifax-cotizador/catalogo";
 import { COPIA_OCULTA_EQUIFAX } from "@/lib/equifax-cotizador/correo-cuenta";
@@ -113,13 +113,13 @@ export async function cargarCotizador(leadId: string): Promise<Resultado<Context
   try {
     const profile = await requireProfile();
     const supabase = await createClient();
-    const { data: lead } = await supabase.from("leads").select("organization_id").eq("id", leadId).maybeSingle();
+    const { data: lead } = await supabase.from("leads").select("organization_id, campaign_id").eq("id", leadId).maybeSingle();
     if (!lead) return { ok: false, error: "No encontramos el registro." };
     const [uf, firma, historial, buzon] = await Promise.all([
       valorUfDeHoy(),
       leerFirma(supabase, profile.id),
       leerHistorial(supabase, leadId),
-      lead.organization_id ? buzonDeEmpresa(lead.organization_id).catch(() => null) : Promise.resolve(null),
+      lead.organization_id ? buzonDeCampana(lead.organization_id, lead.campaign_id).catch(() => null) : Promise.resolve(null),
     ]);
     return { ok: true, data: { uf, firma, buzon: buzon?.address ?? null, historial } };
   } catch (error) {
@@ -169,7 +169,7 @@ async function prepararPropuesta(entrada: Entrada) {
 
   const { data: lead } = await supabase
     .from("leads")
-    .select("id, full_name, rut, email, phone, extra, organization_id")
+    .select("id, full_name, rut, email, phone, extra, organization_id, campaign_id")
     .eq("id", entrada.leadId)
     .maybeSingle();
   if (!lead) throw new Error("No encontramos el registro.");
@@ -231,8 +231,8 @@ export async function enviarCotizacionPorCorreo(entrada: Entrada & { para: strin
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(para)) return { ok: false, error: "Revisa el correo del cliente." };
     const preparado = await prepararPropuesta(entrada);
     if (!preparado.lead.organization_id) return { ok: false, error: "El registro no tiene empresa." };
-    const buzon = await buzonDeEmpresa(preparado.lead.organization_id);
-    if (!buzon) return { ok: false, error: "La empresa todavía no tiene un buzón conectado para enviar correos. Pídele a un administrador que lo conecte en Configuración › Correo." };
+    const buzon = await buzonDeCampana(preparado.lead.organization_id, preparado.lead.campaign_id);
+    if (!buzon) return { ok: false, error: "La campaña todavía no tiene un buzón para enviar correos. Pídele a un administrador que lo conecte en Configuración › Correo de envío." };
 
     const asunto = asuntoPropuesta(preparado.datos);
     const id = await registrar(preparado.supabase, entrada, preparado, "correo", para, asunto);

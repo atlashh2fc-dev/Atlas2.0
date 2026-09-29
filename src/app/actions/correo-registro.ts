@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { requireProfile } from "@/lib/auth";
-import { buzonDeEmpresa } from "@/lib/correo/buzon";
+import { buzonPorId } from "@/lib/correo/buzon";
 import { enviarCorreo } from "@/lib/correo/smtp";
 import { asuntoDeRespuesta, COPIA_OCULTA_EQUIFAX, respuestaHtml, respuestaTexto } from "@/lib/equifax-cotizador/correo-cuenta";
 import { firmaDesdePerfil, remitenteDeEjecutivo } from "@/lib/equifax-cotizador/propuesta";
@@ -25,7 +25,7 @@ async function correoRecibido(leadId: string, correoId: string) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("inbound_emails")
-    .select("id, lead_id, organization_id, from_name, from_address, subject, message_id")
+    .select("id, lead_id, mailbox_id, organization_id, from_name, from_address, subject, message_id")
     .eq("id", correoId)
     .eq("lead_id", leadId)
     .maybeSingle();
@@ -55,8 +55,9 @@ export async function responderCorreoDeRegistro(formData: FormData) {
 
   const { supabase, correo } = await correoRecibido(leadId, correoId);
   if (!correo.organization_id) throw new Error("El correo no tiene empresa.");
-  const buzon = await buzonDeEmpresa(correo.organization_id);
-  if (!buzon) throw new Error("La empresa no tiene un buzón conectado para responder.");
+  // Se contesta desde el mismo buzón donde llegó el correo.
+  const buzon = await buzonPorId(correo.mailbox_id);
+  if (!buzon) throw new Error("El buzón donde llegó este correo ya no está conectado.");
 
   const { data: perfil, error: perfilError } = await supabase
     .from("profiles")

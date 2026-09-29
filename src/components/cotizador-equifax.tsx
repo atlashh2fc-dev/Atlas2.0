@@ -287,7 +287,7 @@ export function CotizadorEquifax({
               {contexto.buzon ? (
                 <p className="text-xs text-muted-foreground">El correo sale desde {contexto.buzon} con tu nombre y firma, y la respuesta del cliente vuelve a ese buzón y queda en este registro. Va con copia oculta a la jefatura comercial.</p>
               ) : (
-                <Callout tone="warning">La empresa todavía no tiene un buzón para enviar correos. Puedes mandar la propuesta por WhatsApp; para el correo, un administrador debe conectar el buzón.</Callout>
+                <Callout tone="warning">Esta campaña todavía no tiene un buzón para enviar correos. Puedes mandar la propuesta por WhatsApp; para el correo, un administrador debe conectar el buzón de la campaña en Configuración › Correo de envío.</Callout>
               )}
               {pubIncompleta && <p className="text-xs text-danger">Publicación Única: escribe el monto de al menos un documento.</p>}
             </section>

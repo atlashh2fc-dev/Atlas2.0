@@ -80,6 +80,32 @@ export async function buzonDeEmpresa(organizationId: string): Promise<Buzon | nu
   return data ? completar(admin, data as Fila) : null;
 }
 
+/**
+ * El buzón por el que envía y recibe una campaña del contact center: el que la
+ * tiene marcada o, si ninguno, el de respaldo de la empresa (sin campañas).
+ */
+export async function buzonDeCampana(organizationId: string, campaignId: string | null): Promise<Buzon | null> {
+  const admin = createAdminClient();
+  if (campaignId) {
+    const { data: enlace } = await admin.from("buzon_campanas").select("mailbox_id").eq("campaign_id", campaignId).maybeSingle();
+    if (enlace?.mailbox_id) return buzonPorId(enlace.mailbox_id);
+  }
+  const [{ data: buzones }, { data: enlazados }] = await Promise.all([
+    admin.from("inbound_mailboxes").select(CAMPOS).eq("organization_id", organizationId).is("campaign_id", null).eq("active", true).order("created_at"),
+    admin.from("buzon_campanas").select("mailbox_id").eq("organization_id", organizationId),
+  ]);
+  const conCampanas = new Set((enlazados ?? []).map((fila) => fila.mailbox_id as string));
+  const respaldo = ((buzones ?? []) as Fila[]).find((fila) => !conCampanas.has(fila.id));
+  return respaldo ? completar(admin, respaldo) : null;
+}
+
+/** Un buzón activo por su id, listo para conectar (p. ej. para contestar desde el buzón donde llegó el correo). */
+export async function buzonPorId(id: string): Promise<Buzon | null> {
+  const admin = createAdminClient();
+  const { data } = await admin.from("inbound_mailboxes").select(CAMPOS).eq("id", id).eq("active", true).maybeSingle();
+  return data ? completar(admin, data as Fila) : null;
+}
+
 /** Todos los buzones activos con clave, para la sincronización. */
 export async function buzonesActivos(): Promise<Buzon[]> {
   const admin = createAdminClient();
