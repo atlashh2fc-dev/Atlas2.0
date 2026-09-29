@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Ban, CheckCircle2, Mail, MailOpen } from "lucide-react";
+import { Ban, CheckCircle2, ChevronRight, Mail, MailOpen } from "lucide-react";
 
 import { registrarToque } from "@/app/actions/prospeccion";
 import { ContactarProspecto } from "@/components/contactar-prospecto";
@@ -37,7 +37,7 @@ const HECHO: Record<string, string> = {
   no_interesa: "Anotado: no le interesa",
   numero_malo: "Anotado: el número no sirve",
   posponer: "Pospuesto una semana",
-  interesado: "Pasó al pipeline",
+  interesado: "Le interesa · pasó a Negocios",
 };
 
 /**
@@ -97,35 +97,39 @@ export function BandejaProspeccion({ filas }: { filas: FilaProspecto[] }) {
           );
         }
         return (
-          <li key={leadId} className="flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+          <li key={leadId} className="flex flex-col gap-3 px-4 py-3.5 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0 space-y-1">
               <div className="flex flex-wrap items-center gap-2">
-                <Link href={`/dashboard/leads/${p.leadId}`} className="truncate text-sm font-medium text-foreground hover:text-primary hover:underline">
+                <Link href={`/dashboard/leads/${p.leadId}`} className="truncate text-sm font-semibold text-foreground hover:text-primary hover:underline">
                   {p.nombre}
                 </Link>
+                <Badge tone={p.tonoSenal}>{p.senal}</Badge>
                 <Badge tone={p.estado.tono}>{p.estado.texto}</Badge>
               </div>
-              <p className="truncate text-xs text-muted-foreground">{p.datos}</p>
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                <Badge tone={p.tonoSenal}>{p.senal}</Badge>
-                {p.correos.length > 0 && <Badge tone="neutral">Abrió {p.abiertos} de {p.correos.length} correos</Badge>}
-                <span>{p.haceCuanto}</span>
-                {p.campana && <span className="truncate">· {p.campana}</span>}
-                {p.ultimoToque && <span>· {p.ultimoToque}</span>}
+              <p className="text-xs text-muted-foreground">
+                {p.haceCuanto}
+                {p.ultimoToque ? ` · ${p.ultimoToque}` : ""}
                 {p.respondio && (
-                  <Link href="/dashboard/ventas/respuestas" className="text-primary hover:underline">Ver su respuesta</Link>
+                  <>
+                    {" · "}
+                    <Link href="/dashboard/ventas/prospeccion?vista=respuestas" className="text-primary hover:underline">Ver su respuesta</Link>
+                  </>
                 )}
-              </div>
-              <Correos correos={p.correos} />
+              </p>
+              <p className="truncate text-xs text-muted-foreground">{p.datos}</p>
+              <Correos correos={p.correos} abiertos={p.abiertos} campana={p.campana} />
             </div>
-            <div className="flex flex-shrink-0 flex-wrap items-center gap-1.5">
+            <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
               <span onClickCapture={() => anotar(p.leadId, p.canal)}>
                 <ContactarProspecto leadId={p.leadId} canal={p.canal} enlace={p.enlace} etiqueta={p.etiqueta} />
               </span>
-              <Resultado leadId={p.leadId} resultado="interesado" texto="Interesado" alAnotar={anotar} />
-              <Resultado leadId={p.leadId} resultado="no_interesa" texto="No interesa" alAnotar={anotar} />
-              {p.telefono && <Resultado leadId={p.leadId} resultado="numero_malo" texto="Número no sirve" alAnotar={anotar} />}
-              <Resultado leadId={p.leadId} resultado="posponer" texto="En una semana" alAnotar={anotar} />
+              <div role="group" aria-label="Cómo te fue" className="flex flex-wrap items-center gap-0.5 rounded-lg border border-border bg-surface-muted/40 py-0.5 pl-2.5 pr-0.5">
+                <span className="mr-1 text-xs text-muted-foreground">¿Cómo te fue?</span>
+                <Resultado leadId={p.leadId} resultado="interesado" texto="Le interesa" titulo="Pasa a Negocios" alAnotar={anotar} />
+                <Resultado leadId={p.leadId} resultado="no_interesa" texto="No le interesa" alAnotar={anotar} />
+                <Resultado leadId={p.leadId} resultado="posponer" texto="En una semana" titulo="Vuelve a esta lista en 7 días" alAnotar={anotar} />
+                {p.telefono && <Resultado leadId={p.leadId} resultado="numero_malo" texto="Número malo" alAnotar={anotar} />}
+              </div>
             </div>
           </li>
         );
@@ -134,11 +138,14 @@ export function BandejaProspeccion({ filas }: { filas: FilaProspecto[] }) {
   );
 }
 
-/** Qué se le mandó y qué leyó, para saber de qué hablarle antes de escribirle. */
-function Correos({ correos }: { correos: FilaProspecto["correos"] }) {
+/**
+ * Qué se le mandó y qué leyó, para saber de qué hablarle antes de escribirle.
+ * Plegado: es contexto para quien lo necesita, no algo que leer en cada fila.
+ */
+function Correos({ correos, abiertos, campana }: { correos: FilaProspecto["correos"]; abiertos?: number; campana?: string | null }) {
   if (correos.length === 0) return null;
-  return (
-    <ul className="space-y-0.5 pt-0.5 text-xs">
+  const lista = (
+    <ul className="space-y-0.5 pt-1 text-xs">
       {correos.map((correo, i) => {
         const Icono = correo.abierto ? MailOpen : Mail;
         return (
@@ -157,11 +164,21 @@ function Correos({ correos }: { correos: FilaProspecto["correos"] }) {
       })}
     </ul>
   );
+  if (abiertos === undefined) return lista;
+  return (
+    <details className="group text-xs">
+      <summary className="inline-flex min-h-6 cursor-pointer list-none items-center gap-1 text-muted-foreground hover:text-foreground">
+        <ChevronRight size={12} aria-hidden="true" className="transition-transform group-open:rotate-90" />
+        Abrió {abiertos} de {correos.length} {correos.length === 1 ? "correo" : "correos"}{campana ? ` · ${campana}` : ""}
+      </summary>
+      {lista}
+    </details>
+  );
 }
 
-function Resultado({ leadId, resultado, texto, alAnotar }: { leadId: string; resultado: string; texto: string; alAnotar: (leadId: string, resultado: string) => void }) {
+function Resultado({ leadId, resultado, texto, titulo, alAnotar }: { leadId: string; resultado: string; texto: string; titulo?: string; alAnotar: (leadId: string, resultado: string) => void }) {
   return (
-    <form action={registrarToque} onSubmit={() => alAnotar(leadId, resultado)}>
+    <form action={registrarToque} onSubmit={() => alAnotar(leadId, resultado)} title={titulo}>
       <input type="hidden" name="lead_id" value={leadId} />
       <input type="hidden" name="resultado" value={resultado} />
       <SubmitButton size="sm" variant={resultado === "interesado" ? "secondary" : "ghost"} pendingLabel="…">{texto}</SubmitButton>

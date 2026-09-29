@@ -2,17 +2,15 @@ import Link from "next/link";
 import { unstable_noStore as noStore } from "next/cache";
 import { BadgeDollarSign, Briefcase, CalendarClock, Filter, Trophy } from "lucide-react";
 
-import { crearOportunidad } from "@/app/actions/ventas";
-import { CreatePanel } from "@/components/create-panel";
+import { NuevoNegocio } from "@/components/nuevo-negocio";
+import { VistaSegmentada } from "@/components/vista-segmentada";
 import {
   Badge,
   EmptyState,
-  Field,
   MetricCard,
-  Input,
+  NavTabs,
   PageHeader,
   SectionCard,
-  Select,
   Table,
   TableEmpty,
   Tbody,
@@ -24,6 +22,7 @@ import {
 import { requireProfile } from "@/lib/auth";
 import { VENTAS_POR_EDICION } from "@/lib/ediciones";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
+import { PESTANAS_VENTAS, VISTAS_NEGOCIOS } from "@/lib/ventas-pestanas";
 import { createClient } from "@/lib/supabase/server";
 
 /** Supabase entrega las relaciones como arreglo; acá siempre es una sola fila. */
@@ -53,10 +52,14 @@ export default async function VentasPage() {
   noStore();
   await requireProfile(["admin", "supervisor"]);
   const supabase = await createClient();
-  const voc = VENTAS_POR_EDICION[(await contextoDeMiEmpresa()).edicion];
+  const { edicion } = await contextoDeMiEmpresa();
+  const voc = VENTAS_POR_EDICION[edicion];
+  // En Center esta lista es la otra cara del tablero de Ventas; en una clínica
+  // es Presupuestos, dentro de Caja, y no lleva las pestañas de Ventas.
+  const enVentas = edicion === "center";
   const mensual = voc.monto === "mensual";
 
-  const [{ data: etapas }, { data: oportunidades }, { data: productos }] = await Promise.all([
+  const [{ data: etapas }, { data: oportunidades }] = await Promise.all([
     supabase
       .from("sales_stages")
       .select("id, key, name, position, probability, is_won, is_lost")
@@ -69,11 +72,6 @@ export default async function VentasPage() {
       )
       .order("next_action_at", { ascending: true, nullsFirst: false })
       .limit(300),
-    supabase
-      .from("sales_products")
-      .select("code, name, monthly_price, one_time_price")
-      .eq("active", true)
-      .order("name"),
   ]);
 
   const listaEtapas = etapas ?? [];
@@ -110,78 +108,15 @@ export default async function VentasPage() {
     <div className="space-y-5">
       <PageHeader
         title={voc.titulo}
-        description={voc.descripcion}
-        actions={
-          <CreatePanel
-            label={voc.nuevo}
-            title={voc.nuevo}
-            description={`Si ${voc.cuenta.toLowerCase() === "empresa" ? "la empresa" : `el ${voc.cuenta.toLowerCase()}`} ya existe, se reutiliza. El precio sale del catálogo salvo que escribas otro.`}
-            action={crearOportunidad}
-            submitLabel={voc.nuevo.replace(/^Nuev[oa] /, "Crear ")}
-            successLabel={`${voc.negocio} creado`}
-          >
-            <Field label={voc.cuenta}>
-              <Input name="empresa" required placeholder={voc.cuentaPlaceholder} data-autofocus />
-            </Field>
-            <Field label="RUT (opcional)">
-              <Input name="rut" placeholder="76.123.456-7" />
-            </Field>
-            <Field label={voc.negocio}>
-              <Input name="nombre" required placeholder={voc.negocioPlaceholder} />
-            </Field>
-            <Field label={voc.producto}>
-              <Select name="producto" defaultValue="">
-                <option value="">Sin {voc.producto.toLowerCase()} del catálogo</option>
-                {(productos ?? []).map((producto) => (
-                  <option key={producto.code} value={producto.code}>
-                    {producto.name}
-                    {mensual
-                      ? producto.monthly_price
-                        ? ` · ${pesos.format(Number(producto.monthly_price))}/mes`
-                        : ""
-                      : producto.one_time_price
-                        ? ` · ${pesos.format(Number(producto.one_time_price))}`
-                        : ""}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            {mensual ? (
-              <Field label="Monto mensual (deja vacío para usar el del catálogo)">
-                <Input name="monto_mensual" inputMode="numeric" placeholder="69990" />
-              </Field>
-            ) : (
-              <Field label="Monto del presupuesto">
-                <Input name="monto_unico" inputMode="numeric" placeholder="1850000" />
-              </Field>
-            )}
-            {!voc.personas && (
-              <Field label="Contacto">
-                <Input name="contacto" placeholder="María Soto" />
-              </Field>
-            )}
-            <Field label={voc.personas ? "Correo" : "Correo del contacto"}>
-              <Input name="contacto_email" type="email" placeholder="maria@laespiga.cl" />
-            </Field>
-            <Field label="WhatsApp o teléfono">
-              <Input name="contacto_telefono" placeholder="+56 9 1111 1111" />
-            </Field>
-            <Field label="Cierre estimado">
-              <Input name="cierre_estimado" type="date" />
-            </Field>
-            <Field label="Origen">
-              <Select name="origen" defaultValue="">
-                <option value="">Sin origen</option>
-                {voc.origenes.map((origen) => (
-                  <option key={origen.value} value={origen.value}>
-                    {origen.label}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </CreatePanel>
-        }
+        description={enVentas ? "Cómo van tus negocios: en qué etapa está cada uno y qué toca hacer." : voc.descripcion}
+        actions={<NuevoNegocio voc={voc} />}
       />
+      {enVentas && (
+        <>
+          <NavTabs tabs={PESTANAS_VENTAS} />
+          <VistaSegmentada etiqueta="Ver negocios como" activa="lista" opciones={VISTAS_NEGOCIOS} />
+        </>
+      )}
 
       {/* Las métricas usan la tarjeta del estándar, igual que el resto de los tableros. */}
       <div className="grid gap-3 sm:grid-cols-3">
@@ -213,31 +148,34 @@ export default async function VentasPage() {
         />
       </div>
 
-      <SectionCard title="Embudo" description="Cuánto hay en cada etapa, solo negocios abiertos." icon={Filter} tone="rose">
-        <div className="grid gap-3 px-5 py-4 sm:grid-cols-2 lg:grid-cols-5">
-          {listaEtapas
-            .filter((etapa) => !etapa.is_won && !etapa.is_lost)
-            .map((etapa) => {
-              const casilla = porEtapa.get(etapa.id);
-              return (
-                <div
-                  key={etapa.id}
-                  className={`rounded-lg border border-border border-l-2 bg-background px-3 py-2.5 ${(casilla?.total ?? 0) > 0 ? "border-l-[var(--tone-rose)]" : "border-l-border-strong"}`}
-                >
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{etapa.name}</p>
-                  <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-foreground">
-                    {casilla?.total ?? 0}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {(casilla?.monto ?? 0) > 0
-                      ? `${pesos.format(casilla?.monto ?? 0)}${mensual ? "/mes" : ""}`
-                      : "sin monto todavía"}
-                  </p>
-                </div>
-              );
-            })}
-        </div>
-      </SectionCard>
+      {/* En Center el tablero ya es el embudo: repetirlo acá es ruido. */}
+      {!enVentas && (
+        <SectionCard title="Embudo" description="Cuánto hay en cada etapa, solo negocios abiertos." icon={Filter} tone="rose">
+          <div className="grid gap-3 px-5 py-4 sm:grid-cols-2 lg:grid-cols-5">
+            {listaEtapas
+              .filter((etapa) => !etapa.is_won && !etapa.is_lost)
+              .map((etapa) => {
+                const casilla = porEtapa.get(etapa.id);
+                return (
+                  <div
+                    key={etapa.id}
+                    className={`rounded-lg border border-border border-l-2 bg-background px-3 py-2.5 ${(casilla?.total ?? 0) > 0 ? "border-l-[var(--tone-rose)]" : "border-l-border-strong"}`}
+                  >
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{etapa.name}</p>
+                    <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-foreground">
+                      {casilla?.total ?? 0}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {(casilla?.monto ?? 0) > 0
+                        ? `${pesos.format(casilla?.monto ?? 0)}${mensual ? "/mes" : ""}`
+                        : "sin monto todavía"}
+                    </p>
+                  </div>
+                );
+              })}
+          </div>
+        </SectionCard>
+      )}
 
       <SectionCard title={voc.negocios} description="Ordenados por la próxima acción: primero lo vencido." icon={Briefcase} tone="green">
         {listaOportunidades.length === 0 ? (

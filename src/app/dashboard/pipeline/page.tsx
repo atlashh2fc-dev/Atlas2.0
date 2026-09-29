@@ -3,20 +3,22 @@ import { unstable_noStore as noStore } from "next/cache";
 import { AlertTriangle, ArrowRight, Briefcase, CheckCircle2, Inbox, Search } from "lucide-react";
 
 import { asignarNegocio } from "@/app/actions/pipeline";
+import { NuevoNegocio } from "@/components/nuevo-negocio";
+import { VistaSegmentada } from "@/components/vista-segmentada";
 import { moverEtapa } from "@/app/actions/ventas";
-import { Badge, Callout, EmptyState, Input, NavTabs, PageHeader, SectionCard, Select, SubmitButton, buttonClasses } from "@/components/ui";
+import { Badge, Callout, EmptyState, Input, NavTabs, PageHeader, SectionCard, Select, SubmitButton } from "@/components/ui";
 import { requireProfile } from "@/lib/auth";
 import { ZONA_CLINICA } from "@/lib/citas";
 import { VENTAS_POR_EDICION } from "@/lib/ediciones";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
-import { PESTANAS_VENTAS } from "@/lib/ventas-pestanas";
+import { PESTANAS_VENTAS, VISTAS_NEGOCIOS } from "@/lib/ventas-pestanas";
 import { createClient } from "@/lib/supabase/server";
 
 /**
  * El pipeline comercial: cada negocio en su etapa, con responsable, monto,
  * origen y próxima acción a la vista. Solo negocios: quien abrió o hizo clic
  * en la campaña de correo es una señal y vive en la bandeja de Prospección,
- * hasta que alguien lo marca interesado. La lista queda en la pestaña de al lado.
+ * hasta que alguien lo marca interesado. La lista es la otra vista de esta misma pestaña.
  */
 
 const DIA = 24 * 60 * 60 * 1000;
@@ -89,7 +91,6 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
   const abiertos = negocios.filter((negocio) => negocio.status === "abierta");
   const hace30 = ahora.getTime() - 30 * DIA;
   const cerradosRecientes = negocios.filter((negocio) => negocio.status !== "abierta" && negocio.closed_at && new Date(negocio.closed_at).getTime() >= hace30);
-  const ponderado = abiertos.reduce((total, negocio) => total + monto(negocio) * ((etapas.find((etapa) => etapa.id === negocio.stage_id)?.probability ?? 0) / 100), 0);
   const origenes = [...new Set(todos.map((negocio) => negocio.source ?? "manual"))];
   const diasEn = (negocio: Negocio) => Math.max(0, Math.floor((ahora.getTime() - new Date(ultimoCambio.get(negocio.id) ?? negocio.created_at).getTime()) / DIA));
 
@@ -142,19 +143,38 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Pipeline"
-        description={`${empresa ?? voc.titulo} · ${abiertos.length} ${abiertos.length === 1 ? "negocio abierto" : "negocios abiertos"} · ${pesos.format(abiertos.reduce((total, negocio) => total + monto(negocio), 0))} en juego · ${pesos.format(ponderado)} ponderado por etapa`}
-        actions={
-          <Link href="/dashboard/ventas" className={buttonClasses()}>{voc.nuevo}</Link>
-        }
+        title={voc.titulo}
+        description={`${empresa ?? "Tu empresa"} · ${abiertos.length} ${abiertos.length === 1 ? "negocio abierto" : "negocios abiertos"} · ${pesos.format(abiertos.reduce((total, negocio) => total + monto(negocio), 0))} en juego`}
+        actions={<NuevoNegocio voc={voc} />}
       />
       <NavTabs tabs={PESTANAS_VENTAS} />
 
-      <form action="/dashboard/pipeline" className="flex flex-wrap items-end gap-2">
-        <div className="relative w-64">
+      {prospectos.length > 0 && (
+        <Link href="/dashboard/ventas/prospeccion" className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-2.5 text-sm shadow-sm transition-colors hover:border-border-strong hover:bg-surface-muted">
+          <span className="inline-flex items-center gap-3 text-foreground">
+            <span className="icon-chip size-8 shrink-0 rounded-lg" data-tone="teal" aria-hidden="true">
+              <Inbox size={16} />
+            </span>
+            {prospectos.length} {prospectos.length === 1 ? "persona espera" : "personas esperan"} que les escribas{calientes > 0 ? ` · ${calientes} muy interesadas` : ""}
+          </span>
+          <span className="inline-flex flex-shrink-0 items-center gap-1 text-primary">Ver a quién <ArrowRight size={13} aria-hidden="true" /></span>
+        </Link>
+      )}
+
+      <form action="/dashboard/pipeline" className="flex flex-wrap items-center gap-2">
+        <VistaSegmentada etiqueta="Ver negocios como" activa="tablero" opciones={VISTAS_NEGOCIOS} />
+        <div className="relative w-full sm:w-64">
           <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-          <Input name="q" defaultValue={q} placeholder="Empresa o negocio" className="pl-8" aria-label="Buscar" />
+          <Input name="q" defaultValue={q} placeholder="Buscar empresa o negocio" className="pl-8" aria-label="Buscar" />
         </div>
+        <label className="inline-flex min-h-9 items-center gap-1.5 text-sm text-muted-foreground">
+          <input type="checkbox" name="vencidas" value="1" defaultChecked={Boolean(vencidas)} /> Solo atrasados
+        </label>
+        <details className="group relative" open={Boolean(origen || responsable) || undefined}>
+          <summary className="inline-flex min-h-9 cursor-pointer list-none items-center rounded-md px-2 text-sm text-muted-foreground hover:text-foreground">
+            Más filtros{origen || responsable ? " · activos" : ""}
+          </summary>
+          <div className="mt-2 flex flex-wrap gap-2">
         <Select name="origen" defaultValue={origen} aria-label="Origen" className="w-44">
           <option value="">Todos los orígenes</option>
           {origenes.map((valor) => (
@@ -169,26 +189,14 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
             <option key={persona.id as string} value={persona.id as string}>{persona.full_name as string}</option>
           ))}
         </Select>
-        <label className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
-          <input type="checkbox" name="vencidas" value="1" defaultChecked={Boolean(vencidas)} /> Solo vencidos
-        </label>
-        <SubmitButton variant="secondary" size="sm" pendingLabel="…">Filtrar</SubmitButton>
+          </div>
+        </details>
+        <SubmitButton variant="secondary" size="sm" pendingLabel="…">Buscar</SubmitButton>
         {(q || origen || responsable || vencidas) && (
           <Link href="/dashboard/pipeline" className="text-sm text-primary hover:underline">Limpiar</Link>
         )}
       </form>
 
-      {prospectos.length > 0 && (
-        <Link href="/dashboard/ventas/prospeccion" className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-2.5 text-sm shadow-sm transition-colors hover:border-border-strong hover:bg-surface-muted">
-          <span className="inline-flex items-center gap-3 text-foreground">
-            <span className="icon-chip size-8 shrink-0 rounded-lg" data-tone="teal" aria-hidden="true">
-              <Inbox size={16} />
-            </span>
-            {prospectos.length} {prospectos.length === 1 ? "persona mostró" : "personas mostraron"} interés en la campaña y esperan contacto{calientes > 0 ? ` · ${calientes} hicieron clic o respondieron` : ""}
-          </span>
-          <span className="inline-flex items-center gap-1 text-primary">Ir a Prospección <ArrowRight size={13} aria-hidden="true" /></span>
-        </Link>
-      )}
 
       {error && <Callout tone="danger">No se pudieron leer los negocios. Vuelve a cargar para reintentar.</Callout>}
 
@@ -238,7 +246,7 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
 
       {negocios.length === 0 && (
         <SectionCard title="Sin negocios" icon={Briefcase} tone="green">
-          <EmptyState icon={Briefcase} title="Todavía no hay negocios" description={`Crea el primero con "${voc.nuevo}", marca interesado a alguien en Prospección o espera a que lleguen desde la web.`} />
+          <EmptyState icon={Briefcase} title="Todavía no hay negocios" description={`Crea el primero con "${voc.nuevo}", marca "Interesado" a alguien en Por contactar o espera a que lleguen desde la web.`} />
         </SectionCard>
       )}
     </div>

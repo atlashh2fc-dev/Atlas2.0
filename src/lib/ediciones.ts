@@ -91,7 +91,7 @@ export const VENTAS_POR_EDICION: Record<Edicion, VocabularioVentas> = {
     negocio: "Negocio",
     negocios: "Negocios",
     negocioPlaceholder: "Atlas Pulso Crecimiento",
-    nuevo: "Nueva oportunidad",
+    nuevo: "Nuevo negocio",
     producto: "Producto",
     personas: false,
     monto: "mensual",

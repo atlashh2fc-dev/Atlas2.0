@@ -12,7 +12,7 @@ const leer = (ruta: string) => readFileSync(new URL(`../${ruta}`, import.meta.ur
 
 const LIB = leer("src/lib/atlas-vendedor.ts");
 const RUTA = leer("src/app/api/agentes/vendedor/route.ts");
-const PANTALLA = leer("src/app/dashboard/ventas/respuestas/page.tsx");
+const PANTALLA = leer("src/components/respuestas-del-agente.tsx");
 const CRONS = JSON.parse(leer("vercel.json")) as { crons: { path: string; schedule: string }[] };
 const MIDDLEWARE = leer("src/lib/supabase/middleware.ts");
 
@@ -46,7 +46,7 @@ test("el agente tiene techo diario", () => {
 });
 
 test("arranca esperando aprobación, no enviando", () => {
-  assert.match(PANTALLA, /modo borrador/);
+  assert.match(PANTALLA, /modo === "borrador"/);
   assert.match(PANTALLA, /marcarBorradorEnviado/);
   assert.match(PANTALLA, /descartarBorrador/);
   // La constitución y el conocimiento viven en la base: cambiarlos no exige desplegar.

@@ -110,10 +110,10 @@ export async function InicioComercial({ profile, edicion, empresa }: { profile: 
         actions={
           <div className="flex flex-wrap gap-2">
             <Link href="/dashboard/ventas/prospeccion" className={buttonClasses()}>
-              <Inbox size={16} aria-hidden="true" /> Prospección
+              <Inbox size={16} aria-hidden="true" /> Por contactar
             </Link>
             <Link href="/dashboard/pipeline" className={buttonClasses({ variant: "secondary" })}>
-              <Handshake size={16} aria-hidden="true" /> Pipeline
+              <Handshake size={16} aria-hidden="true" /> Negocios
             </Link>
             <Link href="/dashboard/ventas" className={buttonClasses({ variant: "secondary" })}>
               <Plus size={16} aria-hidden="true" /> {voc.nuevo}
@@ -147,7 +147,7 @@ export async function InicioComercial({ profile, edicion, empresa }: { profile: 
 
       <div className="grid gap-4 xl:grid-cols-2">
         <SectionCard title={`Sin contactar · ${sinContactar.length}`} description="Llegaron y nadie los ha gestionado. Lo que viene de la web debería contactarse en menos de una hora." icon={UserX} tone="blue">
-          {sinContactar.length === 0 ? <EmptyState icon={UserX} title="Todo contactado" description="Cada negocio abierto tiene al menos una gestión. Los que solo abrieron el correo están en Prospección." /> : (
+          {sinContactar.length === 0 ? <EmptyState icon={UserX} title="Todo contactado" description="Cada negocio abierto tiene al menos una gestión. Los que solo abrieron el correo están en Ventas › Por contactar." /> : (
             <ul className="divide-y divide-border">
               {sinContactar.slice(0, 10).map((negocio) => {
                 const horas = horasDesde(negocio.created_at);
@@ -223,7 +223,7 @@ export async function InicioComercial({ profile, edicion, empresa }: { profile: 
               ))}
             </ul>
           )}
-          <p className="border-t border-border px-4 py-2 text-xs"><Link href="/dashboard/ventas/prospeccion" className="text-primary hover:underline">Gestionar en Prospección</Link></p>
+          <p className="border-t border-border px-4 py-2 text-xs"><Link href="/dashboard/ventas/prospeccion" className="text-primary hover:underline">Ver a quién escribirle</Link></p>
         </SectionCard>
       </div>
       {sinContactar.some((negocio) => negocio.source === "agenda_web" && horasDesde(negocio.created_at) >= 1) && (

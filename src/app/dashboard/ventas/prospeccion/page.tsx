@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { unstable_noStore as noStore } from "next/cache";
-import { CheckCheck, Flame, History, Inbox, Snowflake, Undo2 } from "lucide-react";
+import { CheckCheck, Flame, History, Inbox, Undo2 } from "lucide-react";
 
 import { deshacerToque } from "@/app/actions/prospeccion";
 import { BandejaProspeccion, type FilaProspecto } from "@/components/bandeja-prospeccion";
+import { RespuestasDelAgente, type BorradorAgente, type ConfigAgente } from "@/components/respuestas-del-agente";
 import { Callout, EmptyState, MetricCard, NavTabs, PageHeader, SectionCard, SubmitButton } from "@/components/ui";
+import { VistaSegmentada } from "@/components/vista-segmentada";
 import { requireProfile } from "@/lib/auth";
 import { ZONA_CLINICA, fechaEnChile, instanteEnChile } from "@/lib/citas";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
@@ -28,7 +30,8 @@ import { PESTANAS_VENTAS } from "@/lib/ventas-pestanas";
  * correo, ordenado por temperatura. Es el mismo listado que el resumen diario
  * de Atlas Lead manda por correo, pero acá se trabaja: WhatsApp en un clic que
  * queda anotado, y un resultado que decide si vuelve en unos días, sale de la
- * bandeja o pasa al pipeline como negocio.
+ * bandeja o pasa al pipeline como negocio. Las respuestas que el agente
+ * propone son la tercera vista: quien contestó es lo más caliente que hay.
  */
 
 const fechaHora = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -69,7 +72,7 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
   const haceSieteDias = new Date(ahora.getTime() - 7 * 24 * 60 * 60 * 1000);
 
   const supabase = await createClient();
-  const [{ data: colaData, error }, { data: toquesData }] = await Promise.all([
+  const [{ data: colaData, error }, { data: toquesData }, { data: configAgente }, { data: borradoresData }] = await Promise.all([
     supabase.rpc("bandeja_de_prospeccion", { p_dias: 14 }),
     supabase
       .from("prospeccion_toques")
@@ -77,6 +80,13 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
       .gte("created_at", haceSieteDias.toISOString())
       .order("created_at", { ascending: false })
       .limit(300),
+    supabase.from("sales_agent_configs").select("enabled, modo").maybeSingle(),
+    supabase
+      .from("sales_agent_drafts")
+      .select("id, para_email, asunto, cuerpo, intencion, razonamiento, escalar, created_at, opportunity_id")
+      .eq("estado", "pendiente")
+      .order("created_at", { ascending: false })
+      .limit(50),
   ]);
 
   // Los marcados "no contactar" se ven en la lista (al final), pero no son trabajo pendiente.
@@ -87,52 +97,56 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
   const sinGestionUnDia = cola.filter((p) => p.estado === "nuevo" && p.primera_senal_at && ahora.getTime() - new Date(p.primera_senal_at).getTime() > 24 * 60 * 60 * 1000);
   const hechosHoy = toques.filter((t) => new Date(t.created_at) >= inicioHoy);
   const remitente = (profile.full_name ?? "").split(" ")[0] || "el equipo";
+  const borradores = (borradoresData ?? []) as BorradorAgente[];
+  const config = (configAgente ?? null) as ConfigAgente;
+  // Sin agente y sin nada pendiente, la vista de respuestas sería una puerta a un cuarto vacío.
+  const conAgente = Boolean(config?.enabled) || borradores.length > 0;
+  const vistaActiva = vista === "historial" ? "historial" : vista === "respuestas" && conAgente ? "respuestas" : "cola";
 
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Prospección"
-        description={`${empresaPropia ?? "Tu empresa"} · quienes mostraron interés en la campaña de correo y esperan que les escribas. El correo de Atlas es el aviso; la gestión se anota acá.`}
+        title="Ventas"
+        description={`${empresaPropia ?? "Tu empresa"} · a quién escribirle hoy: personas que abrieron, hicieron clic o respondieron tu campaña de correo.`}
       />
       <NavTabs tabs={PESTANAS_VENTAS} />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <MetricCard label="Por contactar" value={cola.length} hint="Abrieron, hicieron clic o respondieron en 14 días" icon={Inbox} iconTone="teal" />
-        <MetricCard label="Calientes" value={calientes.length} hint="Respondieron, hicieron clic o volvieron a abrir" tone={calientes.length > 0 ? "warn" : "default"} icon={Flame} iconTone="amber" />
-        <MetricCard label="Más de un día sin gestión" value={sinGestionUnDia.length} hint="El interés se enfría rápido" tone={sinGestionUnDia.length > 0 ? "danger" : "good"} icon={Snowflake} iconTone="amber" />
-        <MetricCard label="Gestionados hoy" value={hechosHoy.length} hint={`${toques.length} en los últimos 7 días`} tone="good" icon={CheckCheck} iconTone="green" />
+      <div className="grid gap-3 sm:grid-cols-3">
+        <MetricCard
+          label="Esperan que les escribas"
+          value={cola.length}
+          hint={sinGestionUnDia.length > 0 ? `${sinGestionUnDia.length} llevan más de un día: el interés se enfría` : "Nadie lleva más de un día esperando"}
+          tone={sinGestionUnDia.length > 0 ? "warn" : "default"}
+          icon={Inbox}
+          iconTone="teal"
+        />
+        <MetricCard label="Muy interesados" value={calientes.length} hint="Respondieron, hicieron clic o volvieron a abrir" icon={Flame} iconTone="amber" />
+        <MetricCard label="Contactados hoy" value={hechosHoy.length} hint={`${toques.length} en los últimos 7 días`} tone={hechosHoy.length > 0 ? "good" : "default"} icon={CheckCheck} iconTone="green" />
       </div>
 
-      <div className="inline-flex rounded-lg border border-border bg-surface p-0.5 text-sm shadow-sm">
-        {[
-          { clave: "cola", texto: `Por contactar · ${cola.length}`, href: "/dashboard/ventas/prospeccion" },
-          { clave: "historial", texto: "Gestionados · 7 días", href: "/dashboard/ventas/prospeccion?vista=historial" },
-        ].map((opcion) => {
-          const activa = (vista === "historial" ? "historial" : "cola") === opcion.clave;
-          return (
-            <Link
-              key={opcion.clave}
-              href={opcion.href}
-              aria-current={activa ? "page" : undefined}
-              className={`rounded-md px-3 py-1 font-medium transition-colors ${activa ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              {opcion.texto}
-            </Link>
-          );
-        })}
-      </div>
+      <VistaSegmentada
+        etiqueta="Qué ver"
+        activa={vistaActiva}
+        opciones={[
+          { clave: "cola", texto: "Por contactar", href: "/dashboard/ventas/prospeccion", cuenta: cola.length },
+          ...(conAgente ? [{ clave: "respuestas", texto: "Te respondieron", href: "/dashboard/ventas/prospeccion?vista=respuestas", cuenta: borradores.length }] : []),
+          { clave: "historial", texto: "Ya contactados", href: "/dashboard/ventas/prospeccion?vista=historial" },
+        ]}
+      />
 
       {error && <Callout tone="danger">No se pudo leer la bandeja: {error.message}</Callout>}
 
-      {vista !== "historial" ? (
+      {vistaActiva === "respuestas" ? (
+        <RespuestasDelAgente config={config} borradores={borradores} />
+      ) : vistaActiva === "cola" ? (
         <SectionCard
-          title="Por contactar"
+          title="Primero, los más interesados"
           icon={Inbox}
           tone="teal"
-          description="Ordenado por temperatura: quien respondió, quien hizo clic, quien volvió a abrir y quien abrió más de una vez. Al escribirle vuelve en 3 días si no pasa nada; si vuelve a abrir antes, sube."
+          description="Escríbele con un clic y anota cómo te fue. Si no contesta, vuelve a esta lista en 3 días."
         >
           {todos.length === 0 ? (
-            <EmptyState icon={Inbox} title="Bandeja al día" description="Nadie con interés espera gestión. Cuando alguien abra o haga clic en la campaña, aparece acá." />
+            <EmptyState icon={Inbox} title="Estás al día" description="Nadie espera que le escribas. Cuando alguien abra o haga clic en tu campaña de correo, aparece acá." />
           ) : (
             <BandejaProspeccion
               filas={todos.map((p): FilaProspecto => {
@@ -178,9 +192,9 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
           )}
         </SectionCard>
       ) : (
-        <SectionCard title="Gestionados en los últimos 7 días" description="Lo que se hizo con cada prospecto. Lo tuyo de las últimas 24 horas se puede deshacer, salvo lo que ya pasó al pipeline." icon={History} tone="teal">
+        <SectionCard title="Contactados en los últimos 7 días" description="Lo tuyo de las últimas 24 horas se puede deshacer, salvo lo que ya pasó a Negocios." icon={History} tone="teal">
           {toques.length === 0 ? (
-            <EmptyState icon={History} title="Sin gestiones todavía" description="Cada WhatsApp, llamada o resultado que anotes en la bandeja aparece acá." />
+            <EmptyState icon={History} title="Todavía no contactas a nadie" description="Cada WhatsApp, llamada o resultado que anotes en Por contactar aparece acá." />
           ) : (
             <ul className="divide-y divide-border">
               {toques.map((t) => {

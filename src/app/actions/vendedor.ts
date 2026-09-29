@@ -27,7 +27,7 @@ async function decidir(formData: FormData, estado: "enviado" | "descartado") {
     .eq("id", id);
 
   if (error) throw new Error(error.message);
-  revalidatePath("/dashboard/ventas/respuestas");
+  revalidatePath("/dashboard/ventas/prospeccion");
   revalidatePath("/dashboard/ventas");
 }
 

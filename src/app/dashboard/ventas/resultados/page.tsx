@@ -84,7 +84,7 @@ export default async function ResultadosPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Resultados" description={`${empresa ?? voc.titulo} · ${negocios.length} negocios en total · ${abiertos.length} abiertos`} />
+      <PageHeader title={voc.titulo} description={`${empresa ?? "Tu empresa"} · cuánto vendiste, de dónde llegan los negocios y quién los cierra`} />
       <NavTabs tabs={PESTANAS_VENTAS} />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

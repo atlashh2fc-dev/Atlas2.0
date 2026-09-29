@@ -200,17 +200,19 @@ const CONSOLE: NavSpace = {
         {
           id: "ventas",
           label: "Ventas",
-          href: "/dashboard/pipeline",
+          href: "/dashboard/ventas/prospeccion",
           icon: Handshake,
           roles: ["admin", "supervisor"],
-          description: "Prospección de quienes mostraron interés y pipeline B2B: negocios por etapa, responsable, origen y próxima acción",
+          description: "A quién escribirle hoy, cómo van tus negocios y cuánto vendiste",
           match: ["/dashboard/pipeline", "/dashboard/ventas"],
+          // Las pestañas que se pintan están en src/lib/ventas-pestanas.ts; acá
+          // cuentan para saber qué rutas son de Ventas al cambiar de empresa, por
+          // eso va también la lista, que es la otra vista de Negocios.
           tabs: [
-            { label: "Prospección", href: "/dashboard/ventas/prospeccion" },
-            { label: "Pipeline", href: "/dashboard/pipeline" },
-            { label: "Lista", href: "/dashboard/ventas" },
+            { label: "Por contactar", href: "/dashboard/ventas/prospeccion" },
+            { label: "Negocios", href: "/dashboard/pipeline" },
+            { label: "Negocios en lista", href: "/dashboard/ventas" },
             { label: "Resultados", href: "/dashboard/ventas/resultados" },
-            { label: "Respuestas del agente", href: "/dashboard/ventas/respuestas" },
           ],
           modules: ["ventas_b2b", "ventas_b2c"],
           ediciones: ["center"],
