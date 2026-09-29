@@ -41,7 +41,7 @@ const ui = {
   // Pestañas Centro de operaciones / Monitor en vivo: enlaces simples.
   NavTabs: ({ tabs }: { tabs: { label: string; href: string }[] }) => React.createElement("nav", null,
     tabs.map((tab) => React.createElement("a", { key: tab.href, href: tab.href }, tab.label))),
-  Card: element("div"), Badge: element("span"), Callout: element("aside"),
+  Card: element("div"), Badge: element("span"), Callout: element("aside"), EmptyState: element("div"),
   Select: element("select"), Table: element("table"), Tbody: element("tbody"),
   Td: element("td"), Th: element("th"), Tr: element("tr"),
   Thead: ({ children }: Props) => React.createElement("thead", null, React.createElement("tr", null, children)),
@@ -83,6 +83,13 @@ async function renderOperations({
     get_queue_health: [{ campaign_id: ids.campaign, campaign_name: "Campaña autorizada", queue_name: "voice-queue", campaign_type: "outbound", in_flight: 2, attempts_today: 6, answered_today: 3, completed_today: 2 }],
     get_live_wallboard: { por_campana: [{ campaign_id: ids.campaign, recorridos: 40, intentos: 55, conectados: 9, contactados: 5, titulares: 4, ventas: 1 }] },
     get_agent_live_status: [{ profile_id: ids.agent, full_name: "Ejecutivo autorizado", campaign_id: ids.campaign, campaign_name: "Campaña autorizada", phone_status: "available", is_pause: false, reason_code: "disponible" }],
+    // Tablero de colas: solo metadatos y cifras, nunca contenido de conversaciones.
+    tablero_de_colas: [{ id: ids.queue, nombre: "Secretaría Virtual", modo: "least_loaded", sla_whatsapp_segundos: 300, sla_correo_segundos: 14400, max_correos: 10, max_whatsapp: 3,
+      canales: ["email", "whatsapp", "voice"],
+      correo: { pendientes: 2, sin_asignar: 1, vencidos: 1, mas_antiguo: "2026-08-27T08:00:00Z", atendidos_hoy: 4, mediana_respuesta_minutos: 35 },
+      whatsapp: { abiertas: 1, sin_asignar: 0, sin_responder: 1, vencidas: 0, mas_antigua: "2026-08-27T10:00:00Z" },
+      miembros: [{ id: ids.agent, nombre: "Ejecutivo autorizado", conectado: true, estado: "Disponible", en_pausa: false, telefono: "on_call",
+        correo_prendido: true, whatsapp_prendido: false, recibe_correo: true, recibe_whatsapp: false, correos: 2, whatsapp: 1 }] }],
     get_mail_engagement_report_read_model: [{ mail_campaign_id: "mail-1", mail_campaign_name: "Correo autorizado", campaign_id: ids.campaign, campaign_name: "Campaña autorizada", sent_leads: 20, opened_leads: 8, clicked_leads: 2, hot_leads: 8, assigned_hot_leads: 3, managed_hot_leads: 1 }],
   };
   const client = {
@@ -142,6 +149,8 @@ async function renderOperations({
   dependencies["@/lib/workspace-permissions"] = load("../src/lib/workspace-permissions.ts");
   dependencies["@/lib/operations-model"] = load("../src/lib/operations-model.ts");
   dependencies["@/lib/operations-data"] = load("../src/lib/operations-data.ts");
+  dependencies["@/lib/utils"] = load("../src/lib/utils.ts");
+  dependencies["@/components/tablero-de-colas"] = load("../src/components/tablero-de-colas.tsx");
   const page = load("../src/app/dashboard/operacion/page.tsx").default as (props: { searchParams: Promise<Record<string, string>> }) => Promise<React.ReactElement>;
   const html = renderToStaticMarkup(await page({ searchParams: Promise.resolve(params) }));
   return { html, reads, connections };
@@ -170,6 +179,8 @@ test("real supervisor render describes authorized scope and does not offer confi
   assert.match(html, /Control de tus equipos y campañas autorizadas/);
   assert.match(html, /dentro de tu alcance autorizado/);
   assert.match(html, /Supervisar asignaciones/);
+  assert.match(html, /Colas en vivo/);
+  assert.match(html, /href="\/dashboard\/operacion\/colas\/[^"]+"[^>]*>[\s\S]*?Mover ejecutivos/);
   assert.doesNotMatch(html, /href="\/dashboard\/admin|Configurar colas|PRIVATE-CUSTOMER|<textarea/);
 });
 

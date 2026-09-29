@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { setWhatsAppAutomationEnabled } from "@/app/actions/whatsapp";
 import { OperationsRefresh } from "@/components/operations-refresh";
+import { TableroDeColas, type ColaEnVivo } from "@/components/tablero-de-colas";
 import {
   ActionForm,
   ActionSubmit,
@@ -177,6 +178,7 @@ export default async function OperationsPage({
     stockResult,
     automationResult,
     automationHistoryResult,
+    tableroResult,
   ] = await Promise.all([
     supabase
       .from("contact_center_queues")
@@ -233,6 +235,7 @@ export default async function OperationsPage({
       )
       .order("created_at", { ascending: false })
       .limit(10),
+    supabase.rpc("tablero_de_colas"),
   ]);
   const observedAt = new Date().toISOString();
   const now = Date.parse(observedAt);
@@ -554,6 +557,15 @@ export default async function OperationsPage({
           </Link>
         </form>
       </Card>
+      {filters.channel !== "voice" && (
+        <TableroDeColas
+          colas={((tableroResult.data ?? []) as ColaEnVivo[]).filter((cola) => !filters.queue || cola.id === filters.queue)}
+          ahora={now}
+          puedeMover
+        />
+      )}
+      {tableroResult.error && <Callout tone="warning">No se pudo leer el tablero de colas: {tableroResult.error.message}</Callout>}
+
       {catalogUnavailable && (
         <Callout tone="warning">
           El catálogo de colas o campañas no está disponible o excede el límite

@@ -330,6 +330,8 @@ export interface AgentStatusReason {
   excludes_from_adherence: boolean;
   /** Tope sugerido de permanencia en segundos; nulo = sin tope. */
   max_seconds: number | null;
+  /** Canales digitales que siguen abiertos durante esta pausa de voz. */
+  canales_digitales?: string[];
   created_at: string;
   updated_at: string;
 }

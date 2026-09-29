@@ -228,6 +228,29 @@ export async function updateStatusReasonCap(formData: FormData) {
   revalidatePath("/dashboard/admin/estados-agente");
 }
 
+/**
+ * Qué canales digitales deja abiertos una pausa de voz. «Correo / cotizaciones»
+ * saca de la cola de llamadas pero sigue recibiendo correo: eso es el
+ * blending. El discador no lee esta columna; la leen las colas digitales.
+ */
+export async function updateStatusReasonCanales(formData: FormData) {
+  await requireProfile(["admin"]);
+  const id = String(formData.get("id") ?? "");
+  if (!UUID.test(id)) throw new Error("Motivo inválido.");
+  const canales = formData.getAll("canales").map(String).filter((canal) => canal === "correo" || canal === "whatsapp");
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("agent_status_reasons")
+    .update({ canales_digitales: [...new Set(canales)] })
+    .eq("id", id)
+    .eq("is_pause", true)
+    .select("id");
+  if (error) throw new Error(error.message);
+  if (!data?.length) throw new Error("No se encontró la pausa o no es de tu empresa.");
+  revalidatePath("/dashboard/admin/estados-agente");
+}
+
 export type MyStatusDay = {
   desde: string;
   actual: { reason_id: string; since: string } | null;

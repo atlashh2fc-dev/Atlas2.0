@@ -52,7 +52,7 @@ export default async function ContactCenterQueueLayout({ children, params }: { c
       <NavTabs tabs={[
         { label: "Resumen de configuración", href: base },
         { label: "Enrutamiento", href: `${base}/enrutamiento` },
-        { label: "Miembros WhatsApp", href: `${base}/miembros` },
+        { label: "Miembros", href: `${base}/miembros` },
         { label: "Fuentes", href: `${base}/fuentes` },
       ]} />
       {children}

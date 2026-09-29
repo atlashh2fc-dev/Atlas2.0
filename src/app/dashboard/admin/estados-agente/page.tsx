@@ -5,6 +5,7 @@ import {
   createStatusReason,
   toggleStatusReasonActive,
   updateStatusReasonCap,
+  updateStatusReasonCanales,
 } from "@/app/actions/agent-status";
 import { TOPE_MAXIMO_MINUTOS, TOPE_MINIMO_MINUTOS } from "@/lib/tope-de-pausa";
 import { CreatePanel } from "@/components/create-panel";
@@ -142,9 +143,33 @@ export default async function EstadosAgentePage() {
                       <StatusDot /> Automático
                     </span>
                   ) : reason.is_pause ? (
-                    <span className="inline-flex items-center gap-2 text-warning">
-                      <StatusDot tone="warning" /> Fuera de la cola
-                    </span>
+                    <div className="space-y-1.5">
+                      <span className="inline-flex items-center gap-2 text-warning">
+                        <StatusDot tone="warning" /> Fuera de la cola de voz
+                      </span>
+                      <ActionForm action={updateStatusReasonCanales} success="Canales guardados" className="flex flex-wrap items-center gap-2 text-xs">
+                        <input type="hidden" name="id" value={reason.id} />
+                        <span className="text-muted-foreground">Sigue recibiendo:</span>
+                        {[
+                          { valor: "correo", texto: "Correo" },
+                          { valor: "whatsapp", texto: "WhatsApp" },
+                        ].map((canal) => (
+                          <label key={canal.valor} className="inline-flex cursor-pointer items-center gap-1">
+                            <input
+                              type="checkbox"
+                              name="canales"
+                              value={canal.valor}
+                              defaultChecked={(reason.canales_digitales ?? []).includes(canal.valor)}
+                              className="accent-primary"
+                            />
+                            {canal.texto}
+                          </label>
+                        ))}
+                        <ActionSubmit variant="ghost" size="sm" pendingLabel="…">
+                          Guardar
+                        </ActionSubmit>
+                      </ActionForm>
+                    </div>
                   ) : (
                     <span className="inline-flex items-center gap-2 text-success">
                       <StatusDot tone="success" /> Recibe llamadas
