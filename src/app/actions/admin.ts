@@ -281,19 +281,34 @@ export async function activateHistoricalAgent(formData: FormData) {
   revalidatePath("/dashboard/admin/usuarios");
 }
 
+/**
+ * Reasignación desde la ficha del registro. Antes el botón mandaba al
+ * supervisor a Mi equipo, que solo lista los 250 registros movidos más
+ * recientemente: el cliente que tenía abierto casi nunca aparecía ahí.
+ * La validación de equipo y la auditoría viven en `assign_lead`.
+ */
 export async function assignLead(formData: FormData) {
   await requireProfile(["supervisor", "admin"]);
   const leadId = formData.get("lead_id") as string;
   const agentId = ((formData.get("agent_id") as string) || "").trim() || null;
 
   if (!leadId) throw new Error("Registro no válido.");
+  if (!agentId) throw new Error("Elige el ejecutivo que se queda con el registro.");
   const supabase = await createClient();
+  // "Mis agendas" sale de managed_by: si el registro tiene una agenda pendiente,
+  // se la lleva el nuevo ejecutivo o quedaría en la bandeja del anterior.
+  const { data: current, error: readError } = await supabase
+    .from("leads")
+    .select("next_action_at")
+    .eq("id", leadId)
+    .maybeSingle();
+  if (readError) throw new Error(readError.message);
   const { error } = await supabase.rpc("assign_lead", {
     p_lead_id: leadId,
     p_agent_id: agentId,
-    p_reason: agentId ? "Asignación manual desde Mi equipo" : "Desasignación manual desde Mi equipo",
-    p_source: "team.assignment_form",
-    p_set_managed_by: false,
+    p_reason: "Reasignación desde la ficha del registro",
+    p_source: "lead.detail_reassign",
+    p_set_managed_by: Boolean(current?.next_action_at),
     p_next_action_at: null,
   });
 

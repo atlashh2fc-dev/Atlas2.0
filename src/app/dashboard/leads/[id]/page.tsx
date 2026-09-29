@@ -10,6 +10,7 @@ import { fetchCampaignAgendaPolicy } from "@/lib/campaign-agenda-policy";
 import { AgendaCallButton } from "@/components/agenda-call-button";
 import { OFFLINE_CHANNEL_LABEL, OPEN_CALL_FORM_ATTRIBUTE } from "@/lib/call-management-navigation";
 import { LeadPhonesPanel } from "@/components/lead-phones-panel";
+import { LeadReassignPanel } from "@/components/lead-reassign-panel";
 import { OfflineManagementButton } from "@/components/offline-management-button";
 import { ScreenPopTiming } from "@/components/screen-pop-timing";
 import { CallTypificationForm } from "@/components/call-typification-form";
@@ -363,6 +364,20 @@ export default async function LeadDetailPage({
   // duplicados cuando el cierre revalida la página antes de navegar.
   const canManageCall = permissions.canAttendCustomers;
   const canReassign = permissions.canManageAssignments;
+  // assign_lead solo acepta ejecutivos activos del equipo del registro; la RLS
+  // ya limita al supervisor a los de sus equipos.
+  const reassignAgents: { id: string; full_name: string }[] = [];
+  if (canReassign) {
+    const agentsQuery = supabase
+      .from("profiles")
+      .select("id, full_name")
+      .eq("role", "agente")
+      .eq("active", true)
+      .order("full_name");
+    if (lead.team_id) agentsQuery.eq("team_id", lead.team_id);
+    const { data: agentRows } = await agentsQuery;
+    for (const row of agentRows ?? []) reassignAgents.push({ id: row.id, full_name: row.full_name ?? "Sin nombre" });
+  }
   const canOperateAssigned = canOperateAssignedConversation(profile, lead.assigned_to);
   // Sin asignación, el cliente es de quien lo gestionó (mismo criterio que
   // begin_agent_assigned_lead_call). Los clientes migrados de Atlas 1 llegaron
@@ -727,9 +742,15 @@ export default async function LeadDetailPage({
               </Link>
             )}
             {canReassign && (
-              <Link href={profile.role === "admin" ? `/dashboard/leads?q=${encodeURIComponent(lead.rut ?? lead.phone ?? lead.full_name)}` : "/dashboard/team"} className={buttonClasses({ variant: "secondary" })}>
-                Reasignar
-              </Link>
+              <LeadReassignPanel
+                leadId={lead.id}
+                leadName={lead.full_name}
+                currentAgentId={lead.assigned_to}
+                currentAgentName={assignedProfile?.full_name ?? null}
+                teamName={team?.name ?? null}
+                hasPendingAgenda={Boolean(lead.next_action_at)}
+                agents={reassignAgents}
+              />
             )}
             {campaign?.id && profile.role === "admin" && (
               <Link
