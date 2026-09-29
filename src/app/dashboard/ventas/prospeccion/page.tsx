@@ -143,7 +143,7 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
           title="Primero, los más interesados"
           icon={Inbox}
           tone="teal"
-          description="Escríbele con un clic y anota cómo te fue. Si no contesta, vuelve a esta lista en 3 días."
+          description="Escríbele y después anota cómo te fue. Nadie sale de esta lista hasta que lo anotes."
         >
           {todos.length === 0 ? (
             <EmptyState icon={Inbox} title="Estás al día" description="Nadie espera que le escribas. Cuando alguien abra o haga clic en tu campaña de correo, aparece acá." />

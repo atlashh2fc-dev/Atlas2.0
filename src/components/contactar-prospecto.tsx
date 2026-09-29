@@ -2,41 +2,37 @@
 
 import { MessageCircle, Phone, Mail } from "lucide-react";
 
-import { registrarToque } from "@/app/actions/prospeccion";
-import { SubmitButton } from "@/components/ui";
+import { buttonClasses } from "@/components/ui";
 
 /**
- * Escribir y anotar en el mismo clic. Abre WhatsApp (o el correo) en otra
- * pestaña y deja registrado el toque, con seguimiento en tres días. Si hubiera
- * que anotarlo aparte, la mitad de las veces no se anotaría: es la razón por la
- * que las herramientas de prospección registran la tarea al ejecutarla.
+ * Abre WhatsApp, el teléfono o el correo, y nada más. Abrir no es enviar: la
+ * persona puede cerrar WhatsApp sin mandar el mensaje, y si el clic anotara el
+ * toque la sacaría de la bandeja por tres días sin que nadie le escribiera
+ * (pasó el 29-09). Lo que pasó se anota después, con «¿Cómo te fue?».
  */
 export function ContactarProspecto({
-  leadId,
   canal,
   enlace,
   etiqueta,
+  alAbrir,
 }: {
-  leadId: string;
   canal: "whatsapp" | "llamada" | "correo";
   enlace: string | null;
   etiqueta: string;
+  alAbrir?: () => void;
 }) {
   const Icono = canal === "whatsapp" ? MessageCircle : canal === "llamada" ? Phone : Mail;
+  const clases = buttonClasses({ size: "sm", variant: canal === "whatsapp" ? "primary" : "secondary" });
+  if (!enlace) return null;
   return (
-    <form action={registrarToque}>
-      <input type="hidden" name="lead_id" value={leadId} />
-      <input type="hidden" name="resultado" value={canal} />
-      <SubmitButton
-        size="sm"
-        variant={canal === "whatsapp" ? "primary" : "secondary"}
-        pendingLabel="Anotando…"
-        onClick={() => {
-          if (enlace) window.open(enlace, "_blank", "noopener,noreferrer");
-        }}
-      >
-        <Icono size={13} aria-hidden="true" /> {etiqueta}
-      </SubmitButton>
-    </form>
+    <a
+      href={enlace}
+      target={canal === "llamada" ? undefined : "_blank"}
+      rel="noopener noreferrer"
+      onClick={alAbrir}
+      className={clases}
+    >
+      <Icono size={13} aria-hidden="true" /> {etiqueta}
+    </a>
   );
 }

@@ -31,9 +31,9 @@ export type FilaProspecto = {
 };
 
 const HECHO: Record<string, string> = {
-  whatsapp: "WhatsApp anotado · vuelve en 3 días si no responde",
-  llamada: "Llamada anotada · vuelve en 3 días",
-  correo: "Correo anotado · vuelve en 3 días",
+  whatsapp: "Le escribiste por WhatsApp · vuelve en 3 días si no responde",
+  llamada: "No contestó · vuelve en 3 días",
+  correo: "Le escribiste un correo · vuelve en 3 días si no responde",
   no_interesa: "Anotado: no le interesa",
   numero_malo: "Anotado: el número no sirve",
   posponer: "Pospuesto una semana",
@@ -41,6 +41,9 @@ const HECHO: Record<string, string> = {
 };
 
 /**
+ * Nada sale de la bandeja sin que alguien diga qué pasó: abrir WhatsApp no
+ * cuenta, solo «¿Cómo te fue?».
+ *
  * La cola no se mueve bajo el cursor. Al anotar un toque, el servidor saca a
  * ese prospecto de la bandeja (vuelve el día del seguimiento) y el resto sube:
  * quien va trabajando de arriba hacia abajo pierde el lugar. Por eso la fila
@@ -53,6 +56,9 @@ export function BandejaProspeccion({ filas }: { filas: FilaProspecto[] }) {
   // para estado derivado de props), sin efectos ni refs.
   const [vistas, setVistas] = useState<{ de: FilaProspecto[]; filas: FilaProspecto[] }>({ de: filas, filas });
   const [hechos, setHechos] = useState<Record<string, string>>({});
+  // A quién se le abrió WhatsApp, el teléfono o el correo. No se anota nada:
+  // solo se le recuerda a la persona que diga cómo le fue.
+  const [abrio, setAbrio] = useState<Record<string, boolean>>({});
   if (vistas.de !== filas) {
     const porId = new Map(filas.map((fila) => [fila.leadId, fila]));
     const conocidas = vistas.filas.map((fila) => porId.get(fila.leadId) ?? fila);
@@ -68,7 +74,7 @@ export function BandejaProspeccion({ filas }: { filas: FilaProspecto[] }) {
       {vistas.filas.map((p) => {
         const leadId = p.leadId;
         const hecho = hechos[leadId];
-        if (!presentes.has(leadId) || (hecho && hecho !== "whatsapp" && hecho !== "llamada" && hecho !== "correo")) {
+        if (!presentes.has(leadId) || hecho) {
           return (
             <li key={leadId} className="flex items-center justify-between gap-3 bg-surface-muted/40 px-4 py-3 text-muted-foreground">
               <span className="truncate text-sm">{p.nombre}</span>
@@ -120,11 +126,20 @@ export function BandejaProspeccion({ filas }: { filas: FilaProspecto[] }) {
               <Correos correos={p.correos} abiertos={p.abiertos} campana={p.campana} />
             </div>
             <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
-              <span onClickCapture={() => anotar(p.leadId, p.canal)}>
-                <ContactarProspecto leadId={p.leadId} canal={p.canal} enlace={p.enlace} etiqueta={p.etiqueta} />
-              </span>
-              <div role="group" aria-label="Cómo te fue" className="flex flex-wrap items-center gap-0.5 rounded-lg border border-border bg-surface-muted/40 py-0.5 pl-2.5 pr-0.5">
-                <span className="mr-1 text-xs text-muted-foreground">¿Cómo te fue?</span>
+              <ContactarProspecto canal={p.canal} enlace={p.enlace} etiqueta={p.etiqueta} alAbrir={() => setAbrio((previo) => ({ ...previo, [leadId]: true }))} />
+              <div
+                role="group"
+                aria-label="Cómo te fue"
+                className={`flex flex-wrap items-center gap-0.5 rounded-lg border py-0.5 pl-2.5 pr-0.5 transition-colors ${abrio[leadId] ? "border-primary bg-primary/8" : "border-border bg-surface-muted/40"}`}
+              >
+                <span className={`mr-1 text-xs ${abrio[leadId] ? "font-medium text-primary" : "text-muted-foreground"}`}>{abrio[leadId] ? "¿Lo enviaste? Anota cómo te fue:" : "¿Cómo te fue?"}</span>
+                <Resultado
+                  leadId={p.leadId}
+                  resultado={p.canal}
+                  texto={p.canal === "llamada" ? "No contestó" : "Le escribí"}
+                  titulo={p.canal === "llamada" ? "Vuelve a esta lista en 3 días" : "Vuelve a esta lista en 3 días si no responde"}
+                  alAnotar={anotar}
+                />
                 <Resultado leadId={p.leadId} resultado="interesado" texto="Le interesa" titulo="Pasa a Negocios" alAnotar={anotar} />
                 <Resultado leadId={p.leadId} resultado="no_interesa" texto="No le interesa" alAnotar={anotar} />
                 <Resultado leadId={p.leadId} resultado="posponer" texto="En una semana" titulo="Vuelve a esta lista en 7 días" alAnotar={anotar} />
