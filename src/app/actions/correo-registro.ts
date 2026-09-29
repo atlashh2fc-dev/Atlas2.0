@@ -115,6 +115,7 @@ export async function responderCorreoDeRegistro(formData: FormData) {
   await atenderPendientes(supabase, leadId, profile.id);
   revalidatePath(`/dashboard/leads/${leadId}`);
   revalidatePath("/dashboard/leads");
+  revalidatePath("/dashboard/conversaciones/correo");
 }
 
 /** Atendida sin contestar por correo (p. ej. se resolvió por teléfono). */
@@ -125,6 +126,7 @@ export async function marcarCorreoAtendido(formData: FormData) {
   await atenderPendientes(supabase, leadId, profile.id);
   revalidatePath(`/dashboard/leads/${leadId}`);
   revalidatePath("/dashboard/leads");
+  revalidatePath("/dashboard/conversaciones/correo");
 }
 
 /**

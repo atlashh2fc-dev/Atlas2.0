@@ -2,10 +2,10 @@ import { redirect } from "next/navigation";
 
 import { requireProfile } from "@/lib/auth";
 import { puedeLeerConversaciones, requireModule } from "@/lib/modules.server";
-import { createClient } from "@/lib/supabase/server";
 import { Callout, NavTabs, PageHeader } from "@/components/ui";
 import { getWorkspacePermissions } from "@/lib/workspace-permissions";
-import { ATTENTION_TABS, getEnabledChannels } from "@/lib/campaign-channels";
+import { ATTENTION_TABS } from "@/lib/campaign-channels";
+import { puestoDeAtencion } from "@/lib/presencia.server";
 
 /**
  * Puesto de atención, con una pestaña por canal habilitado.
@@ -13,7 +13,10 @@ import { ATTENTION_TABS, getEnabledChannels } from "@/lib/campaign-channels";
  * Antes esta ruta era el inbox de WhatsApp y nada más: el ejecutivo de una
  * campaña de voz entraba a una bandeja vacía sin ninguna pista de por qué. Las
  * pestañas salen de `campaign_channels`, así que lo que se puede atender lo
- * decide la configuración de la campaña y no el código de la pantalla.
+ * decide la configuración de la campaña y no el código de la pantalla. Para el
+ * ejecutivo también cuentan sus colas: si su cola atiende el buzón, ve Correo.
+ * Cada pestaña lleva lo que tiene pendiente, como en cualquier puesto
+ * omnicanal: se ve dónde hay trabajo sin tener que entrar a mirar.
  */
 export default async function AttentionLayout({ children }: { children: React.ReactNode }) {
   await requireModule("contact_center", "whatsapp", "correo");
@@ -24,17 +27,8 @@ export default async function AttentionLayout({ children }: { children: React.Re
   if (!(await puedeLeerConversaciones(profile.role))) redirect("/dashboard/operacion");
   const soloLectura = !permissions.canAttendCustomers && !permissions.canReadConversationContent;
 
-  const supabase = await createClient();
-  const enabled = await getEnabledChannels(supabase, profile);
-  const tabs = ATTENTION_TABS.filter((tab) => {
-    if (!enabled.includes(tab.channel)) return false;
-    // La bandeja de correo es compartida y su RLS
-    // (`can_operate_inbound_campaign`) hoy solo admite supervisión y
-    // administración. Mostrarle la pestaña al ejecutivo sería prometerle una
-    // bandeja que la base le va a devolver vacía.
-    if (tab.channel === "mail") return !permissions.canAttendCustomers;
-    return true;
-  });
+  const { canales, pendientes } = await puestoDeAtencion();
+  const tabs = ATTENTION_TABS.filter((tab) => canales.includes(tab.channel));
 
   return (
     <div className="space-y-5">
@@ -42,7 +36,7 @@ export default async function AttentionLayout({ children }: { children: React.Re
         title={permissions.canAttendCustomers ? "Mi atención" : soloLectura ? "Conversaciones" : "Historial de atención"}
         description={
           permissions.canAttendCustomers
-            ? "Los canales que ves son los habilitados en tus campañas."
+            ? "Los canales que ves son los de tus campañas y tus colas. Correo y WhatsApp se prenden o apagan en tu estado, arriba."
             : soloLectura
               ? "Lectura de las conversaciones de la empresa que estás mirando. Responde el ejecutivo asignado."
               : "Consulta autorizada del historial de tus equipos, por los canales que operan."
@@ -57,7 +51,7 @@ export default async function AttentionLayout({ children }: { children: React.Re
             : "Ninguna de tus campañas tiene canales de atención habilitados todavía."}
         </Callout>
       ) : (
-        <NavTabs tabs={tabs.map((tab) => ({ label: tab.label, href: tab.href }))} />
+        <NavTabs tabs={tabs.map((tab) => ({ label: tab.label, href: tab.href, badge: pendientes[tab.channel] }))} />
       )}
 
       {children}

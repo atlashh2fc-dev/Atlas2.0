@@ -18,7 +18,7 @@ export type CorreoRecibido = {
   body_text: string;
   received_at: string;
   status: "new" | "converted";
-  asignacion: "agenda" | "cotizacion" | "propietario" | "supervision" | null;
+  asignacion: "agenda" | "cotizacion" | "propietario" | "supervision" | "cola" | "reasignado" | null;
   profiles: { full_name: string } | { full_name: string }[] | null;
 };
 
@@ -39,6 +39,8 @@ const MOTIVO: Record<NonNullable<CorreoRecibido["asignacion"]>, string> = {
   cotizacion: ", que envió la propuesta",
   propietario: ", que es el ejecutivo del registro",
   supervision: " por supervisión",
+  cola: " por la cola de correo",
+  reasignado: ", porque quien lo tenía no estaba disponible",
 };
 
 const cuando = new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });

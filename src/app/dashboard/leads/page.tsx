@@ -202,7 +202,7 @@ export default async function LeadsPage({
               const lead = Array.isArray(respuesta.leads) ? respuesta.leads[0] : respuesta.leads;
               return (
                 <li key={respuesta.id}>
-                  <Link href={`/dashboard/leads/${respuesta.lead_id}`} className="font-medium text-primary hover:underline">
+                  <Link href={`/dashboard/conversaciones/correo?registro=${respuesta.lead_id}`} className="font-medium text-primary hover:underline">
                     {lead?.full_name || respuesta.from_name || respuesta.from_address}
                   </Link>
                 </li>
@@ -210,6 +210,9 @@ export default async function LeadsPage({
             })}
             {respuestasPorRegistro.length > 6 && <li className="text-muted-foreground">y {respuestasPorRegistro.length - 6} más</li>}
           </ul>
+          <Link href="/dashboard/conversaciones/correo" className="mt-2 inline-block text-sm font-semibold text-primary hover:underline">
+            Abrir mi correo
+          </Link>
         </Callout>
       )}
 

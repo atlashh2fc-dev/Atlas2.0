@@ -396,7 +396,10 @@ export function CallTypificationForm({
       // navegación de Next termina. Una carga completa evita que una transición
       // lenta deje el mismo formulario visible y haga que el ejecutivo vuelva a
       // guardar una gestión que ya quedó cerrada.
-      window.location.assign(revision ? `/dashboard/leads/${lead.id}` : "/dashboard/leads");
+      // La gestión por correo nació en la bandeja de correo y vuelve a ella.
+      window.location.assign(
+        revision ? `/dashboard/leads/${lead.id}` : call.management_channel === "correo" ? "/dashboard/conversaciones/correo" : "/dashboard/leads"
+      );
     } catch (e) {
       console.error("No se pudo completar la acción de gestión", e);
       setArmed(false);

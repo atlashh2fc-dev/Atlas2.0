@@ -75,6 +75,7 @@ import {
   subscriberFromPhone,
 } from "@/components/phone/format";
 import { Elapsed, StatusMenu, type StatusTone } from "@/components/phone/status-menu";
+import { CanalesDigitales } from "@/components/phone/canales-digitales";
 
 const HEARTBEAT_MS = 20_000;
 const SIP_DOMAIN = process.env.NEXT_PUBLIC_SIP_DOMAIN ?? "ws-atlas.geimser.cl";
@@ -2204,6 +2205,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
           campaignNote={campaignNote}
           campaignError={campaignSwitchError}
           onCampaignChange={(id) => void handleActiveCampaignChange(id)}
+          digital={<CanalesDigitales abierto={statusMenuOpen} />}
           audio={<AudioSettings value={audioPreference} onChange={changeAudioPreference} disabled={activeCall} />}
         />
       )}

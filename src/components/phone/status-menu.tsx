@@ -49,6 +49,7 @@ export function StatusMenu({
   campaignNote,
   campaignError,
   onCampaignChange,
+  digital,
   audio,
 }: {
   label: string;
@@ -76,6 +77,8 @@ export function StatusMenu({
   campaignNote: string | null;
   campaignError: string | null;
   onCampaignChange: (id: string) => void;
+  /** Correo y WhatsApp: se prenden aparte del estado de voz. */
+  digital?: ReactNode;
   audio: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
@@ -108,7 +111,7 @@ export function StatusMenu({
       {open && (
         <div
           role="dialog"
-          aria-label="Estado, cola y audio"
+          aria-label="Estado, canales, cola y audio"
           className="absolute left-0 top-full z-[60] mt-2 max-h-[min(34rem,calc(100dvh-5rem))] w-[min(20rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-border bg-surface p-2 shadow-2xl"
         >
           <MenuSection title="Estado">
@@ -155,6 +158,8 @@ export function StatusMenu({
               </div>
             )}
           </MenuSection>
+
+          {digital}
 
           {campaigns.length > 0 && (
             <MenuSection title="Cola automática">

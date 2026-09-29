@@ -1,10 +1,9 @@
 import { redirect } from "next/navigation";
 import { Inbox } from "lucide-react";
 
-import { requireProfile } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/ui";
-import { ATTENTION_TABS, getEnabledChannels } from "@/lib/campaign-channels";
+import { ATTENTION_TABS } from "@/lib/campaign-channels";
+import { puestoDeAtencion } from "@/lib/presencia.server";
 
 /**
  * `/dashboard/conversaciones` ya no es una pantalla: es el índice del puesto de
@@ -12,10 +11,10 @@ import { ATTENTION_TABS, getEnabledChannels } from "@/lib/campaign-channels";
  * llevaba siempre a WhatsApp, incluso en campañas donde no existe.
  */
 export default async function AttentionIndexPage() {
-  const profile = await requireProfile();
-  const supabase = await createClient();
-  const enabled = await getEnabledChannels(supabase, profile);
-  const first = ATTENTION_TABS.find((tab) => enabled.includes(tab.channel));
+  const { canales, pendientes } = await puestoDeAtencion();
+  // Primero el canal donde hay trabajo esperando; si no hay, el primero.
+  const conTrabajo = ATTENTION_TABS.find((tab) => canales.includes(tab.channel) && (pendientes[tab.channel] ?? 0) > 0);
+  const first = conTrabajo ?? ATTENTION_TABS.find((tab) => canales.includes(tab.channel));
 
   if (first) redirect(first.href);
 

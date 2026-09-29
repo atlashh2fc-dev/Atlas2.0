@@ -9,6 +9,8 @@ export type NavTabItem = {
   href: string;
   /** Otras rutas exactas que también son esta pestaña (otra vista del mismo destino). */
   match?: string[];
+  /** Trabajo pendiente en esa vista; no se muestra si es cero. */
+  badge?: number;
 };
 
 /**
@@ -42,6 +44,12 @@ export function NavTabs({ tabs, className }: { tabs: NavTabItem[]; className?: s
             )}
           >
             {tab.label}
+            {tab.badge ? (
+              <span className="ml-1.5 rounded-full bg-primary px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-primary-foreground">
+                <span className="sr-only">, pendientes: </span>
+                {tab.badge}
+              </span>
+            ) : null}
           </Link>
         );
       })}

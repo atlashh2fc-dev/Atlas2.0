@@ -27,7 +27,7 @@ export type BuzonRow = {
   body_text: string;
   received_at: string;
   status: "new" | "converted";
-  asignacion: "agenda" | "cotizacion" | "propietario" | "supervision" | null;
+  asignacion: "agenda" | "cotizacion" | "propietario" | "supervision" | "cola" | "reasignado" | null;
   lead_id: string | null;
   lead_name: string | null;
   lead_rut: string | null;
@@ -52,6 +52,8 @@ const MOTIVO: Record<NonNullable<BuzonRow["asignacion"]>, string> = {
   cotizacion: "envió la propuesta",
   propietario: "ejecutivo del registro",
   supervision: "asignado por supervisión",
+  cola: "repartido por la cola",
+  reasignado: "reasignado: el anterior no estaba",
 };
 
 function estadoDe(row: BuzonRow): Estado {
