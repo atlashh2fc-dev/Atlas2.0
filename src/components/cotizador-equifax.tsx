@@ -448,7 +448,7 @@ function EditorLinea({
           </Field>
         )}
         {admiteManual && (
-          <Field label="Precio ofrecido (UF, opcional)">
+          <Field label="Precio ofrecido (UF): puedes subirlo o bajarlo">
             <CampoDecimal
               valor={"precioManual" in config ? config.precioManual ?? null : null}
               onValor={(precioManual) => onChange({ ...config, precioManual } as ConfigLinea)}
@@ -541,6 +541,12 @@ function PrecioLinea({ cotizada, valorUf }: { cotizada: LineaCotizada; valorUf: 
       <span className="text-xs uppercase tracking-wide text-muted-foreground">{etiquetaCobro(cotizada)}</span>
       {cotizada.descuento > 0 && cotizada.ufLista != null && (
         <span className="text-muted-foreground"><s>{formatoUf(cotizada.ufLista)} UF</s> −{cotizada.descuento}%</span>
+      )}
+      {/* Solo en la ficha: al cliente no se le muestra la lista cuando el precio sube. */}
+      {cotizada.ufLista != null && cotizada.ufLista > 0 && cotizada.ufVenta != null && cotizada.ufVenta > cotizada.ufLista && (
+        <span className="text-muted-foreground">
+          Lista {formatoUf(cotizada.ufLista)} UF · +{Math.round((cotizada.ufVenta / cotizada.ufLista - 1) * 100)}% sobre lista
+        </span>
       )}
       {cotizada.ufVenta != null ? (
         <span className="ml-auto text-right">

@@ -177,12 +177,16 @@ function partesTotal(lineas: LineaCotizada[]): Array<[string, string]> {
   ].filter((parte): parte is [string, string] => parte !== null);
 }
 
-/** Lo que se ahorra frente al precio lista en lo mensual, en UF al mes. */
+/**
+ * Lo que se ahorra frente al precio lista en lo mensual, en UF al mes. Es neto:
+ * una línea ofrecida sobre la lista resta, para no prometer un ahorro que el
+ * total no tiene. Nunca es negativo; sin ahorro, la propuesta no lo menciona.
+ */
 function ahorroMensual(lineas: LineaCotizada[]): number {
   const ahorro = lineas
-    .filter((linea) => linea.cobro === "mensual" && linea.ufLista != null && linea.ufVenta != null && linea.ufLista > linea.ufVenta)
+    .filter((linea) => linea.cobro === "mensual" && linea.ufLista != null && linea.ufVenta != null)
     .reduce((total, linea) => total + (linea.ufLista! - linea.ufVenta!), 0);
-  return Math.round(ahorro * 10000) / 10000;
+  return Math.max(0, Math.round(ahorro * 10000) / 10000);
 }
 
 function enlaceAceptar(datos: DatosPropuesta, asunto: string): string | null {

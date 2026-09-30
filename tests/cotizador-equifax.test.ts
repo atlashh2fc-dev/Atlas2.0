@@ -110,6 +110,25 @@ test("el ahorro que se muestra es la diferencia real con el precio lista", () =>
   assert.ok(!sinDescuento.includes("Ahorra"));
 });
 
+test("el precio se puede subir sobre la lista y la propuesta no inventa ahorro", () => {
+  // MC 4100 lista 2,65 UF: se ofrece a 3,10.
+  const sobreLista = cotizarLinea({ producto: "mc", plan: "4100", doa: 0, precioManual: 3.1 });
+  assert.equal(sobreLista.ufVenta, 3.1);
+  assert.equal(sobreLista.descuento, 0);
+  assert.equal(sobreLista.descuentoFueraDeDoa, false);
+  // El servidor tampoco lo baja a la lista.
+  assert.deepEqual(normalizarConfig({ producto: "mc", plan: "4100", doa: 0, precioManual: 3.1 }), { producto: "mc", plan: "4100", doa: 0, precioManual: 3.1 });
+
+  const soloAlza = correoHtml({ ...datos, lineas: [sobreLista] }, "cid:logo");
+  assert.ok(soloAlza.includes("3,10"));
+  assert.ok(!soloAlza.includes("Ahorra"));
+  assert.ok(!soloAlza.includes("line-through"), "al cliente no se le muestra la lista");
+
+  // Una línea sube 0,45 y otra baja 0,40: el total no tiene ahorro que mostrar.
+  const mixta = correoHtml({ ...datos, lineas: [sobreLista, cotizarLinea({ producto: "mc", plan: "4100", doa: 15 })] }, "cid:logo");
+  assert.ok(!mixta.includes("Ahorra"));
+});
+
 test("la respuesta desde la ficha no acumula «Re:» y escapa lo que escribe el ejecutivo", () => {
   assert.equal(asuntoDeRespuesta("Propuesta Comercial Equifax"), "Re: Propuesta Comercial Equifax");
   assert.equal(asuntoDeRespuesta("RE: Propuesta"), "RE: Propuesta");
