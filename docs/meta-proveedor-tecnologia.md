@@ -17,7 +17,7 @@ Atlas es producto de **Altius Ignite SpA** (RUT 78.507.701-6). Geimser lo usa co
 | Verificación del negocio de Altius | Lista (aprobada el 30-09) |
 | Verificación de acceso (proveedor de tecnología) | **En revisión** (enviada el 30-09 como Plataforma SaaS, un solo portfolio; Meta responde en ~5 días, plazo 29-11) |
 | Publicación de la app (modo Live, acceso estándar) | Publicada el 30-09 |
-| Revisión de la app (acceso avanzado) | Videos grabados el 30-09 (en Descargas: `meta-revision-1-whatsapp_business_messaging.mp4` y `meta-revision-2-whatsapp_business_management.mp4`); falta subirlos y enviar la solicitud |
+| Revisión de la app (acceso avanzado) | **En revisión** (enviada el 30-09: whatsapp_business_messaging, whatsapp_business_management, public_profile; Meta responde en ~20 días). Cuenta de revisor `hh2fc24+meta@gmail.com`, admin solo en «Andes Contact Center» |
 
 Publicada no significa listada en ningún lado: solo se usa desde el botón de Atlas y, con acceso estándar, solo con activos del portfolio de Altius o de personas con rol en la app.
 
