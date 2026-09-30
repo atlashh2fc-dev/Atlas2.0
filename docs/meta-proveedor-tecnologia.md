@@ -48,6 +48,22 @@ Videos que pide Meta (documentación «Convertirse en proveedor de tecnología»
 
 Cuando el número de Altius ya esté conectado, se puede repetir la demo completa desde Atlas (Integraciones › WhatsApp › Conectar, Por contactar, Conversaciones) para futuras revisiones.
 
+### Número de prueba de la app (para las llamadas y los videos)
+
+- Número: +1 555 194-7470 · Phone Number ID `1275663848972770`
+- WABA de prueba: `1131647442537151`
+- En «Pruébalo»: Generar token → agregar un celular como destinatario (llega un código) → Enviar mensaje.
+
+### Textos para la solicitud de acceso avanzado
+
+Van en inglés: los revisores de Meta los leen así.
+
+**whatsapp_business_messaging**
+> Atlas is a multichannel CRM built by Altius Ignite SpA for small businesses, contact centers and clinics in Chile. Each client connects its own WhatsApp Business number through Embedded Signup (including coexistence with the WhatsApp Business app). We use whatsapp_business_messaging to send and receive messages on behalf of that client from inside Atlas: agents reply to customers from the conversation view, and every message is logged on the customer's record next to calls and emails. We only message people who contacted the business or who the business chose to contact, and we never use the data for advertising. The video shows a message sent from our app and received in WhatsApp.
+
+**whatsapp_business_management**
+> We use whatsapp_business_management to read the WhatsApp Business Account and phone number that a client connects to Atlas through Embedded Signup, subscribe our app to that account's webhooks (messages, message echoes, history and app state sync for coexistence), and manage the client's message templates, which are required to start conversations outside the 24-hour window. Each client only sees its own account inside Atlas. The video shows a message template being created.
+
 ## Después de la aprobación
 
 - Crear una configuración de registro insertado con **token sin vencimiento**, reemplazar `ATLAS_META_ES_CONFIG_ID` y volver a conectar el número de Altius. Integraciones avisa 10 días antes de que venza el token de 60 días.
