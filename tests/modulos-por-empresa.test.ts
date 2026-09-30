@@ -84,7 +84,7 @@ test("cada ruta de una aplicación tiene su puerta en el servidor", () => {
     ["src/app/dashboard/admin/estados-agente/layout.tsx", "contact_center"],
     ["src/app/dashboard/admin/cargas/layout.tsx", "leads"],
     ["src/app/dashboard/admin/agentes-sip/layout.tsx", "contact_center"],
-    ["src/app/dashboard/admin/integraciones/layout.tsx", "contact_center"],
+    ["src/app/dashboard/admin/integraciones/layout.tsx", "whatsapp"],
   ];
   for (const [ruta, modulo] of PUERTAS) {
     assert.ok(hay(ruta), `falta la puerta de ${ruta}`);

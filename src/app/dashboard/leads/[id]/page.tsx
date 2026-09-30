@@ -1023,11 +1023,6 @@ export default async function LeadDetailPage({
                     </div>
                   );
                 })}
-                {profile.role !== "agente" && (
-                  <Link href="/dashboard/admin/integraciones/historial" className="text-xs font-medium text-primary hover:underline">
-                    Ver historial de integración
-                  </Link>
-                )}
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">Sin referencias externas para este registro.</p>
