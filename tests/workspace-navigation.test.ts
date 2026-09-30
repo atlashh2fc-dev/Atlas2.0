@@ -76,12 +76,17 @@ test("Control opera por tarea y deja la configuración en su propio espacio", ()
 
 test("Supervisión opera su equipo y configura aparte a sus ejecutivos", () => {
   assert.deepEqual(labels("console", "supervisor"), ["Resumen", "Operación", "Mi equipo", "Correo", "Pacientes", "Campañas", "Ventas", "Registros", "Validación de ventas", "Historial", "Reportes", "Grabaciones y calidad"]);
-  assert.deepEqual(labels("admin", "supervisor"), ["Usuarios y skills"]);
+  assert.deepEqual(labels("admin", "supervisor"), ["Usuarios y skills", "Flujos de gestión"]);
   assert.equal(nav.workspaceLabel("supervisor"), "Supervisión");
   assert.equal(nav.setupEntryHref("supervisor"), "/dashboard/team/usuarios");
   assert.equal(nav.spaceForPath("/dashboard/team/usuarios", "supervisor"), "admin");
   assert.equal(nav.spaceForPath("/dashboard/team", "supervisor"), "console");
-  assert.equal(nav.allItemsForRole("supervisor").some((item) => item.href.startsWith("/dashboard/admin")), false);
+  // De la configuración de admin, el supervisor solo entra a los flujos de gestión.
+  assert.deepEqual(
+    nav.allItemsForRole("supervisor").filter((item) => item.href.startsWith("/dashboard/admin")).map((item) => item.href),
+    ["/dashboard/admin/flujos"]
+  );
+  assert.equal(nav.spaceForPath("/dashboard/admin/flujos/abc", "supervisor"), "admin");
 });
 
 test("Atención ordena el trabajo personal y no tiene configuración", () => {

@@ -16,7 +16,7 @@ export default async function WorkflowDetailPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ campaign_id?: string }>;
 }) {
-  await requireProfile(["admin"]);
+  await requireProfile(["admin", "supervisor"]);
   const { id } = await params;
   const { campaign_id: campaignId } = await searchParams;
   const supabase = await createClient();

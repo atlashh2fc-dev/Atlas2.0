@@ -409,6 +409,7 @@ const WORKSPACE_SECTIONS: Record<AppRole, Record<NavSpaceId, SectionSpec[]>> = {
     ],
     admin: [
       { id: "setup-team", label: "Mi equipo", itemIds: ["usuarios-equipo"] },
+      { id: "setup-contact-center", label: "Contact center", itemIds: ["flujos"] },
     ],
   },
   agente: {
@@ -452,7 +453,8 @@ const ADMIN: NavSpace = {
           label: "Flujos de gestión",
           href: "/dashboard/admin/flujos",
           icon: Workflow,
-          roles: ["admin"],
+          // El supervisor ajusta la tipificación de sus campañas sin esperar a un admin.
+          roles: ["admin", "supervisor"],
           description: "Guiones, pasos y tipificaciones",
           modules: ["contact_center"],
         },

@@ -9,6 +9,7 @@ import { validateWorkflow } from "@/lib/workflow-validation";
 import { requireProfile } from "@/lib/auth";
 
 export async function createWorkflow(formData: FormData) {
+  // Solo admin: crear conecta el flujo a una campaña.
   await requireProfile(["admin"]);
   const name = (formData.get("name") as string)?.trim();
   const description = (formData.get("description") as string)?.trim() || null;
@@ -69,6 +70,7 @@ export async function createWorkflow(formData: FormData) {
 }
 
 export async function createWorkflowFromTemplate(formData: FormData) {
+  // Solo admin: crear conecta el flujo a una campaña.
   await requireProfile(["admin"]);
   const templateId = formData.get("template_id") as string;
   const template = WORKFLOW_TEMPLATES.find((t) => t.id === templateId);
@@ -156,7 +158,7 @@ export async function createWorkflowFromTemplate(formData: FormData) {
 }
 
 export async function toggleWorkflowActive(formData: FormData) {
-  await requireProfile(["admin"]);
+  await requireProfile(["admin", "supervisor"]);
   const workflowId = formData.get("workflow_id") as string;
   const active = formData.get("active") === "true";
 
@@ -176,7 +178,7 @@ export async function toggleWorkflowActive(formData: FormData) {
  * en medio de una llamada (ver src/lib/workflow-validation.ts).
  */
 export async function setWorkflowStatus(formData: FormData) {
-  await requireProfile(["admin"]);
+  await requireProfile(["admin", "supervisor"]);
   const workflowId = formData.get("workflow_id") as string;
   const status = formData.get("status") === "published" ? "published" : "draft";
 
@@ -213,7 +215,7 @@ export async function setWorkflowStatus(formData: FormData) {
 }
 
 export async function addWorkflowStep(formData: FormData) {
-  await requireProfile(["admin"]);
+  await requireProfile(["admin", "supervisor"]);
   const workflowId = formData.get("workflow_id") as string;
   const name = formData.get("name") as string;
   const description = (formData.get("description") as string) || null;
@@ -250,7 +252,7 @@ export async function addWorkflowStep(formData: FormData) {
 }
 
 export async function deleteWorkflowStep(formData: FormData) {
-  await requireProfile(["admin"]);
+  await requireProfile(["admin", "supervisor"]);
   const stepId = formData.get("step_id") as string;
   const workflowId = formData.get("workflow_id") as string;
 
@@ -269,7 +271,7 @@ export async function createWorkflowStepNode(input: {
   posY: number;
   makeStart?: boolean;
 }): Promise<WorkflowStep> {
-  await requireProfile(["admin"]);
+  await requireProfile(["admin", "supervisor"]);
   const supabase = await createClient();
 
   const { data: existing } = await supabase
@@ -319,7 +321,7 @@ export async function updateWorkflowStepNode(input: {
   options: string[];
   isMandatory: boolean;
 }): Promise<void> {
-  await requireProfile(["admin"]);
+  await requireProfile(["admin", "supervisor"]);
   const supabase = await createClient();
   const { error } = await supabase
     .from("workflow_steps")
@@ -341,7 +343,7 @@ export async function updateWorkflowStepPosition(input: {
   posX: number;
   posY: number;
 }): Promise<void> {
-  await requireProfile(["admin"]);
+  await requireProfile(["admin", "supervisor"]);
   const supabase = await createClient();
   const { error } = await supabase
     .from("workflow_steps")
@@ -355,7 +357,7 @@ export async function setStartStep(input: {
   // null solo lo usa el deshacer del lienzo, para volver a un flujo sin inicio.
   stepId: string | null;
 }): Promise<void> {
-  await requireProfile(["admin"]);
+  await requireProfile(["admin", "supervisor"]);
   const supabase = await createClient();
   if (input.stepId === null) {
     const { error } = await supabase
@@ -401,7 +403,7 @@ export async function deleteWorkflowStepNode(input: {
   stepId: string;
   workflowId: string;
 }): Promise<DeletedStepSnapshot> {
-  await requireProfile(["admin"]);
+  await requireProfile(["admin", "supervisor"]);
   const supabase = await createClient();
 
   const { data: step, error: stepError } = await supabase
@@ -476,7 +478,7 @@ export async function restoreWorkflowStepNode(input: {
   workflowId: string;
   snapshot: DeletedStepSnapshot;
 }): Promise<{ step: WorkflowStep; branches: WorkflowStepBranch[] }> {
-  await requireProfile(["admin"]);
+  await requireProfile(["admin", "supervisor"]);
   const supabase = await createClient();
   const { step, branches, legacyMapIds } = input.snapshot;
   if (step.workflow_id !== input.workflowId || branches.some((b) => b.workflow_id !== input.workflowId)) {
@@ -543,7 +545,7 @@ export async function restoreBranch(input: {
   workflowId: string;
   branch: WorkflowStepBranch;
 }): Promise<WorkflowStepBranch> {
-  await requireProfile(["admin"]);
+  await requireProfile(["admin", "supervisor"]);
   if (input.branch.workflow_id !== input.workflowId) {
     throw new Error("La conexión no pertenece a este flujo.");
   }
@@ -557,7 +559,7 @@ export async function upsertBranch(input: {
   fromOption: string | null;
   toStepId: string | null;
 }): Promise<WorkflowStepBranch> {
-  await requireProfile(["admin"]);
+  await requireProfile(["admin", "supervisor"]);
   const supabase = await createClient();
 
   // PostgreSQL permite múltiples NULL en una restricción UNIQUE compuesta.
@@ -630,7 +632,7 @@ export async function deleteBranch(input: {
   branchId: string;
   workflowId: string;
 }): Promise<void> {
-  await requireProfile(["admin"]);
+  await requireProfile(["admin", "supervisor"]);
   const supabase = await createClient();
   const { error } = await supabase.from("workflow_step_branches").delete().eq("id", input.branchId);
   if (error) throw new Error(error.message);

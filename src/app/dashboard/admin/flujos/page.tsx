@@ -13,7 +13,9 @@ export default async function WorkflowsPage({
 }: {
   searchParams: Promise<{ campaign_id?: string; error?: string }>;
 }) {
-  await requireProfile(["admin"]);
+  const profile = await requireProfile(["admin", "supervisor"]);
+  // Crear un flujo lo conecta a una campaña, y las campañas son del admin.
+  const canCreate = profile.role === "admin";
   const { campaign_id: campaignId, error } = await searchParams;
   const supabase = await createClient();
 
@@ -71,11 +73,13 @@ export default async function WorkflowsPage({
           description="El guion que los ejecutivos siguen al gestionar un registro. Se publica solo cuando pasa la revisión."
           className="border-b-0 pb-0"
           actions={
-            <WorkflowCreatePanel
-              campaigns={campaigns ?? []}
-              selectedCampaign={selectedCampaign ?? null}
-              duplicateName={error === "duplicate-name"}
-            />
+            canCreate ? (
+              <WorkflowCreatePanel
+                campaigns={campaigns ?? []}
+                selectedCampaign={selectedCampaign ?? null}
+                duplicateName={error === "duplicate-name"}
+              />
+            ) : null
           }
         />
       </div>
@@ -104,7 +108,7 @@ export default async function WorkflowsPage({
                 <EmptyState
                   icon={Workflow}
                   title="Todavía no hay flujos"
-                  description="Crea el primero con el botón “Nuevo flujo”."
+                  description={canCreate ? "Crea el primero con el botón “Nuevo flujo”." : "Un administrador crea el flujo al configurar la campaña; desde aquí lo editas."}
                   className="py-6"
                 />
               </TableEmpty>
