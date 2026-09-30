@@ -65,6 +65,22 @@ test("el servidor rechaza tramos y descuentos que no están en la tabla", () => 
   assert.equal(normalizarConfig({ producto: "pub", pct: 15, documentos: [{ monto: 0 }] }), null);
 });
 
+test("el Bundle admite descuento DOA de 10 % y 15 %, y nada más", () => {
+  // Bundle 4100 con 20 descargas: lista 3 UF.
+  assert.equal(cotizarLinea({ producto: "bundle", mc: "4100", descargas: 20, doa: 10 }).ufVenta, 2.7);
+  const quince = cotizarLinea({ producto: "bundle", mc: "4100", descargas: 20, doa: 15 });
+  assert.equal(quince.ufVenta, 2.55);
+  assert.equal(quince.descuento, 15);
+  assert.equal(quince.descuentoFueraDeDoa, false);
+  // Más de 15 % solo a mano, y queda marcado para autorización.
+  assert.equal(cotizarLinea({ producto: "bundle", mc: "4100", descargas: 20, doa: 0, precioManual: 2.4 }).descuentoFueraDeDoa, true);
+  // El servidor no acepta otro porcentaje: cae a cero.
+  assert.equal((normalizarConfig({ producto: "bundle", mc: "4100", descargas: 20, doa: 25 }) as { doa?: number }).doa, 0);
+  assert.equal((normalizarConfig({ producto: "bundle", mc: "4100", descargas: 20, doa: 15 }) as { doa?: number }).doa, 15);
+  // Una cotización guardada antes, sin DOA, sigue a precio lista.
+  assert.equal(cotizarLinea({ producto: "bundle", mc: "4100", descargas: 20 }).ufVenta, 3);
+});
+
 test("saludo según el nombre del contacto", () => {
   assert.equal(vocativo("CAROLINA PÉREZ"), "Estimada Carolina:");
   assert.equal(vocativo("pedro soto"), "Estimado Pedro:");

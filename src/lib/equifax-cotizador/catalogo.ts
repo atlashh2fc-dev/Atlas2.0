@@ -22,7 +22,7 @@ export type TamanoEmpresa = "micro" | "pequena" | "mediana";
 export type DocumentoPublicacion = { monto: number; abonos: number };
 
 export type ConfigLinea =
-  | { producto: "bundle"; mc: "4100" | "ilim"; descargas: number; precioManual?: number | null }
+  | { producto: "bundle"; mc: "4100" | "ilim"; descargas: number; doa?: number; precioManual?: number | null }
   | { producto: "mc"; plan: "4100" | "6900" | "ilim"; doa: number; precioManual?: number | null }
   | { producto: "ri"; tramo: number; doa: number; precioManual?: number | null }
   | { producto: "bolsa"; tramo: number; precioManual?: number | null }
@@ -109,6 +109,8 @@ export const DOA_ETIQUETA: Record<number, string> = {
 };
 
 const DOA_CORTO = [0, 15, 25];
+/** El Bundle ya viene con precio de paquete: solo admite 10 % y 15 % (pedido del 30-09-2026). */
+const DOA_BUNDLE = [0, 10, 15];
 const DOA_LARGO = [0, 10, 15, 20, 25, 35, 50];
 
 // ── Catálogo ──────────────────────────────────────────────────────────────
@@ -123,7 +125,7 @@ export type DefinicionProducto = {
 };
 
 export const PRODUCTOS: DefinicionProducto[] = [
-  { clave: "bundle", etiqueta: "Bundle (Mora Control + Reporte Interactivo)", atlas: "Bundle", badge: "BUNDLE", doa: [] },
+  { clave: "bundle", etiqueta: "Bundle (Mora Control + Reporte Interactivo)", atlas: "Bundle", badge: "BUNDLE", doa: DOA_BUNDLE },
   { clave: "mc", etiqueta: "Mora Control", atlas: "Mora Control", badge: "GESTIÓN DE CARTERA", doa: DOA_CORTO },
   { clave: "ri", etiqueta: "Reporte Interactivo", atlas: "Reporte Interactivo", badge: "EVALUACIÓN CREDITICIA", doa: DOA_LARGO },
   { clave: "bolsa", etiqueta: "Reporte Interactivo Bolsa", atlas: "Bolsa RI", badge: "BOLSA · 12 MESES", doa: [] },
@@ -155,7 +157,7 @@ export const TAMANOS_PARTNER_CHECK = Object.entries(PARTNER_CHECK).map(([clave, 
 /** La configuración con que parte cada producto al agregarlo. */
 export function configInicial(clave: ProductoClave): ConfigLinea {
   switch (clave) {
-    case "bundle": return { producto: "bundle", mc: "4100", descargas: 10 };
+    case "bundle": return { producto: "bundle", mc: "4100", descargas: 10, doa: 0 };
     case "mc": return { producto: "mc", plan: "4100", doa: 0 };
     case "ri": return { producto: "ri", tramo: 10, doa: 0 };
     case "bolsa": return { producto: "bolsa", tramo: 10 };
@@ -187,7 +189,7 @@ export function normalizarConfig(entrada: unknown): ConfigLinea | null {
     case "bundle": {
       const descargas = numero(raw.descargas);
       if (raw.mc !== "4100" && raw.mc !== "ilim") return null;
-      return TRAMOS.bundle.includes(descargas) ? { producto: "bundle", mc: raw.mc, descargas, precioManual: manual } : null;
+      return TRAMOS.bundle.includes(descargas) ? { producto: "bundle", mc: raw.mc, descargas, doa: doaDe("bundle"), precioManual: manual } : null;
     }
     case "mc":
       return raw.plan === "4100" || raw.plan === "6900" || raw.plan === "ilim" ? { producto: "mc", plan: raw.plan, doa: doaDe("mc"), precioManual: manual } : null;
@@ -386,7 +388,7 @@ export function cotizarLinea(config: ConfigLinea): LineaCotizada {
 
   switch (config.producto) {
     case "bundle": {
-      const precios = conDescuento(BUNDLE[config.mc][config.descargas] ?? BUNDLE[config.mc][10], 0, config.precioManual);
+      const precios = conDescuento(BUNDLE[config.mc][config.descargas] ?? BUNDLE[config.mc][10], config.doa ?? 0, config.precioManual);
       return cerrar({
         nombre: config.mc === "ilim" ? "Mora Control Ilimitado + Informes Comerciales" : "Mora Control 4100 + Informes Comerciales",
         detalle: `${config.descargas} descargas de Reporte Interactivo/mes`,
