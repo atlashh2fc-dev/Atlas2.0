@@ -151,7 +151,7 @@ nivel. El 3D ahora es del cliente real:
 Proveedores: una sola cuenta de fal.ai (`FAL_KEY`) para fotos y 3D, y
 Anthropic (`ANTHROPIC_API_KEY`) para el análisis. Ver
 `docs/atlas-barber.env.example`. Costo aproximado por cliente que prueba un
-corte completo: 4 fotos a US$0,15 más un 3D de Rodin (precio en fal, a
+corte completo: 4 fotos a unos US$0,08 más un 3D de Rodin (precio en fal, a
 confirmar), más el 3D inicial del cliente.
 
 Descartado por licencia: FaceLift (pesos bajo licencia de investigación de

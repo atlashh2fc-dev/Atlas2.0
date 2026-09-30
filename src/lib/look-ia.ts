@@ -23,7 +23,7 @@ import {
  */
 
 export const MODELO_ANALISIS_POR_DEFECTO = "claude-opus-5-5";
-export const MODELO_IMAGEN_POR_DEFECTO = "fal-ai/nano-banana-pro/edit";
+export const MODELO_IMAGEN_POR_DEFECTO = "fal-ai/nano-banana-2/edit";
 export const MODELO_3D_POR_DEFECTO = "fal-ai/hyper3d/rodin/v2.5";
 
 /** Topes diarios por empresa, para que un error o un abuso no se coma la cuenta. */
