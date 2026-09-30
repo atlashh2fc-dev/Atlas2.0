@@ -105,17 +105,14 @@ export function Camara({
       {estado === "lista" ? (
         <>
           <video ref={video} playsInline muted className="h-full w-full object-cover" />
-          {/* Guía de encuadre: la cara dentro del óvalo, hombros abajo. */}
-          <svg viewBox="0 0 100 125" preserveAspectRatio="xMidYMid meet" className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true">
-            <defs>
-              <mask id={`hueco-${guia}`}>
-                <rect width="100" height="125" fill="white" />
-                {guia === "frente" ? <ellipse cx="50" cy="52" rx="23" ry="31" fill="black" /> : <ellipse cx="50" cy="52" rx="21" ry="30" fill="black" />}
-              </mask>
-            </defs>
-            <rect width="100" height="125" fill="rgba(10,8,6,0.45)" mask={`url(#hueco-${guia})`} />
-            <ellipse cx="50" cy="52" rx={guia === "frente" ? 23 : 21} ry={guia === "frente" ? 31 : 30} fill="none" stroke="#e0b36e" strokeWidth="0.6" strokeDasharray="2 1.5" />
-          </svg>
+          {/* Guía de encuadre: un óvalo grande, al alto del cuadro, y todo lo demás oscurecido.
+              Se dimensiona por el alto, así sirve igual con cámara horizontal o vertical. */}
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden" aria-hidden="true">
+            <div
+              className="rounded-[50%] border-2 border-dashed border-[#e0b36e] shadow-[0_0_0_200vmax_rgba(10,8,6,0.45)]"
+              style={{ height: "82%", aspectRatio: guia === "frente" ? "0.74" : "0.8", maxWidth: "92%", marginTop: "-4%" }}
+            />
+          </div>
           <p className="absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-black/55 px-3 py-1 text-xs text-white backdrop-blur">
             {guia === "frente" ? "El cliente de frente, con la cara dentro del óvalo y luz pareja" : "El cliente de perfil, con la oreja a la vista"}
           </p>
