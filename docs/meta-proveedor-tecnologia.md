@@ -2,7 +2,7 @@
 
 Atlas es producto de **Altius Ignite SpA** (RUT 78.507.701-6). Geimser lo usa como cliente. Por eso la app de Meta, la verificación y el rol de proveedor de tecnología están a nombre de Altius.
 
-## Estado (29-09-2026)
+## Estado (30-09-2026)
 
 | Paso | Estado |
 |---|---|
@@ -14,8 +14,8 @@ Atlas es producto de **Altius Ignite SpA** (RUT 78.507.701-6). Geimser lo usa co
 | Ícono 1024×1024 transparente | Lo sube el usuario (`atlas-crm-icono-1024-transparente.png`) |
 | Webhook `https://atlascrm.geimser.cl/api/integrations/meta/whatsapp/webhook` | Verificado; campos `messages`, `smb_message_echoes`, `history`, `smb_app_state_sync` |
 | `ATLAS_META_APP_SECRET`, `ATLAS_META_WEBHOOK_VERIFY_TOKEN` en Vercel | Listo |
-| Verificación del negocio de Altius | **En revisión** (enviada el 29-09) |
-| Verificación de acceso (proveedor de tecnología) | Pendiente: se habilita cuando se aprueba la del negocio |
+| Verificación del negocio de Altius | Lista (aprobada el 30-09) |
+| Verificación de acceso (proveedor de tecnología) | **Siguiente paso**: ya habilitada |
 | Revisión de la app y publicación | Pendiente |
 
 Mientras la app no esté publicada, Meta solo entrega webhooks de prueba.
