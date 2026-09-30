@@ -26,6 +26,10 @@ export async function createUserAccount(formData: FormData) {
     throw new Error("La contraseña debe tener al menos 6 caracteres.");
   }
 
+  // La persona queda en la empresa que se está mirando, no en la por defecto.
+  const supabase = await createClient();
+  const { data: empresaActiva } = await supabase.rpc("current_org_id");
+
   const admin = createAdminClient();
   const { data: existingProfile, error: existingProfileError } = await admin
     .from("profiles")
@@ -73,9 +77,27 @@ export async function createUserAccount(formData: FormData) {
   // de una respuesta fallida de Auth.
   const { error: profileError } = await admin
     .from("profiles")
-    .update({ full_name: fullName, email, role, team_id: teamId, is_demo: isDemo })
+    .update({
+      full_name: fullName,
+      email,
+      role,
+      team_id: teamId,
+      is_demo: isDemo,
+      ...(typeof empresaActiva === "string" ? { organization_id: empresaActiva } : {}),
+    })
     .eq("id", userId);
   if (profileError) throw new Error(profileError.message);
+
+  // El disparador de `profiles` ya dejó la membresía en la empresa activa; se
+  // quita la que el alta puso en la empresa por defecto.
+  if (typeof empresaActiva === "string") {
+    const { error: membresiaError } = await admin
+      .from("organization_members")
+      .delete()
+      .eq("profile_id", userId)
+      .neq("organization_id", empresaActiva);
+    if (membresiaError) throw new Error(membresiaError.message);
+  }
 
   revalidatePath("/dashboard/admin/usuarios");
 }

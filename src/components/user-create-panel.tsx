@@ -12,7 +12,7 @@ const ROLE_OPTIONS: { value: AppRole; label: string }[] = [
   { value: "admin", label: "Administrador" },
 ];
 
-export function UserCreatePanel({ teams }: { teams: { id: string; name: string }[] }) {
+export function UserCreatePanel({ teams, empresa }: { teams: { id: string; name: string }[]; empresa: string | null }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -26,7 +26,7 @@ export function UserCreatePanel({ teams }: { teams: { id: string; name: string }
         open={open}
         onClose={() => setOpen(false)}
         title="Nuevo usuario"
-        description="La cuenta queda activa de inmediato. Si es agente, luego asígnale una campaña: Atlas habilitará telefonía y enrutamiento automáticamente."
+        description={`${empresa ? `Queda en ${empresa}. ` : ""}La cuenta queda activa de inmediato. Si es agente, luego asígnale una campaña: Atlas habilitará telefonía y enrutamiento automáticamente.`}
       >
         <ActionForm
           action={createUserAccount}
