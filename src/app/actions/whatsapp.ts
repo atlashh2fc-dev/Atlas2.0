@@ -638,6 +638,8 @@ export async function conectarWhatsAppDesdeMeta(entrada: {
   wabaId?: string;
   phoneNumberId?: string;
   coexistencia?: boolean;
+  /** Los redirect_uri con que el navegador abrió la ventana de Meta. */
+  redirectUris?: string[];
 }): Promise<ResultadoConexionMeta> {
   const profile = await requireProfile(["admin"]);
   const codigo = entrada.codigo?.trim();
@@ -651,7 +653,7 @@ export async function conectarWhatsAppDesdeMeta(entrada: {
   const admin = createAdminClient();
 
   try {
-    const token = await canjearCodigo(codigo);
+    const token = await canjearCodigo(codigo, Array.isArray(entrada.redirectUris) ? entrada.redirectUris.filter((uri) => typeof uri === "string") : []);
     // Sin aviso de la ventana, el registro que se abrió es el de la app del teléfono.
     const cuenta = delAviso
       ? { wabaId: entrada.wabaId!.trim(), phoneNumberId: entrada.phoneNumberId!.trim(), coexistencia: entrada.coexistencia ?? false }

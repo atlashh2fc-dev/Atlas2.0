@@ -42,15 +42,33 @@ async function graph(ruta: string, opciones: { token?: string; metodo?: "GET" | 
   return datos;
 }
 
-/** El código del registro vale unos segundos y una sola vez. */
-export async function canjearCodigo(codigo: string): Promise<string> {
+/**
+ * El código del registro vale unos segundos y una sola vez. Meta a veces lo ata
+ * al redirect_uri interno con que el SDK abrió la ventana y exige el mismo al
+ * canjearlo; por eso, si reclama por el redirect_uri, se prueba con los que
+ * mandó el navegador (el del SDK primero) antes de rendirse.
+ */
+export async function canjearCodigo(codigo: string, redirectUris: string[] = []): Promise<string> {
   const { appId } = registroDeMeta();
   const appSecret = process.env.ATLAS_META_APP_SECRET?.trim();
   if (!appSecret) throw new Error("Falta ATLAS_META_APP_SECRET en el servidor.");
-  const datos = await graph("oauth/access_token", { query: { client_id: appId, client_secret: appSecret, code: codigo } });
-  const token = typeof datos.access_token === "string" ? datos.access_token : null;
-  if (!token) throw new Error("Meta no entregó el acceso de la empresa.");
-  return token;
+  const intentos: (string | null)[] = [null, ...new Set(redirectUris.filter((uri) => /^https:\/\//.test(uri)).slice(0, 3)), ""];
+  let ultimoError: unknown = null;
+  for (const redirectUri of intentos) {
+    try {
+      const query: Record<string, string> = { client_id: appId, client_secret: appSecret, code: codigo };
+      if (redirectUri !== null) query.redirect_uri = redirectUri;
+      const datos = await graph("oauth/access_token", { query });
+      const token = typeof datos.access_token === "string" ? datos.access_token : null;
+      if (!token) throw new Error("Meta no entregó el acceso de la empresa.");
+      if (redirectUri !== null) console.info("meta_codigo_canjeado_con_redirect", { redirectUri: redirectUri.slice(0, 120) });
+      return token;
+    } catch (error) {
+      ultimoError = error;
+      if (!(error instanceof Error && /redirect_uri/i.test(error.message))) throw error;
+    }
+  }
+  throw ultimoError instanceof Error ? ultimoError : new Error("Meta no aceptó el código.");
 }
 
 /** Sin esta suscripción, Meta no avisa a Atlas de los mensajes de ese número. */

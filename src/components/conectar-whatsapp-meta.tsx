@@ -44,6 +44,7 @@ export function ConectarWhatsAppMeta({ appId, configId, version }: { appId: stri
   const codigo = useRef<string | null>(null);
   const sesion = useRef<Sesion | null>(null);
   const espera = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const redirectUris = useRef<string[]>([]);
   const intento = useRef(0);
 
   useEffect(() => {
@@ -82,7 +83,7 @@ export function ConectarWhatsAppMeta({ appId, configId, version }: { appId: stri
     olvidarIntento();
     setEstado({ paso: "conectando" });
     startTransition(async () => {
-      const resultado = await conectarWhatsAppDesdeMeta({ codigo: code, ...(datos ?? {}) });
+      const resultado = await conectarWhatsAppDesdeMeta({ codigo: code, ...(datos ?? {}), redirectUris: redirectUris.current });
       if (esteIntento !== intento.current) return;
       setEstado(resultado.ok
         ? { paso: "conectado", numero: resultado.numero, coexistencia: resultado.coexistencia, avisos: resultado.avisos }
@@ -133,6 +134,23 @@ export function ConectarWhatsAppMeta({ appId, configId, version }: { appId: stri
     const esteIntento = intento.current;
     olvidarIntento();
     setEstado({ paso: "en_meta" });
+    // Se anota el redirect_uri con que el SDK abre la ventana: Meta puede pedirlo al canjear el código.
+    const pagina = `${window.location.origin}${window.location.pathname}`;
+    redirectUris.current = [pagina, `${window.location.origin}/`];
+    const abrirOriginal = window.open;
+    window.open = function (this: Window, ...argumentos: Parameters<Window["open"]>) {
+      try {
+        const destino = new URL(String(argumentos[0] ?? ""), window.location.href);
+        const uri = destino.searchParams.get("redirect_uri");
+        if (/(^|\.)facebook\.com$/.test(destino.hostname) && uri) redirectUris.current = [uri, pagina, `${window.location.origin}/`];
+      } catch {
+        // Una URL que no se entiende no cambia nada.
+      }
+      return abrirOriginal.apply(this, argumentos);
+    } as Window["open"];
+    queueMicrotask(() => {
+      window.open = abrirOriginal;
+    });
     window.FB.login(
       (respuesta) => {
         if (esteIntento !== intento.current) return;
