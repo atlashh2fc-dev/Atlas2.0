@@ -663,7 +663,7 @@ function Historial({ filas }: { filas: CotizacionEnviada[] }) {
               <span className="text-foreground">{fila.productos.join(", ")}</span>
               <span className="text-muted-foreground">{montos}</span>
               <span className={`ml-auto text-xs ${fila.estado === "fallida" ? "text-danger" : "text-muted-foreground"}`}>
-                {ESTADO_ENVIO[fila.estado]} · {fila.destinatario} · {fechaHora(fila.created_at)}{fila.agente ? ` · ${fila.agente}` : ""}
+                {fila.respondida_at ? `Respondida ${fechaHora(fila.respondida_at)}` : ESTADO_ENVIO[fila.estado]} · {fila.destinatario} · {fechaHora(fila.created_at)}{fila.agente ? ` · ${fila.agente}` : ""}
               </span>
             </li>
           );

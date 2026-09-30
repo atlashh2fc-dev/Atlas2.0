@@ -9,10 +9,10 @@ import { cotizarLinea, normalizarConfig, totales } from "../src/lib/equifax-coti
 import { asuntoDeRespuesta, respuestaHtml } from "../src/lib/equifax-cotizador/correo-cuenta.ts";
 import { asuntoPropuesta, correoHtml, mensajeWhatsapp, remitenteDeEjecutivo, vocativo, type DatosPropuesta } from "../src/lib/equifax-cotizador/propuesta.ts";
 
-test("Mora Control 4100 con DOA 15 % queda en 2,2525 UF mensual", () => {
+test("Mora Control 4100 con DOA 15 % queda en 2,25 UF mensual: el precio va a 2 decimales", () => {
   const linea = cotizarLinea({ producto: "mc", plan: "4100", doa: 15 });
   assert.equal(linea.ufLista, 2.65);
-  assert.equal(linea.ufVenta, 2.2525);
+  assert.equal(linea.ufVenta, 2.25);
   assert.equal(linea.descuento, 15);
   assert.equal(linea.cobro, "mensual");
   assert.equal(linea.atlas, "Mora Control");
@@ -22,7 +22,7 @@ test("Mora Control 4100 con DOA 15 % queda en 2,2525 UF mensual", () => {
 test("Portfolio Monitor toma la tarifa del mayor tramo que no supera los RUTs", () => {
   // 45 RUTs mensual → tramo 40 (0,039 UF por RUT).
   const linea = cotizarLinea({ producto: "pfm", frecuencia: "m", ruts: 45, doa: 0 });
-  assert.equal(linea.ufVenta, 1.755);
+  assert.equal(linea.ufVenta, 1.76);
   assert.equal(linea.q, 45);
 });
 
@@ -34,11 +34,11 @@ test("Partner Check es anual y RI Bolsa pago único: no se presentan como mensua
     cotizarLinea({ producto: "bolsa", tramo: 100 }),
     cotizarLinea({ producto: "pc", tamano: "pequena" }),
   ]);
-  assert.equal(total.mensual, 2.4199);
+  assert.equal(total.mensual, 2.42);
   assert.equal(total.unico, 14);
   assert.equal(total.anual, 9);
   // A la tipificación va lo mensual.
-  assert.equal(total.ufTipificacion, 2.4199);
+  assert.equal(total.ufTipificacion, 2.42);
 });
 
 test("un precio a mano bajo el DOA permitido se marca para autorización", () => {
@@ -104,8 +104,8 @@ test("con buzón de la cuenta, la firma y el botón de aceptar apuntan al buzón
 
 test("el ahorro que se muestra es la diferencia real con el precio lista", () => {
   const conDescuento = correoHtml({ ...datos, lineas: [cotizarLinea({ producto: "mc", plan: "4100", doa: 15 })] }, "cid:logo");
-  // 2,65 − 2,2525 = 0,3975 UF al mes.
-  assert.ok(conDescuento.includes("0,3975 UF al mes"));
+  // 2,65 − 2,25 = 0,40 UF al mes.
+  assert.ok(conDescuento.includes("0,40 UF al mes"));
   const sinDescuento = correoHtml(datos, "cid:logo");
   assert.ok(!sinDescuento.includes("Ahorra"));
 });

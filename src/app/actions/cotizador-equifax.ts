@@ -49,6 +49,7 @@ export type CotizacionEnviada = {
   estado: "enviando" | "enviada" | "fallida" | "whatsapp_abierto";
   error: string | null;
   created_at: string;
+  respondida_at: string | null;
   agente: string | null;
 };
 
@@ -85,7 +86,7 @@ async function leerFirma(supabase: Awaited<ReturnType<typeof createClient>>, use
 async function leerHistorial(supabase: Awaited<ReturnType<typeof createClient>>, leadId: string): Promise<CotizacionEnviada[]> {
   const { data } = await supabase
     .from("equifax_cotizaciones")
-    .select("id, canal, destinatario, productos, uf_mensual, uf_unico, uf_anual, clp_total, estado, error, created_at, profiles!equifax_cotizaciones_agent_id_fkey(full_name)")
+    .select("id, canal, destinatario, productos, uf_mensual, uf_unico, uf_anual, clp_total, estado, error, created_at, respondida_at, profiles!equifax_cotizaciones_agent_id_fkey(full_name)")
     .eq("lead_id", leadId)
     .order("created_at", { ascending: false })
     .limit(10);
@@ -103,6 +104,7 @@ async function leerHistorial(supabase: Awaited<ReturnType<typeof createClient>>,
       estado: fila.estado,
       error: fila.error,
       created_at: fila.created_at,
+      respondida_at: fila.respondida_at,
       agente: (perfil as { full_name?: string } | null)?.full_name ?? null,
     } as CotizacionEnviada;
   });

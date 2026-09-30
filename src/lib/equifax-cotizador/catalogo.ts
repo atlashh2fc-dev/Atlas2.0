@@ -327,6 +327,8 @@ export type LineaCotizada = {
 };
 
 const redondear4 = (valor: number) => Math.round(valor * 10000) / 10000;
+/** El precio que se ofrece va a 2 decimales: así la UF que ve el cliente y los pesos cuadran. */
+const redondear2 = (valor: number) => Math.round((valor + Number.EPSILON) * 100) / 100;
 
 function tarifaPortfolio(frecuencia: Frecuencia, ruts: number): number {
   const tabla = PORTFOLIO[frecuencia];
@@ -335,7 +337,7 @@ function tarifaPortfolio(frecuencia: Frecuencia, ruts: number): number {
 }
 
 function conDescuento(ufLista: number, doa: number, precioManual: number | null | undefined) {
-  const ufVenta = redondear4(precioManual != null && Number.isFinite(precioManual) && precioManual >= 0 ? precioManual : ufLista * (1 - doa / 100));
+  const ufVenta = redondear2(precioManual != null && Number.isFinite(precioManual) && precioManual >= 0 ? precioManual : ufLista * (1 - doa / 100));
   return { ufLista: redondear4(ufLista), ufVenta };
 }
 
@@ -472,7 +474,7 @@ export function cotizarLinea(config: ConfigLinea): LineaCotizada {
     }
     case "bdd": {
       const registros = Math.max(1, Math.round(config.registros || 0));
-      const valor = config.ufBackoffice != null && config.ufBackoffice > 0 ? redondear4(config.ufBackoffice) : null;
+      const valor = config.ufBackoffice != null && config.ufBackoffice > 0 ? redondear2(config.ufBackoffice) : null;
       return cerrar({
         nombre: "Base de Datos Comercial",
         detalle: `${miles(registros)} registros de ${config.universo}`,
@@ -523,7 +525,7 @@ export function totales(lineas: LineaCotizada[]): Totales {
 // ── Formatos ──────────────────────────────────────────────────────────────
 
 export function formatoUf(valor: number): string {
-  return valor.toLocaleString("es-CL", { minimumFractionDigits: valor % 1 === 0 ? 0 : 2, maximumFractionDigits: 4 });
+  return valor.toLocaleString("es-CL", { minimumFractionDigits: valor % 1 === 0 ? 0 : 2, maximumFractionDigits: 2 });
 }
 
 export function formatoPesos(valor: number): string {

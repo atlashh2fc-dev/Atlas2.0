@@ -97,7 +97,7 @@ type EquifaxQuoteRow = {
 };
 
 function formatUfAmount(value: number): string {
-  return value.toLocaleString("es-CL", { maximumFractionDigits: 4 });
+  return value.toLocaleString("es-CL", { maximumFractionDigits: 2 });
 }
 
 type LeadContact = {
