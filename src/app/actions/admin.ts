@@ -75,6 +75,18 @@ export async function createUserAccount(formData: FormData) {
   // El trigger crea el perfil, pero lo normalizamos explícitamente para que el
   // rol y el equipo seleccionados queden consistentes incluso tras recuperarnos
   // de una respuesta fallida de Auth.
+  // Solo cabe una membresía principal por persona: se quita la que el alta puso
+  // en la empresa por defecto antes de que el disparador de `profiles` cree la
+  // de la empresa activa.
+  if (typeof empresaActiva === "string") {
+    const { error: membresiaError } = await admin
+      .from("organization_members")
+      .delete()
+      .eq("profile_id", userId)
+      .neq("organization_id", empresaActiva);
+    if (membresiaError) throw new Error(membresiaError.message);
+  }
+
   const { error: profileError } = await admin
     .from("profiles")
     .update({
@@ -87,17 +99,6 @@ export async function createUserAccount(formData: FormData) {
     })
     .eq("id", userId);
   if (profileError) throw new Error(profileError.message);
-
-  // El disparador de `profiles` ya dejó la membresía en la empresa activa; se
-  // quita la que el alta puso en la empresa por defecto.
-  if (typeof empresaActiva === "string") {
-    const { error: membresiaError } = await admin
-      .from("organization_members")
-      .delete()
-      .eq("profile_id", userId)
-      .neq("organization_id", empresaActiva);
-    if (membresiaError) throw new Error(membresiaError.message);
-  }
 
   revalidatePath("/dashboard/admin/usuarios");
 }
