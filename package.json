@@ -15,6 +15,7 @@
     "auditar:prod": "node scripts/auditar-produccion.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.130.0",
     "@hookform/resolvers": "^5.4.0",
     "@react-three/drei": "^10.7.8",
     "@react-three/fiber": "^9.7.0",

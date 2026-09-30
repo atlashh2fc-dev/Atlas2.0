@@ -42,6 +42,11 @@ import { InsumosProvider } from "@/components/insumos-context";
 import type { Estudio } from "@/lib/estudios";
 import { Odontograma } from "@/components/odontograma/odontograma";
 import { ServiciosBarber } from "@/components/barber/servicios-barber";
+import { EstudioLook } from "@/components/barber/estudio-look";
+import type { LookFicha, MapaGuardado } from "@/components/barber/tipos";
+import { iaDisponible } from "@/lib/ia/look.server";
+import { firmar } from "@/lib/looks.server";
+import { normalizarMapa, type AnalisisLook, type EstadoLook, type PropuestaLook, type VistaLook } from "@/lib/look";
 import { FichaMascota3D, type MascotaFicha, type RegistroMascota } from "@/components/mascota3d/ficha-mascota-3d";
 import { contextoDeMiEmpresa, puedeLeerConversaciones } from "@/lib/modules.server";
 import { REPORT_TIME_ZONE } from "@/lib/report-range";
@@ -154,6 +159,9 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
     { data: estudiosData },
     { data: insumosData },
     { data: barberosData },
+    { data: consentimientoData },
+    { data: looksData },
+    { data: mapasData },
   ] =
     await Promise.all([
       supabase
@@ -213,7 +221,69 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
       esBarber
         ? supabase.from("profesionales").select("nombre").eq("activo", true).order("orden")
         : Promise.resolve({ data: [] as { nombre: string }[] }),
+      esBarber
+        ? supabase.from("consentimientos_de_imagen").select("id").eq("cuenta_id", id).is("revocado_at", null).maybeSingle()
+        : Promise.resolve({ data: null }),
+      esBarber
+        ? supabase
+            .from("looks")
+            .select(
+              "id, estado, created_at, pedido, barbero, foto_path, foto_perfil_path, foto_despues_path, fotos_borradas_at, analisis, propuesta_aprobada, compartir_token, modelo_estado, modelo_path, look_propuestas(id, orden, nombre, corte_base, por_que, que_decirle, mantencion_semanas, dificultad, barba, descripcion_visual, mapa, origen, vistas, modelo_estado, modelo_path)",
+            )
+            .eq("cuenta_id", id)
+            .order("created_at", { ascending: false })
+            .limit(12)
+        : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+      esBarber
+        ? supabase.from("mapas_de_corte").select("id, look_id, nombre, mapa, nota, profesional, fecha, created_at").eq("cuenta_id", id).order("created_at", { ascending: false }).limit(20)
+        : Promise.resolve({ data: [] as Record<string, unknown>[] }),
     ]);
+
+  // Estudio de Look: las fotos del bucket privado, firmadas por una hora.
+  type FilaLook = {
+    id: string; estado: EstadoLook; created_at: string; pedido: string | null; barbero: string | null;
+    foto_path: string | null; foto_perfil_path: string | null; foto_despues_path: string | null; fotos_borradas_at: string | null;
+    analisis: AnalisisLook | null; propuesta_aprobada: string | null; compartir_token: string | null;
+    modelo_estado: "generando" | "listo" | "fallido" | null; modelo_path: string | null;
+    look_propuestas: (Omit<PropuestaLook, "vistas" | "mapa" | "modelo"> & { mapa: unknown; vistas: Partial<Record<VistaLook, string>> | null; modelo_estado: "generando" | "listo" | "fallido" | null; modelo_path: string | null })[];
+  };
+  const filasLook = (looksData ?? []) as unknown as FilaLook[];
+  const enlacesLook = esBarber
+    ? await firmar(
+        supabase,
+        filasLook.flatMap((look) => [look.foto_path, look.foto_perfil_path, look.foto_despues_path, look.modelo_path, ...look.look_propuestas.flatMap((propuesta) => [...Object.values(propuesta.vistas ?? {}), propuesta.modelo_path])]),
+      )
+    : new Map<string, string>();
+  const conEnlace = (ruta: string | null | undefined) => (ruta ? (enlacesLook.get(ruta) ?? null) : null);
+  const looks: LookFicha[] = filasLook.map((look) => ({
+    id: look.id,
+    estado: look.estado,
+    created_at: look.created_at,
+    pedido: look.pedido,
+    barbero: look.barbero,
+    foto: conEnlace(look.foto_path),
+    fotoPerfil: conEnlace(look.foto_perfil_path),
+    fotoDespues: conEnlace(look.foto_despues_path),
+    fotosBorradas: Boolean(look.fotos_borradas_at),
+    analisis: look.analisis,
+    propuestaAprobada: look.propuesta_aprobada,
+    compartido: Boolean(look.compartir_token),
+    modelo: look.modelo_estado ? { estado: look.modelo_estado, url: conEnlace(look.modelo_path) } : null,
+    propuestas: [...look.look_propuestas]
+      .sort((a, b) => a.orden - b.orden)
+      .map(({ modelo_estado, modelo_path, ...propuesta }) => ({
+        ...propuesta,
+        modelo: modelo_estado ? { estado: modelo_estado, url: conEnlace(modelo_path) } : null,
+        mapa: normalizarMapa(propuesta.mapa),
+        vistas: Object.fromEntries(
+          Object.entries(propuesta.vistas ?? {}).flatMap(([vista, ruta]) => {
+            const url = conEnlace(ruta);
+            return url ? [[vista, url]] : [];
+          }),
+        ) as Partial<Record<VistaLook, string>>,
+      })),
+  }));
+  const mapasDeCorte = ((mapasData ?? []) as unknown as (Omit<MapaGuardado, "mapa"> & { mapa: unknown })[]).map((fila) => ({ ...fila, mapa: normalizarMapa(fila.mapa) }));
 
   // Los estudios se ven con enlaces firmados que expiran en una hora.
   const rutas = ((estudiosData ?? []) as { storage_path: string }[]).map((estudio) => estudio.storage_path);
@@ -417,6 +487,20 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
           profesionales={profesionales}
           estudios={estudios}
           organizationId={ficha.organization_id as string}
+        />
+      )}
+
+      {esBarber && (
+        <EstudioLook
+          cuentaId={id}
+          organizationId={ficha.organization_id as string}
+          nombre={ficha.name.split(" ")[0]}
+          consentimiento={Boolean(consentimientoData)}
+          looks={looks}
+          mapas={mapasDeCorte}
+          barberos={((barberosData ?? []) as { nombre: string }[]).map((barbero) => barbero.nombre)}
+          barberoDeCabecera={texto("profesional")}
+          ia={iaDisponible()}
         />
       )}
 

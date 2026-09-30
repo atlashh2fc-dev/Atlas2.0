@@ -457,3 +457,9 @@ body {
 :root[data-cti-in-call] .cti-hide-in-call {
   display: none;
 }
+
+/* Estudio de Look: la franja que recorre la foto mientras la IA la analiza. */
+@keyframes barrido {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(300%); }
+}

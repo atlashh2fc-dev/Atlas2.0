@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { unstable_noStore as noStore } from "next/cache";
 
 import { TableroClinica } from "@/components/reporte-clinica/tablero";
+import { ResumenLooks } from "@/components/barber/resumen-looks";
 import { Callout } from "@/components/ui";
 import { fechaEnChile } from "@/lib/citas";
 import { clinicaDe } from "@/lib/ediciones";
@@ -11,7 +12,7 @@ import { inicioDeLosHechos } from "@/lib/reporte-clinica";
 import { createClient } from "@/lib/supabase/server";
 
 /**
- * Reportes de la clínica (Dental y Vet).
+ * Reportes de la clínica (Dental y Vet) o de la barbería (Barber, que suma el Estudio de Look).
  *
  * El servidor resuelve el período de la URL y trae, en una sola consulta, los
  * hechos de ese período, del anterior de igual largo y del mismo tramo un año
@@ -40,6 +41,7 @@ export default async function ReportesClinicaPage({
   return (
     <div className="space-y-3">
       {rango.notice && <Callout tone="warning">{rango.notice}</Callout>}
+      {edicion === "barber" && <ResumenLooks desde={periodo.desde} hasta={periodo.hasta} />}
       {error ? (
         <Callout tone="danger">No se pudieron leer los reportes de la clínica. Vuelve a cargar para reintentar.</Callout>
       ) : (

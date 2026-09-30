@@ -1,6 +1,6 @@
 # Atlas Barber: plan de la edición para barberías
 
-Fecha: 2026-09-30. Estado: en revisión, todavía no se ejecuta nada.
+Fecha: 2026-09-30. Estado: fases 1 a 4 construidas; ver "Cómo quedó" al final.
 
 ## Cómo lo veo
 
@@ -132,3 +132,27 @@ Cada fase se sube a `main` al terminar, con tests y checklist de Laws of UX.
 - Nombre del módulo: "Estudio de Look".
 - Retención de fotos crudas: 90 días.
 - Quién puede usar el Estudio: admin, supervisor y ejecutivo (barbero).
+
+
+## Cómo quedó (30-09-2026)
+
+La cabeza 3D hecha por código se descartó: se veía como maniquí y no está al
+nivel. El 3D ahora es del cliente real:
+
+1. Al guardar la foto parten solos, en paralelo, el análisis (Claude) y el 3D
+   del cliente tal como llegó (Rodin v2.5 en fal, desde su foto de frente y
+   perfil).
+2. "Probar este corte" simula el corte sobre su foto en 4 ángulos (Nano Banana
+   Pro en fal) y con esas vistas arma el 3D del cliente con ese corte.
+3. Se compara "hoy" contra "con este corte" en 3D, se aprueba, y el barbero
+   deja la ficha técnica por zona (guarda, milímetros, técnica).
+4. El cliente recibe por WhatsApp un enlace con su look en 3D y en fotos.
+
+Proveedores: una sola cuenta de fal.ai (`FAL_KEY`) para fotos y 3D, y
+Anthropic (`ANTHROPIC_API_KEY`) para el análisis. Ver
+`docs/atlas-barber.env.example`. Costo aproximado por cliente que prueba un
+corte completo: 4 fotos a US$0,15 más un 3D de Rodin (precio en fal, a
+confirmar), más el 3D inicial del cliente.
+
+Descartado por licencia: FaceLift (pesos bajo licencia de investigación de
+Adobe, no comercial), que es lo que usa ShapeUp.

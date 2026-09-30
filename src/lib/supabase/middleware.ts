@@ -29,6 +29,9 @@ const PUBLIC_PATHS = [
   // cuenta; la pasarela vuelve por su propia ruta. El id del pago es la llave.
   "/pagar",
   "/api/pagos/webpay/",
+  // El look aprobado lo abre el cliente desde WhatsApp, sin cuenta. La llave
+  // es un token largo y aleatorio que se puede revocar.
+  "/look/",
 ];
 
 const MACHINE_ONLY_PATHS = new Set([
@@ -42,6 +45,8 @@ const MACHINE_ONLY_PATHS = new Set([
   "/api/agentes/vendedor",
   // El despacho de mensajes lo despierta el cron con el mismo secreto.
   "/api/mensajes/despachar",
+  // Borra las fotos originales del Estudio de Look que cumplieron 90 días.
+  "/api/looks/limpiar",
 ]);
 
 /**
