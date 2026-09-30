@@ -6,8 +6,9 @@ import { Camera, ImageUp, RefreshCcw, RotateCcw } from "lucide-react";
 import { reducirFoto } from "./tipos";
 
 /**
- * La cámara del Estudio: video en vivo con una guía para encuadrar la cara y
- * un botón grande para disparar. Si el navegador no da cámara (o el barbero
+ * La cámara del Estudio: el estilista fotografía al cliente con la cámara
+ * trasera, sin espejo (lo que está a la derecha sale a la derecha), con una
+ * guía para encuadrar la cara y un botón grande para disparar. Si el navegador no da cámara (o el barbero
  * prefiere), la foto se elige desde la galería o la cámara del sistema.
  */
 export function Camara({
@@ -41,11 +42,12 @@ export function Camara({
         return;
       }
       setEstado("pidiendo");
+      const pedir = (facingMode: ConstrainDOMString) =>
+        navigator.mediaDevices.getUserMedia({ video: { facingMode, width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false });
       try {
-        const nuevo = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: usarFrontal ? "user" : { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1440 } },
-          audio: false,
-        });
+        // El estilista fotografía al cliente: se exige la cámara trasera y, si el
+        // equipo no tiene (un notebook), se usa la que haya.
+        const nuevo = usarFrontal ? await pedir("user") : await pedir({ exact: "environment" }).catch(() => pedir({ ideal: "environment" }));
         setFlujo((actual) => {
           actual?.getTracks().forEach((pista) => pista.stop());
           return nuevo;
@@ -75,10 +77,7 @@ export function Camara({
     lienzo.height = fuente.videoHeight;
     const contexto = lienzo.getContext("2d");
     if (!contexto) return;
-    if (frontal) {
-      contexto.translate(lienzo.width, 0);
-      contexto.scale(-1, 1);
-    }
+    // Sin espejo: la foto queda como la ve la cámara, lado derecho a la derecha.
     contexto.drawImage(fuente, 0, 0);
     apagar();
     setEstado("apagada");
@@ -105,7 +104,7 @@ export function Camara({
     <div className="relative flex h-full w-full items-center justify-center">
       {estado === "lista" ? (
         <>
-          <video ref={video} playsInline muted className={`h-full w-full object-cover ${frontal ? "-scale-x-100" : ""}`} />
+          <video ref={video} playsInline muted className="h-full w-full object-cover" />
           {/* Guía de encuadre: la cara dentro del óvalo, hombros abajo. */}
           <svg viewBox="0 0 100 125" preserveAspectRatio="xMidYMid meet" className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true">
             <defs>
@@ -118,7 +117,7 @@ export function Camara({
             <ellipse cx="50" cy="52" rx={guia === "frente" ? 23 : 21} ry={guia === "frente" ? 31 : 30} fill="none" stroke="#e0b36e" strokeWidth="0.6" strokeDasharray="2 1.5" />
           </svg>
           <p className="absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-black/55 px-3 py-1 text-xs text-white backdrop-blur">
-            {guia === "frente" ? "Cara al frente, dentro del óvalo, con luz pareja" : "De perfil, con la oreja a la vista"}
+            {guia === "frente" ? "El cliente de frente, con la cara dentro del óvalo y luz pareja" : "El cliente de perfil, con la oreja a la vista"}
           </p>
           <div className="absolute inset-x-0 bottom-4 flex items-center justify-center gap-4">
             <button
@@ -128,7 +127,7 @@ export function Camara({
                 setFrontal(siguiente);
                 void encender(siguiente);
               }}
-              aria-label="Cambiar de cámara"
+              aria-label={frontal ? "Usar la cámara trasera" : "Usar la cámara frontal"}
               className="flex size-11 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur hover:bg-black/70"
             >
               <RefreshCcw size={18} aria-hidden="true" />
@@ -160,8 +159,8 @@ export function Camara({
             {estado === "sin_camara"
               ? "No pudimos abrir la cámara del navegador. Toma la foto con la cámara del equipo o elígela de la galería."
               : guia === "frente"
-                ? "Foto de frente, con la cara despejada y buena luz. Es la base del análisis y de la simulación."
-                : "Una foto de perfil mejora la simulación de los lados y la nuca. Es opcional."}
+                ? "Fotografía al cliente de frente, con la cara despejada y buena luz. Es la base del análisis y de la simulación."
+                : "Una foto de perfil del cliente mejora la simulación de los lados y la nuca. Es opcional."}
           </p>
           {estado !== "sin_camara" && (
             <button
@@ -186,7 +185,7 @@ export function Camara({
         ref={archivo}
         type="file"
         accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
-        capture={guia === "frente" ? "user" : "environment"}
+        capture="environment"
         className="hidden"
         onChange={async (evento) => {
           const elegido = evento.target.files?.[0];
