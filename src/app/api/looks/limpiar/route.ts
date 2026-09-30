@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
   const corte = new Date(Date.now() - DIAS_DE_RETENCION * 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await admin
     .from("looks")
-    .select("id, foto_path, foto_perfil_path, foto_despues_path, modelo_path, propuesta_aprobada, look_propuestas(id, vistas, modelo_path)")
+    .select("id, foto_path, foto_perfil_path, foto_despues_path, modelo_path, propuesta_aprobada, look_propuestas!look_propuestas_look_id_fkey(id, vistas, modelo_path)")
     .is("fotos_borradas_at", null)
     .lt("created_at", corte)
     .limit(200);

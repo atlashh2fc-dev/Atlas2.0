@@ -153,3 +153,13 @@ test("las rutas de IA leen el look con la sesión de quien pide y tienen tope di
     assert.match(codigo, /usoDeHoy\(admin, look\.organization_id/, ruta);
   }
 });
+
+test("looks y propuestas se cruzan diciendo la relación: hay dos y la base rechaza la consulta ambigua", () => {
+  // looks.propuesta_aprobada apunta a look_propuestas y look_propuestas.look_id a looks.
+  // Sin la pista, PostgREST responde PGRST201 y la ficha recibe los looks vacíos.
+  for (const ruta of ["src/app/dashboard/pacientes/[id]/page.tsx", "src/app/actions/looks.ts", "src/app/api/looks/limpiar/route.ts"]) {
+    const codigo = leer(ruta);
+    assert.doesNotMatch(codigo, /[ ,"(]look_propuestas\(/, `${ruta}: falta !look_propuestas_look_id_fkey`);
+    assert.doesNotMatch(codigo, /[ ,"(]looks\(/, `${ruta}: falta !look_propuestas_look_id_fkey`);
+  }
+});

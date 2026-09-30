@@ -228,7 +228,7 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
         ? supabase
             .from("looks")
             .select(
-              "id, estado, created_at, pedido, barbero, foto_path, foto_perfil_path, foto_despues_path, fotos_borradas_at, analisis, propuesta_aprobada, compartir_token, modelo_estado, modelo_path, look_propuestas(id, orden, nombre, corte_base, por_que, que_decirle, mantencion_semanas, dificultad, barba, descripcion_visual, mapa, origen, vistas, modelo_estado, modelo_path)",
+              "id, estado, created_at, pedido, barbero, foto_path, foto_perfil_path, foto_despues_path, fotos_borradas_at, analisis, propuesta_aprobada, compartir_token, modelo_estado, modelo_path, look_propuestas!look_propuestas_look_id_fkey(id, orden, nombre, corte_base, por_que, que_decirle, mantencion_semanas, dificultad, barba, descripcion_visual, mapa, origen, vistas, modelo_estado, modelo_path)",
             )
             .eq("cuenta_id", id)
             .order("created_at", { ascending: false })

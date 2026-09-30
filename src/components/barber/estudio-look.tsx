@@ -203,7 +203,12 @@ export function EstudioLook({
         </ol>
       </nav>
 
-      {nuevo || !look ? (
+      {!nuevo && !look && lookId ? (
+        // El look ya se guardó; la ficha se está actualizando. No se vuelve a mostrar la cámara.
+        <div className="flex h-[420px] flex-col items-center justify-center gap-2 p-6 text-sm text-muted-foreground">
+          <Loader2 size={20} className="animate-spin text-primary" aria-hidden="true" /> Preparando el look…
+        </div>
+      ) : nuevo || !look ? (
         <PasoCaptura
           key="captura"
           cuentaId={cuentaId}

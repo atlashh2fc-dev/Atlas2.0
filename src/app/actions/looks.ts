@@ -68,7 +68,7 @@ export async function revocarConsentimiento(cuentaId: string): Promise<Resultado
   const supabase = await createClient();
   const { data: looks } = await supabase
     .from("looks")
-    .select("id, foto_path, foto_perfil_path, foto_despues_path, modelo_path, look_propuestas(vistas, modelo_path)")
+    .select("id, foto_path, foto_perfil_path, foto_despues_path, modelo_path, look_propuestas!look_propuestas_look_id_fkey(vistas, modelo_path)")
     .eq("cuenta_id", cuentaId);
   const { error } = await supabase
     .from("consentimientos_de_imagen")
@@ -231,7 +231,7 @@ export async function ajustarPropuesta(propuestaId: string, mapa: unknown): Prom
     .from("look_propuestas")
     .update({ mapa: normalizarMapa(mapa) })
     .eq("id", propuestaId)
-    .select("look_id, looks(cuenta_id)")
+    .select("look_id, looks!look_propuestas_look_id_fkey(cuenta_id)")
     .maybeSingle();
   if (error || !data) return { ok: false, error: "No se pudo guardar el ajuste." };
   const cuenta = (Array.isArray(data.looks) ? data.looks[0] : data.looks) as { cuenta_id: string } | null;
