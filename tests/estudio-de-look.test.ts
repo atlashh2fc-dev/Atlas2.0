@@ -163,3 +163,12 @@ test("looks y propuestas se cruzan diciendo la relación: hay dos y la base rech
     assert.doesNotMatch(codigo, /[ ,"(]looks\(/, `${ruta}: falta !look_propuestas_look_id_fkey`);
   }
 });
+
+test("los 3D se recogen solos aunque nadie tenga la ficha abierta", () => {
+  assert.match(leer("vercel.json"), /"\/api\/looks\/modelos"/);
+  assert.match(leer("src/lib/supabase/middleware.ts"), /"\/api\/looks\/modelos"/);
+  const codigo = leer("src/app/api/looks/modelos/route.ts");
+  assert.match(codigo, /CRON_SECRET/);
+  assert.match(codigo, /MINUTOS_MAXIMOS = 30/);
+  assert.match(codigo, /looks!look_propuestas_look_id_fkey/);
+});

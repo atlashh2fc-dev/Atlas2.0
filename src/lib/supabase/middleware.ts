@@ -47,6 +47,8 @@ const MACHINE_ONLY_PATHS = new Set([
   "/api/mensajes/despachar",
   // Borra las fotos originales del Estudio de Look que cumplieron 90 días.
   "/api/looks/limpiar",
+  // Recoge los 3D del Estudio de Look que fal ya terminó.
+  "/api/looks/modelos",
 ]);
 
 /**
