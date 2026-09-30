@@ -16,10 +16,10 @@ Atlas es producto de **Altius Ignite SpA** (RUT 78.507.701-6). Geimser lo usa co
 | `ATLAS_META_APP_SECRET`, `ATLAS_META_WEBHOOK_VERIFY_TOKEN` en Vercel | Listo |
 | Verificación del negocio de Altius | Lista (aprobada el 30-09) |
 | Verificación de acceso (proveedor de tecnología) | **En revisión** (enviada el 30-09 como Plataforma SaaS, un solo portfolio; Meta responde en ~5 días, plazo 29-11) |
-| Publicación de la app (modo Live, acceso estándar) | Configuración obligatoria completa; falta apretar «Publicar» |
+| Publicación de la app (modo Live, acceso estándar) | Publicada el 30-09 |
 | Revisión de la app (acceso avanzado) | Pendiente: requiere el número de Altius conectado para grabar el video |
 
-Mientras la app no esté publicada, Meta solo entrega webhooks de prueba.
+Publicada no significa listada en ningún lado: solo se usa desde el botón de Atlas y, con acceso estándar, solo con activos del portfolio de Altius o de personas con rol en la app.
 
 ## Verificación de acceso: respuestas propuestas
 
