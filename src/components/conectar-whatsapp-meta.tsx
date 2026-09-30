@@ -108,6 +108,8 @@ export function ConectarWhatsAppMeta({ appId, configId, version }: { appId: stri
       }
       if (datos?.type !== "WA_EMBEDDED_SIGNUP") {
         const muestra = typeof evento.data === "string" ? evento.data : JSON.stringify(evento.data ?? null);
+        // Los mensajes internos del SDK («cb=…&domain=…») no dicen nada del registro.
+        if (/^cb=/.test(String(muestra))) return;
         if (otrosAvisos.current.length < 5) otrosAvisos.current.push(`${evento.origin.replace("https://", "")}: ${String(muestra).slice(0, 80)}`);
         return;
       }
@@ -215,6 +217,11 @@ export function ConectarWhatsAppMeta({ appId, configId, version }: { appId: stri
         {ocupado ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <MessageCircle size={16} aria-hidden="true" />}
         {estado.paso === "conectando" ? "Conectando tu número…" : estado.paso === "en_meta" ? "Sigue en la ventana de Meta…" : !sdkListo ? "Preparando…" : "Conectar mi WhatsApp Business"}
       </button>
+      {(estado.paso === "listo" || estado.paso === "error") && sdkListo && (
+        <p className="text-sm text-muted-foreground">
+          Si Meta pregunta si quieres continuar con tu configuración anterior, elige <span className="font-medium text-foreground">Editar configuración</span>.
+        </p>
+      )}
       {estado.paso === "en_meta" && (
         <p className="text-sm text-muted-foreground">
           Termina los pasos en la ventana de Meta. ¿No la ves? Puede estar detrás de esta o bloqueada por el navegador.{" "}

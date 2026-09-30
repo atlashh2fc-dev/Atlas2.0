@@ -119,6 +119,10 @@ export async function cuentaDelToken(token: string): Promise<{ wabaId: string; p
   );
   if (cuentas.size !== 1) {
     const dados = permisos.map((permiso) => `${permiso.scope}${permiso.target_ids?.length ? ` (${permiso.target_ids.length})` : ""}`).join(", ") || "ninguno";
+    // «Continuar como…» en la ventana de Meta reusa el permiso anterior: token de usuario y sin número.
+    if (cuentas.size === 0 && info.type === "USER") {
+      throw new Error("Meta reusó tu permiso anterior y no pasó por tu número. Vuelve a intentarlo y, cuando Meta pregunte si quieres continuar con tu configuración anterior, elige «Editar configuración» (no «Continuar como…») y sigue los pasos hasta aprobar en la app WhatsApp Business del teléfono.");
+    }
     throw new Error(cuentas.size === 0
       ? `Meta no dio acceso a ninguna cuenta de WhatsApp. Vuelve a intentarlo y elige tu número. Permisos que llegaron: ${dados}; token ${typeof info.type === "string" ? info.type : "sin tipo"}.`
       : "Elegiste más de una cuenta de WhatsApp en Meta; conecta una a la vez.");
