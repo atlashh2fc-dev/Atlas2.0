@@ -84,13 +84,18 @@ test("cada ruta de una aplicación tiene su puerta en el servidor", () => {
     ["src/app/dashboard/admin/estados-agente/layout.tsx", "contact_center"],
     ["src/app/dashboard/admin/cargas/layout.tsx", "leads"],
     ["src/app/dashboard/admin/agentes-sip/layout.tsx", "contact_center"],
-    ["src/app/dashboard/admin/integraciones/layout.tsx", "whatsapp"],
   ];
   for (const [ruta, modulo] of PUERTAS) {
     assert.ok(hay(ruta), `falta la puerta de ${ruta}`);
     const codigo = leer(ruta);
     assert.match(codigo, new RegExp(`requireModule\\([^)]*"${modulo}"`), `${ruta} no exige ${modulo}`);
   }
+});
+
+test("Integraciones es de todos los admins; WhatsApp solo con el módulo", () => {
+  assert.doesNotMatch(leer("src/app/dashboard/admin/integraciones/layout.tsx"), /requireModule\(/);
+  const whatsapp = leer("src/app/dashboard/admin/integraciones/whatsapp/layout.tsx");
+  assert.match(whatsapp, /\.includes\("whatsapp"\)\) redirect\("\/dashboard\/admin\/integraciones"\)/);
 });
 
 test("contratar una aplicación es del dueño de la plataforma", () => {
