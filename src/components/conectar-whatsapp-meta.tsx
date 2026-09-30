@@ -32,14 +32,19 @@ type Estado =
  *
  * Meta devuelve dos cosas por caminos distintos: el código, en la respuesta de
  * FB.login, y el número elegido, en un mensaje de la ventana. Se conecta cuando
- * llegaron las dos.
+ * llegaron las dos; si el mensaje no llega, basta el código y el servidor saca
+ * la cuenta y el número del token.
  */
+const ESPERA_DEL_AVISO_MS = 4_000;
+
 export function ConectarWhatsAppMeta({ appId, configId, version }: { appId: string; configId: string; version: string }) {
   const [sdkListo, setSdkListo] = useState(false);
   const [estado, setEstado] = useState<Estado>({ paso: "listo" });
   const [, startTransition] = useTransition();
   const codigo = useRef<string | null>(null);
   const sesion = useRef<Sesion | null>(null);
+  const espera = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const intento = useRef(0);
 
   useEffect(() => {
     if (window.FB) {
@@ -62,24 +67,34 @@ export function ConectarWhatsAppMeta({ appId, configId, version }: { appId: stri
     }
   }, [appId, version]);
 
-  const intentarConectar = useCallback(() => {
-    const code = codigo.current;
-    const datos = sesion.current;
-    if (!code || !datos) return;
+  const olvidarIntento = useCallback(() => {
+    if (espera.current) clearTimeout(espera.current);
+    espera.current = null;
     codigo.current = null;
     sesion.current = null;
+  }, []);
+
+  const intentarConectar = useCallback((sinAviso = false) => {
+    const code = codigo.current;
+    const datos = sesion.current;
+    if (!code || (!datos && !sinAviso)) return;
+    const esteIntento = intento.current;
+    olvidarIntento();
     setEstado({ paso: "conectando" });
     startTransition(async () => {
-      const resultado = await conectarWhatsAppDesdeMeta({ codigo: code, ...datos });
+      const resultado = await conectarWhatsAppDesdeMeta({ codigo: code, ...(datos ?? {}) });
+      if (esteIntento !== intento.current) return;
       setEstado(resultado.ok
         ? { paso: "conectado", numero: resultado.numero, coexistencia: resultado.coexistencia, avisos: resultado.avisos }
         : { paso: "error", mensaje: resultado.error });
     });
-  }, []);
+  }, [olvidarIntento]);
+
+  useEffect(() => olvidarIntento, [olvidarIntento]);
 
   useEffect(() => {
     const alMensaje = (evento: MessageEvent) => {
-      if (!/(^|\.)facebook\.com$/.test(new URL(evento.origin).hostname)) return;
+      if (!/^https:\/\/([a-z0-9-]+\.)*facebook\.com$/.test(evento.origin)) return;
       let datos: { type?: string; event?: string; data?: Record<string, string> };
       try {
         datos = typeof evento.data === "string" ? JSON.parse(evento.data) : evento.data;
@@ -88,6 +103,8 @@ export function ConectarWhatsAppMeta({ appId, configId, version }: { appId: stri
       }
       if (datos?.type !== "WA_EMBEDDED_SIGNUP") return;
       if (datos.event === "CANCEL" || datos.event === "ERROR") {
+        intento.current += 1;
+        olvidarIntento();
         setEstado({ paso: "error", mensaje: datos.data?.error_message ?? "Se cerró la ventana de Meta antes de terminar." });
         return;
       }
@@ -102,20 +119,38 @@ export function ConectarWhatsAppMeta({ appId, configId, version }: { appId: stri
     };
     window.addEventListener("message", alMensaje);
     return () => window.removeEventListener("message", alMensaje);
-  }, [intentarConectar]);
+  }, [intentarConectar, olvidarIntento]);
+
+  const cancelar = () => {
+    intento.current += 1;
+    olvidarIntento();
+    setEstado({ paso: "listo" });
+  };
 
   const abrirMeta = () => {
     if (!window.FB) return;
+    intento.current += 1;
+    const esteIntento = intento.current;
+    olvidarIntento();
     setEstado({ paso: "en_meta" });
     window.FB.login(
       (respuesta) => {
+        if (esteIntento !== intento.current) return;
         const code = respuesta.authResponse?.code;
         if (!code) {
-          setEstado((actual) => (actual.paso === "en_meta" ? { paso: "listo" } : actual));
+          setEstado((actual) => (actual.paso === "en_meta"
+            ? { paso: "error", mensaje: "La ventana de Meta se cerró sin terminar. Si no llegó a abrirse, permite las ventanas emergentes de este sitio y vuelve a intentarlo." }
+            : actual));
           return;
         }
         codigo.current = code;
-        intentarConectar();
+        if (sesion.current) {
+          intentarConectar();
+          return;
+        }
+        // El aviso con el número suele llegar antes; si no llega, se sigue sin él.
+        setEstado({ paso: "conectando" });
+        espera.current = setTimeout(() => intentarConectar(true), ESPERA_DEL_AVISO_MS);
       },
       {
         config_id: configId,
@@ -151,6 +186,14 @@ export function ConectarWhatsAppMeta({ appId, configId, version }: { appId: stri
         {ocupado ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <MessageCircle size={16} aria-hidden="true" />}
         {estado.paso === "conectando" ? "Conectando tu número…" : estado.paso === "en_meta" ? "Sigue en la ventana de Meta…" : !sdkListo ? "Preparando…" : "Conectar mi WhatsApp Business"}
       </button>
+      {estado.paso === "en_meta" && (
+        <p className="text-sm text-muted-foreground">
+          Termina los pasos en la ventana de Meta. ¿No la ves? Puede estar detrás de esta o bloqueada por el navegador.{" "}
+          <button type="button" onClick={cancelar} className="font-medium text-foreground underline underline-offset-2">
+            Cancelar
+          </button>
+        </p>
+      )}
       {estado.paso === "error" && (
         <p className="flex items-start gap-2 text-sm text-danger">
           <CircleAlert size={15} className="mt-0.5 flex-shrink-0" aria-hidden="true" /> {estado.mensaje}

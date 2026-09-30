@@ -82,6 +82,41 @@ export async function sincronizarAppDelTelefono(phoneNumberId: string, token: st
   return pendientes;
 }
 
+/**
+ * La cuenta y el número a los que la empresa dio acceso, sacados del token. Es
+ * el respaldo para cuando el aviso de la ventana de Meta (que trae los mismos
+ * datos) no llega a Atlas.
+ */
+export async function cuentaDelToken(token: string): Promise<{ wabaId: string; phoneNumberId: string; enLaApp: boolean | null }> {
+  const { appId } = registroDeMeta();
+  const appSecret = process.env.ATLAS_META_APP_SECRET?.trim();
+  if (!appSecret) throw new Error("Falta ATLAS_META_APP_SECRET en el servidor.");
+  const datos = await graph("debug_token", { query: { input_token: token, access_token: `${appId}|${appSecret}` } });
+  const permisos = (((datos.data ?? {}) as Json).granular_scopes ?? []) as { scope?: string; target_ids?: string[] }[];
+  const cuentas = new Set(
+    permisos
+      .filter((permiso) => permiso.scope === "whatsapp_business_management" || permiso.scope === "whatsapp_business_messaging")
+      .flatMap((permiso) => permiso.target_ids ?? []),
+  );
+  if (cuentas.size !== 1) {
+    throw new Error(cuentas.size === 0 ? "Meta no dio acceso a ninguna cuenta de WhatsApp. Vuelve a intentarlo y elige tu número." : "Elegiste más de una cuenta de WhatsApp en Meta; conecta una a la vez.");
+  }
+  const [wabaId] = cuentas;
+  const numeros = await graph(`${encodeURIComponent(wabaId)}/phone_numbers`, { token, query: { fields: "id" } });
+  const lista = (numeros.data ?? []) as { id?: string }[];
+  if (lista.length !== 1 || !lista[0].id) {
+    throw new Error(lista.length === 0 ? "La cuenta de WhatsApp que elegiste no tiene números." : "La cuenta de WhatsApp tiene varios números; vuelve a intentarlo sin cerrar la ventana de Meta.");
+  }
+  let enLaApp: boolean | null = null;
+  try {
+    const numero = await graph(encodeURIComponent(lista[0].id), { token, query: { fields: "is_on_biz_app" } });
+    if (typeof numero.is_on_biz_app === "boolean") enLaApp = numero.is_on_biz_app;
+  } catch {
+    // Campo que Meta no siempre expone; se resuelve con el tipo de registro.
+  }
+  return { wabaId, phoneNumberId: lista[0].id, enLaApp };
+}
+
 /** Cuándo vence el token (null: no vence o Meta no lo dijo). */
 export async function vencimientoDelToken(token: string): Promise<string | null> {
   const { appId } = registroDeMeta();

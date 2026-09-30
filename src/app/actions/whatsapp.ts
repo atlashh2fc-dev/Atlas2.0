@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { requireProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { canjearCodigo, datosDelNumero, sincronizarAppDelTelefono, suscribirApp, vencimientoDelToken } from "@/lib/meta-registro";
+import { canjearCodigo, cuentaDelToken, datosDelNumero, sincronizarAppDelTelefono, suscribirApp, vencimientoDelToken } from "@/lib/meta-registro";
 import { olvidarTokenDelCanal } from "@/lib/whatsapp-credenciales";
 import { assertCanOperateAssignedConversation } from "@/lib/workspace-permissions";
 import {
@@ -634,34 +634,39 @@ export type ResultadoConexionMeta =
  */
 export async function conectarWhatsAppDesdeMeta(entrada: {
   codigo: string;
-  wabaId: string;
-  phoneNumberId: string;
-  coexistencia: boolean;
+  /** Llegan en el aviso de la ventana de Meta; si no llegó, se sacan del token. */
+  wabaId?: string;
+  phoneNumberId?: string;
+  coexistencia?: boolean;
 }): Promise<ResultadoConexionMeta> {
   const profile = await requireProfile(["admin"]);
   const codigo = entrada.codigo?.trim();
-  const wabaId = entrada.wabaId?.trim();
-  const phoneNumberId = entrada.phoneNumberId?.trim();
-  if (!codigo || !/^\d+$/.test(wabaId ?? "") || !/^\d+$/.test(phoneNumberId ?? "")) {
-    return { ok: false, error: "Meta no devolvió los datos del número. Vuelve a intentarlo." };
-  }
+  if (!codigo) return { ok: false, error: "Meta no devolvió el acceso. Vuelve a intentarlo." };
+  const delAviso = /^\d+$/.test(entrada.wabaId?.trim() ?? "") && /^\d+$/.test(entrada.phoneNumberId?.trim() ?? "");
 
   const supabase = await createClient();
   const { data: organizationId } = await supabase.rpc("current_org_id");
   if (typeof organizationId !== "string") return { ok: false, error: "No se pudo saber en qué empresa estás." };
 
   const admin = createAdminClient();
-  const { data: existente } = await admin
-    .from("whatsapp_channels")
-    .select("id, organization_id")
-    .eq("phone_number_id", phoneNumberId)
-    .maybeSingle();
-  if (existente && existente.organization_id !== organizationId) {
-    return { ok: false, error: "Ese número ya está conectado a otra empresa." };
-  }
 
   try {
     const token = await canjearCodigo(codigo);
+    // Sin aviso de la ventana, el registro que se abrió es el de la app del teléfono.
+    const cuenta = delAviso
+      ? { wabaId: entrada.wabaId!.trim(), phoneNumberId: entrada.phoneNumberId!.trim(), coexistencia: entrada.coexistencia ?? false }
+      : await cuentaDelToken(token).then((datos) => ({ ...datos, coexistencia: datos.enLaApp ?? true }));
+    const { wabaId, phoneNumberId, coexistencia } = cuenta;
+
+    const { data: existente } = await admin
+      .from("whatsapp_channels")
+      .select("id, organization_id")
+      .eq("phone_number_id", phoneNumberId)
+      .maybeSingle();
+    if (existente && existente.organization_id !== organizationId) {
+      return { ok: false, error: "Ese número ya está conectado a otra empresa." };
+    }
+
     await suscribirApp(wabaId, token);
     const [{ numero, nombre }, venceAt] = await Promise.all([datosDelNumero(phoneNumberId, token), vencimientoDelToken(token)]);
 
@@ -676,7 +681,7 @@ export async function conectarWhatsAppDesdeMeta(entrada: {
           display_phone_number: numero ?? phoneNumberId,
           business_name: nombre ?? "WhatsApp Business",
           status: "active",
-          coexistencia: entrada.coexistencia,
+          coexistencia,
           conectado_at: new Date().toISOString(),
           token_vence_at: venceAt,
           last_error: null,
@@ -693,11 +698,11 @@ export async function conectarWhatsAppDesdeMeta(entrada: {
     if (tokenError) throw new Error("No se pudo guardar la credencial del número.");
     olvidarTokenDelCanal(canal.id);
 
-    const avisos = entrada.coexistencia ? await sincronizarAppDelTelefono(phoneNumberId, token) : [];
+    const avisos = coexistencia ? await sincronizarAppDelTelefono(phoneNumberId, token) : [];
 
     revalidatePath("/dashboard/admin/integraciones/whatsapp");
     revalidatePath("/dashboard/conversaciones/whatsapp");
-    return { ok: true, numero: numero ?? phoneNumberId, coexistencia: entrada.coexistencia, avisos };
+    return { ok: true, numero: numero ?? phoneNumberId, coexistencia, avisos };
   } catch (error) {
     const mensaje = error instanceof Error ? error.message : "Meta no respondió.";
     console.error("whatsapp_registro_meta_fallido", { message: mensaje.slice(0, 300) });
