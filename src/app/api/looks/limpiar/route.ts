@@ -18,9 +18,9 @@ function autorizado(request: NextRequest) {
 
 /**
  * El cron diario de retención: borra las fotos originales (frente, perfil y
- * resultado) y el 3D del cliente tal como llegó en los looks con más de 90
- * días. Quedan el mapa de corte y el look aprobado (fotos simuladas y su 3D),
- * que el cliente autorizó guardar.
+ * resultado), su retrato de estudio y cualquier 3D antiguo en los looks con
+ * más de 90 días. Quedan el mapa de corte y las fotos simuladas del look
+ * aprobado, que el cliente autorizó guardar.
  */
 export async function GET(request: NextRequest) {
   if (!autorizado(request)) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
   const corte = new Date(Date.now() - DIAS_DE_RETENCION * 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await admin
     .from("looks")
-    .select("id, foto_path, foto_perfil_path, foto_despues_path, modelo_path, propuesta_aprobada, look_propuestas!look_propuestas_look_id_fkey(id, vistas, modelo_path)")
+    .select("id, foto_path, foto_perfil_path, foto_despues_path, retrato_path, modelo_path, propuesta_aprobada, look_propuestas!look_propuestas_look_id_fkey(id, vistas, modelo_path)")
     .is("fotos_borradas_at", null)
     .lt("created_at", corte)
     .limit(200);
@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
   let borradas = 0;
   for (const look of data ?? []) {
     // Las fotos originales y el 3D del cliente tal como llegó.
-    const rutas = [look.foto_path, look.foto_perfil_path, look.foto_despues_path, look.modelo_path].filter((ruta): ruta is string => Boolean(ruta));
+    const rutas = [look.foto_path, look.foto_perfil_path, look.foto_despues_path, look.retrato_path, look.modelo_path].filter((ruta): ruta is string => Boolean(ruta));
     // Las simulaciones (fotos y 3D) de las propuestas que no se aprobaron también se van.
     const descartadas = ((look.look_propuestas ?? []) as { id: string; vistas: Record<string, string> | null; modelo_path: string | null }[]).filter((propuesta) => propuesta.id !== look.propuesta_aprobada);
     for (const propuesta of descartadas) {
@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
     }
     await admin
       .from("looks")
-      .update({ foto_path: null, foto_perfil_path: null, foto_despues_path: null, modelo_path: null, modelo_estado: null, fotos_borradas_at: new Date().toISOString() })
+      .update({ foto_path: null, foto_perfil_path: null, foto_despues_path: null, retrato_path: null, modelo_path: null, modelo_estado: null, fotos_borradas_at: new Date().toISOString() })
       .eq("id", look.id);
   }
   return NextResponse.json({ ok: true, looks: data?.length ?? 0, borradas });

@@ -40,11 +40,15 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
     const { error: borrado } = await supabase.from("look_propuestas").delete().eq("look_id", look.id).eq("origen", "ia");
     if (borrado) throw new Error("No se pudieron reemplazar las propuestas.");
+    let ids: string[] = [];
     if (propuestas.length > 0) {
-      const { error } = await supabase
+      const { data: insertadas, error } = await supabase
         .from("look_propuestas")
-        .insert(propuestas.map((propuesta) => ({ ...propuesta, look_id: look.id, organization_id: look.organization_id })));
+        .insert(propuestas.map((propuesta) => ({ ...propuesta, look_id: look.id, organization_id: look.organization_id })))
+        .select("id, orden")
+        .order("orden");
       if (error) throw new Error("No se pudieron guardar las propuestas.");
+      ids = (insertadas ?? []).map((fila) => fila.id as string);
     }
     const { error: guardado } = await supabase
       .from("looks")
@@ -53,7 +57,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     if (guardado) throw new Error("No se pudo guardar el análisis.");
 
     await registrarUso(admin, { organization_id: look.organization_id, look_id: look.id, tipo: "analisis", proveedor: "anthropic", modelo, ok: true, detalle: uso });
-    return NextResponse.json({ ok: true, fotoUtil: analisis.foto_util, problema: analisis.problema_foto, propuestas: propuestas.length });
+    return NextResponse.json({ ok: true, fotoUtil: analisis.foto_util, problema: analisis.problema_foto, propuestas: propuestas.length, ids });
   } catch (error) {
     await registrarUso(admin, {
       organization_id: look.organization_id,

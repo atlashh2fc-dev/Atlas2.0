@@ -20,7 +20,7 @@ import {
   recomendarPorReglas,
   resumenMapa,
 } from "../src/lib/look.ts";
-import { EsquemaAnalisis, entradaModelo3D, extraerImagen, instruccionDeImagen, normalizarRespuesta } from "../src/lib/look-ia.ts";
+import { EsquemaAnalisis, extraerImagen, instruccionDeImagen, instruccionDeRetrato, normalizarRespuesta } from "../src/lib/look-ia.ts";
 
 const leer = (ruta: string) => readFileSync(new URL(`../${ruta}`, import.meta.url), "utf8");
 const migracion = (sufijo: string) =>
@@ -116,11 +116,6 @@ test("las respuestas de los proveedores se leen en todas sus formas conocidas", 
   assert.equal(extraerImagen({ candidates: [{ content: { parts: [{ inlineData: { data: "QUJD", mimeType: "image/png" } }] } }] })?.data, "QUJD");
   assert.equal(extraerImagen({ nada: true }), null);
 
-  const rodin = entradaModelo3D("fal-ai/hyper3d/rodin/v2.5", ["a", "b", "c", "d", "e", "f"], "fade");
-  assert.equal((rodin as { image_urls: string[] }).image_urls.length, 5, "Rodin acepta hasta cinco vistas");
-  assert.equal((rodin as { geometry_file_format: string }).geometry_file_format, "glb");
-  assert.deepEqual(Object.keys(entradaModelo3D("fal-ai/trellis-2", ["a"], "fade")).sort(), ["image_url", "resolution", "texture_size"]);
-  assert.ok("image_urls" in entradaModelo3D("fal-ai/trellis-2", ["a", "b"], "fade"));
 });
 
 test("una foto de cara no se guarda sin autorización, vive 90 días y el bucket es privado", () => {
@@ -136,7 +131,7 @@ test("una foto de cara no se guarda sin autorización, vive 90 días y el bucket
 
   const limpieza = leer("src/app/api/looks/limpiar/route.ts");
   assert.match(limpieza, /DIAS_DE_RETENCION = 90/);
-  assert.match(limpieza, /modelo_path: null/);
+  assert.match(limpieza, /retrato_path: null/);
   assert.match(leer("vercel.json"), /"\/api\/looks\/limpiar"/);
   assert.match(leer("src/lib/supabase/middleware.ts"), /"\/api\/looks\/limpiar"/);
 
@@ -146,7 +141,7 @@ test("una foto de cara no se guarda sin autorización, vive 90 días y el bucket
 });
 
 test("las rutas de IA leen el look con la sesión de quien pide y tienen tope diario", () => {
-  for (const ruta of ["src/app/api/looks/[id]/analizar/route.ts", "src/app/api/looks/[id]/vistas/route.ts", "src/app/api/looks/[id]/modelo/route.ts"]) {
+  for (const ruta of ["src/app/api/looks/[id]/analizar/route.ts", "src/app/api/looks/[id]/vistas/route.ts", "src/app/api/looks/[id]/retrato/route.ts"]) {
     const codigo = leer(ruta);
     assert.match(codigo, /getCurrentProfile\(\)/, ruta);
     assert.match(codigo, /leerLook\(supabase, /, ruta);
@@ -164,11 +159,13 @@ test("looks y propuestas se cruzan diciendo la relación: hay dos y la base rech
   }
 });
 
-test("los 3D se recogen solos aunque nadie tenga la ficha abierta", () => {
-  assert.match(leer("vercel.json"), /"\/api\/looks\/modelos"/);
-  assert.match(leer("src/lib/supabase/middleware.ts"), /"\/api\/looks\/modelos"/);
-  const codigo = leer("src/app/api/looks/modelos/route.ts");
-  assert.match(codigo, /CRON_SECRET/);
-  assert.match(codigo, /MINUTOS_MAXIMOS = 30/);
-  assert.match(codigo, /looks!look_propuestas_look_id_fkey/);
+test("el antes es un retrato de estudio con el mismo pelo, y la simulación no espera la descarga", () => {
+  const retrato = instruccionDeRetrato(false);
+  assert.match(retrato, /SAME PERSON exactly as they look now/);
+  assert.match(retrato, /Keep the hair and beard EXACTLY as they are now/);
+  for (const ruta of ["src/app/api/looks/[id]/vistas/route.ts", "src/app/api/looks/[id]/retrato/route.ts"]) {
+    const codigo = leer(ruta);
+    assert.match(codigo, /after\(async/, `${ruta}: guardar en el bucket va después de responder`);
+    assert.match(codigo, /NextResponse\.json\(\{ ok: true,[^}]*url: imagen\.url/, `${ruta}: responde con la imagen de inmediato`);
+  }
 });

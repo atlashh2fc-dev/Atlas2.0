@@ -19,6 +19,7 @@ export type LookBase = {
   foto_path: string | null;
   foto_perfil_path: string | null;
   foto_despues_path: string | null;
+  retrato_path: string | null;
   pedido: string | null;
 };
 
@@ -26,7 +27,7 @@ export async function leerLook(supabase: SupabaseClient, id: string): Promise<Lo
   if (!UUID.test(id)) return null;
   const { data } = await supabase
     .from("looks")
-    .select("id, organization_id, cuenta_id, estado, foto_path, foto_perfil_path, foto_despues_path, pedido")
+    .select("id, organization_id, cuenta_id, estado, foto_path, foto_perfil_path, foto_despues_path, retrato_path, pedido")
     .eq("id", id)
     .maybeSingle();
   return (data as LookBase | null) ?? null;
@@ -41,7 +42,7 @@ export async function descargarFoto(supabase: SupabaseClient, ruta: string): Pro
 }
 
 /** Cuántos usos de IA de este tipo lleva la empresa hoy (día de Chile). */
-export async function usoDeHoy(admin: SupabaseClient, organizationId: string, tipo: "analisis" | "imagen" | "modelo3d"): Promise<number> {
+export async function usoDeHoy(admin: SupabaseClient, organizationId: string, tipo: "analisis" | "imagen"): Promise<number> {
   const desde = instanteEnChile(fechaEnChile(new Date()), "00:00").toISOString();
   const { count } = await admin
     .from("uso_ia_looks")
@@ -54,7 +55,7 @@ export async function usoDeHoy(admin: SupabaseClient, organizationId: string, ti
 
 export async function registrarUso(
   admin: SupabaseClient,
-  fila: { organization_id: string; look_id: string; tipo: "analisis" | "imagen" | "modelo3d"; proveedor: string; modelo: string | null; ok: boolean; detalle?: Record<string, unknown> },
+  fila: { organization_id: string; look_id: string; tipo: "analisis" | "imagen"; proveedor: string; modelo: string | null; ok: boolean; detalle?: Record<string, unknown> },
 ) {
   await admin.from("uso_ia_looks").insert({ ...fila, detalle: fila.detalle ?? {} });
 }

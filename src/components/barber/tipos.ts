@@ -14,8 +14,8 @@ export type LookFicha = {
   analisis: AnalisisLook | null;
   propuestaAprobada: string | null;
   compartido: boolean;
-  /** El cliente tal como llegó, en 3D. */
-  modelo: { estado: "generando" | "listo" | "fallido"; url: string | null } | null;
+  /** El "antes": el cliente tal como llegó, como retrato de estudio. */
+  retrato: string | null;
   propuestas: PropuestaLook[];
 };
 
@@ -30,7 +30,7 @@ export type MapaGuardado = {
   created_at: string;
 };
 
-export type IaDisponible = { analisis: boolean; simulacion: boolean; modelo3d: boolean };
+export type IaDisponible = { analisis: boolean; simulacion: boolean };
 
 /** Achica la foto en el navegador antes de subirla: más rápido y más barato de analizar. */
 export async function reducirFoto(origen: Blob | HTMLCanvasElement, lado = 1280): Promise<Blob> {

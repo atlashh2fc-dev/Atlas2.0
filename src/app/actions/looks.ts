@@ -68,7 +68,7 @@ export async function revocarConsentimiento(cuentaId: string): Promise<Resultado
   const supabase = await createClient();
   const { data: looks } = await supabase
     .from("looks")
-    .select("id, foto_path, foto_perfil_path, foto_despues_path, modelo_path, look_propuestas!look_propuestas_look_id_fkey(vistas, modelo_path)")
+    .select("id, foto_path, foto_perfil_path, foto_despues_path, retrato_path, modelo_path, look_propuestas!look_propuestas_look_id_fkey(vistas, modelo_path)")
     .eq("cuenta_id", cuentaId);
   const { error } = await supabase
     .from("consentimientos_de_imagen")
@@ -78,8 +78,8 @@ export async function revocarConsentimiento(cuentaId: string): Promise<Resultado
   if (error) return { ok: false, error: "No se pudo revocar." };
 
   const rutas: string[] = [];
-  for (const look of (looks ?? []) as { id: string; foto_path: string | null; foto_perfil_path: string | null; foto_despues_path: string | null; modelo_path: string | null; look_propuestas: { vistas: Record<string, string>; modelo_path: string | null }[] }[]) {
-    for (const ruta of [look.foto_path, look.foto_perfil_path, look.foto_despues_path, look.modelo_path]) if (ruta) rutas.push(ruta);
+  for (const look of (looks ?? []) as { id: string; foto_path: string | null; foto_perfil_path: string | null; foto_despues_path: string | null; retrato_path: string | null; modelo_path: string | null; look_propuestas: { vistas: Record<string, string>; modelo_path: string | null }[] }[]) {
+    for (const ruta of [look.foto_path, look.foto_perfil_path, look.foto_despues_path, look.retrato_path, look.modelo_path]) if (ruta) rutas.push(ruta);
     for (const propuesta of look.look_propuestas ?? []) {
       rutas.push(...Object.values(propuesta.vistas ?? {}));
       if (propuesta.modelo_path) rutas.push(propuesta.modelo_path);
@@ -91,7 +91,7 @@ export async function revocarConsentimiento(cuentaId: string): Promise<Resultado
     const ids = (looks ?? []).map((look) => look.id as string);
     await supabase
       .from("looks")
-      .update({ foto_path: null, foto_perfil_path: null, foto_despues_path: null, modelo_path: null, modelo_estado: null, compartir_token: null, fotos_borradas_at: new Date().toISOString() })
+      .update({ foto_path: null, foto_perfil_path: null, foto_despues_path: null, retrato_path: null, modelo_path: null, modelo_estado: null, compartir_token: null, fotos_borradas_at: new Date().toISOString() })
       .in("id", ids);
     await supabase.from("look_propuestas").update({ vistas: {}, modelo_path: null, modelo_estado: null }).in("look_id", ids);
   }
@@ -134,7 +134,7 @@ export async function crearLook(entrada: { cuentaId: string; fotoPath: string; p
 export async function proponerPorFacciones(
   lookId: string,
   perfil: PerfilCliente & { barba: EstiloBarba },
-): Promise<Resultado<{ propuestas: number }>> {
+): Promise<Resultado<{ propuestas: number; ids: string[] }>> {
   await requireProfile(["admin", "supervisor"]);
   if (
     !FORMAS_ROSTRO.includes(perfil.forma) ||
@@ -152,7 +152,7 @@ export async function proponerPorFacciones(
   const recomendaciones = recomendarPorReglas({ ...perfil, pedido: perfil.pedido ?? look.pedido ?? undefined }, 4);
 
   await supabase.from("look_propuestas").delete().eq("look_id", look.id).eq("origen", "reglas");
-  const { error } = await supabase.from("look_propuestas").insert(
+  const { data: insertadas, error } = await supabase.from("look_propuestas").insert(
     recomendaciones.map(({ corte, razones }, orden) => ({
       organization_id: look.organization_id,
       look_id: look.id,
@@ -168,7 +168,7 @@ export async function proponerPorFacciones(
       mapa: aplicarBarba(corte.mapa, perfil.barba),
       origen: "reglas",
     })),
-  );
+  ).select("id, orden").order("orden");
   if (error) return { ok: false, error: "No se pudieron guardar las propuestas." };
 
   const { data: actual } = await supabase.from("looks").select("analisis").eq("id", look.id).maybeSingle();
@@ -186,7 +186,7 @@ export async function proponerPorFacciones(
     await supabase.from("looks").update({ analisis: manual, estado: look.estado === "capturado" ? "analizado" : look.estado }).eq("id", look.id);
   }
   ficha(look.cuenta_id);
-  return { ok: true, propuestas: recomendaciones.length };
+  return { ok: true, propuestas: recomendaciones.length, ids: (insertadas ?? []).map((fila) => fila.id as string) };
 }
 
 export async function agregarDelCatalogo(lookId: string, corteId: string, barbaId: EstiloBarba): Promise<Resultado<{ id: string }>> {

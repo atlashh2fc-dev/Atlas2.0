@@ -24,33 +24,10 @@ import {
 
 export const MODELO_ANALISIS_POR_DEFECTO = "claude-opus-5-5";
 export const MODELO_IMAGEN_POR_DEFECTO = "fal-ai/nano-banana-2/edit";
-export const MODELO_3D_POR_DEFECTO = "fal-ai/hyper3d/rodin/v2.5";
 
 /** Topes diarios por empresa, para que un error o un abuso no se coma la cuenta. */
 export const TOPE_ANALISIS_DIARIO = 60;
 export const TOPE_IMAGENES_DIARIO = 240;
-export const TOPE_MODELOS_DIARIO = 30;
-
-/**
- * Lo que recibe Rodin: las vistas del look (hasta cinco) y una guía de texto.
- * Busto de cabeza y hombros, texturas PBR sin luz horneada, en GLB.
- */
-export function entradaModelo3D(modelo: string, imagenes: string[], descripcion: string) {
-  if (modelo.includes("trellis")) {
-    return imagenes.length > 1 ? { image_urls: imagenes.slice(0, 4), resolution: 1024, texture_size: 2048 } : { image_url: imagenes[0], resolution: 1024, texture_size: 2048 };
-  }
-  if (modelo.includes("hunyuan")) return { input_image_url: imagenes[0] };
-  return {
-    image_urls: imagenes.slice(0, 5),
-    prompt: `Photorealistic head and shoulders bust of the same person, ${descripcion.slice(0, 400)}. Accurate facial likeness, realistic skin and hair strands.`,
-    tier: "Gen-2.5-High",
-    geometry_file_format: "glb",
-    material: "PBR",
-    texture_delight: true,
-    hd_texture: true,
-  };
-}
-
 const LargoDeZona = z.object({ mm: z.number(), tecnica: z.enum(TECNICAS) });
 const Mapa = z.object(Object.fromEntries(ZONAS.map((zona) => [zona, LargoDeZona])) as Record<(typeof ZONAS)[number], typeof LargoDeZona>);
 
@@ -188,6 +165,21 @@ export function instruccionDeImagen(propuesta: { descripcion_visual: string; map
     `Change ONLY the hair and beard to: ${propuesta.descripcion_visual}.`,
     `Exact lengths by zone for the barber: ${mapaParaImagen(propuesta.mapa)}.`,
     `Camera: ${angulo}. Soft, even studio light, neutral warm-grey background, sharp focus, natural colors, 85mm lens look.`,
+    "No text, no logos, no watermark, no hats, no accessories, no extra people.",
+  ].join(" ");
+}
+
+/**
+ * El "antes": la misma persona con el mismo pelo, rehecha como retrato de
+ * estudio con el encuadre, la luz y el fondo de las simulaciones.
+ */
+export function instruccionDeRetrato(conPerfil: boolean): string {
+  return [
+    conPerfil ? "The first image is the client from the front and the second from the side; use both to keep the identity." : "The image is the client from the front.",
+    "Create a photorealistic barbershop portrait of THE SAME PERSON exactly as they look now.",
+    "Keep the exact same identity: face, facial structure, skin tone and texture, eyes, nose, mouth, ears, expression and apparent age.",
+    "Keep the hair and beard EXACTLY as they are now: same length, volume, color, shape, parting and hairline. Do not style, trim or improve them.",
+    `Camera: ${INFO_VISTA.frontal.camara}. Soft, even studio light, neutral warm-grey background, sharp focus, natural colors, 85mm lens look.`,
     "No text, no logos, no watermark, no hats, no accessories, no extra people.",
   ].join(" ");
 }

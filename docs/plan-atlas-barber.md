@@ -156,3 +156,17 @@ confirmar), más el 3D inicial del cliente.
 
 Descartado por licencia: FaceLift (pesos bajo licencia de investigación de
 Adobe, no comercial), que es lo que usa ShapeUp.
+
+
+## Ajuste (30-09-2026, tarde): sin 3D, fotos más rápidas
+
+Probado en producción: las fotos simuladas se ven muy bien; el 3D de Rodin no
+está al nivel y se sacó. Ahora:
+
+1. Al guardar la foto parten el análisis y un retrato de estudio del cliente
+   tal como llegó (el "antes"), con el mismo encuadre, luz y fondo que las
+   simulaciones.
+2. Apenas hay propuestas se simula el frente de todas en paralelo: cambiar de
+   corte es inmediato. Tres cuartos, perfil y nuca se simulan a pedido.
+3. La imagen se muestra apenas el editor la entrega; guardarla en el bucket
+   pasa después de responder.

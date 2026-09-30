@@ -6,8 +6,6 @@ import {
   INSTRUCCIONES_ANALISIS,
   MODELO_ANALISIS_POR_DEFECTO,
   MODELO_IMAGEN_POR_DEFECTO,
-  MODELO_3D_POR_DEFECTO,
-  entradaModelo3D,
   extraerImagen,
   instruccionDeImagen,
   mensajeDelBarbero,
@@ -38,13 +36,11 @@ export function iaDisponible() {
   return {
     analisis: Boolean(process.env.ANTHROPIC_API_KEY?.trim()),
     simulacion: Boolean(process.env.FAL_KEY?.trim()),
-    modelo3d: Boolean(process.env.FAL_KEY?.trim()),
   };
 }
 
 export const modeloDeAnalisis = () => process.env.ANTHROPIC_LOOK_MODEL?.trim() || MODELO_ANALISIS_POR_DEFECTO;
 export const modeloDeImagen = () => process.env.FAL_IMAGE_MODEL?.trim() || MODELO_IMAGEN_POR_DEFECTO;
-export const modeloDe3D = () => process.env.FAL_3D_MODEL?.trim() || MODELO_3D_POR_DEFECTO;
 
 export async function analizarFotos({ frontal, perfil, pedido }: { frontal: FotoParaIA; perfil?: FotoParaIA | null; pedido?: string | null }): Promise<{ respuesta: RespuestaAnalisis; modelo: string; uso: Record<string, unknown> }> {
   const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
@@ -89,20 +85,19 @@ export async function analizarFotos({ frontal, perfil, pedido }: { frontal: Foto
   };
 }
 
+function claveFal(): string {
+  const clave = process.env.FAL_KEY?.trim();
+  if (!clave) throw new ErrorDeIA("Falta configurar la simulación de fotos.", "sin_clave");
+  return clave;
+}
+
 /**
- * Simula el corte sobre la foto del cliente desde un ángulo, con el editor de
- * imágenes de fal (Nano Banana Pro por defecto). Recibe enlaces firmados de las
- * fotos y devuelve la imagen generada.
+ * Edita la foto del cliente con el editor de fal (Nano Banana 2 por defecto).
+ * Recibe enlaces firmados de las fotos y devuelve el enlace de la imagen
+ * generada apenas fal la entrega: guardarla en el bucket se hace después,
+ * para que el barbero la vea sin esperar la descarga.
  */
-export async function simularVista({
-  fotos,
-  propuesta,
-  vista,
-}: {
-  fotos: string[];
-  propuesta: { descripcion_visual: string; mapa: MapaCorte; barba: string | null };
-  vista: VistaLook;
-}): Promise<{ data: Buffer; mime: string; modelo: string }> {
+export async function editarFoto({ fotos, instruccion }: { fotos: string[]; instruccion: string }): Promise<{ url: string; mime: string; modelo: string }> {
   const clave = claveFal();
   const modelo = modeloDeImagen();
   let respuesta: Response;
@@ -110,14 +105,7 @@ export async function simularVista({
     respuesta = await fetch(`https://fal.run/${modelo}`, {
       method: "POST",
       headers: { Authorization: `Key ${clave}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        prompt: instruccionDeImagen(propuesta, vista, fotos.length > 1),
-        image_urls: fotos,
-        num_images: 1,
-        aspect_ratio: "4:5",
-        resolution: "1K",
-        output_format: "jpeg",
-      }),
+      body: JSON.stringify({ prompt: instruccion, image_urls: fotos, num_images: 1, aspect_ratio: "4:5", resolution: "1K", output_format: "jpeg" }),
       signal: AbortSignal.timeout(85_000),
     });
   } catch {
@@ -129,67 +117,17 @@ export async function simularVista({
     throw new ErrorDeIA(bloqueo ? "El servicio no quiso editar esta foto. Prueba con otra." : "La simulación falló. Prueba otra vez.", bloqueo ? "rechazo" : "proveedor");
   }
   const imagen = extraerImagen(json);
-  if (!imagen) throw new ErrorDeIA("La simulación no devolvió imagen. Prueba otra vez.", "sin_imagen");
-  if (imagen.url) {
-    const archivo = await fetch(imagen.url, { signal: AbortSignal.timeout(30_000) }).catch(() => null);
-    if (!archivo?.ok) throw new ErrorDeIA("No se pudo descargar la simulación.", "proveedor");
-    return { data: Buffer.from(await archivo.arrayBuffer()), mime: archivo.headers.get("content-type") ?? imagen.mime, modelo };
-  }
-  return { data: Buffer.from(imagen.data ?? "", "base64"), mime: imagen.mime, modelo };
+  if (!imagen?.url) throw new ErrorDeIA("La simulación no devolvió imagen. Prueba otra vez.", "sin_imagen");
+  return { url: imagen.url, mime: imagen.mime, modelo };
 }
 
-export type SolicitudModelo3D = { request_id: string; status_url: string; response_url: string; modelo: string };
-
-function claveFal(): string {
-  const clave = process.env.FAL_KEY?.trim();
-  if (!clave) throw new ErrorDeIA("Falta configurar el 3D del look.", "sin_clave");
-  return clave;
+export function instruccionDeVista(propuesta: { descripcion_visual: string; mapa: MapaCorte; barba: string | null }, vista: VistaLook, conReferencias: boolean) {
+  return instruccionDeImagen(propuesta, vista, conReferencias);
 }
 
-/**
- * Pide el 3D del cliente con su look a la cola de fal (Rodin por defecto), a
- * partir de las vistas simuladas. Devuelve la solicitud para consultarla.
- */
-export async function pedirModelo3D(imagenes: string[], descripcion: string): Promise<SolicitudModelo3D> {
-  const clave = claveFal();
-  const modelo = modeloDe3D();
-  let respuesta: Response;
-  try {
-    respuesta = await fetch(`https://queue.fal.run/${modelo}`, {
-      method: "POST",
-      headers: { Authorization: `Key ${clave}`, "Content-Type": "application/json" },
-      body: JSON.stringify(entradaModelo3D(modelo, imagenes, descripcion)),
-      signal: AbortSignal.timeout(30_000),
-    });
-  } catch {
-    throw new ErrorDeIA("El servicio 3D no respondió. Prueba otra vez.", "proveedor");
-  }
-  const datos = (await respuesta.json().catch(() => null)) as Partial<SolicitudModelo3D> | null;
-  if (!respuesta.ok || !datos?.request_id || !datos.status_url || !datos.response_url) {
-    throw new ErrorDeIA("El servicio 3D rechazó el pedido. Prueba otra vez.", "proveedor");
-  }
-  return { request_id: datos.request_id, status_url: datos.status_url, response_url: datos.response_url, modelo };
-}
-
-export type EstadoModelo3D = { estado: "generando"; posicion: number | null } | { estado: "listo"; glb: Buffer } | { estado: "fallido"; motivo: string };
-
-export async function consultarModelo3D(solicitud: SolicitudModelo3D): Promise<EstadoModelo3D> {
-  const clave = claveFal();
-  const cabeceras = { Authorization: `Key ${clave}` };
-  const estado = await fetch(solicitud.status_url, { headers: cabeceras, signal: AbortSignal.timeout(15_000) })
-    .then((respuesta) => respuesta.json() as Promise<{ status?: string; queue_position?: number; error?: string }>)
-    .catch(() => null);
-  if (!estado) return { estado: "generando", posicion: null };
-  if (estado.error) return { estado: "fallido", motivo: "El 3D no se pudo generar con estas vistas." };
-  if (estado.status !== "COMPLETED") return { estado: "generando", posicion: estado.queue_position ?? null };
-
-  const resultado = await fetch(solicitud.response_url, { headers: cabeceras, signal: AbortSignal.timeout(20_000) })
-    .then((respuesta) => (respuesta.ok ? (respuesta.json() as Promise<{ model_mesh?: { url?: string }; model_glb?: { url?: string } }>) : null))
-    .catch(() => null);
-  // Rodin devuelve model_mesh; TRELLIS y Hunyuan, model_glb.
-  const url = resultado?.model_mesh?.url ?? resultado?.model_glb?.url;
-  if (!url) return { estado: "fallido", motivo: "El servicio 3D terminó sin modelo." };
-  const archivo = await fetch(url, { signal: AbortSignal.timeout(40_000) }).catch(() => null);
-  if (!archivo?.ok) return { estado: "generando", posicion: null };
-  return { estado: "listo", glb: Buffer.from(await archivo.arrayBuffer()) };
+/** Descarga una imagen generada para guardarla en el bucket. */
+export async function descargarImagen(url: string): Promise<{ data: Buffer; mime: string }> {
+  const archivo = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+  if (!archivo.ok) throw new Error("No se pudo descargar la imagen generada.");
+  return { data: Buffer.from(await archivo.arrayBuffer()), mime: archivo.headers.get("content-type") ?? "image/jpeg" };
 }

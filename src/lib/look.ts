@@ -440,8 +440,6 @@ export type PropuestaLook = {
   origen: "ia" | "reglas" | "barbero";
   /** Vista → URL firmada (en el cliente) o ruta del archivo (en la base). */
   vistas: Partial<Record<VistaLook, string>>;
-  /** El 3D del look: URL firmada del GLB cuando está listo. */
-  modelo?: { estado: "generando" | "listo" | "fallido"; url: string | null } | null;
 };
 
 /** Colores de pelo que entiende la cabeza 3D, por la palabra con que se describe. */

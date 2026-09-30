@@ -4,8 +4,6 @@ import { INFO_VISTA, VISTAS_LOOK, normalizarMapa, resumenMapa, type VistaLook } 
 import { BUCKET_LOOKS } from "@/lib/looks.server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-import { VisorDelLook } from "./visor";
-
 export const metadata: Metadata = { title: "Tu look | Atlas Barber", robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
 
@@ -16,7 +14,7 @@ type Compartido = {
   cliente: string;
   barbero: string | null;
   fecha: string | null;
-  propuesta: { nombre: string; por_que: string; mantencion_semanas: number; barba: string | null; mapa: unknown; vistas: Partial<Record<VistaLook, string>>; modelo: string | null };
+  propuesta: { nombre: string; por_que: string; mantencion_semanas: number; barba: string | null; mapa: unknown; vistas: Partial<Record<VistaLook, string>> };
 };
 
 const fecha = new Intl.DateTimeFormat("es-CL", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" });
@@ -30,16 +28,14 @@ export default async function LookCompartidoPage({ params }: { params: Promise<{
   const { token } = await params;
   let look: Compartido | null = null;
   let vistas: { vista: VistaLook; url: string }[] = [];
-  let modelo: string | null = null;
   if (/^[A-Za-z0-9_-]{32,64}$/.test(token)) {
     const admin = createAdminClient();
     const { data } = await admin.rpc("look_compartido", { p_token: token });
     look = (data as Compartido | null) ?? null;
     if (look) {
-      const rutas = [...VISTAS_LOOK.map((vista) => look?.propuesta.vistas?.[vista]), look.propuesta.modelo].filter((ruta): ruta is string => Boolean(ruta));
+      const rutas = VISTAS_LOOK.map((vista) => look?.propuesta.vistas?.[vista]).filter((ruta): ruta is string => Boolean(ruta));
       const { data: firmados } = rutas.length ? await admin.storage.from(BUCKET_LOOKS).createSignedUrls(rutas, 60 * 60 * 24) : { data: [] };
       const enlace = new Map((firmados ?? []).map((fila) => [fila.path, fila.signedUrl]));
-      modelo = look.propuesta.modelo ? (enlace.get(look.propuesta.modelo) ?? null) : null;
       vistas = VISTAS_LOOK.flatMap((vista) => {
         const url = enlace.get(look?.propuesta.vistas?.[vista] ?? "");
         return url ? [{ vista, url }] : [];
@@ -67,12 +63,6 @@ export default async function LookCompartidoPage({ params }: { params: Promise<{
           <h1 className="mt-1 text-3xl font-semibold tracking-tight sm:text-4xl">{look.cliente}, este es tu look</h1>
           <p className="mt-2 text-base text-[#4a433b]">{look.propuesta.nombre}</p>
         </header>
-
-        {modelo && (
-          <div className="mb-4">
-            <VisorDelLook url={modelo} />
-          </div>
-        )}
 
         {vistas.length > 0 ? (
           <div className="grid grid-cols-2 gap-3 sm:gap-4">
@@ -108,7 +98,7 @@ export default async function LookCompartidoPage({ params }: { params: Promise<{
         </section>
 
         <footer className="mt-8 text-center text-xs text-[#8b8177]">
-          {look.fecha ? `Aprobado el ${fecha.format(new Date(`${look.fecha}T12:00:00Z`))}. ` : ""}Las imágenes y el 3D son una simulación hecha con IA a partir de tu foto.
+          {look.fecha ? `Aprobado el ${fecha.format(new Date(`${look.fecha}T12:00:00Z`))}. ` : ""}Las imágenes son una simulación hecha con IA a partir de tu foto.
         </footer>
       </article>
     </main>

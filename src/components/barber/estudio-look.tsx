@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import {
-  Box,
   Check,
   Copy,
   ImageIcon,
@@ -58,7 +57,6 @@ import { createClient } from "@/lib/supabase/client";
 
 import { Camara } from "./camara";
 import { EditorMapa } from "./editor-mapa";
-import { Escena3D, pedirModelo3D } from "./escena-3d";
 import type { IaDisponible, LookFicha, MapaGuardado } from "./tipos";
 
 const fecha = new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", day: "2-digit", month: "short", year: "numeric" });
@@ -90,9 +88,11 @@ function pasoInicial(look: LookFicha | null, conMapa: boolean): Paso {
  * Estudio de Look: en el sillón, de la foto al corte.
  *
  * Un paso a la vez, con el avance siempre a la vista: foto, análisis de
- * facciones, propuestas simuladas sobre la foto y en 3D, mapa de corte por
- * zona y el resultado para comparar con la expectativa. Cada paso tiene una
- * sola acción principal.
+ * facciones, propuestas simuladas sobre la foto, mapa de corte por zona y el
+ * resultado para comparar con la expectativa. Cada paso tiene una sola acción
+ * principal. Lo lento corre solo y en paralelo: al guardar la foto parten el
+ * retrato de estudio y el análisis; apenas hay propuestas, se simula el frente
+ * de todas, así cambiar de corte es inmediato.
  */
 export function EstudioLook({
   cuentaId,
@@ -126,23 +126,90 @@ export function EstudioLook({
   const router = useRouter();
   const { toast } = useToast();
   const [analizando, setAnalizando] = useState<string | null>(null);
+  const [retratos, setRetratos] = useState<Record<string, string>>({});
+  const [preparandoRetrato, setPreparandoRetrato] = useState<Set<string>>(new Set());
+  const [generadas, setGeneradas] = useState<Record<string, Partial<Record<VistaLook, string>>>>({});
+  const [generando, setGenerando] = useState<Set<string>>(new Set());
 
-  /** El análisis corre en segundo plano: el barbero puede ir mirando el 3D. */
+  /** Simula vistas de una propuesta, en paralelo; cada una aparece apenas llega. */
+  const simular = async (idLook: string, propuestaId: string, vistas: VistaLook[]) => {
+    const claves = vistas.map((vista) => `${propuestaId}:${vista}`);
+    setGenerando((actual) => new Set([...actual, ...claves]));
+    const fallas: string[] = [];
+    await Promise.all(
+      vistas.map(async (vista) => {
+        try {
+          const respuesta = await fetch(`/api/looks/${idLook}/vistas`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ propuesta: propuestaId, vista }),
+          });
+          const datos = (await respuesta.json().catch(() => ({}))) as { url?: string; error?: string };
+          if (!respuesta.ok || !datos.url) throw new Error(datos.error ?? "Falló una vista.");
+          setGeneradas((actual) => ({ ...actual, [propuestaId]: { ...(actual[propuestaId] ?? {}), [vista]: datos.url } }));
+        } catch (error) {
+          fallas.push(error instanceof Error ? error.message : "Falló una vista.");
+        } finally {
+          setGenerando((actual) => {
+            const siguiente = new Set(actual);
+            siguiente.delete(`${propuestaId}:${vista}`);
+            return siguiente;
+          });
+        }
+      }),
+    );
+    return fallas;
+  };
+
+  /** Apenas hay propuestas: el frente de todas a la vez. */
+  const previsualizar = async (idLook: string, ids: string[]) => {
+    if (!ia.simulacion || ids.length === 0) return;
+    const fallas = (await Promise.all(ids.map((id) => simular(idLook, id, ["frontal"])))).flat();
+    if (fallas.length === ids.length) toast({ tone: "danger", message: fallas[0] });
+  };
+
+  /** El "antes" como retrato de estudio, con el encuadre de las simulaciones. */
+  const pedirRetrato = async (idLook: string) => {
+    if (!ia.simulacion) return;
+    setPreparandoRetrato((actual) => new Set([...actual, idLook]));
+    try {
+      const respuesta = await fetch(`/api/looks/${idLook}/retrato`, { method: "POST" });
+      const datos = (await respuesta.json().catch(() => ({}))) as { url?: string; error?: string };
+      if (respuesta.ok && datos.url) setRetratos((actual) => ({ ...actual, [idLook]: datos.url as string }));
+    } finally {
+      setPreparandoRetrato((actual) => {
+        const siguiente = new Set(actual);
+        siguiente.delete(idLook);
+        return siguiente;
+      });
+    }
+  };
+
+  /** El análisis corre en segundo plano; al terminar, parten las simulaciones de frente. */
   const analizar = async (id: string) => {
     setAnalizando(id);
+    let ids: string[] = [];
     try {
       const respuesta = await fetch(`/api/looks/${id}/analizar`, { method: "POST" });
-      const datos = (await respuesta.json().catch(() => ({}))) as { error?: string; fotoUtil?: boolean; problema?: string };
+      const datos = (await respuesta.json().catch(() => ({}))) as { error?: string; fotoUtil?: boolean; problema?: string; ids?: string[] };
       if (!respuesta.ok) throw new Error(datos.error ?? "El análisis falló.");
       if (datos.fotoUtil === false) toast({ tone: "danger", message: datos.problema || "La foto no sirve para analizar. Toma otra." });
-      else toast({ tone: "success", message: "Análisis listo: ya hay cortes propuestos" });
+      else {
+        toast({ tone: "success", message: "Análisis listo: simulando los cortes" });
+        ids = datos.ids ?? [];
+        setPasoElegido({ look: id, paso: "propuestas" });
+      }
     } catch (error) {
       toast({ tone: "danger", message: error instanceof Error ? error.message : "El análisis falló." });
     } finally {
       setAnalizando(null);
       router.refresh();
     }
+    await previsualizar(id, ids);
+    router.refresh();
   };
+
+  const simulacion = { generadas, generando, simular, previsualizar };
 
   if (!consentimiento) return <PanelConsentimiento cuentaId={cuentaId} nombre={nombre} />;
 
@@ -222,17 +289,30 @@ export function EstudioLook({
             setLookId(id);
             setNuevo(false);
             setPasoElegido({ look: id, paso: "analisis" });
-            // Apenas está la foto: el 3D del cliente y el análisis parten solos, en paralelo.
-            if (ia.modelo3d) void pedirModelo3D(id, null).then(() => router.refresh());
+            // Apenas está la foto: el retrato de estudio y el análisis parten solos, en paralelo.
+            void pedirRetrato(id);
             if (ia.analisis) void analizar(id);
           }}
         />
       ) : paso === "analisis" ? (
-        <PasoAnalisis key={`analisis-${look.id}`} look={look} ia={ia} nombre={nombre} analizando={analizando === look.id} onAnalizar={() => void analizar(look.id)} onListo={() => irA("propuestas")} />
+        <PasoAnalisis
+          key={`analisis-${look.id}`}
+          look={look}
+          ia={ia}
+          retrato={retratos[look.id] ?? look.retrato}
+          preparandoRetrato={preparandoRetrato.has(look.id)}
+          analizando={analizando === look.id}
+          onAnalizar={() => void analizar(look.id)}
+          onPropuestas={(ids) => {
+            irA("propuestas");
+            void previsualizar(look.id, ids).then(() => router.refresh());
+          }}
+          onListo={() => irA("propuestas")}
+        />
       ) : paso === "propuestas" ? (
-        <PasoPropuestas key={`propuestas-${look.id}`} look={look} ia={ia} nombre={nombre} onAprobado={() => irA("mapa")} />
+        <PasoPropuestas key={`propuestas-${look.id}`} look={look} ia={ia} nombre={nombre} antes={retratos[look.id] ?? look.retrato ?? look.foto} simulacion={simulacion} onAprobado={() => irA("mapa")} />
       ) : paso === "mapa" ? (
-        <PasoMapa key={`mapa-${look.id}`} cuentaId={cuentaId} look={look} ia={ia} guardados={mapasDelLook} ultimo={mapas[0] ?? null} barberos={barberos} onGuardado={() => irA("resultado")} />
+        <PasoMapa key={`mapa-${look.id}`} cuentaId={cuentaId} look={look} guardados={mapasDelLook} ultimo={mapas[0] ?? null} barberos={barberos} onGuardado={() => irA("resultado")} />
       ) : (
         <PasoResultado key={`resultado-${look.id}`} look={look} organizationId={organizationId} cuentaId={cuentaId} />
       )}
@@ -488,16 +568,20 @@ const MENSAJES_ANALISIS = ["Leyendo las facciones…", "Mirando el tipo de pelo 
 function PasoAnalisis({
   look,
   ia,
-  nombre,
+  retrato,
+  preparandoRetrato,
   analizando,
   onAnalizar,
+  onPropuestas,
   onListo,
 }: {
   look: LookFicha;
   ia: IaDisponible;
-  nombre: string;
+  retrato: string | null;
+  preparandoRetrato: boolean;
   analizando: boolean;
   onAnalizar: () => void;
+  onPropuestas: (ids: string[]) => void;
   onListo: () => void;
 }) {
   const router = useRouter();
@@ -520,29 +604,25 @@ function PasoAnalisis({
         toast({ tone: "danger", message: resultado.error });
         return;
       }
-      toast({ tone: "success", message: `${resultado.propuestas} cortes propuestos` });
+      toast({ tone: "success", message: `${resultado.propuestas} cortes propuestos: simulándolos` });
       router.refresh();
-      onListo();
+      onPropuestas(resultado.ids);
     });
 
   return (
     <Diseno
       escenario={
         <Escenario>
-          {look.fotosBorradas && !look.modelo?.url ? (
-            <SinFoto />
+          {retrato || look.foto ? (
+            // eslint-disable-next-line @next/next/no-img-element -- enlace firmado del bucket privado o del editor
+            <img src={retrato ?? look.foto ?? ""} alt="El cliente hoy" className={`h-full w-full object-contain transition-opacity duration-500 ${preparandoRetrato && !retrato ? "opacity-60" : ""}`} />
           ) : (
-            <Escena3D
-              key={`cliente-${look.id}`}
-              lookId={look.id}
-              propuestaId={null}
-              inicial={look.modelo}
-              fondo={look.foto}
-              titulo={`${nombre} hoy`}
-              disponible={ia.modelo3d}
-              puedePedir={Boolean(look.foto)}
-              sinPoder="Falta la foto de frente."
-            />
+            <SinFoto />
+          )}
+          {preparandoRetrato && !retrato && !analizando && (
+            <div className="pointer-events-none absolute inset-x-0 top-0 flex items-center justify-center gap-2 bg-gradient-to-b from-black/60 to-transparent px-6 pb-10 pt-4 text-xs text-white">
+              <Loader2 size={14} className="animate-spin" aria-hidden="true" /> Preparando el retrato de estudio…
+            </div>
           )}
           {analizando && (
             <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-center gap-2 bg-gradient-to-t from-black/75 to-transparent px-6 pb-5 pt-12 text-sm font-medium text-white">
@@ -665,58 +745,45 @@ function SinFoto() {
 // 3. Propuestas
 // ---------------------------------------------------------------------------
 
-function PasoPropuestas({ look, ia, nombre, onAprobado }: { look: LookFicha; ia: IaDisponible; nombre: string; onAprobado: () => void }) {
+type Simulacion = {
+  generadas: Record<string, Partial<Record<VistaLook, string>>>;
+  generando: Set<string>;
+  simular: (idLook: string, propuestaId: string, vistas: VistaLook[]) => Promise<string[]>;
+  previsualizar: (idLook: string, ids: string[]) => Promise<void>;
+};
+
+function PasoPropuestas({
+  look,
+  ia,
+  nombre,
+  antes,
+  simulacion,
+  onAprobado,
+}: {
+  look: LookFicha;
+  ia: IaDisponible;
+  nombre: string;
+  antes: string | null;
+  simulacion: Simulacion;
+  onAprobado: () => void;
+}) {
   const router = useRouter();
   const { toast } = useToast();
   const [elegida, setElegida] = useState<string | null>(look.propuestaAprobada ?? look.propuestas[0]?.id ?? null);
   const propuesta = look.propuestas.find((candidata) => candidata.id === elegida) ?? look.propuestas[0] ?? null;
-  const [modo, setModo] = useState<"3d" | "fotos">("3d");
-  const [quien, setQuien] = useState<"corte" | "hoy">("corte");
   const [vista, setVista] = useState<VistaLook>("frontal");
   const [comparar, setComparar] = useState(50);
-  const [generadas, setGeneradas] = useState<Record<string, Partial<Record<VistaLook, string>>>>({});
-  const [generando, setGenerando] = useState<Set<string>>(new Set());
   const [catalogo, setCatalogo] = useState({ corte: CATALOGO_CORTES[0].id, barba: "sin_barba" as EstiloBarba });
   const [pendiente, iniciar] = useTransition();
 
-  const vistas = propuesta ? { ...propuesta.vistas, ...(generadas[propuesta.id] ?? {}) } : {};
-  const vistasListas = VISTAS_LOOK.filter((opcion) => vistas[opcion]).length;
-  const generandoEsta = propuesta ? VISTAS_LOOK.some((opcion) => generando.has(`${propuesta.id}:${opcion}`)) : false;
+  const vistasDe = (objetivo: PropuestaLook) => ({ ...objetivo.vistas, ...(simulacion.generadas[objetivo.id] ?? {}) });
+  const cargando = (objetivo: PropuestaLook, opcion: VistaLook) => simulacion.generando.has(`${objetivo.id}:${opcion}`);
+  const vistas = propuesta ? vistasDe(propuesta) : {};
+  const faltan = propuesta ? VISTAS_LOOK.filter((opcion) => !vistas[opcion] && !cargando(propuesta, opcion)) : [];
 
-  /** Probar un corte: simula las cuatro vistas y, con ellas, arma su 3D. */
-  const probar = async (objetivo: PropuestaLook) => {
-    const pendientes = VISTAS_LOOK.filter((opcion) => !(objetivo.vistas[opcion] || generadas[objetivo.id]?.[opcion]));
-    setGenerando((actual) => new Set([...actual, ...pendientes.map((opcion) => `${objetivo.id}:${opcion}`)]));
-    let listas = VISTAS_LOOK.length - pendientes.length;
-    let mensajeFalla = "";
-    await Promise.all(
-      pendientes.map(async (opcion) => {
-        try {
-          const respuesta = await fetch(`/api/looks/${look.id}/vistas`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ propuesta: objetivo.id, vista: opcion }),
-          });
-          const datos = (await respuesta.json().catch(() => ({}))) as { url?: string; error?: string };
-          if (!respuesta.ok || !datos.url) throw new Error(datos.error ?? "Falló una vista.");
-          listas += 1;
-          setGeneradas((actual) => ({ ...actual, [objetivo.id]: { ...(actual[objetivo.id] ?? {}), [opcion]: datos.url } }));
-        } catch (error) {
-          mensajeFalla = error instanceof Error ? error.message : "Falló una vista.";
-        } finally {
-          setGenerando((actual) => {
-            const siguiente = new Set(actual);
-            siguiente.delete(`${objetivo.id}:${opcion}`);
-            return siguiente;
-          });
-        }
-      }),
-    );
-    if (mensajeFalla) toast({ tone: "danger", message: listas === 0 ? mensajeFalla : `${VISTAS_LOOK.length - listas} vistas fallaron; el resto quedó.` });
-    if (listas >= 2 && ia.modelo3d && !objetivo.modelo) {
-      const error = await pedirModelo3D(look.id, objetivo.id);
-      if (error) toast({ tone: "danger", message: error });
-    }
+  const pedir = async (objetivo: PropuestaLook, cuales: VistaLook[]) => {
+    const fallas = await simulacion.simular(look.id, objetivo.id, cuales);
+    if (fallas.length > 0) toast({ tone: "danger", message: fallas.length === cuales.length ? fallas[0] : `${fallas.length} de ${cuales.length} vistas fallaron; puedes reintentarlas.` });
     router.refresh();
   };
 
@@ -741,141 +808,92 @@ function PasoPropuestas({ look, ia, nombre, onAprobado }: { look: LookFicha; ia:
         return;
       }
       setElegida(resultado.id);
+      setVista("frontal");
       router.refresh();
+      if (ia.simulacion) void pedir({ id: resultado.id, vistas: {} } as PropuestaLook, ["frontal"]);
     });
 
   if (look.propuestas.length === 0) {
     return <div className="p-6 text-center text-sm text-muted-foreground">Todavía no hay propuestas. Vuelve al paso de análisis para que la IA o el catálogo propongan cortes.</div>;
   }
 
-  const sinProbar = propuesta && vistasListas === 0 && !generandoEsta;
+  const actual = vistas[vista];
+  const simulandoActual = propuesta ? cargando(propuesta, vista) : false;
 
   return (
     <Diseno
       escenario={
         <div className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex gap-1.5" role="tablist" aria-label="Cómo ver el corte">
-              {(
-                [
-                  ["3d", "En 3D", Box],
-                  ["fotos", "Fotos", ImageIcon],
-                ] as const
-              ).map(([id, etiqueta, Icono]) => (
+            <p className="text-sm font-medium text-foreground">{propuesta?.nombre}</p>
+            <div className="flex flex-wrap gap-1" role="tablist" aria-label="Ángulo">
+              {VISTAS_LOOK.map((opcion) => (
                 <button
-                  key={id}
+                  key={opcion}
                   type="button"
                   role="tab"
-                  aria-selected={modo === id}
-                  onClick={() => setModo(id)}
-                  className={`inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-sm transition-colors ${
-                    modo === id ? "border-primary bg-primary text-primary-foreground" : "border-border bg-surface text-muted-foreground hover:text-foreground"
-                  }`}
+                  aria-selected={vista === opcion}
+                  onClick={() => {
+                    setVista(opcion);
+                    if (propuesta && ia.simulacion && !vistas[opcion] && !cargando(propuesta, opcion)) void pedir(propuesta, [opcion]);
+                  }}
+                  className={`h-9 rounded-md px-3 text-xs transition-colors ${vista === opcion ? "bg-foreground text-background" : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"}`}
                 >
-                  <Icono size={14} aria-hidden="true" /> {etiqueta}
+                  {INFO_VISTA[opcion].nombre}
                 </button>
               ))}
             </div>
-            {modo === "3d" ? (
-              <div className="flex rounded-lg border border-border p-0.5" role="group" aria-label="Comparar">
-                {(
-                  [
-                    ["hoy", `${nombre} hoy`],
-                    ["corte", "Con este corte"],
-                  ] as const
-                ).map(([id, etiqueta]) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => setQuien(id)}
-                    className={`h-8 rounded-md px-3 text-xs transition-colors ${quien === id ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}
-                  >
-                    {etiqueta}
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="flex flex-wrap gap-1">
-                {VISTAS_LOOK.map((opcion) => (
-                  <button
-                    key={opcion}
-                    type="button"
-                    onClick={() => setVista(opcion)}
-                    className={`h-8 rounded-md px-2.5 text-xs transition-colors ${vista === opcion ? "bg-foreground text-background" : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"}`}
-                  >
-                    {INFO_VISTA[opcion].nombre}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
           <Escenario>
-            {modo === "3d" && quien === "hoy" ? (
-              <Escena3D key={`cliente-${look.id}`} lookId={look.id} propuestaId={null} inicial={look.modelo} fondo={look.foto} titulo={`${nombre} hoy`} disponible={ia.modelo3d} puedePedir={Boolean(look.foto)} sinPoder="Falta la foto de frente." />
-            ) : modo === "3d" && propuesta && !sinProbar ? (
-              <Escena3D
-                key={`corte-${propuesta.id}`}
-                lookId={look.id}
-                propuestaId={propuesta.id}
-                inicial={propuesta.modelo ?? null}
-                fondo={vistas.tres_cuartos ?? vistas.frontal ?? look.foto}
-                titulo={propuesta.nombre}
-                disponible={ia.modelo3d}
-                puedePedir={vistasListas >= 2}
-                sinPoder={generandoEsta ? `Simulando las vistas del corte (${vistasListas} de 4)…` : "Faltan vistas simuladas para armar el 3D."}
-              />
-            ) : modo === "fotos" && vistas[vista] ? (
-              <Comparador antes={look.foto} despues={vistas[vista] as string} posicion={vista === "frontal" ? comparar : 100} onPosicion={setComparar} />
+            {actual ? (
+              <Comparador antes={vista === "frontal" ? antes : null} despues={actual} posicion={vista === "frontal" ? comparar : 100} onPosicion={setComparar} />
             ) : (
-              <div className="relative flex h-full flex-col items-center justify-center gap-3 px-8 text-center">
-                {look.foto && (
+              <div className="relative h-full w-full">
+                {antes && (
                   // eslint-disable-next-line @next/next/no-img-element -- enlace firmado del bucket privado
-                  <img src={look.foto} alt="" className="absolute inset-0 h-full w-full object-contain opacity-25" />
+                  <img src={antes} alt="" className={`absolute inset-0 h-full w-full object-contain ${simulandoActual ? "animate-pulse opacity-50" : "opacity-35"}`} />
                 )}
-                <div className="relative flex flex-col items-center gap-3">
-                  {propuesta && generandoEsta ? (
-                    <>
-                      <Loader2 size={24} className="animate-spin text-[#e0b36e]" aria-hidden="true" />
-                      <p className="text-sm font-medium text-white">Probando {propuesta.nombre.toLowerCase()} sobre {nombre}…</p>
-                      <p className="text-xs text-white/70">Primero las fotos ({vistasListas} de 4), después el 3D.</p>
-                    </>
+                <div className="relative flex h-full flex-col items-center justify-center gap-3 px-8 text-center">
+                  {simulandoActual ? (
+                    <p className="flex items-center gap-2 rounded-full bg-black/55 px-4 py-2 text-sm font-medium text-white backdrop-blur">
+                      <Loader2 size={15} className="animate-spin" aria-hidden="true" /> Simulando {INFO_VISTA[vista].nombre.toLowerCase()}…
+                    </p>
                   ) : ia.simulacion && propuesta ? (
-                    <>
-                      <Sparkles size={24} className="text-[#e0b36e]" aria-hidden="true" />
-                      <p className="max-w-sm text-sm text-white/85">Simula {propuesta.nombre.toLowerCase()} sobre la foto de {nombre} en cuatro ángulos y arma su 3D.</p>
-                      <button type="button" onClick={() => void probar(propuesta)} className="inline-flex h-11 items-center gap-2 rounded-full border border-[#e0b36e] px-5 text-sm font-semibold text-[#e0b36e] hover:bg-[#e0b36e]/10">
-                        <Sparkles size={16} aria-hidden="true" /> Probar este corte
-                      </button>
-                      <p className="text-xs text-white/55">Las fotos tardan unos 20 segundos; el 3D, 1 a 3 minutos más.</p>
-                    </>
+                    <button
+                      type="button"
+                      onClick={() => void pedir(propuesta, [vista])}
+                      className="inline-flex h-11 items-center gap-2 rounded-full border border-[#e0b36e] bg-black/40 px-5 text-sm font-semibold text-[#e0b36e] backdrop-blur hover:bg-black/55"
+                    >
+                      <Sparkles size={16} aria-hidden="true" /> Simular {INFO_VISTA[vista].nombre.toLowerCase()}
+                    </button>
                   ) : (
-                    <>
-                      <ImageIcon size={24} className="text-[#e0b36e]" aria-hidden="true" />
-                      <p className="max-w-sm text-sm text-white/85">La simulación todavía no está activa en esta barbería. Se activa con la cuenta de fal.ai en la configuración de Atlas.</p>
-                    </>
+                    <p className="max-w-sm rounded-xl bg-black/55 px-4 py-3 text-sm text-white/90 backdrop-blur">La simulación en foto no está activa en esta barbería. La ficha de cada corte sigue disponible.</p>
                   )}
                 </div>
               </div>
             )}
           </Escenario>
-          {modo === "fotos" && vistasListas > 0 && (
+          {propuesta && (
             <div className="grid grid-cols-5 gap-2">
-              {look.foto && <Miniatura url={look.foto} etiqueta="Antes" activa={false} onClick={() => undefined} />}
+              <Miniatura url={antes} etiqueta="Antes" activa={false} onClick={() => setVista("frontal")} />
               {VISTAS_LOOK.map((opcion) => (
                 <Miniatura
                   key={opcion}
                   url={vistas[opcion] ?? null}
-                  cargando={propuesta ? generando.has(`${propuesta.id}:${opcion}`) : false}
+                  cargando={cargando(propuesta, opcion)}
                   etiqueta={INFO_VISTA[opcion].nombre}
                   activa={vista === opcion}
-                  onClick={() => setVista(opcion)}
+                  onClick={() => {
+                    setVista(opcion);
+                    if (ia.simulacion && !vistas[opcion] && !cargando(propuesta, opcion)) void pedir(propuesta, [opcion]);
+                  }}
                 />
               ))}
             </div>
           )}
-          {propuesta && ia.simulacion && vistasListas > 0 && vistasListas < VISTAS_LOOK.length && !generandoEsta && (
-            <button type="button" onClick={() => void probar(propuesta)} className="text-sm text-primary hover:underline">
-              Simular las vistas que faltan
+          {propuesta && ia.simulacion && faltan.length > 1 && (
+            <button type="button" onClick={() => void pedir(propuesta, faltan)} className="text-sm text-primary hover:underline">
+              Simular los {faltan.length} ángulos que faltan
             </button>
           )}
         </div>
@@ -886,37 +904,52 @@ function PasoPropuestas({ look, ia, nombre, onAprobado }: { look: LookFicha; ia:
             {look.propuestas.map((opcion, indice) => {
               const activa = propuesta?.id === opcion.id;
               const aprobada = look.propuestaAprobada === opcion.id;
+              const frente = vistasDe(opcion).frontal;
               return (
                 <li key={opcion.id}>
                   <button
                     type="button"
                     onClick={() => {
                       setElegida(opcion.id);
-                      setQuien("corte");
+                      setVista("frontal");
+                      if (ia.simulacion && !frente && !cargando(opcion, "frontal")) void pedir(opcion, ["frontal"]);
                     }}
-                    className={`w-full rounded-xl border p-3 text-left transition-colors ${activa ? "border-primary bg-primary/5 shadow-sm" : "border-border hover:border-primary/50"}`}
+                    className={`flex w-full gap-3 rounded-xl border p-2.5 text-left transition-colors ${activa ? "border-primary bg-primary/5 shadow-sm" : "border-border hover:border-primary/50"}`}
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-sm font-semibold text-foreground">
-                        <span className="mr-1.5 tabular-nums text-muted-foreground">{indice + 1}.</span>
-                        {opcion.nombre}
-                      </p>
-                      <div className="flex flex-shrink-0 gap-1">
-                        {aprobada && <Badge tone="success">Aprobado</Badge>}
-                        {opcion.modelo?.estado === "listo" && <Badge tone="info">3D</Badge>}
-                        <Badge tone="neutral">{opcion.origen === "ia" ? "IA" : opcion.origen === "reglas" ? "Catálogo" : "Barbero"}</Badge>
-                      </div>
-                    </div>
-                    {activa && (
-                      <div className="mt-2 space-y-1.5 text-sm">
-                        <p className="text-muted-foreground">{opcion.por_que}</p>
-                        {opcion.que_decirle && <p className="text-foreground">“{opcion.que_decirle}”</p>}
-                        <p className="text-xs text-muted-foreground">
-                          Mantención cada {opcion.mantencion_semanas} semanas · dificultad {opcion.dificultad}
-                          {opcion.barba ? ` · ${opcion.barba.toLowerCase()}` : ""}
-                        </p>
-                      </div>
-                    )}
+                    <span className="relative h-20 w-16 flex-shrink-0 overflow-hidden rounded-lg bg-[#1a1714]">
+                      {frente ? (
+                        // eslint-disable-next-line @next/next/no-img-element -- enlace firmado del bucket privado o del editor
+                        <img src={frente} alt="" className="h-full w-full object-cover" />
+                      ) : cargando(opcion, "frontal") ? (
+                        <span className="flex h-full items-center justify-center">
+                          <Loader2 size={14} className="animate-spin text-white/60" aria-hidden="true" />
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-start justify-between gap-2">
+                        <span className="text-sm font-semibold text-foreground">
+                          <span className="mr-1.5 tabular-nums text-muted-foreground">{indice + 1}.</span>
+                          {opcion.nombre}
+                        </span>
+                        <span className="flex flex-shrink-0 gap-1">
+                          {aprobada && <Badge tone="success">Aprobado</Badge>}
+                          <Badge tone="neutral">{opcion.origen === "ia" ? "IA" : opcion.origen === "reglas" ? "Catálogo" : "Barbero"}</Badge>
+                        </span>
+                      </span>
+                      {activa ? (
+                        <span className="mt-1.5 block space-y-1 text-sm">
+                          <span className="block text-muted-foreground">{opcion.por_que}</span>
+                          {opcion.que_decirle && <span className="block text-foreground">“{opcion.que_decirle}”</span>}
+                          <span className="block text-xs text-muted-foreground">
+                            Mantención cada {opcion.mantencion_semanas} semanas · dificultad {opcion.dificultad}
+                            {opcion.barba ? ` · ${opcion.barba.toLowerCase()}` : ""}
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="mt-1 block truncate text-xs text-muted-foreground">Mantención cada {opcion.mantencion_semanas} semanas</span>
+                      )}
+                    </span>
                   </button>
                 </li>
               );
@@ -926,7 +959,7 @@ function PasoPropuestas({ look, ia, nombre, onAprobado }: { look: LookFicha; ia:
           {propuesta && (
             <button type="button" onClick={aprobar} disabled={pendiente || look.propuestaAprobada === propuesta.id} className={CTA}>
               {pendiente ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Check size={16} aria-hidden="true" />}
-              {look.propuestaAprobada === propuesta.id ? "Este es el look aprobado" : "Aprobar este look"}
+              {look.propuestaAprobada === propuesta.id ? `${nombre} ya aprobó este look` : "Aprobar este look"}
             </button>
           )}
 
@@ -936,7 +969,7 @@ function PasoPropuestas({ look, ia, nombre, onAprobado }: { look: LookFicha; ia:
               <SelectorFaccion etiqueta="Corte" valor={catalogo.corte} opciones={CATALOGO_CORTES.map((corte) => [corte.id, corte.nombre])} onChange={(corte) => setCatalogo({ ...catalogo, corte })} />
               <SelectorFaccion etiqueta="Barba" valor={catalogo.barba} opciones={ESTILOS_BARBA.map((barba) => [barba.id, barba.nombre])} onChange={(barba) => setCatalogo({ ...catalogo, barba: barba as EstiloBarba })} />
               <button type="button" onClick={agregar} disabled={pendiente} className={`${SECUNDARIO} w-full`}>
-                <Plus size={16} aria-hidden="true" /> Agregar como propuesta
+                <Plus size={16} aria-hidden="true" /> Agregar y simular
               </button>
             </div>
           </details>
@@ -999,7 +1032,6 @@ function Comparador({ antes, despues, posicion, onPosicion }: { antes: string | 
 function PasoMapa({
   cuentaId,
   look,
-  ia,
   guardados,
   ultimo,
   barberos,
@@ -1007,7 +1039,6 @@ function PasoMapa({
 }: {
   cuentaId: string;
   look: LookFicha;
-  ia: IaDisponible;
   guardados: MapaGuardado[];
   ultimo: MapaGuardado | null;
   barberos: string[];
@@ -1018,7 +1049,9 @@ function PasoMapa({
   const aprobada = look.propuestas.find((propuesta) => propuesta.id === look.propuestaAprobada) ?? null;
   const [mapa, setMapa] = useState<MapaCorte>(guardados[0]?.mapa ?? aprobada?.mapa ?? ultimo?.mapa ?? MAPA_NEUTRO);
   const [zona, setZona] = useState<Zona | null>("lateral_bajo");
-  const referencia = aprobada?.vistas.tres_cuartos ?? aprobada?.vistas.frontal ?? null;
+  const angulos = aprobada ? VISTAS_LOOK.filter((opcion) => aprobada.vistas[opcion]) : [];
+  const [angulo, setAngulo] = useState<VistaLook>(angulos.includes("perfil") ? "perfil" : (angulos[0] ?? "frontal"));
+  const referencia = aprobada?.vistas[angulo] ?? null;
   const [nota, setNota] = useState(guardados[0]?.nota ?? "");
   const [barbero, setBarbero] = useState(look.barbero ?? barberos[0] ?? "");
   const [pendiente, iniciar] = useTransition();
@@ -1040,22 +1073,26 @@ function PasoMapa({
     <Diseno
       escenario={
         <div className="space-y-2">
+          {angulos.length > 1 && (
+            <div className="flex flex-wrap gap-1" role="tablist" aria-label="Ángulo">
+              {angulos.map((opcion) => (
+                <button
+                  key={opcion}
+                  type="button"
+                  role="tab"
+                  aria-selected={angulo === opcion}
+                  onClick={() => setAngulo(opcion)}
+                  className={`h-9 rounded-md px-3 text-xs transition-colors ${angulo === opcion ? "bg-foreground text-background" : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"}`}
+                >
+                  {INFO_VISTA[opcion].nombre}
+                </button>
+              ))}
+            </div>
+          )}
           <Escenario>
-            {aprobada ? (
-              <Escena3D
-                key={`mapa-${aprobada.id}`}
-                lookId={look.id}
-                propuestaId={aprobada.id}
-                inicial={aprobada.modelo ?? null}
-                fondo={referencia ?? look.foto}
-                titulo={aprobada.nombre}
-                disponible={ia.modelo3d}
-                puedePedir={Object.keys(aprobada.vistas).length >= 2}
-                sinPoder="El 3D se arma con las vistas simuladas del look aprobado."
-              />
-            ) : look.foto ? (
+            {referencia || look.foto ? (
               // eslint-disable-next-line @next/next/no-img-element -- enlace firmado del bucket privado
-              <img src={look.foto} alt="Foto del cliente" className="h-full w-full object-contain" />
+              <img src={referencia ?? look.foto ?? ""} alt={aprobada ? `${aprobada.nombre}, ${INFO_VISTA[angulo].nombre.toLowerCase()}` : "Foto del cliente"} className="h-full w-full object-contain" />
             ) : (
               <SinFoto />
             )}

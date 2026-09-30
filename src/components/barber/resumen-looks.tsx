@@ -76,11 +76,10 @@ export async function ResumenLooks({ desde, hasta }: { desde: string; hasta: str
               ))}
           </tbody>
         </table>
-        <dl className="grid grid-cols-3 gap-2 text-sm">
+        <dl className="grid grid-cols-2 gap-2 text-sm">
           {[
             ["Análisis con IA", cuenta("analisis")],
             ["Fotos simuladas", cuenta("imagen")],
-            ["Modelos 3D", cuenta("modelo3d")],
           ].map(([etiqueta, valor]) => (
             <div key={etiqueta as string} className="rounded-lg bg-surface-muted px-3 py-2">
               <dt className="text-xs text-muted-foreground">{etiqueta}</dt>

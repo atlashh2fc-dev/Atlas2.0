@@ -228,7 +228,7 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
         ? supabase
             .from("looks")
             .select(
-              "id, estado, created_at, pedido, barbero, foto_path, foto_perfil_path, foto_despues_path, fotos_borradas_at, analisis, propuesta_aprobada, compartir_token, modelo_estado, modelo_path, look_propuestas!look_propuestas_look_id_fkey(id, orden, nombre, corte_base, por_que, que_decirle, mantencion_semanas, dificultad, barba, descripcion_visual, mapa, origen, vistas, modelo_estado, modelo_path)",
+              "id, estado, created_at, pedido, barbero, foto_path, foto_perfil_path, foto_despues_path, fotos_borradas_at, analisis, propuesta_aprobada, compartir_token, retrato_path, look_propuestas!look_propuestas_look_id_fkey(id, orden, nombre, corte_base, por_que, que_decirle, mantencion_semanas, dificultad, barba, descripcion_visual, mapa, origen, vistas)",
             )
             .eq("cuenta_id", id)
             .order("created_at", { ascending: false })
@@ -244,14 +244,14 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
     id: string; estado: EstadoLook; created_at: string; pedido: string | null; barbero: string | null;
     foto_path: string | null; foto_perfil_path: string | null; foto_despues_path: string | null; fotos_borradas_at: string | null;
     analisis: AnalisisLook | null; propuesta_aprobada: string | null; compartir_token: string | null;
-    modelo_estado: "generando" | "listo" | "fallido" | null; modelo_path: string | null;
-    look_propuestas: (Omit<PropuestaLook, "vistas" | "mapa" | "modelo"> & { mapa: unknown; vistas: Partial<Record<VistaLook, string>> | null; modelo_estado: "generando" | "listo" | "fallido" | null; modelo_path: string | null })[];
+    retrato_path: string | null;
+    look_propuestas: (Omit<PropuestaLook, "vistas" | "mapa"> & { mapa: unknown; vistas: Partial<Record<VistaLook, string>> | null })[];
   };
   const filasLook = (looksData ?? []) as unknown as FilaLook[];
   const enlacesLook = esBarber
     ? await firmar(
         supabase,
-        filasLook.flatMap((look) => [look.foto_path, look.foto_perfil_path, look.foto_despues_path, look.modelo_path, ...look.look_propuestas.flatMap((propuesta) => [...Object.values(propuesta.vistas ?? {}), propuesta.modelo_path])]),
+        filasLook.flatMap((look) => [look.foto_path, look.foto_perfil_path, look.foto_despues_path, look.retrato_path, ...look.look_propuestas.flatMap((propuesta) => Object.values(propuesta.vistas ?? {}))]),
       )
     : new Map<string, string>();
   const conEnlace = (ruta: string | null | undefined) => (ruta ? (enlacesLook.get(ruta) ?? null) : null);
@@ -268,12 +268,11 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
     analisis: look.analisis,
     propuestaAprobada: look.propuesta_aprobada,
     compartido: Boolean(look.compartir_token),
-    modelo: look.modelo_estado ? { estado: look.modelo_estado, url: conEnlace(look.modelo_path) } : null,
+    retrato: conEnlace(look.retrato_path),
     propuestas: [...look.look_propuestas]
       .sort((a, b) => a.orden - b.orden)
-      .map(({ modelo_estado, modelo_path, ...propuesta }) => ({
+      .map((propuesta) => ({
         ...propuesta,
-        modelo: modelo_estado ? { estado: modelo_estado, url: conEnlace(modelo_path) } : null,
         mapa: normalizarMapa(propuesta.mapa),
         vistas: Object.fromEntries(
           Object.entries(propuesta.vistas ?? {}).flatMap(([vista, ruta]) => {

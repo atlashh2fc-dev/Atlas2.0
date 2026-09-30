@@ -48,10 +48,6 @@
     {
       "path": "/api/looks/limpiar",
       "schedule": "40 6 * * *"
-    },
-    {
-      "path": "/api/looks/modelos",
-      "schedule": "*/5 * * * *"
     }
   ]
 }
