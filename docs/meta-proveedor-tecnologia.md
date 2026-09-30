@@ -17,7 +17,7 @@ Atlas es producto de **Altius Ignite SpA** (RUT 78.507.701-6). Geimser lo usa co
 | Verificación del negocio de Altius | Lista (aprobada el 30-09) |
 | Verificación de acceso (proveedor de tecnología) | **En revisión** (enviada el 30-09 como Plataforma SaaS, un solo portfolio; Meta responde en ~5 días, plazo 29-11) |
 | Publicación de la app (modo Live, acceso estándar) | Publicada el 30-09 |
-| Revisión de la app (acceso avanzado) | Pendiente: requiere el número de Altius conectado para grabar el video |
+| Revisión de la app (acceso avanzado) | Videos grabados el 30-09 (en Descargas: `meta-revision-1-whatsapp_business_messaging.mp4` y `meta-revision-2-whatsapp_business_management.mp4`); falta subirlos y enviar la solicitud |
 
 Publicada no significa listada en ningún lado: solo se usa desde el botón de Atlas y, con acceso estándar, solo con activos del portfolio de Altius o de personas con rol en la app.
 
@@ -41,6 +41,8 @@ Permisos con acceso avanzado:
 **Hasta que Meta apruebe esta revisión, el registro insertado responde «Altius Ignite no puede registrar clientes en este momento»**, también para el número de Altius (probado el 30-09). No se puede usar el botón de Atlas para grabar el video.
 
 Requisitos previos: cada permiso necesita al menos una llamada exitosa a la API (en Casos de uso › Permisos y funciones, la columna «Llamadas a la API» estaba en 0 el 30-09). El contador puede tardar hasta 24 h en subir. Las llamadas se hacen con el número de prueba que Meta da en Casos de uso › Conectar en WhatsApp › Paso 1. Pruébalo.
+
+El 30-09 se hicieron las llamadas con la app: `messages` (plantilla enviada desde el número de prueba a +56 9 2829 9973, webhook en «read») y lecturas de `message_templates` y `phone_numbers` de la WABA de prueba. Se creó la plantilla `atlas_crm_appointment_confirmation` (Utilidad, inglés) en esa WABA.
 
 Videos que pide Meta (documentación «Convertirse en proveedor de tecnología», 20-08-2026):
 1. Un mensaje enviado desde la app y recibido en WhatsApp. Vale grabar la pantalla de «Pruébalo» (o el cURL) enviando la plantilla `hello_world` desde el número de prueba a un teléfono agregado como destinatario, con el teléfono recibiéndolo en cámara o en WhatsApp Web.
