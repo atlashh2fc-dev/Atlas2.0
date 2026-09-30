@@ -71,7 +71,7 @@ function leer(libro: Uint8Array) {
 
 test("la hoja Data lleva los encabezados de la planilla de operación, en su orden", () => {
   const libro = leer(libroNegociosEquifax(NEGOCIOS));
-  assert.deepEqual(libro.SheetNames, ["Data", "TD"]);
+  assert.deepEqual(libro.SheetNames, ["Data", "TD", "Ventas y cotizaciones"]);
   const filas = XLSX.utils.sheet_to_json<unknown[]>(libro.Sheets.Data, { header: 1, raw: true, defval: null });
   assert.deepEqual(filas[0], [...ENCABEZADOS_DATA]);
   // Las 24 primeras columnas son las de la planilla, con sus erratas y espacios.
@@ -138,10 +138,28 @@ test("una celda más larga de lo que acepta Excel no rompe la descarga y deja la
   assert.ok(Object.values(fila).every((v) => String(v ?? "").length <= MAXIMO_CELDA));
 });
 
+test("la tercera hoja deja solo los negocios en venta en validación o cotización enviada", () => {
+  const cotizado = {
+    ...NEGOCIOS[1],
+    lead_id: "5b7f1c1e-2f0a-4c55-9d0e-1a2b3c4d5e6f",
+    empresa: "COTIZADA LTDA",
+    ultima_gestion: "Cotización enviada",
+  };
+  const libro = leer(libroNegociosEquifax([...NEGOCIOS, cotizado]));
+  const filas = XLSX.utils.sheet_to_json<unknown[]>(libro.Sheets["Ventas y cotizaciones"], { header: 1, raw: true, defval: null });
+  assert.deepEqual(filas[0], [...ENCABEZADOS_DATA]);
+  const vigentes = XLSX.utils.sheet_to_json<Record<string, unknown>>(libro.Sheets["Ventas y cotizaciones"], { defval: null });
+  // «VOLVER A LLAMAR» queda fuera; la tilde y las minúsculas no importan.
+  assert.deepEqual(vigentes.map((fila) => fila.EMPRESA), ["MOVITUTTO EXPRESS SPA", "COTIZADA LTDA"]);
+  assert.equal(vigentes[1]["ULTIMA GESTION"], "10-07-2026 · Cotización enviada");
+});
+
 test("un libro sin negocios igual se descarga con sus encabezados", () => {
   const libro = leer(libroNegociosEquifax([]));
   const filas = XLSX.utils.sheet_to_json<unknown[]>(libro.Sheets.Data, { header: 1 });
   assert.deepEqual(filas[0], [...ENCABEZADOS_DATA]);
+  const vigentes = XLSX.utils.sheet_to_json<unknown[]>(libro.Sheets["Ventas y cotizaciones"], { header: 1 });
+  assert.deepEqual(vigentes[0], [...ENCABEZADOS_DATA]);
 });
 
 test("plataforma, tipo de contrato y RUT siguen las hojas Dotacion y Hoja5", () => {

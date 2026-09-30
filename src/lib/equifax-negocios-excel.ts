@@ -316,9 +316,28 @@ export function nombreArchivoNegocios(hoy: string): string {
   return `NEGOCIOS EN CURSO INFOBUSINESS ${periodo}.xlsx`.replace(/\s+\./, ".");
 }
 
+/**
+ * Tipificaciones de la hoja «Ventas y cotizaciones»: supervisión filtraba a
+ * mano la columna ULTIMA GESTION por estas dos, y como la celda lleva la fecha
+ * delante («03-09-2026 · VENTA EN VALIDACION») el filtro de Excel no las junta.
+ */
+const ULTIMAS_GESTIONES_VIGENTES = new Set(["venta en validacion", "cotizacion enviada"]);
+
+export function ultimaGestionVigente(negocio: NegocioEquifax): boolean {
+  return ULTIMAS_GESTIONES_VIGENTES.has(normalizar(negocio.ultima_gestion ?? ""));
+}
+
 export function libroNegociosEquifax(negocios: NegocioEquifax[]): Uint8Array {
   const libro = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(libro, hojaDesdeFilas(ENCABEZADOS_DATA, negocios.map(filaData), ANCHOS_DATA), "Data");
   XLSX.utils.book_append_sheet(libro, hojaTd(negocios), "TD");
+  // Los mismos negocios de Data (misma campaña y visibilidad), solo los que
+  // siguen en venta en validación o cotización enviada.
+  const vigentes = negocios.filter(ultimaGestionVigente);
+  XLSX.utils.book_append_sheet(
+    libro,
+    hojaDesdeFilas(ENCABEZADOS_DATA, vigentes.map(filaData), ANCHOS_DATA),
+    "Ventas y cotizaciones",
+  );
   return XLSX.write(libro, { type: "buffer", bookType: "xlsx", compression: true }) as Uint8Array;
 }
