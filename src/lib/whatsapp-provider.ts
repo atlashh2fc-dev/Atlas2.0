@@ -1,3 +1,5 @@
+import { esCanalSocial } from "@/lib/mensajeria-social";
+import { enviarMensajeSocial, escribiendoEnSocial } from "@/lib/meta-mensajeria";
 import { normalizeWhatsAppPhone, whatsappGraphApiVersion } from "@/lib/whatsapp";
 import { accesoDeMeta } from "@/lib/whatsapp-credenciales";
 
@@ -12,7 +14,22 @@ type ConProveedor = {
   provider?: WhatsAppProvider | string | null;
   /** Con Meta, el canal decide el token: los conectados desde Atlas traen el suyo. */
   channelId?: string | null;
+  /**
+   * Instagram y Messenger salen por la página de Facebook del canal hacia el
+   * identificador del contacto en ella (contact_wa_id), no a un teléfono.
+   */
+  canal?: string | null;
+  pageId?: string | null;
+  recipientId?: string | null;
 };
+
+function destinoSocial(input: ConProveedor) {
+  if (!esCanalSocial(input.canal)) return null;
+  if (!input.channelId || !input.pageId || !input.recipientId) {
+    throw new Error("La conversación no tiene la página o el contacto de Meta para responder.");
+  }
+  return { channelId: input.channelId, pageId: input.pageId, recipientId: input.recipientId };
+}
 
 type SendTextInput = ConProveedor & {
   phoneNumberId: string;
@@ -73,6 +90,11 @@ export function isWhatsAppProviderConfigured(delCanal?: WhatsAppProvider | strin
 }
 
 export async function sendWhatsAppText(input: SendTextInput): Promise<SendTextResult> {
+  const social = destinoSocial(input);
+  if (social) {
+    const enviado = await enviarMensajeSocial({ ...social, message: { text: input.body } });
+    return { provider: "meta", ...enviado };
+  }
   const provider = whatsappProvider(input.provider);
   if (provider === "ycloud") {
     const apiKey = process.env.WHATSAPP_YCLOUD_API_KEY?.trim();
@@ -141,6 +163,8 @@ export async function sendWhatsAppText(input: SendTextInput): Promise<SendTextRe
 }
 
 export async function sendWhatsAppTypingIndicator(input: SendTypingIndicatorInput): Promise<void> {
+  const social = destinoSocial(input);
+  if (social) return escribiendoEnSocial(social.channelId, social.pageId, social.recipientId);
   const provider = whatsappProvider(input.provider);
   if (provider === "ycloud") {
     const apiKey = process.env.WHATSAPP_YCLOUD_API_KEY?.trim();
@@ -198,6 +222,16 @@ export async function sendWhatsAppTypingIndicator(input: SendTypingIndicatorInpu
 }
 
 export async function sendWhatsAppMedia(input: SendMediaInput): Promise<SendTextResult> {
+  const social = destinoSocial(input);
+  if (social) {
+    // Messenger e Instagram no llevan pie de foto: el texto sale aparte, después.
+    const enviado = await enviarMensajeSocial({
+      ...social,
+      message: { attachment: { type: input.messageType, payload: { url: input.mediaUrl, is_reusable: false } } },
+    });
+    if (input.caption?.trim()) await enviarMensajeSocial({ ...social, message: { text: input.caption.trim() } });
+    return { provider: "meta", ...enviado };
+  }
   const provider = whatsappProvider(input.provider);
   const media = input.messageType === "image"
     ? { link: input.mediaUrl, ...(input.caption?.trim() ? { caption: input.caption.trim() } : {}) }

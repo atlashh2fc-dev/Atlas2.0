@@ -76,3 +76,20 @@ La app antigua «Atlas CRM Omnicanal» (2064941000816879) está en el portfolio 
 1. Con la app de Altius publicada, entrar a Atlas como Geimser y conectar su número (+56 9 7415 8774) con «Conectar mi WhatsApp Business». El canal queda con su propio token en la bóveda, y el del entorno deja de usarse.
 2. Confirmar que entran y salen mensajes (Conversaciones › WhatsApp).
 3. Quitar la suscripción del webhook en la app antigua y, cuando nada dependa de ella, quitar `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_META_APP_SECRET` y `WHATSAPP_WEBHOOK_VERIFY_TOKEN` de Vercel.
+
+## Instagram Direct y Messenger
+
+Entran por la misma app «Atlas CRM» de Altius y la misma URL de webhook que WhatsApp; en Atlas caen en la bandeja **Conversaciones › Chats**, cada hilo con el logo de su red. Se conectan en **Configuración › Integraciones › Instagram / Messenger** con «Conectar con Facebook».
+
+Para habilitar el botón (una sola vez, en la app de Meta):
+
+1. **Productos:** agregar *Messenger* e *Instagram* (API de Instagram con inicio de sesión de Facebook).
+2. **Inicio de sesión de Facebook para empresas › Configuraciones:** crear una configuración con token de **usuario** y los permisos `pages_show_list`, `pages_manage_metadata`, `pages_messaging`, `instagram_basic`, `instagram_manage_messages` y `business_management`. Su id va en Vercel como `ATLAS_META_MENSAJERIA_CONFIG_ID`.
+3. **Webhook:** al conectar la primera página, Atlas suscribe solo los objetos `page` e `instagram` de la app a `https://atlascrm.geimser.cl/api/integrations/meta/whatsapp/webhook` (con `ATLAS_META_WEBHOOK_VERIFY_TOKEN`). Si ya había una suscripción de ese objeto hacia otra URL, no la toca y lo avisa en pantalla.
+4. **Revisión de la app:** con acceso estándar solo funcionan las páginas de personas con rol en la app (Altius, Geimser). Para que cualquier cliente conecte la suya, pedir acceso avanzado de `pages_messaging` e `instagram_manage_messages`, y `human_agent` para responder hasta 7 días después del último mensaje (sin él, la ventana es de 24 h y Atlas lo avisa al enviar).
+
+**pages_messaging** (texto para la revisión)
+> Atlas lets each business connect its Facebook Page from inside the CRM. We use pages_messaging to receive the messages people send to that Page and to let the business's agents reply from Atlas's conversation view, where every message is logged on the customer's record next to calls, emails and WhatsApp. We only reply to people who wrote to the Page and never use the data for advertising.
+
+**instagram_manage_messages** (texto para la revisión)
+> Atlas lets each business connect the Instagram professional account linked to its Facebook Page. We use instagram_manage_messages to receive Direct messages sent to that account and let the business's agents reply from Atlas's conversation view, logged on the customer's record. We only reply to people who wrote to the account and never use the data for advertising.

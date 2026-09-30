@@ -153,7 +153,7 @@ export default async function RecordatoriosPage() {
       .gte("created_at", new Date(ahora.getTime() - 14 * DIA).toISOString())
       .order("created_at", { ascending: false })
       .limit(400),
-    supabase.from("whatsapp_channels").select("status, display_phone_number").order("created_at").limit(1).maybeSingle(),
+    supabase.from("whatsapp_channels").select("status, display_phone_number").eq("canal", "whatsapp").order("created_at").limit(1).maybeSingle(),
   ]);
 
   const citas = (citasData ?? []) as unknown as (Cita & { profesionales: { nombre: string } | { nombre: string }[] | null })[];

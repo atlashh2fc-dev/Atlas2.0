@@ -26,6 +26,7 @@ import {
   setWhatsAppConversationStatus,
   takeOverWhatsAppConversation,
 } from "@/app/actions/whatsapp";
+import { LogoDeIntegracion } from "@/components/logo-integracion";
 import { WhatsAppAutoRefresh } from "@/components/whatsapp-auto-refresh";
 import { WhatsAppComposer } from "@/components/whatsapp-composer";
 import { WhatsAppMessageMedia } from "@/components/whatsapp-message-media";
@@ -41,6 +42,7 @@ import {
 import { requireProfile } from "@/lib/auth";
 import { puedeLeerConversaciones } from "@/lib/modules.server";
 import { attentionChannelHref } from "@/lib/campaign-channels";
+import { canalDeMensajeria, NOMBRE_DEL_CANAL } from "@/lib/mensajeria-social";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 import { getWorkspacePermissions } from "@/lib/workspace-permissions";
@@ -96,7 +98,8 @@ type Conversation = {
   queue_id: string | null;
   lead_id: string;
   contact_name: string | null;
-  contact_phone: string;
+  contact_phone: string | null;
+  canal: string | null;
   assigned_to: string | null;
   status: ConversationStatus;
   unread_count: number;
@@ -116,8 +119,14 @@ type Conversation = {
     status: string;
     business_name: string | null;
     display_phone_number: string | null;
+    cuenta: string | null;
   }>;
 };
+
+/** Sin nombre ni teléfono (Instagram y Messenger), se dice de qué red escribió. */
+function nombreDelContacto(conversation: Pick<Conversation, "contact_name" | "contact_phone" | "canal">) {
+  return conversation.contact_name || conversation.contact_phone || `Contacto de ${NOMBRE_DEL_CANAL[canalDeMensajeria(conversation.canal)]}`;
+}
 
 type Message = {
   id: string;
@@ -300,7 +309,7 @@ export default async function WhatsAppInboxPage({
   let conversationQuery = supabase
     .from("whatsapp_conversations")
     .select(
-      "id, campaign_id, queue_id, lead_id, contact_name, contact_phone, assigned_to, status, unread_count, last_message_at, referral, ai_state, ai_last_error, close_reason_id, close_note, closed_at, whatsapp_closure_reasons(label), campaigns(id, name), contact_center_queues(id, name), leads(id, full_name, phone, email, rut, status, tipificacion_actual, next_action_at, workflow_status, managed_at, extra), profiles:profiles!whatsapp_conversations_assigned_to_fkey(id, full_name), whatsapp_channels(status, business_name, display_phone_number)",
+      "id, campaign_id, queue_id, lead_id, contact_name, contact_phone, canal, assigned_to, status, unread_count, last_message_at, referral, ai_state, ai_last_error, close_reason_id, close_note, closed_at, whatsapp_closure_reasons(label), campaigns(id, name), contact_center_queues(id, name), leads(id, full_name, phone, email, rut, status, tipificacion_actual, next_action_at, workflow_status, managed_at, extra), profiles:profiles!whatsapp_conversations_assigned_to_fkey(id, full_name), whatsapp_channels(status, business_name, display_phone_number, cuenta)",
     )
     .order("last_message_at", { ascending: false })
     .limit(100);
@@ -551,18 +560,11 @@ export default async function WhatsAppInboxPage({
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold text-foreground">
-                            {conversation.contact_name ||
-                              conversation.contact_phone}
+                            {nombreDelContacto(conversation)}
                           </p>
                           <p className="mt-1 flex items-center gap-1.5 truncate text-xs text-muted-foreground">
-                            <span
-                              className="icon-chip size-5 rounded"
-                              data-tone="green"
-                              aria-hidden="true"
-                            >
-                              <MessageCircle size={11} />
-                            </span>
-                            WhatsApp
+                            <LogoDeIntegracion logo={canalDeMensajeria(conversation.canal)} pequeno />
+                            {NOMBRE_DEL_CANAL[canalDeMensajeria(conversation.canal)]}
                           </p>
                         </div>
                         {conversation.unread_count > 0 && (
@@ -604,19 +606,13 @@ export default async function WhatsAppInboxPage({
               <>
                 <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border bg-surface-muted/40 p-4">
                   <div className="flex min-w-0 items-start gap-3">
-                    <span
-                      className="icon-chip mt-0.5 size-9 rounded-lg"
-                      data-tone="green"
-                      aria-hidden="true"
-                    >
-                      <MessageCircle size={17} />
-                    </span>
+                    <LogoDeIntegracion logo={canalDeMensajeria(selected.canal)} className="mt-0.5 size-9 rounded-lg" />
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <h2 className="text-base font-semibold text-foreground">
-                          {selected.contact_name || selected.contact_phone}
+                          {nombreDelContacto(selected)}
                         </h2>
-                        <Badge tone="success">WhatsApp</Badge>
+                        <Badge tone="success">{NOMBRE_DEL_CANAL[canalDeMensajeria(selected.canal)]}</Badge>
                         <Badge tone="neutral">
                           {campaign?.name ?? "Sin campaña"}
                         </Badge>
@@ -632,9 +628,11 @@ export default async function WhatsAppInboxPage({
                           {conversationLabel(selected.status)}
                         </Badge>
                       </div>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {selected.contact_phone}
-                      </p>
+                      {selected.contact_phone && (
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {selected.contact_phone}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <Link
@@ -790,13 +788,15 @@ export default async function WhatsAppInboxPage({
                 <ContextRow label="Cola">
                   {queue?.name ?? "Sin cola"}
                 </ContextRow>
-                <ContextRow label="Canal">WhatsApp Business</ContextRow>
+                <ContextRow label="Canal">
+                  {canalDeMensajeria(selected.canal) === "whatsapp" ? "WhatsApp Business" : NOMBRE_DEL_CANAL[canalDeMensajeria(selected.canal)]}
+                </ContextRow>
                 <ContextRow label="Cuenta">
-                  {channel?.business_name ?? "Meta"}
+                  {channel?.cuenta ?? channel?.business_name ?? "Meta"}
                 </ContextRow>
-                <ContextRow label="Línea">
-                  {channel?.display_phone_number ?? "—"}
-                </ContextRow>
+                {channel?.display_phone_number && (
+                  <ContextRow label="Línea">{channel.display_phone_number}</ContextRow>
+                )}
                 {permissions.canMonitorOperations && queue && (
                   <Link
                     href={`/dashboard/operacion?queue=${queue.id}&channel=whatsapp`}
@@ -830,7 +830,7 @@ export default async function WhatsAppInboxPage({
                 </ContextRow>
                 <ContextRow label="RUT">{lead?.rut ?? "—"}</ContextRow>
                 <ContextRow label="Teléfono">
-                  {lead?.phone ?? selected.contact_phone}
+                  {lead?.phone ?? selected.contact_phone ?? "—"}
                 </ContextRow>
                 <ContextRow label="Correo">{lead?.email ?? "—"}</ContextRow>
                 <ContextRow label="Estado">{lead?.status ?? "—"}</ContextRow>

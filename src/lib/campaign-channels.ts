@@ -20,7 +20,8 @@ const ATTENTION_CHANNEL_HREFS = {
 
 export const ATTENTION_TABS: { channel: CampaignChannel; label: string; href: string }[] = [
   { channel: "phone", label: "Voz", href: ATTENTION_CHANNEL_HREFS.phone },
-  { channel: "whatsapp", label: "WhatsApp", href: ATTENTION_CHANNEL_HREFS.whatsapp },
+  // WhatsApp, Instagram y Messenger comparten bandeja: el canal de cada hilo se ve en su logo.
+  { channel: "whatsapp", label: "Chats", href: ATTENTION_CHANNEL_HREFS.whatsapp },
   { channel: "mail", label: "Correo", href: ATTENTION_CHANNEL_HREFS.mail },
 ];
 

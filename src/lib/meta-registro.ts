@@ -20,7 +20,7 @@ export function registroDeMeta() {
 
 type Json = Record<string, unknown>;
 
-async function graph(ruta: string, opciones: { token?: string; metodo?: "GET" | "POST"; cuerpo?: Json; query?: Record<string, string> } = {}): Promise<Json> {
+export async function graph(ruta: string, opciones: { token?: string; metodo?: "GET" | "POST"; cuerpo?: Json; query?: Record<string, string> } = {}): Promise<Json> {
   const url = new URL(`https://graph.facebook.com/${whatsappGraphApiVersion()}/${ruta}`);
   for (const [clave, valor] of Object.entries(opciones.query ?? {})) url.searchParams.set(clave, valor);
   const respuesta = await fetch(url, {

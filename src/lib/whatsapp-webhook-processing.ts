@@ -1,3 +1,5 @@
+import type { MensajeSocial } from "@/lib/mensajeria-social";
+import { perfilDelContacto } from "@/lib/meta-mensajeria";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { normalizeWhatsAppPhone, type ParsedWhatsAppEvent, type ParsedWhatsAppMessage } from "@/lib/whatsapp";
 
@@ -313,6 +315,122 @@ export async function processWhatsAppEvents(
         eventKey: event.eventKey,
         message: message.slice(0, 500),
       });
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Instagram y Messenger: el canal se reconoce por la página o la cuenta que
+ * recibe el webhook, la campaña por el hilo abierto o la ruta por defecto, y
+ * el contacto por su identificador en esa red. Un mensaje de un contacto nuevo
+ * pregunta a Meta su nombre de perfil para que el registro no nazca anónimo.
+ */
+export async function processMensajesSociales(mensajes: MensajeSocial[]): Promise<WhatsAppWebhookResult> {
+  const admin = createAdminClient();
+  const result: WhatsAppWebhookResult = { processed: 0, duplicates: 0, unmapped: 0, failed: 0, aiCandidates: [], mediaCandidates: [] };
+
+  for (const mensaje of mensajes) {
+    const { data: storedEvent, error: storeError } = await admin
+      .from("whatsapp_webhook_events")
+      .insert({
+        provider_event_key: mensaje.eventKey,
+        event_type: "message",
+        phone_number_id: mensaje.cuentaId,
+        payload: { ...mensaje.payload, provider: "meta", canal: mensaje.canal },
+      })
+      .select("id")
+      .single();
+    if (storeError?.code === "23505") {
+      result.duplicates += 1;
+      continue;
+    }
+    if (storeError || !storedEvent) {
+      result.failed += 1;
+      console.error("mensajeria_social_evento_sin_guardar", { canal: mensaje.canal, code: storeError?.code });
+      continue;
+    }
+
+    try {
+      const { data: channel, error: channelError } = await admin
+        .from("whatsapp_channels")
+        .select("id, status")
+        .eq("canal", mensaje.canal)
+        .eq(mensaje.canal === "instagram" ? "ig_user_id" : "page_id", mensaje.cuentaId)
+        .maybeSingle();
+      if (channelError) throw channelError;
+      if (!channel || channel.status === "paused") {
+        await markWebhookEvent(admin, storedEvent.id, "unmapped", "Cuenta sin canal operativo en Atlas.");
+        result.unmapped += 1;
+        continue;
+      }
+
+      const { data: hilo, error: hiloError } = await admin
+        .from("whatsapp_conversations")
+        .select("campaign_id, contact_name")
+        .eq("channel_id", channel.id)
+        .eq("contact_wa_id", mensaje.contactoId)
+        .order("last_message_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (hiloError) throw hiloError;
+
+      let campaignId = (hilo?.campaign_id as string | null | undefined) ?? null;
+      if (!campaignId) {
+        const { data: ruta, error: rutaError } = await admin
+          .from("whatsapp_campaign_routes")
+          .select("campaign_id")
+          .eq("channel_id", channel.id)
+          .eq("is_default", true)
+          .eq("is_active", true)
+          .maybeSingle();
+        if (rutaError) throw rutaError;
+        campaignId = (ruta?.campaign_id as string | undefined) ?? null;
+      }
+      if (!campaignId) {
+        await markWebhookEvent(admin, storedEvent.id, "unmapped", "El canal no tiene una campaña de destino.");
+        result.unmapped += 1;
+        continue;
+      }
+
+      const nombre = hilo?.contact_name ? null : await perfilDelContacto(mensaje.canal, channel.id, mensaje.contactoId);
+      const { data: ingestado, error: ingestaError } = await admin.rpc("ingest_mensaje_social", {
+        p_channel_id: channel.id,
+        p_campaign_id: campaignId,
+        p_provider_message_id: mensaje.providerMessageId,
+        p_direction: mensaje.direction,
+        p_contact_id: mensaje.contactoId,
+        p_contact_name: nombre,
+        p_message_type: mensaje.messageType,
+        p_text_body: mensaje.textBody,
+        p_provider_timestamp: mensaje.timestamp,
+        p_payload: { ...mensaje.payload, provider: "meta", canal: mensaje.canal, adjunto_url: mensaje.adjuntoUrl },
+      });
+      if (ingestaError) throw ingestaError;
+
+      const fila = typeof ingestado === "object" && ingestado !== null ? (ingestado as Record<string, unknown>) : {};
+      if (
+        fila.duplicate !== true
+        && mensaje.direction === "inbound"
+        && mensaje.messageType === "text"
+        && typeof fila.conversation_id === "string"
+        && typeof fila.message_id === "string"
+      ) {
+        result.aiCandidates.push({ conversationId: fila.conversation_id, inboundMessageId: fila.message_id });
+      }
+
+      await admin
+        .from("whatsapp_channels")
+        .update({ status: "active", last_webhook_at: new Date().toISOString(), last_error: null })
+        .eq("id", channel.id);
+      await markWebhookEvent(admin, storedEvent.id, "processed");
+      result.processed += 1;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "No se pudo procesar el evento.";
+      await markWebhookEvent(admin, storedEvent.id, "failed", message);
+      result.failed += 1;
+      console.error("mensajeria_social_evento_fallido", { canal: mensaje.canal, eventKey: mensaje.eventKey, message: message.slice(0, 500) });
     }
   }
 

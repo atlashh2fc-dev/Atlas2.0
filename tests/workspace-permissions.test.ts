@@ -98,6 +98,7 @@ function harness(role: AppRole, assignedTo: string | null = agentId, aiState = "
       datosDelNumero: async () => ({ numero: null, nombre: null }), sincronizarAppDelTelefono: async () => [],
     },
     "@/lib/whatsapp-credenciales": { olvidarTokenDelCanal: () => {} },
+    "@/lib/mensajeria-social": { esCanalSocial: (canal: unknown) => canal === "instagram" || canal === "messenger" },
     "@/lib/whatsapp-provider": {
       isWhatsAppProviderConfigured: () => true, whatsappProvider: () => "test",
       sendWhatsAppText: async () => { providerCalls++; return { providerMessageId: "fake", payload: {} }; },

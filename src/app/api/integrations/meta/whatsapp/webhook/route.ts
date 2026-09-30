@@ -4,7 +4,8 @@ import {
   parseWhatsAppWebhook,
   verifyMetaWebhookSignature,
 } from "@/lib/whatsapp";
-import { processWhatsAppEvents } from "@/lib/whatsapp-webhook-processing";
+import { parseMensajeriaSocial } from "@/lib/mensajeria-social";
+import { processMensajesSociales, processWhatsAppEvents } from "@/lib/whatsapp-webhook-processing";
 import { respondToWhatsAppInbound } from "@/lib/mercury-whatsapp";
 import { captureWhatsAppMessageMedia } from "@/lib/whatsapp-media";
 
@@ -16,8 +17,8 @@ const MAX_WEBHOOK_BYTES = 1024 * 1024;
 /**
  * Dos apps de Meta escriben a esta misma URL: la antigua de Geimser, con la que
  * se conectó su número a mano, y «Atlas CRM» de Altius, el proveedor de
- * tecnología con que cada empresa conecta el suyo desde Atlas. Cada una firma
- * con su secreto y se verifica con su propio token.
+ * tecnología con que cada empresa conecta su WhatsApp, Instagram y Messenger
+ * desde Atlas. Cada una firma con su secreto y se verifica con su propio token.
  */
 function secretosDeApps(): string[] {
   return [process.env.WHATSAPP_META_APP_SECRET, process.env.ATLAS_META_APP_SECRET]
@@ -72,7 +73,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "JSON inválido." }, { status: 400 });
   }
 
-  const { aiCandidates, mediaCandidates, ...result } = await processWhatsAppEvents(parseWhatsAppWebhook(decoded), "meta");
+  // Instagram y Messenger llegan a esta misma URL con otro sobre (object
+  // «instagram» o «page»); WhatsApp trae «whatsapp_business_account».
+  const sociales = parseMensajeriaSocial(decoded);
+  const { aiCandidates, mediaCandidates, ...result } = sociales.length > 0
+    ? await processMensajesSociales(sociales)
+    : await processWhatsAppEvents(parseWhatsAppWebhook(decoded), "meta");
 
   // Meta receives its acknowledgement without waiting for model inference.
   // Each inbound message is idempotently claimed by whatsapp_ai_runs.

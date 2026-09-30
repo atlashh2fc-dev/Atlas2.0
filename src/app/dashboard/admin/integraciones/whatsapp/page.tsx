@@ -40,7 +40,7 @@ export default async function WhatsAppIntegrationPage() {
   // ve todas por RLS, y antes esta página mostraba el de Geimser en cualquiera.
   const { data: organizationId } = await supabase.rpc("current_org_id");
   const [{ data: channelData }, { data: campaigns }] = await Promise.all([
-    supabase.from("whatsapp_channels").select("*").eq("organization_id", organizationId as string).order("created_at").limit(1).maybeSingle(),
+    supabase.from("whatsapp_channels").select("*").eq("organization_id", organizationId as string).eq("canal", "whatsapp").order("created_at").limit(1).maybeSingle(),
     supabase.from("campaigns").select("id, name").eq("is_active", true).order("name"),
   ]);
   const channel = channelData as Channel | null;

@@ -592,7 +592,7 @@ export async function respondToWhatsAppInbound(input: {
   try {
     const { data: conversation, error: conversationError } = await admin
       .from("whatsapp_conversations")
-      .select("id, campaign_id, contact_name, contact_phone, status, ai_state, referral, whatsapp_channels(id, phone_number_id, display_phone_number, status, provider), campaigns(name)")
+      .select("id, campaign_id, contact_wa_id, contact_name, contact_phone, status, ai_state, referral, whatsapp_channels(id, phone_number_id, display_phone_number, status, provider, canal, page_id), campaigns(name)")
       .eq("id", input.conversationId)
       .single();
     if (conversationError || !conversation) throw conversationError ?? new Error("Conversación no encontrada.");
@@ -676,6 +676,9 @@ export async function respondToWhatsAppInbound(input: {
         provider: channel.provider,
         channelId: channel.id,
         phoneNumberId: channel.phone_number_id,
+        canal: channel.canal,
+        pageId: channel.page_id,
+        recipientId: conversation.contact_wa_id,
         providerMessageId: inbound.provider_message_id,
       }).catch((error) => {
         console.warn("whatsapp_typing_indicator_failed", {
@@ -944,6 +947,9 @@ export async function respondToWhatsAppInbound(input: {
         phoneNumberId: channel.phone_number_id,
         from: channel.display_phone_number,
         to: conversation.contact_phone,
+        canal: channel.canal,
+        pageId: channel.page_id,
+        recipientId: conversation.contact_wa_id,
         body: reply,
         clientReference,
       });

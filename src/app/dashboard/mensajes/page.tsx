@@ -65,7 +65,7 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
       .not("company_id", "is", null)
       .order("last_message_at", { ascending: false })
       .limit(80),
-    supabase.from("whatsapp_channels").select("status, display_phone_number").order("created_at").limit(1).maybeSingle(),
+    supabase.from("whatsapp_channels").select("status, display_phone_number").eq("canal", "whatsapp").order("created_at").limit(1).maybeSingle(),
     supabase
       .from("inbound_emails")
       .select("id, company_id, from_name, from_address, subject, body_text, preview, received_at, message_id, status, sales_companies(id, name, phone, email)")

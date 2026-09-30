@@ -67,7 +67,7 @@ export async function integracionesDeLaEmpresa(modulos: AppModule[]): Promise<In
   const organizationId = orgId as string;
 
   const [
-    { data: canal },
+    { data: canales },
     { data: buzones },
     { data: voz },
     { data: fuentes },
@@ -76,11 +76,9 @@ export async function integracionesDeLaEmpresa(modulos: AppModule[]): Promise<In
   ] = await Promise.all([
     supabase
       .from("whatsapp_channels")
-      .select("display_phone_number, status, provider, last_webhook_at, last_error, token_vence_at")
+      .select("canal, cuenta, business_name, display_phone_number, status, provider, last_webhook_at, last_error, token_vence_at")
       .eq("organization_id", organizationId)
-      .order("created_at")
-      .limit(1)
-      .maybeSingle(),
+      .order("created_at"),
     supabase
       .from("inbound_mailboxes")
       .select("address, last_synced_at, last_sync_error")
@@ -109,6 +107,8 @@ export async function integracionesDeLaEmpresa(modulos: AppModule[]): Promise<In
       (c) => c.destination_source_id === fuente(code)?.id
     ) ?? null;
   const destinos = integrationV2Destinations(process.env.INTEGRATION_OUTBOX_DESTINATIONS_JSON);
+  const canalDe = (tipo: string) => (canales ?? []).find((c) => (c.canal ?? "whatsapp") === tipo) ?? null;
+  const canal = canalDe("whatsapp");
 
   const lista: Integracion[] = [];
 
@@ -134,6 +134,30 @@ export async function integracionesDeLaEmpresa(modulos: AppModule[]): Promise<In
             : `${canal.display_phone_number} · aún no llegan mensajes`,
       href: "/dashboard/admin/integraciones/whatsapp",
     });
+
+    for (const social of ["instagram", "messenger"] as const) {
+      const conectado = canalDe(social);
+      const esInstagram = social === "instagram";
+      lista.push({
+        id: social,
+        nombre: esInstagram ? "Instagram Direct" : "Facebook Messenger",
+        proveedor: "Meta",
+        descripcion: esInstagram
+          ? "Los mensajes directos de la cuenta profesional llegan a la misma bandeja y se responden desde el CRM."
+          : "Los mensajes a la página de Facebook llegan a la misma bandeja y se responden desde el CRM.",
+        logo: social,
+        categoria: "Canales de atención",
+        estado: !conectado ? "sin_conectar" : conectado.status === "active" && !conectado.last_error ? "conectado" : "revisar",
+        detalle: !conectado
+          ? esInstagram ? "Conecta la cuenta de la empresa" : "Conecta la página de la empresa"
+          : conectado.status === "paused"
+            ? `${conectado.cuenta ?? conectado.business_name} · en pausa`
+            : conectado.last_webhook_at
+              ? `${conectado.cuenta ?? conectado.business_name} · último mensaje ${haceCuanto(conectado.last_webhook_at)}`
+              : `${conectado.cuenta ?? conectado.business_name} · aún no llegan mensajes`,
+        href: `/dashboard/admin/integraciones/${social}`,
+      });
+    }
   }
 
   if (tiene(modulos, "leads", "ventas_b2c")) {

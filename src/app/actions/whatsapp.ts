@@ -7,6 +7,7 @@ import { requireProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { canjearCodigo, cuentaDelToken, datosDelNumero, sincronizarAppDelTelefono, suscribirApp, vencimientoDelToken } from "@/lib/meta-registro";
+import { esCanalSocial } from "@/lib/mensajeria-social";
 import { olvidarTokenDelCanal } from "@/lib/whatsapp-credenciales";
 import { assertCanOperateAssignedConversation } from "@/lib/workspace-permissions";
 import {
@@ -96,12 +97,12 @@ export async function sendWhatsAppMessage(formData: FormData) {
 
   const { data: channel, error: channelError } = await admin
     .from("whatsapp_channels")
-    .select("phone_number_id, display_phone_number, status, provider")
+    .select("phone_number_id, display_phone_number, status, provider, canal, page_id")
     .eq("id", conversation.channel_id)
     .single();
   if (channelError || !channel) throw new Error("El canal de WhatsApp no está configurado.");
   if (channel.status !== "active") throw new Error("El canal de WhatsApp todavía no está conectado.");
-  if (!isWhatsAppProviderConfigured(channel.provider)) {
+  if (!esCanalSocial(channel.canal) && !isWhatsAppProviderConfigured(channel.provider)) {
     throw new Error("Falta completar el acceso del proveedor de WhatsApp para enviar desde Atlas.");
   }
 
@@ -128,6 +129,9 @@ export async function sendWhatsAppMessage(formData: FormData) {
       phoneNumberId: channel.phone_number_id,
       from: channel.display_phone_number,
       to: conversation.contact_phone,
+      canal: channel.canal,
+      pageId: channel.page_id,
+      recipientId: conversation.contact_wa_id,
       body,
       clientReference,
     });
@@ -239,7 +243,7 @@ export async function sendPreparedWhatsAppMedia(input: {
   const supabase = await createClient();
   const { data: conversation, error: conversationError } = await supabase
     .from("whatsapp_conversations")
-    .select("id, channel_id, contact_phone, assigned_to, campaign_id, ai_state")
+    .select("id, channel_id, contact_wa_id, contact_phone, assigned_to, campaign_id, ai_state")
     .eq("id", upload.conversation_id)
     .single();
   if (conversationError || !conversation) throw new Error("No tienes acceso a esta conversación.");
@@ -268,12 +272,12 @@ export async function sendPreparedWhatsAppMedia(input: {
 
   const { data: channel, error: channelError } = await admin
     .from("whatsapp_channels")
-    .select("phone_number_id, display_phone_number, status, provider")
+    .select("phone_number_id, display_phone_number, status, provider, canal, page_id")
     .eq("id", conversation.channel_id)
     .single();
   if (channelError || !channel) throw new Error("El canal de WhatsApp no está configurado.");
   if (channel.status !== "active") throw new Error("El canal de WhatsApp todavía no está conectado.");
-  if (!isWhatsAppProviderConfigured(channel.provider)) {
+  if (!esCanalSocial(channel.canal) && !isWhatsAppProviderConfigured(channel.provider)) {
     throw new Error("Falta completar el acceso del proveedor de WhatsApp para enviar desde Atlas.");
   }
 
@@ -312,6 +316,9 @@ export async function sendPreparedWhatsAppMedia(input: {
       phoneNumberId: channel.phone_number_id,
       from: channel.display_phone_number,
       to: conversation.contact_phone,
+      canal: channel.canal,
+      pageId: channel.page_id,
+      recipientId: conversation.contact_wa_id,
       messageType: upload.message_type,
       mediaUrl: signed.signedUrl,
       caption: upload.message_type === "image" ? caption : null,

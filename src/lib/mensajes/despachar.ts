@@ -66,7 +66,7 @@ export type EnvioAConversacion =
  */
 export async function enviarAFicha(admin: Admin, entrada: { organizationId: string; cuentaId: string; destinatario: string; cuerpo: string; sentBy?: string | null; origen?: Record<string, unknown> }): Promise<EnvioAConversacion> {
   const [{ data: canal }, { data: organizacion }] = await Promise.all([
-    admin.from("whatsapp_channels").select("id, phone_number_id, display_phone_number, status, provider").eq("organization_id", entrada.organizationId).order("created_at").limit(1).maybeSingle(),
+    admin.from("whatsapp_channels").select("id, phone_number_id, display_phone_number, status, provider").eq("organization_id", entrada.organizationId).eq("canal", "whatsapp").order("created_at").limit(1).maybeSingle(),
     admin.from("organizations").select("slug").eq("id", entrada.organizationId).single(),
   ]);
   const esDemo = typeof organizacion?.slug === "string" && organizacion.slug.startsWith("demo-");
