@@ -20,7 +20,8 @@ import {
   recomendarPorReglas,
   resumenMapa,
 } from "../src/lib/look.ts";
-import { EsquemaAnalisis, extraerImagen, instruccionDeImagen, instruccionDeRetrato, normalizarRespuesta } from "../src/lib/look-ia.ts";
+import { EsquemaAnalisis, extraerImagen, instruccionDeImagen, instruccionDeRetrato, normalizarRespuesta, ordenDeReferencias } from "../src/lib/look-ia.ts";
+import { ajustarSimilitud, alinear, aplicar, type Punto } from "../src/lib/alinear-rostro.ts";
 
 const leer = (ruta: string) => readFileSync(new URL(`../${ruta}`, import.meta.url), "utf8");
 const migracion = (sufijo: string) =>
@@ -103,7 +104,7 @@ test("la respuesta de la IA se normaliza antes de guardarse", () => {
 });
 
 test("la simulación conserva a la persona y solo cambia el pelo", () => {
-  const texto = instruccionDeImagen({ descripcion_visual: "a mid skin fade", mapa: MAPA_NEUTRO, barba: null }, "perfil", true);
+  const texto = instruccionDeImagen({ descripcion_visual: "a mid skin fade", mapa: MAPA_NEUTRO, barba: null }, "perfil", { retrato: true, perfil: true });
   assert.match(texto, /SAME PERSON/);
   assert.match(texto, /Change ONLY the hair and beard/);
   assert.match(texto, /side profile/);
@@ -163,9 +164,51 @@ test("el antes es un retrato de estudio con el mismo pelo, y la simulación no e
   const retrato = instruccionDeRetrato(false);
   assert.match(retrato, /SAME PERSON exactly as they look now/);
   assert.match(retrato, /Keep the hair and beard EXACTLY as they are now/);
-  for (const ruta of ["src/app/api/looks/[id]/vistas/route.ts", "src/app/api/looks/[id]/retrato/route.ts"]) {
-    const codigo = leer(ruta);
-    assert.match(codigo, /after\(async/, `${ruta}: guardar en el bucket va después de responder`);
-    assert.match(codigo, /NextResponse\.json\(\{ ok: true,[^}]*url: imagen\.url/, `${ruta}: responde con la imagen de inmediato`);
+  const vistas = leer("src/app/api/looks/[id]/vistas/route.ts");
+  assert.match(vistas, /after\(async/, "vistas: guardar en el bucket va después de responder");
+  assert.match(vistas, /NextResponse\.json\(\{ ok: true,[^}]*url: imagen\.url/, "vistas: responde con la imagen de inmediato");
+  // El retrato sí se guarda antes de responder: el frente de cada simulación lo edita.
+  const retratoRuta = leer("src/app/api/looks/[id]/retrato/route.ts");
+  assert.ok(retratoRuta.indexOf("retrato_path: ruta") < retratoRuta.indexOf("NextResponse.json({ ok: true, url: imagen.url })"), "retrato: queda guardado antes de responder");
+});
+
+test("el frente se simula sobre el retrato del antes, sin mover el encuadre", () => {
+  const propuesta = { descripcion_visual: "a textured crop", mapa: MAPA_NEUTRO, barba: null };
+  assert.deepEqual(ordenDeReferencias("frontal", { foto: "F", retrato: "R", perfil: "P" }), ["R", "F"], "el retrato va primero: es la imagen que se edita");
+  assert.deepEqual(ordenDeReferencias("frontal", { foto: "F", retrato: null, perfil: "P" }), ["F"]);
+  assert.deepEqual(ordenDeReferencias("perfil", { foto: "F", retrato: "R", perfil: "P" }), ["F", "R", "P"]);
+  assert.deepEqual(ordenDeReferencias("tres_cuartos", { foto: "F", retrato: "R", perfil: "P" }), ["F", "R"]);
+  const frente = instruccionDeImagen(propuesta, "frontal", { retrato: true, perfil: false });
+  assert.match(frente, /edit THAT image/);
+  assert.match(frente, /exact framing/);
+  assert.match(frente, /Do not zoom, reframe/);
+  assert.doesNotMatch(frente, /from the side/, "no dice que una imagen es de perfil si no la manda");
+  const perfil = instruccionDeImagen(propuesta, "perfil", { retrato: true, perfil: true });
+  assert.match(perfil, /third image is the client from the side/);
+});
+
+test("el antes y la simulación se alinean por la cara o no se comparan", () => {
+  // La cara de la simulación salió 20 % más chica, corrida y apenas girada.
+  const antes: Punto[] = [
+    { x: 400, y: 500 }, { x: 460, y: 505 }, { x: 560, y: 505 }, { x: 620, y: 500 },
+    { x: 510, y: 510 }, { x: 510, y: 560 }, { x: 510, y: 640 }, { x: 450, y: 720 }, { x: 570, y: 720 },
+  ];
+  const verdad = { a: 0.8 * Math.cos(0.05), b: 0.8 * Math.sin(0.05), tx: 60, ty: 90 };
+  const despues = antes.map((p) => aplicar(verdad, p));
+  const t = ajustarSimilitud(despues, antes);
+  assert.ok(t);
+  for (let i = 0; i < antes.length; i++) {
+    const p = aplicar(t, despues[i]);
+    assert.ok(Math.hypot(p.x - antes[i].x, p.y - antes[i].y) < 0.01, "cada punto de la simulación cae sobre el del antes");
   }
+  const tam = { ancho: 1024, alto: 1280 };
+  const alineado = alinear(despues, antes, tam, tam, 220);
+  assert.ok(alineado, "una cara corrida y a otra escala se alinea");
+  const { recorte } = alineado;
+  assert.ok(recorte.x >= 0 && recorte.y >= 0 && recorte.x + recorte.ancho <= tam.ancho && recorte.y + recorte.alto <= tam.alto, "el recorte cae dentro del antes");
+
+  // Si la cara detectada no es la misma forma (ajuste malo), no se compara.
+  const otraCara = despues.map((p, i) => ({ x: p.x + (i % 2 ? 40 : -40), y: p.y + (i % 3 ? 30 : -30) }));
+  assert.equal(alinear(otraCara, antes, tam, tam, 220), null);
+  assert.equal(alinear(despues.slice(0, 1), antes.slice(0, 1), tam, tam, 220), null);
 });

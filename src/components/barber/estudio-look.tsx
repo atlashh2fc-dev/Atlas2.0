@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   Check,
   Copy,
@@ -29,6 +29,7 @@ import {
   registrarFotoDespues,
   revocarConsentimiento,
 } from "@/app/actions/looks";
+import { alinearConAntes, prepararDetector } from "@/components/barber/alinear-antes";
 import { Badge, SectionCard, useToast } from "@/components/ui";
 import {
   CATALOGO_CORTES,
@@ -128,6 +129,7 @@ export function EstudioLook({
   const [analizando, setAnalizando] = useState<string | null>(null);
   const [retratos, setRetratos] = useState<Record<string, string>>({});
   const [preparandoRetrato, setPreparandoRetrato] = useState<Set<string>>(new Set());
+  const retratosEnCurso = useRef(new Map<string, Promise<void>>());
   const [generadas, setGeneradas] = useState<Record<string, Partial<Record<VistaLook, string>>>>({});
   const [generando, setGenerando] = useState<Set<string>>(new Set());
 
@@ -135,6 +137,8 @@ export function EstudioLook({
   const simular = async (idLook: string, propuestaId: string, vistas: VistaLook[]) => {
     const claves = vistas.map((vista) => `${propuestaId}:${vista}`);
     setGenerando((actual) => new Set([...actual, ...claves]));
+    // El frente edita el retrato del "antes" para calzar su encuadre: si todavía se está haciendo, se espera.
+    if (vistas.includes("frontal")) await retratosEnCurso.current.get(idLook);
     const fallas: string[] = [];
     await Promise.all(
       vistas.map(async (vista) => {
@@ -169,20 +173,26 @@ export function EstudioLook({
   };
 
   /** El "antes" como retrato de estudio, con el encuadre de las simulaciones. */
-  const pedirRetrato = async (idLook: string) => {
+  const pedirRetrato = (idLook: string) => {
     if (!ia.simulacion) return;
     setPreparandoRetrato((actual) => new Set([...actual, idLook]));
-    try {
-      const respuesta = await fetch(`/api/looks/${idLook}/retrato`, { method: "POST" });
-      const datos = (await respuesta.json().catch(() => ({}))) as { url?: string; error?: string };
-      if (respuesta.ok && datos.url) setRetratos((actual) => ({ ...actual, [idLook]: datos.url as string }));
-    } finally {
-      setPreparandoRetrato((actual) => {
-        const siguiente = new Set(actual);
-        siguiente.delete(idLook);
-        return siguiente;
-      });
-    }
+    const enCurso = (async () => {
+      try {
+        const respuesta = await fetch(`/api/looks/${idLook}/retrato`, { method: "POST" });
+        const datos = (await respuesta.json().catch(() => ({}))) as { url?: string; error?: string };
+        if (respuesta.ok && datos.url) setRetratos((actual) => ({ ...actual, [idLook]: datos.url as string }));
+      } catch {
+        // Sin retrato, el antes es la foto original y el comparador igual alinea.
+      } finally {
+        retratosEnCurso.current.delete(idLook);
+        setPreparandoRetrato((actual) => {
+          const siguiente = new Set(actual);
+          siguiente.delete(idLook);
+          return siguiente;
+        });
+      }
+    })();
+    retratosEnCurso.current.set(idLook, enCurso);
   };
 
   /** El análisis corre en segundo plano; al terminar, parten las simulaciones de frente. */
@@ -290,7 +300,7 @@ export function EstudioLook({
             setNuevo(false);
             setPasoElegido({ look: id, paso: "analisis" });
             // Apenas está la foto: el retrato de estudio y el análisis parten solos, en paralelo.
-            void pedirRetrato(id);
+            pedirRetrato(id);
             if (ia.analisis) void analizar(id);
           }}
         />
@@ -775,6 +785,10 @@ function PasoPropuestas({
   const [comparar, setComparar] = useState(50);
   const [catalogo, setCatalogo] = useState({ corte: CATALOGO_CORTES[0].id, barba: "sin_barba" as EstiloBarba });
   const [pendiente, iniciar] = useTransition();
+  // El detector de rostro tarda en bajar la primera vez: se prepara apenas se abre el paso, no al comparar.
+  useEffect(() => {
+    if (ia.simulacion) void prepararDetector().catch(() => undefined);
+  }, [ia.simulacion]);
 
   const vistasDe = (objetivo: PropuestaLook) => ({ ...objetivo.vistas, ...(simulacion.generadas[objetivo.id] ?? {}) });
   const cargando = (objetivo: PropuestaLook, opcion: VistaLook) => simulacion.generando.has(`${objetivo.id}:${opcion}`);
@@ -997,16 +1011,36 @@ function Miniatura({ url, etiqueta, activa, onClick, cargando = false }: { url: 
   );
 }
 
-/** Antes y después sobre la misma foto: se arrastra la línea. */
+/**
+ * Antes y después sobre la misma foto: se arrastra la línea. Las dos imágenes
+ * se alinean por los puntos de la cara antes de partirlas; mientras tanto, o
+ * si no se puede, se ve solo la simulación. Nunca un rostro descuadrado.
+ */
 function Comparador({ antes, despues, posicion, onPosicion }: { antes: string | null; despues: string; posicion: number; onPosicion: (valor: number) => void }) {
+  const comparando = Boolean(antes) && posicion < 100;
+  const clave = comparando ? `${antes}\n${despues}` : null;
+  const [alineado, setAlineado] = useState<{ clave: string; par: { antes: string; despues: string } | null } | null>(null);
+  useEffect(() => {
+    if (!clave || !antes) return;
+    let vigente = true;
+    void alinearConAntes(antes, despues).then((par) => {
+      if (vigente) setAlineado({ clave, par });
+    });
+    return () => {
+      vigente = false;
+    };
+  }, [clave, antes, despues]);
+  // undefined: alineando; null: no se pudo alinear.
+  const par = clave && alineado?.clave === clave ? alineado.par : undefined;
+
   return (
     <div className="relative h-full w-full select-none">
-      {/* eslint-disable-next-line @next/next/no-img-element -- enlace firmado del bucket privado */}
-      <img src={despues} alt="Simulación" className="absolute inset-0 h-full w-full object-contain" />
-      {antes && posicion < 100 && (
+      {/* eslint-disable-next-line @next/next/no-img-element -- enlace firmado del bucket privado o imagen local ya alineada */}
+      <img src={par?.despues ?? despues} alt="Simulación" className="absolute inset-0 h-full w-full object-contain" />
+      {comparando && par && (
         <>
-          {/* eslint-disable-next-line @next/next/no-img-element -- enlace firmado del bucket privado */}
-          <img src={antes} alt="Antes" className="absolute inset-0 h-full w-full object-contain" style={{ clipPath: `inset(0 ${100 - posicion}% 0 0)` }} />
+          {/* eslint-disable-next-line @next/next/no-img-element -- imagen local ya alineada */}
+          <img src={par.antes} alt="Antes" className="absolute inset-0 h-full w-full object-contain" style={{ clipPath: `inset(0 ${100 - posicion}% 0 0)` }} />
           <div className="pointer-events-none absolute inset-y-0 w-0.5 bg-white/90 shadow" style={{ left: `${posicion}%` }} />
           <span className="pointer-events-none absolute left-3 top-3 rounded-full bg-black/55 px-2 py-0.5 text-xs text-white">Antes</span>
           <span className="pointer-events-none absolute right-3 top-3 rounded-full bg-black/55 px-2 py-0.5 text-xs text-white">Simulación</span>
@@ -1020,6 +1054,17 @@ function Comparador({ antes, despues, posicion, onPosicion }: { antes: string | 
             className="absolute inset-x-6 bottom-4 accent-[#e0b36e]"
           />
         </>
+      )}
+      {comparando && !par && (
+        <p className="pointer-events-none absolute inset-x-0 bottom-4 mx-auto flex w-fit items-center gap-2 rounded-full bg-black/55 px-3 py-1.5 text-xs text-white backdrop-blur" role="status">
+          {par === undefined ? (
+            <>
+              <Loader2 size={13} className="animate-spin" aria-hidden="true" /> Alineando el antes con la simulación…
+            </>
+          ) : (
+            "No se pudo alinear el rostro: se muestra solo la simulación"
+          )}
+        </p>
       )}
     </div>
   );

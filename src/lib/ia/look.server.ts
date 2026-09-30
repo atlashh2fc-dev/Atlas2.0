@@ -9,6 +9,7 @@ import {
   extraerImagen,
   instruccionDeImagen,
   mensajeDelBarbero,
+  type ReferenciasDeImagen,
   type RespuestaAnalisis,
 } from "@/lib/look-ia";
 import type { MapaCorte, VistaLook } from "@/lib/look";
@@ -121,8 +122,8 @@ export async function editarFoto({ fotos, instruccion }: { fotos: string[]; inst
   return { url: imagen.url, mime: imagen.mime, modelo };
 }
 
-export function instruccionDeVista(propuesta: { descripcion_visual: string; mapa: MapaCorte; barba: string | null }, vista: VistaLook, conReferencias: boolean) {
-  return instruccionDeImagen(propuesta, vista, conReferencias);
+export function instruccionDeVista(propuesta: { descripcion_visual: string; mapa: MapaCorte; barba: string | null }, vista: VistaLook, referencias: ReferenciasDeImagen) {
+  return instruccionDeImagen(propuesta, vista, referencias);
 }
 
 /** Descarga una imagen generada para guardarla en el bucket. */

@@ -150,21 +150,48 @@ export type PropuestaNueva = {
   origen: "ia" | "reglas" | "barbero";
 };
 
+/** Qué imágenes acompañan la foto del cliente, en el orden en que se mandan. */
+export type ReferenciasDeImagen = { retrato: boolean; perfil: boolean };
+
+/**
+ * El orden de las imágenes que recibe el editor. El frente edita el retrato
+ * del "antes" (va primero) para heredar su encuadre; la foto original va
+ * después, solo por la identidad.
+ */
+export function ordenDeReferencias<T>(vista: VistaLook, fotos: { foto: T; retrato: T | null; perfil: T | null }): T[] {
+  const perfil = vista === "perfil" || vista === "nuca" ? fotos.perfil : null;
+  const orden = vista === "frontal" && fotos.retrato ? [fotos.retrato, fotos.foto] : [fotos.foto, fotos.retrato, perfil];
+  return orden.filter((foto): foto is T => foto !== null && foto !== undefined);
+}
+
 /**
  * La instrucción para editar la foto: misma persona, mismo todo, solo cambia
- * el pelo y la barba, desde el ángulo pedido.
+ * el pelo y la barba, desde el ángulo pedido. En el frente se edita el retrato
+ * del "antes" sin mover el encuadre, para que el comparador calce.
  */
-export function instruccionDeImagen(propuesta: { descripcion_visual: string; mapa: MapaCorte; barba: string | null }, vista: VistaLook, conPerfil: boolean): string {
-  const angulo = INFO_VISTA[vista].camara;
-  const referencias = conPerfil
-    ? "The first image is the client from the front and the second from the side; use both to keep the identity."
-    : "The image is the client from the front.";
+export function instruccionDeImagen(propuesta: { descripcion_visual: string; mapa: MapaCorte; barba: string | null }, vista: VistaLook, referencias: ReferenciasDeImagen): string {
+  const sobreElRetrato = vista === "frontal" && referencias.retrato;
+  const imagenes = sobreElRetrato
+    ? [
+        "The first image is a studio portrait of the client: edit THAT image.",
+        "Keep its exact framing, crop, camera distance, head size, head position and tilt, pose, shoulders, clothing, lighting and background, so the result overlays it pixel for pixel; only the hair and beard may differ.",
+        "The second image is the same person in the original photo, use it only to keep the identity.",
+      ]
+    : [
+        "The first image is the client from the front.",
+        ...(referencias.retrato ? ["The second image is a studio portrait of the same person: match its lighting and background."] : []),
+        ...(referencias.perfil && (vista === "perfil" || vista === "nuca") ? [`The ${referencias.retrato ? "third" : "second"} image is the client from the side.`] : []),
+        "Use all of them to keep the identity.",
+      ];
   return [
-    `${referencias} Create a photorealistic barbershop portrait of THE SAME PERSON after a new haircut.`,
+    ...imagenes,
+    "Create a photorealistic barbershop portrait of THE SAME PERSON after a new haircut.",
     "Keep the exact same identity: same face, facial structure, skin tone and texture, eyes, nose, mouth, ears, expression and apparent age. Do not beautify, slim or retouch the face. Do not change clothing into anything flashy.",
     `Change ONLY the hair and beard to: ${propuesta.descripcion_visual}.`,
     `Exact lengths by zone for the barber: ${mapaParaImagen(propuesta.mapa)}.`,
-    `Camera: ${angulo}. Soft, even studio light, neutral warm-grey background, sharp focus, natural colors, 85mm lens look.`,
+    sobreElRetrato
+      ? "Camera: identical to the first image. Do not zoom, reframe, recenter or move the head."
+      : `Camera: ${INFO_VISTA[vista].camara}. Soft, even studio light, neutral warm-grey background, sharp focus, natural colors, 85mm lens look.`,
     "No text, no logos, no watermark, no hats, no accessories, no extra people.",
   ].join(" ");
 }

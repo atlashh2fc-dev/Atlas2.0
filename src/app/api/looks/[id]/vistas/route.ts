@@ -3,7 +3,7 @@ import { NextResponse, after } from "next/server";
 import { getCurrentProfile } from "@/lib/auth";
 import { ErrorDeIA, descargarImagen, editarFoto, instruccionDeVista, modeloDeImagen } from "@/lib/ia/look.server";
 import { VISTAS_LOOK, normalizarMapa, type VistaLook } from "@/lib/look";
-import { TOPE_IMAGENES_DIARIO } from "@/lib/look-ia";
+import { TOPE_IMAGENES_DIARIO, ordenDeReferencias } from "@/lib/look-ia";
 import { BUCKET_LOOKS, UUID, firmar, leerLook, registrarUso, usoDeHoy } from "@/lib/looks.server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -44,17 +44,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   try {
-    // Referencias: la foto original (identidad) y, de haber, el retrato de estudio (encuadre y luz) y el perfil.
-    const rutas = [look.foto_path, look.retrato_path, look.foto_perfil_path && (vista === "perfil" || vista === "nuca") ? look.foto_perfil_path : null];
-    const enlaces = await firmar(supabase, rutas, 15 * 60);
-    const fotos = rutas.map((ruta) => (ruta ? enlaces.get(ruta) : null)).filter((url): url is string => Boolean(url));
-    if (fotos.length === 0) throw new Error("No se pudo leer la foto.");
+    // Referencias: la foto original (identidad), el retrato de estudio (el "antes", encuadre y luz) y, de haber, el perfil.
+    const enlaces = await firmar(supabase, [look.foto_path, look.retrato_path, look.foto_perfil_path], 15 * 60);
+    const firmado = (ruta: string | null) => (ruta ? (enlaces.get(ruta) ?? null) : null);
+    const referencias = { foto: firmado(look.foto_path), retrato: firmado(look.retrato_path), perfil: firmado(look.foto_perfil_path) };
+    if (!referencias.foto) throw new Error("No se pudo leer la foto.");
     const imagen = await editarFoto({
-      fotos,
+      fotos: ordenDeReferencias(vista, { ...referencias, foto: referencias.foto }),
       instruccion: instruccionDeVista(
         { descripcion_visual: propuesta.descripcion_visual as string, mapa: normalizarMapa(propuesta.mapa), barba: propuesta.barba as string | null },
         vista,
-        fotos.length > 1,
+        { retrato: Boolean(referencias.retrato), perfil: Boolean(referencias.perfil) },
       ),
     });
 
