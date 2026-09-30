@@ -59,6 +59,17 @@ function numero(valor: string): number {
   return Number(normalizado);
 }
 
+/**
+ * Pesos enteros. El campo se muestra con puntos de miles mientras se escribe
+ * ("5.000"), así que al agregar un dígito llega "5.0000": leerlo como decimal
+ * lo dejaba en 5 y no pasaba de 5 mil. Los pesos no llevan decimales: solo
+ * cuentan los dígitos.
+ */
+function pesos(valor: string): number {
+  const digitos = valor.replace(/\D/g, "");
+  return digitos ? Number(digitos) : 0;
+}
+
 function resumenTotales(lineas: LineaCotizada[]): string {
   const total = totales(lineas);
   return [
@@ -484,7 +495,7 @@ function CampoDecimal({ valor, onValor, placeholder }: { valor: number | null; o
 
 function EditorPublicacion({ config, onChange }: { config: Extract<ConfigLinea, { producto: "pub" }>; onChange: (config: ConfigLinea) => void }) {
   const cambiarDocumento = (indice: number, campo: "monto" | "abonos", valor: string) =>
-    onChange({ ...config, documentos: config.documentos.map((doc, i) => (i === indice ? { ...doc, [campo]: valor ? numero(valor) : 0 } : doc)) });
+    onChange({ ...config, documentos: config.documentos.map((doc, i) => (i === indice ? { ...doc, [campo]: pesos(valor) } : doc)) });
   return (
     <div className="mt-3 space-y-2">
       <Field label="% a cobrar sobre lo publicado (neto)" className="w-56">
