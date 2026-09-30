@@ -277,6 +277,7 @@ export default async function DashboardPage() {
       unassignedLeadsResult,
       campaignsResult,
       campaignAgentsResult,
+      aiVoiceConfigsResult,
     ] = await Promise.all([
       supabase
         .from("profiles")
@@ -298,16 +299,20 @@ export default async function DashboardPage() {
         .select("id, name, workflow_id, is_active")
         .order("created_at", { ascending: false }),
       supabase.from("campaign_agents").select("campaign_id"),
+      supabase.from("ai_voice_campaign_configs").select("campaign_id"),
     ]);
 
     const campaigns = campaignsResult.data ?? [];
-    const configurationAvailable = !campaignsResult.error && !campaignAgentsResult.error;
+    const configurationAvailable = !campaignsResult.error && !campaignAgentsResult.error && !aiVoiceConfigsResult.error;
     const hasDataError = Boolean(activeUsersResult.error || activeCampaignsResult.error || unassignedLeadsResult.error || !configurationAvailable);
     const assignedCampaignIds = new Set((campaignAgentsResult.data ?? []).map((row) => row.campaign_id));
-    const campaignsWithoutWorkflow = campaigns.filter((campaign) => campaign.is_active && !campaign.workflow_id);
-    const campaignsWithoutAgents = campaigns.filter(
-      (campaign) => campaign.is_active && !assignedCampaignIds.has(campaign.id)
-    );
+    // En voz IA el guion vive en el agente ElevenLabs y no hay ejecutivos que
+    // tipifiquen: la ficha de la campaña ya la da por configurada, el resumen
+    // tiene que decir lo mismo.
+    const aiVoiceCampaignIds = new Set((aiVoiceConfigsResult.data ?? []).map((row) => row.campaign_id));
+    const humanCampaigns = campaigns.filter((campaign) => campaign.is_active && !aiVoiceCampaignIds.has(campaign.id));
+    const campaignsWithoutWorkflow = humanCampaigns.filter((campaign) => !campaign.workflow_id);
+    const campaignsWithoutAgents = humanCampaigns.filter((campaign) => !assignedCampaignIds.has(campaign.id));
 
     return (
       <div className="space-y-5">
