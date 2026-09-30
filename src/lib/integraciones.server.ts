@@ -171,7 +171,8 @@ export async function integracionesDeLaEmpresa(modulos: AppModule[]): Promise<In
       logo: "atlas",
       categoria: "Suite Altius",
       ...estadoDePuente(Boolean(fuente("atlas_lead")?.is_active), destinos.has("atlas_lead"), circuitoDe("atlas_lead")),
-      href: "/dashboard/admin/campanas",
+      // Las campañas se vinculan desde la campaña del contact center; sin él no hay dónde.
+      href: tiene(modulos, "contact_center") ? "/dashboard/admin/campanas" : undefined,
     });
   }
 

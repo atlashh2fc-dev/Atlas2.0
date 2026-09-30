@@ -24,11 +24,11 @@ function Punto({ tone }: { tone: BadgeTone }) {
   return <span className={cn("inline-block size-1.5 shrink-0 rounded-full", PUNTO[tone])} aria-hidden="true" />;
 }
 
-const ESTADO: Record<EstadoIntegracion, { label: string; tone: BadgeTone }> = {
-  conectado: { label: "Conectado", tone: "success" },
-  revisar: { label: "Revisar", tone: "warning" },
-  prueba: { label: "Modo prueba", tone: "info" },
-  sin_conectar: { label: "Sin conectar", tone: "neutral" },
+const ESTADO: Record<EstadoIntegracion, { label: string; resumen: string; tone: BadgeTone }> = {
+  conectado: { label: "Conectado", resumen: "conectadas", tone: "success" },
+  revisar: { label: "Revisar", resumen: "por revisar", tone: "warning" },
+  prueba: { label: "Modo prueba", resumen: "en prueba", tone: "info" },
+  sin_conectar: { label: "Sin conectar", resumen: "sin conectar", tone: "neutral" },
 };
 
 export default async function IntegracionesPage() {
@@ -49,7 +49,7 @@ export default async function IntegracionesPage() {
               {resumen.map(({ estado, n }) => (
                 <span key={estado} className="inline-flex items-center gap-1.5">
                   <Punto tone={ESTADO[estado].tone} />
-                  <span className="font-semibold text-foreground">{n}</span> {ESTADO[estado].label.toLowerCase()}
+                  <span className="font-semibold text-foreground">{n}</span> {n === 1 && estado === "conectado" ? "conectada" : ESTADO[estado].resumen}
                 </span>
               ))}
             </div>
