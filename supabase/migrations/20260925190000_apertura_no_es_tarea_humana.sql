@@ -1,3 +1,8 @@
+-- Estado (30-09-2026): registrada en la base sin ejecutar este cuerpo.
+-- La superó 20260928120000_bandeja_de_prospeccion, que retiró el calificador;
+-- correrla de nuevo en una base ya migrada lo resucitaría. En una base nueva
+-- corre en orden y la del 28-09 la reemplaza, así que el resultado es el mismo.
+--
 -- Pegar en Supabase > proyecto atlas-crm (lxdclavsycdidmzlbaid) > SQL Editor > Run.
 --
 -- Una apertura de correo ya no es trabajo para una persona: la secuencia de
