@@ -47,6 +47,8 @@ export function ConectarWhatsAppMeta({ appId, configId, version }: { appId: stri
   const redirectUris = useRef<string[]>([]);
   // El último paso que Meta avisó desde su ventana; explica los errores.
   const ultimoAviso = useRef<string | null>(null);
+  // Otros mensajes de facebook.com que llegaron (por si Meta avisa con otro formato).
+  const otrosAvisos = useRef<string[]>([]);
   const intento = useRef(0);
 
   useEffect(() => {
@@ -89,7 +91,7 @@ export function ConectarWhatsAppMeta({ appId, configId, version }: { appId: stri
       if (esteIntento !== intento.current) return;
       setEstado(resultado.ok
         ? { paso: "conectado", numero: resultado.numero, coexistencia: resultado.coexistencia, avisos: resultado.avisos }
-        : { paso: "error", mensaje: `${resultado.error} ${ultimoAviso.current ? `Último paso avisado por Meta: ${ultimoAviso.current}.` : "Meta no avisó ningún paso desde su ventana."}` });
+        : { paso: "error", mensaje: `${resultado.error} ${ultimoAviso.current ? `Último paso avisado por Meta: ${ultimoAviso.current}.` : "Meta no avisó ningún paso desde su ventana."}${otrosAvisos.current.length ? ` Otros mensajes de Meta: ${otrosAvisos.current.join(" | ")}.` : ""}` });
     });
   }, [olvidarIntento]);
 
@@ -102,9 +104,13 @@ export function ConectarWhatsAppMeta({ appId, configId, version }: { appId: stri
       try {
         datos = typeof evento.data === "string" ? JSON.parse(evento.data) : evento.data;
       } catch {
+        datos = {};
+      }
+      if (datos?.type !== "WA_EMBEDDED_SIGNUP") {
+        const muestra = typeof evento.data === "string" ? evento.data : JSON.stringify(evento.data ?? null);
+        if (otrosAvisos.current.length < 5) otrosAvisos.current.push(`${evento.origin.replace("https://", "")}: ${String(muestra).slice(0, 80)}`);
         return;
       }
-      if (datos?.type !== "WA_EMBEDDED_SIGNUP") return;
       ultimoAviso.current = [datos.event, datos.data?.current_step].filter(Boolean).join(" · ") || "sin nombre";
       if (datos.event === "CANCEL" || datos.event === "ERROR") {
         intento.current += 1;
@@ -137,6 +143,7 @@ export function ConectarWhatsAppMeta({ appId, configId, version }: { appId: stri
     const esteIntento = intento.current;
     olvidarIntento();
     ultimoAviso.current = null;
+    otrosAvisos.current = [];
     setEstado({ paso: "en_meta" });
     // Se anota el redirect_uri con que el SDK abre la ventana: Meta puede pedirlo al canjear el código.
     const pagina = `${window.location.origin}${window.location.pathname}`;

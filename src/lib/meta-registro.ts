@@ -110,7 +110,8 @@ export async function cuentaDelToken(token: string): Promise<{ wabaId: string; p
   const appSecret = process.env.ATLAS_META_APP_SECRET?.trim();
   if (!appSecret) throw new Error("Falta ATLAS_META_APP_SECRET en el servidor.");
   const datos = await graph("debug_token", { query: { input_token: token, access_token: `${appId}|${appSecret}` } });
-  const permisos = (((datos.data ?? {}) as Json).granular_scopes ?? []) as { scope?: string; target_ids?: string[] }[];
+  const info = (datos.data ?? {}) as Json;
+  const permisos = (info.granular_scopes ?? []) as { scope?: string; target_ids?: string[] }[];
   const cuentas = new Set(
     permisos
       .filter((permiso) => permiso.scope === "whatsapp_business_management" || permiso.scope === "whatsapp_business_messaging")
@@ -119,7 +120,7 @@ export async function cuentaDelToken(token: string): Promise<{ wabaId: string; p
   if (cuentas.size !== 1) {
     const dados = permisos.map((permiso) => `${permiso.scope}${permiso.target_ids?.length ? ` (${permiso.target_ids.length})` : ""}`).join(", ") || "ninguno";
     throw new Error(cuentas.size === 0
-      ? `Meta no dio acceso a ninguna cuenta de WhatsApp. Vuelve a intentarlo y elige tu número. Permisos que llegaron: ${dados}.`
+      ? `Meta no dio acceso a ninguna cuenta de WhatsApp. Vuelve a intentarlo y elige tu número. Permisos que llegaron: ${dados}; token ${typeof info.type === "string" ? info.type : "sin tipo"}.`
       : "Elegiste más de una cuenta de WhatsApp en Meta; conecta una a la vez.");
   }
   const [wabaId] = cuentas;
