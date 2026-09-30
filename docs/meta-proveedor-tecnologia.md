@@ -38,14 +38,15 @@ Permisos con acceso avanzado:
 1. **`whatsapp_business_management`**: leer el WABA y el número que el cliente conecta, suscribir la app a sus webhooks y pedir la sincronización de contactos e historial de la app del teléfono (coexistencia).
 2. **`whatsapp_business_messaging`**: enviar y recibir mensajes del número del cliente desde Atlas.
 
-Guion del video (2 a 3 minutos, en la app en producción):
-1. Iniciar sesión en Atlas como administrador de una empresa.
-2. Ir a Integraciones › WhatsApp y presionar «Conectar mi WhatsApp Business».
-3. Mostrar la ventana de Meta: elegir el portfolio y la cuenta, conectar el WhatsApp Business existente y escanear el código con el teléfono.
-4. Volver a Atlas: aparece el número conectado y «También sigue en la app del teléfono».
-5. Desde el teléfono, escribirle a un prospecto; en Atlas › Ventas › Por contactar aparece anotado solo.
-6. Contestar desde el teléfono del prospecto: en Por contactar sube como «Respondió por WhatsApp».
-7. Abrir Conversaciones › WhatsApp y responder un mensaje desde Atlas.
+**Hasta que Meta apruebe esta revisión, el registro insertado responde «Altius Ignite no puede registrar clientes en este momento»**, también para el número de Altius (probado el 30-09). No se puede usar el botón de Atlas para grabar el video.
+
+Requisitos previos: cada permiso necesita al menos una llamada exitosa a la API (en Casos de uso › Permisos y funciones, la columna «Llamadas a la API» estaba en 0 el 30-09). El contador puede tardar hasta 24 h en subir. Las llamadas se hacen con el número de prueba que Meta da en Casos de uso › Conectar en WhatsApp › Paso 1. Pruébalo.
+
+Videos que pide Meta (documentación «Convertirse en proveedor de tecnología», 20-08-2026):
+1. Un mensaje enviado desde la app y recibido en WhatsApp. Vale grabar la pantalla de «Pruébalo» (o el cURL) enviando la plantilla `hello_world` desde el número de prueba a un teléfono agregado como destinatario, con el teléfono recibiéndolo en cámara o en WhatsApp Web.
+2. La creación de una plantilla de mensaje. Vale grabarla en el Administrador de WhatsApp.
+
+Cuando el número de Altius ya esté conectado, se puede repetir la demo completa desde Atlas (Integraciones › WhatsApp › Conectar, Por contactar, Conversaciones) para futuras revisiones.
 
 ## Después de la aprobación
 
