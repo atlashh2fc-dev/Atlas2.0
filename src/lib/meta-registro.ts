@@ -117,7 +117,10 @@ export async function cuentaDelToken(token: string): Promise<{ wabaId: string; p
       .flatMap((permiso) => permiso.target_ids ?? []),
   );
   if (cuentas.size !== 1) {
-    throw new Error(cuentas.size === 0 ? "Meta no dio acceso a ninguna cuenta de WhatsApp. Vuelve a intentarlo y elige tu número." : "Elegiste más de una cuenta de WhatsApp en Meta; conecta una a la vez.");
+    const dados = permisos.map((permiso) => `${permiso.scope}${permiso.target_ids?.length ? ` (${permiso.target_ids.length})` : ""}`).join(", ") || "ninguno";
+    throw new Error(cuentas.size === 0
+      ? `Meta no dio acceso a ninguna cuenta de WhatsApp. Vuelve a intentarlo y elige tu número. Permisos que llegaron: ${dados}.`
+      : "Elegiste más de una cuenta de WhatsApp en Meta; conecta una a la vez.");
   }
   const [wabaId] = cuentas;
   const numeros = await graph(`${encodeURIComponent(wabaId)}/phone_numbers`, { token, query: { fields: "id" } });

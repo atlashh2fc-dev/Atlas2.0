@@ -45,6 +45,8 @@ export function ConectarWhatsAppMeta({ appId, configId, version }: { appId: stri
   const sesion = useRef<Sesion | null>(null);
   const espera = useRef<ReturnType<typeof setTimeout> | null>(null);
   const redirectUris = useRef<string[]>([]);
+  // El último paso que Meta avisó desde su ventana; explica los errores.
+  const ultimoAviso = useRef<string | null>(null);
   const intento = useRef(0);
 
   useEffect(() => {
@@ -87,7 +89,7 @@ export function ConectarWhatsAppMeta({ appId, configId, version }: { appId: stri
       if (esteIntento !== intento.current) return;
       setEstado(resultado.ok
         ? { paso: "conectado", numero: resultado.numero, coexistencia: resultado.coexistencia, avisos: resultado.avisos }
-        : { paso: "error", mensaje: resultado.error });
+        : { paso: "error", mensaje: `${resultado.error} ${ultimoAviso.current ? `Último paso avisado por Meta: ${ultimoAviso.current}.` : "Meta no avisó ningún paso desde su ventana."}` });
     });
   }, [olvidarIntento]);
 
@@ -103,6 +105,7 @@ export function ConectarWhatsAppMeta({ appId, configId, version }: { appId: stri
         return;
       }
       if (datos?.type !== "WA_EMBEDDED_SIGNUP") return;
+      ultimoAviso.current = [datos.event, datos.data?.current_step].filter(Boolean).join(" · ") || "sin nombre";
       if (datos.event === "CANCEL" || datos.event === "ERROR") {
         intento.current += 1;
         olvidarIntento();
@@ -133,6 +136,7 @@ export function ConectarWhatsAppMeta({ appId, configId, version }: { appId: stri
     intento.current += 1;
     const esteIntento = intento.current;
     olvidarIntento();
+    ultimoAviso.current = null;
     setEstado({ paso: "en_meta" });
     // Se anota el redirect_uri con que el SDK abre la ventana: Meta puede pedirlo al canjear el código.
     const pagina = `${window.location.origin}${window.location.pathname}`;
