@@ -18,6 +18,7 @@ import type { WorkflowStep, WorkflowStepBranch } from "../src/lib/types.ts";
 const MIGRATION = readFileSync("supabase/migrations/20260924180000_tipificacion_equifax_igual_a_atlas1.sql", "utf8");
 const RULES = readFileSync("supabase/migrations/20260924180100_agenda_habil_y_nota_como_atlas1.sql", "utf8");
 const LEGACY = readFileSync("supabase/migrations/20260924180200_gestion_migrada_no_se_corrige.sql", "utf8");
+const CORTA = readFileSync("supabase/migrations/20260930160000_equifax_cliente_corta_llamada.sql", "utf8");
 
 // Los 24 motivos de Atlas 1 con su estado y resultado (tipificacion-atlas1-vs-atlas2.md).
 const ATLAS1: Array<[string, string, string, string, CallReasonConfig["agenda"], boolean]> = [
@@ -133,6 +134,32 @@ test("la ficha de Equifax ofrece exactamente los 24 motivos de Atlas 1", () => {
   const info = catalog.find((reason) => reason.value === "SE ENVIA INFORMACION");
   assert.equal(info?.notesRequiredWithoutAgenda, true);
   assert.equal(catalog.filter((reason) => reason.notesRequiredWithoutAgenda).length, 1);
+});
+
+test("CLIENTE CORTA LLAMADA se suma al final de NO INTERESADO, sin agenda", () => {
+  const { steps, branches } = workflowFromMigration();
+  const motivo = CORTA.match(/v_motivo constant text := '([^']+)'/)?.[1];
+  assert.equal(motivo, "CLIENTE CORTA LLAMADA");
+  const noInteresadoId = CORTA.match(/v_no_interesado constant uuid := '([^']+)'/)?.[1];
+  assert.match(MIGRATION, new RegExp(`v_no_interesado constant uuid := '${noInteresadoId}'`));
+  // Idempotente: no lo duplica si ya está.
+  assert.match(CORTA, /not \(options \? v_motivo\)/);
+
+  const withCorta = steps.map((step) =>
+    step.id === "v_no_interesado"
+      ? { ...step, options: [...step.options, motivo!], allowed_results: [...(step.allowed_results ?? []), motivo!] }
+      : step
+  );
+  const catalog = buildCallReasonCatalogFromWorkflow(withCorta, branches);
+  assert.equal(catalog.length, 25);
+  const corta = catalog.find((reason) => reason.value === "CLIENTE CORTA LLAMADA");
+  assert.deepEqual(
+    [corta?.stateLabel, corta?.resultLabel, corta?.status, corta?.outcome, corta?.agenda, corta?.requiresEquifaxData === true],
+    ["CONTACTO", "NO INTERESADO", "connected", "not_interested", "none", false]
+  );
+  assert.deepEqual(validateWorkflow(withCorta, branches), []);
+  // Los 24 de Atlas 1 no cambian de lugar ni de regla.
+  assert.equal(catalog.filter((reason) => reason.value !== "CLIENTE CORTA LLAMADA").length, 24);
 });
 
 test("el flujo migrado es válido en el editor y declara el contrato Equifax", () => {

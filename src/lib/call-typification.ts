@@ -357,6 +357,18 @@ export const CALL_REASONS: CallReasonConfig[] = ([
     outcome: "not_interested",
     agenda: "none",
   },
+  {
+    value: "CLIENTE CORTA LLAMADA",
+    label: "Cliente corta llamada",
+    stateLabel: "CONTACTO",
+    stateOrderIndex: 20,
+    resultLabel: "NO INTERESADO",
+    resultOrderIndex: 20,
+    reasonOrderIndex: 140,
+    status: "connected",
+    outcome: "not_interested",
+    agenda: "none",
+  },
 ] satisfies CallReasonConfig[]).sort((a, b) => {
   return (
     a.stateOrderIndex - b.stateOrderIndex ||

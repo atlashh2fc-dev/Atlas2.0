@@ -580,6 +580,7 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
           "NO DA MOTIVO",
           "CLIENTE MOLESTO",
           "TERCERO NO ENTREGA INFORMACION",
+          "CLIENTE CORTA LLAMADA",
         ],
         isMandatory: true,
         isStart: false,
