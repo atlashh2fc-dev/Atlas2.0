@@ -8,9 +8,21 @@
  * leen el color de las variables de siempre y el nombre de este catálogo.
  */
 
-export const EDICIONES = ["center", "dental", "vet"] as const;
+export const EDICIONES = ["center", "dental", "vet", "barber"] as const;
 
 export type Edicion = (typeof EDICIONES)[number];
+
+/** Las ediciones que atienden a personas por agenda: todas menos Center. */
+export type Clinica = Exclude<Edicion, "center">;
+
+/**
+ * La edición de atención que corresponde. Center no tiene pantallas de agenda;
+ * si alguna llega igual (un enlace viejo), se comporta como Dental, que es
+ * como se comportaba todo antes de que existieran Vet y Barber.
+ */
+export function clinicaDe(edicion: Edicion): Clinica {
+  return edicion === "center" ? "dental" : edicion;
+}
 
 export type EdicionInfo = {
   /** Lo que acompaña a "Atlas" en el logo. */
@@ -34,6 +46,11 @@ export const EDICION_INFO: Record<Edicion, EdicionInfo> = {
     sufijo: "Vet",
     label: "Atlas Vet",
     description: "Veterinarias: controles, vacunas, recompra y WhatsApp con el tutor.",
+  },
+  barber: {
+    sufijo: "Barber",
+    label: "Atlas Barber",
+    description: "Barberías: agenda por barbero, caja, mantención del corte y Estudio de Look con IA.",
   },
 };
 
@@ -131,13 +148,27 @@ export const VENTAS_POR_EDICION: Record<Edicion, VocabularioVentas> = {
     monto: "unico",
     origenes: ORIGENES_B2C,
   },
+  barber: {
+    titulo: "Paquetes",
+    descripcion: "Paquetes y planes ofrecidos a los clientes, en qué va cada uno y a quién hay que escribir hoy.",
+    cuenta: "Cliente",
+    cuentaPlaceholder: "Matías Fuentes",
+    negocio: "Paquete",
+    negocios: "Paquetes",
+    negocioPlaceholder: "Plan mensual corte + barba",
+    nuevo: "Nuevo paquete",
+    producto: "Servicio",
+    personas: true,
+    monto: "unico",
+    origenes: ORIGENES_B2C,
+  },
 };
 
 /**
  * Cómo se llama la ficha de la persona en cada clínica. En Dental es el
  * paciente; en Vet la ficha es del tutor, que tiene una o varias mascotas.
  */
-export const PACIENTES_POR_EDICION: Record<Exclude<Edicion, "center">, {
+export const PACIENTES_POR_EDICION: Record<Clinica, {
   titulo: string;
   singular: string;
   nuevo: string;
@@ -154,5 +185,82 @@ export const PACIENTES_POR_EDICION: Record<Exclude<Edicion, "center">, {
     singular: "Tutor",
     nuevo: "Nuevo tutor",
     descripcion: "Cada tutor con sus mascotas, sus vacunas y todo lo conversado.",
+  },
+  barber: {
+    titulo: "Clientes",
+    singular: "Cliente",
+    nuevo: "Nuevo cliente",
+    descripcion: "Cada cliente con sus cortes, sus looks aprobados y todo lo conversado.",
+  },
+};
+
+/**
+ * Quién atiende en cada edición y cómo se llama lo que se hace. Lo usan la
+ * agenda, la ficha y los recordatorios para no hablar de "doctora" en una
+ * barbería.
+ */
+export const ATENCION_POR_EDICION: Record<Clinica, {
+  profesional: string;
+  profesionales: string;
+  /** Cómo se nombra el negocio en una frase: "la clínica", "la barbería". */
+  lugar: string;
+  atencion: string;
+  /** Cómo se llama una hora en la agenda. */
+  cita: string;
+  citas: string;
+  registrar: string;
+  motivoPlaceholder: string;
+  notaPlaceholder: string;
+  /** Desde cuántos días sin atención se le escribe para que vuelva. */
+  diasSinVenir: number;
+  /** Cómo se dice ese plazo y por qué importa. */
+  plazoSinVenir: string;
+  porQueVolver: string;
+  plantillaVuelta: "control" | "mantencion";
+}> = {
+  dental: {
+    profesional: "Profesional",
+    profesionales: "Profesionales",
+    lugar: "la clínica",
+    atencion: "Cita",
+    cita: "cita",
+    citas: "citas",
+    registrar: "Registrar atención",
+    motivoPlaceholder: "Control · limpieza · restauración",
+    notaPlaceholder: "Paciente pide cuotas para el implante",
+    diasSinVenir: 180,
+    plazoSinVenir: "6 meses",
+    porQueVolver: "El control semestral: la visita que mantiene la boca sana y la agenda llena. Una vez al mes.",
+    plantillaVuelta: "control",
+  },
+  vet: {
+    profesional: "Veterinario",
+    profesionales: "Veterinarios",
+    lugar: "la clínica",
+    atencion: "Consulta",
+    cita: "cita",
+    citas: "citas",
+    registrar: "Registrar atención",
+    motivoPlaceholder: "Control · vacuna · esterilización",
+    notaPlaceholder: "Tutor confirma hora de vacuna",
+    diasSinVenir: 365,
+    plazoSinVenir: "12 meses",
+    porQueVolver: "Un control anual es la visita que más se olvida y la que más recompra trae. Una vez al mes.",
+    plantillaVuelta: "control",
+  },
+  barber: {
+    profesional: "Barbero",
+    profesionales: "Barberos",
+    lugar: "la barbería",
+    atencion: "Reserva",
+    cita: "reserva",
+    citas: "reservas",
+    registrar: "Registrar servicio",
+    motivoPlaceholder: "Corte · barba · fade",
+    notaPlaceholder: "Cliente quiere probar un mid fade",
+    diasSinVenir: 35,
+    plazoSinVenir: "5 semanas",
+    porQueVolver: "Un corte pierde la forma a las 3 a 5 semanas: la mantención es la visita que llena la agenda. Una vez por semana.",
+    plantillaVuelta: "mantencion",
   },
 };

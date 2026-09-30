@@ -2,19 +2,19 @@ import Link from "next/link";
 import { EspecieYRaza } from "@/components/especie-y-raza";
 import { razasDe } from "@/lib/anatomia";
 import { unstable_noStore as noStore } from "next/cache";
-import { PawPrint, Search, SearchX, Users } from "lucide-react";
+import { PawPrint, Scissors, Search, SearchX, Users } from "lucide-react";
 
 import { crearPaciente } from "@/app/actions/pacientes";
 import { CreatePanel } from "@/components/create-panel";
 import { Badge, EmptyState, Field, Input, PageHeader, SectionCard, Select } from "@/components/ui";
-import { PACIENTES_POR_EDICION, VENTAS_POR_EDICION } from "@/lib/ediciones";
+import { ATENCION_POR_EDICION, PACIENTES_POR_EDICION, VENTAS_POR_EDICION, clinicaDe } from "@/lib/ediciones";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
 import { REPORT_TIME_ZONE } from "@/lib/report-range";
 import { estadoVacuna } from "@/lib/mascotas";
 import { createClient } from "@/lib/supabase/server";
 
 /**
- * Pacientes (Dental) o tutores con sus mascotas (Vet).
+ * Pacientes (Dental), tutores con sus mascotas (Vet) o clientes (Barber).
  *
  * Es la puerta de entrada de una clínica: buscar a alguien, ver en qué va y
  * abrir su ficha. Las vistas son las que usa una recepción para llamar: quién
@@ -51,6 +51,11 @@ const VISTAS = {
     { id: "abiertos", label: "Plan abierto" },
     { id: "sin_respuesta", label: "Sin respuesta +7 días" },
   ],
+  barber: [
+    { id: "todos", label: "Todos" },
+    { id: "abiertos", label: "Paquete abierto" },
+    { id: "sin_respuesta", label: "Sin respuesta +7 días" },
+  ],
 } as const;
 
 export default async function PacientesPage({
@@ -60,10 +65,13 @@ export default async function PacientesPage({
 }) {
   noStore();
   const { edicion } = await contextoDeMiEmpresa();
-  const clinica = edicion === "vet" ? "vet" : "dental";
+  const clinica = clinicaDe(edicion);
   const voc = PACIENTES_POR_EDICION[clinica];
   const ventas = VENTAS_POR_EDICION[clinica];
+  const atencion = ATENCION_POR_EDICION[clinica];
   const esVet = clinica === "vet";
+  const esBarber = clinica === "barber";
+  const IconoFicha = esVet ? PawPrint : esBarber ? Scissors : Users;
   const { q = "", vista = "todos" } = await searchParams;
   const busqueda = q.trim();
 
@@ -159,6 +167,10 @@ export default async function PacientesPage({
                   </Select>
                 </Field>
               </>
+            ) : esBarber ? (
+              <Field label="Cumpleaños (opcional)">
+                <Input name="nacimiento" type="date" />
+              </Field>
             ) : (
               <>
                 <Field label="Previsión">
@@ -216,7 +228,7 @@ export default async function PacientesPage({
       </div>
 
       <SectionCard
-        icon={esVet ? PawPrint : Users}
+        icon={IconoFicha}
         tone="blue"
         title={`${fichas.length} ${fichas.length === 1 ? voc.singular.toLowerCase() : voc.titulo.toLowerCase()}`}
         description={busqueda ? `Resultados para "${busqueda}"` : undefined}
@@ -225,7 +237,7 @@ export default async function PacientesPage({
           <p className="px-4 py-6 text-sm text-danger">No se pudieron leer las fichas. Vuelve a cargar para reintentar.</p>
         ) : fichas.length === 0 ? (
           <EmptyState
-            icon={busqueda ? SearchX : esVet ? PawPrint : Users}
+            icon={busqueda ? SearchX : IconoFicha}
             title={busqueda ? "Nadie coincide con la búsqueda" : `Todavía no hay ${voc.titulo.toLowerCase()} en esta vista`}
             description={busqueda ? "Prueba con el celular o solo el apellido." : `Crea la primera ficha con "${voc.nuevo}".`}
           />
@@ -236,7 +248,7 @@ export default async function PacientesPage({
                 <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground">
                   <th className="px-4 py-2 font-medium">{voc.singular}</th>
                   <th className="px-3 py-2 font-medium">Contacto</th>
-                  <th className="px-3 py-2 font-medium">{esVet ? "Mascotas" : "Previsión"}</th>
+                  <th className="px-3 py-2 font-medium">{esVet ? "Mascotas" : esBarber ? atencion.profesional : "Previsión"}</th>
                   <th className="px-3 py-2 font-medium">{ventas.negocio} abierto</th>
                   <th className="px-4 py-2 font-medium">Próxima acción</th>
                 </tr>
@@ -277,7 +289,7 @@ export default async function PacientesPage({
                             })}
                           </div>
                         ) : (
-                          <span className="text-muted-foreground">{String(ficha.metadata?.prevision ?? "—")}</span>
+                          <span className="text-muted-foreground">{String(ficha.metadata?.[esBarber ? "profesional" : "prevision"] ?? "—")}</span>
                         )}
                       </td>
                       <td className="px-3 py-2.5">

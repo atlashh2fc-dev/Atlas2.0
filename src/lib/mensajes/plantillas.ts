@@ -10,7 +10,7 @@ import type { BadgeTone } from "@/components/ui";
  * de la plantilla registrada allá y las variables van en el mismo orden.
  */
 
-export type ClavePlantilla = "cita_confirmar" | "cita_recordatorio" | "vacuna" | "presupuesto" | "control" | "enlace_pago" | "seguimiento_propuesta" | "libre";
+export type ClavePlantilla = "cita_confirmar" | "cita_recordatorio" | "vacuna" | "presupuesto" | "control" | "mantencion" | "look" | "enlace_pago" | "seguimiento_propuesta" | "libre";
 
 export const PLANTILLAS: Record<ClavePlantilla, { nombre: string; cuerpo: string }> = {
   cita_confirmar: {
@@ -33,6 +33,14 @@ export const PLANTILLAS: Record<ClavePlantilla, { nombre: string; cuerpo: string
   control: {
     nombre: "Control pendiente",
     cuerpo: "Hola {{nombre}}, en {{clinica}} notamos que hace más de {{meses}} meses no vienes a control. ¿Agendamos una hora? Responde por acá y coordinamos.",
+  },
+  mantencion: {
+    nombre: "Mantención del corte",
+    cuerpo: "Hola {{nombre}}, ya van {{semanas}} semanas desde tu último corte en {{clinica}}. ¿Te reservamos hora para la mantención? Responde por acá y te damos la primera disponible.",
+  },
+  look: {
+    nombre: "Look aprobado",
+    cuerpo: "Hola {{nombre}}, te dejamos el look que elegiste en {{clinica}}: {{url}} . Guárdalo: así lo pedimos igual la próxima vez.",
   },
   enlace_pago: {
     nombre: "Enlace de pago",
@@ -63,6 +71,8 @@ export const ETIQUETA_REGLA: Record<string, string> = {
   vacuna: "Vacuna",
   presupuesto: "Presupuesto",
   control: "Control",
+  mantencion: "Mantención",
+  look: "Look",
   enlace_pago: "Enlace de pago",
   manual: "Manual",
   campana: "Campaña",

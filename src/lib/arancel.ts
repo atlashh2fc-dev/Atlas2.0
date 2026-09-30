@@ -3,7 +3,7 @@
  * Puro, para el servidor y el cliente.
  */
 
-export const APLICA_A = ["boca", "pieza", "superficie", "mascota", "region"] as const;
+export const APLICA_A = ["boca", "pieza", "superficie", "mascota", "region", "cliente", "zona_cabeza"] as const;
 export type AplicaA = (typeof APLICA_A)[number];
 
 export const ETIQUETA_APLICA_A: Record<AplicaA, string> = {
@@ -12,6 +12,15 @@ export const ETIQUETA_APLICA_A: Record<AplicaA, string> = {
   superficie: "Superficies de una pieza",
   mascota: "La mascota",
   region: "Una zona del cuerpo",
+  cliente: "El cliente",
+  zona_cabeza: "Una zona de la cabeza",
+};
+
+/** Lo que se puede elegir al crear un procedimiento en cada edición. */
+export const APLICA_POR_EDICION: Record<"dental" | "vet" | "barber", readonly AplicaA[]> = {
+  dental: ["boca", "pieza", "superficie"],
+  vet: ["mascota", "region"],
+  barber: ["cliente", "zona_cabeza"],
 };
 
 export type Procedimiento = {
@@ -108,9 +117,10 @@ export function resumenMateriales(materiales: MaterialUsado[] | undefined) {
   return (materiales ?? []).map((material) => `${material.nombre} ×${Number(material.cantidad).toLocaleString("es-CL")}`).join(" · ");
 }
 
-export const CATEGORIAS: Record<"dental" | "vet", string[]> = {
+export const CATEGORIAS: Record<"dental" | "vet" | "barber", string[]> = {
   dental: ["Diagnóstico", "Urgencias", "Prevención", "Operatoria", "Endodoncia", "Periodoncia", "Cirugía", "Implantología", "Prótesis", "Ortodoncia", "Odontopediatría", "Estética", "ATM"],
   vet: ["Consultas", "Urgencias", "Vacunas", "Laboratorio", "Imagenología", "Anestesia", "Cirugías", "Odontología", "Rehabilitación", "Estética", "Otros"],
+  barber: ["Cortes", "Barba", "Combos", "Diseño", "Color", "Tratamientos", "Niños", "Productos"],
 };
 
 /** Agrupa por categoría respetando el orden del arancel. */

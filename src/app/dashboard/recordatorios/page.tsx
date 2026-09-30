@@ -6,7 +6,7 @@ import { cambiarEstadoCita } from "@/app/actions/citas";
 import { cancelarMensaje, despacharAhora, enviarMensaje, reintentarMensaje } from "@/app/actions/mensajes";
 import { Badge, Callout, EmptyState, MetricCard, PageHeader, SectionCard, SubmitButton, buttonClasses } from "@/components/ui";
 import { ZONA_CLINICA, fechaEnChile, instanteEnChile, primero, sumarDias, type Cita } from "@/lib/citas";
-import { PACIENTES_POR_EDICION, VENTAS_POR_EDICION } from "@/lib/ediciones";
+import { ATENCION_POR_EDICION, PACIENTES_POR_EDICION, VENTAS_POR_EDICION, clinicaDe } from "@/lib/ediciones";
 import { estadoVacuna } from "@/lib/mascotas";
 import { ETIQUETA_ESTADO_MENSAJE, ETIQUETA_REGLA, PLANTILLAS, renderizarPlantilla, type ClavePlantilla, type EstadoMensaje } from "@/lib/mensajes/plantillas";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
@@ -104,15 +104,17 @@ function Enviar({
 export default async function RecordatoriosPage() {
   noStore();
   const { edicion, empresa } = await contextoDeMiEmpresa();
-  const esVet = edicion === "vet";
-  const voc = PACIENTES_POR_EDICION[esVet ? "vet" : "dental"];
-  const ventas = VENTAS_POR_EDICION[esVet ? "vet" : "dental"];
+  const tipo = clinicaDe(edicion);
+  const esVet = tipo === "vet";
+  const voc = PACIENTES_POR_EDICION[tipo];
+  const ventas = VENTAS_POR_EDICION[tipo];
+  const at = ATENCION_POR_EDICION[tipo];
   const clinica = empresa ?? "la clínica";
   const ahora = new Date();
   const hoy = fechaEnChile(ahora);
   const manana = sumarDias(hoy, 1);
-  const mesesSinVenir = esVet ? 12 : 6;
-  const corteInactivos = sumarDias(hoy, -30 * mesesSinVenir);
+  const corteInactivos = sumarDias(hoy, -at.diasSinVenir);
+  const reglaVuelta = at.plantillaVuelta;
 
   const supabase = await createClient();
   const [{ data: citasData }, { data: vacunasData }, { data: presupuestosData }, { data: cuentasData }, { data: mensajesData }, { data: canal }] = await Promise.all([
@@ -331,13 +333,14 @@ export default async function RecordatoriosPage() {
         )}
       </SectionCard>
 
-      <SectionCard icon={UserRoundX} tone="blue" title={`${voc.titulo} que no vuelven hace más de ${mesesSinVenir} meses · ${inactivos.length}`} description={esVet ? "Un control anual es la visita que más se olvida y la que más recompra trae. Una vez al mes." : "El control semestral: la visita que mantiene la boca sana y la agenda llena. Una vez al mes."}>
+      <SectionCard icon={UserRoundX} tone="blue" title={`${voc.titulo} que no vuelven hace más de ${at.plazoSinVenir} · ${inactivos.length}`} description={at.porQueVolver}>
         {inactivos.length === 0 ? (
           <EmptyState icon={UserRoundX} title="Nadie fuera de plazo" description="Todas las fichas con atenciones han vuelto dentro del plazo." />
         ) : (
           <ul className="divide-y divide-border">
             {inactivos.map((ficha) => {
-              const variables = { nombre: primerNombre(ficha.name), meses: mesesSinVenir, clinica };
+              const semanas = ficha.ultima ? Math.max(1, Math.floor((ahora.getTime() - new Date(`${ficha.ultima}T12:00:00`).getTime()) / (7 * DIA))) : null;
+              const variables = { nombre: primerNombre(ficha.name), meses: Math.round(at.diasSinVenir / 30), semanas, clinica };
               return (
                 <li key={ficha.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                   <span className="w-24 text-xs text-muted-foreground">Última {ficha.ultima ? fecha.format(new Date(`${ficha.ultima}T12:00:00`)) : "—"}</span>
@@ -346,7 +349,7 @@ export default async function RecordatoriosPage() {
                       {ficha.name}
                     </Link>
                   </div>
-                  <Enviar cuenta={ficha.id} plantilla="control" regla="control" origen={ficha.id} variables={variables} ultimo={ultimo("control", ficha.id)} telefono={ficha.phone} />
+                  <Enviar cuenta={ficha.id} plantilla={reglaVuelta} regla={reglaVuelta} origen={ficha.id} variables={variables} ultimo={ultimo(reglaVuelta, ficha.id)} telefono={ficha.phone} />
                 </li>
               );
             })}

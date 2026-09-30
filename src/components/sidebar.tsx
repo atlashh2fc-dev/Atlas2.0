@@ -139,8 +139,31 @@ function relabelForEdicion(item: NavItem, edicion: Edicion): NavItem {
     const pacientes = PACIENTES_POR_EDICION[edicion];
     return { ...item, label: pacientes.titulo, description: pacientes.descripcion };
   }
+  if (edicion === "barber") {
+    const barberia = EN_BARBERIA[item.id];
+    if (barberia) {
+      return {
+        ...item,
+        ...barberia,
+        tabs: item.tabs?.map((tab) => (tab.href === "/dashboard/ventas" ? { ...tab, label: VENTAS_POR_EDICION.barber.titulo } : tab)),
+      };
+    }
+  }
   return item;
 }
+
+/** En una barbería se atiende por barbero y se venden servicios, no procedimientos. */
+const EN_BARBERIA: Record<string, Pick<NavItem, "label" | "description">> = {
+  "agenda-clinica": { label: "Agenda", description: "Reservas del día por barbero: confirmar, pasar a la silla, atender" },
+  caja: { label: "Caja", description: "Por cobrar, paquetes y lo cobrado en el mes" },
+  recordatorios: { label: "Recordatorios", description: "A quién escribir hoy: reservas sin confirmar, paquetes sin respuesta y clientes que ya necesitan mantención" },
+  "campanas-clinica": { label: "Campañas", description: "Segmentos de la barbería, un mensaje y una fecha; resultados en la misma cola" },
+  "conversaciones-clinica": { label: "Conversaciones", description: "El WhatsApp de la barbería: lo que Atlas envió y lo que respondieron, en el mismo hilo" },
+  "reportes-clinica": { label: "Reportes", description: "Producción por barbero, ocupación de las sillas, paquetes, clientes y caja, con descarga a Excel" },
+  aranceles: { label: "Servicios y precios", description: "Los servicios de la barbería: cortes, barba, combos, precios y duración" },
+  insumos: { label: "Productos e insumos", description: "Productos de la barbería: costo, precio de venta, stock y consumo" },
+  "correo-clinica": { label: "Correo de la barbería", description: "El buzón desde el que la barbería lee y responde correos" },
+};
 
 function sectionsFor(
   space: NavSpaceId,
@@ -151,6 +174,7 @@ function sectionsFor(
 ): NavSection[] {
   return visibleSections(space, profile.role, modules, duenio, edicion).map((section) => ({
     ...section,
+    label: edicion === "barber" && section.id === "setup-clinic" ? "Barbería" : section.label,
     items: section.items.map((item) => relabelForEdicion(item, edicion)),
   }));
 }

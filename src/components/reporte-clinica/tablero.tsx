@@ -1,5 +1,6 @@
 "use client";
 
+import type { Clinica } from "@/lib/ediciones";
 import Link from "next/link";
 import { Suspense, useCallback, useMemo, useState, useTransition } from "react";
 import {
@@ -132,13 +133,14 @@ import {
  * enlace exacto de lo que se está mirando.
  */
 
-type Edicion = "dental" | "vet";
+type Edicion = Clinica;
 
 type Vocabulario = { persona: string; personas: string; plan: string; planes: string; aceptados: string };
 
 const VOCABULARIO: Record<Edicion, Vocabulario> = {
   dental: { persona: "Paciente", personas: "Pacientes", plan: "Presupuesto", planes: "Presupuestos", aceptados: "Aceptados" },
   vet: { persona: "Tutor", personas: "Tutores", plan: "Plan", planes: "Planes", aceptados: "Aceptados" },
+  barber: { persona: "Cliente", personas: "Clientes", plan: "Paquete", planes: "Paquetes", aceptados: "Aceptados" },
 };
 
 const VISTAS = ["resumen", "produccion", "profesionales", "agenda", "planes", "pacientes", "caja"] as const;

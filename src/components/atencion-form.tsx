@@ -57,6 +57,8 @@ export function AtencionForm({
   profesionales,
   onGuardada,
   titulo,
+  accion = "Registrar atención",
+  icono = Stethoscope,
 }: {
   cuentaId: string;
   arancel: Procedimiento[];
@@ -70,7 +72,11 @@ export function AtencionForm({
   profesionales: string[];
   onGuardada?: () => void;
   titulo?: string;
+  /** Cómo se llama el botón: "Registrar atención", "Registrar servicio". */
+  accion?: string;
+  icono?: typeof Stethoscope;
 }) {
+  const Icono = icono;
   const activos = useMemo(() => arancel.filter((procedimiento) => procedimiento.active), [arancel]);
   const sugeridos = useMemo(() => activos.filter((procedimiento) => aplica.includes(procedimiento.aplica_a)), [activos, aplica]);
   const [abierta, setAbierta] = useState(false);
@@ -113,10 +119,10 @@ export function AtencionForm({
         onClick={() => abrir(null)}
         className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
       >
-        <Stethoscope size={15} aria-hidden="true" /> Registrar atención
+        <Icono size={15} aria-hidden="true" /> {accion}
         {contexto.length > 0 && <span className="font-normal opacity-80">· {contexto.join(" · ")}</span>}
       </button>
-      <p className="text-center text-[11px] text-muted-foreground">Varios procedimientos, materiales y cobro en una sola visita.</p>
+      <p className="text-center text-[11px] text-muted-foreground">{icono === Stethoscope ? "Varios procedimientos, materiales y cobro en una sola visita." : "Varios servicios, productos y cobro en una sola visita."}</p>
 
       {abierta && (
         <Visita
@@ -129,7 +135,7 @@ export function AtencionForm({
           mascotaId={mascotaId}
           region={region ?? null}
           profesionales={profesionales}
-          titulo={titulo ?? "Registrar atención"}
+          titulo={titulo ?? accion}
           onCerrar={() => setAbierta(false)}
           onGuardada={() => {
             setAbierta(false);

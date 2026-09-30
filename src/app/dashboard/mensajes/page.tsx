@@ -6,7 +6,7 @@ import { marcarConversacionLeida, responderConversacion, responderCorreo } from 
 import { WhatsAppAutoRefresh } from "@/components/whatsapp-auto-refresh";
 import { Badge, Callout, EmptyState, PageHeader, SectionCard, SubmitButton, buttonClasses } from "@/components/ui";
 import { ZONA_CLINICA } from "@/lib/citas";
-import { PACIENTES_POR_EDICION } from "@/lib/ediciones";
+import { ATENCION_POR_EDICION, PACIENTES_POR_EDICION, clinicaDe } from "@/lib/ediciones";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -52,7 +52,8 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
   noStore();
   const { edicion, empresa } = await contextoDeMiEmpresa();
   const esVet = edicion === "vet";
-  const voc = PACIENTES_POR_EDICION[esVet ? "vet" : "dental"];
+  const voc = PACIENTES_POR_EDICION[clinicaDe(edicion)];
+  const lugar = ATENCION_POR_EDICION[clinicaDe(edicion)].lugar;
   const { c, e } = await searchParams;
   const seleccionada = c && UUID.test(c) ? c : null;
   const fichaCorreo = e && UUID.test(e) ? e : null;
@@ -147,13 +148,13 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
       <WhatsAppAutoRefresh conversationId={actual?.id ?? null} />
       <PageHeader
         title="Conversaciones"
-        description={`WhatsApp de ${empresa ?? "la clínica"}${canal?.display_phone_number ? ` · ${canal.display_phone_number}` : ""}. ${sinLeer ? `${sinLeer} sin leer.` : "Todo leído."} Lo que Atlas manda y lo que responden, en el mismo hilo.`}
+        description={`WhatsApp de ${empresa ?? lugar}${canal?.display_phone_number ? ` · ${canal.display_phone_number}` : ""}. ${sinLeer ? `${sinLeer} sin leer.` : "Todo leído."} Lo que Atlas manda y lo que responden, en el mismo hilo.`}
       />
 
       {!canalActivo && (
         <Callout tone="warning">
-          <p className="font-medium">El WhatsApp de la clínica todavía no está conectado</p>
-          <p>En la demostración los envíos se simulan y quedan en el hilo. Cuando conectes el canal en Integraciones, saldrán por el número de la clínica y las respuestas llegarán acá solas.</p>
+          <p className="font-medium">El WhatsApp de {lugar} todavía no está conectado</p>
+          <p>En la demostración los envíos se simulan y quedan en el hilo. Cuando conectes el canal en Integraciones, saldrán por el número de {lugar} y las respuestas llegarán acá solas.</p>
         </Callout>
       )}
 
@@ -185,7 +186,7 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
             </ul>
           )}
           {conversaciones.length === 0 && hilosCorreo.length === 0 ? (
-            <EmptyState icon={Inbox} title="Todavía nadie escribe" description="Cuando Atlas mande un recordatorio o alguien escriba al WhatsApp de la clínica, aparece acá." />
+            <EmptyState icon={Inbox} title="Todavía nadie escribe" description={`Cuando Atlas mande un recordatorio o alguien escriba al WhatsApp de ${lugar}, aparece acá.`} />
           ) : (
             <ul className="divide-y divide-border">
               {conversaciones.map((conversacion) => {
@@ -218,7 +219,7 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
         </SectionCard>
 
         {hiloActual ? (
-          <SectionCard icon={Mail} tone="teal" title={hiloActual.nombre} description={`${hiloActual.direccion} · correo${buzon ? ` · desde ${buzon.address}` : " · la clínica todavía no tiene buzón: los envíos se simulan en la demostración"}`}>
+          <SectionCard icon={Mail} tone="teal" title={hiloActual.nombre} description={`${hiloActual.direccion} · correo${buzon ? ` · desde ${buzon.address}` : ` · ${lugar} todavía no tiene buzón: los envíos se simulan en la demostración`}`}>
             <div className="flex max-h-[60vh] flex-col gap-3 overflow-y-auto px-4 py-3">
               {[...hiloActual.entrantes.map((correo) => ({ id: correo.id, saliente: false, cuando: correo.received_at, asunto: correo.subject, texto: correo.body_text, estado: "", messageId: correo.message_id })),
                 ...hiloActual.salientes.map((correo) => ({ id: correo.id, saliente: true, cuando: correo.enviado_at ?? correo.created_at, asunto: correo.asunto ?? "", texto: correo.cuerpo ?? "", estado: correo.proveedor === "simulado" ? "simulado" : correo.estado, messageId: null }))]

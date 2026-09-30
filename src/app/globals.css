@@ -102,7 +102,7 @@
   --auth-panel-foreground: #f2f2f2;
 }
 
-/* Ediciones. Center es el tema de arriba, tal cual; Dental y Vet solo cambian el
+/* Ediciones. Center es el tema de arriba, tal cual; Dental, Vet y Barber solo cambian el
    acento y el tono de fondo, y todo lo que ya pinta `bg-primary` o `text-accent`
    se tiñe solo. Contraste del texto blanco sobre la acción (AA pide 4.5:1):
    Dental #0d7f78 da 4.86:1 y Vet #b8501c da 5.0:1. En oscuro la acción se
@@ -153,6 +153,18 @@
   --halo-a: rgba(184, 80, 28, 0.07);
 }
 
+/* Barber: carbón con acento latón. #8a5a1f da 5.89:1 con texto blanco. */
+[data-edicion="barber"] {
+  --background: #f0eeeb;
+  --surface-muted: #ebe5dc;
+  --primary: #8a5a1f;
+  --primary-hover: #74491a;
+  --accent: #e0b36e;
+  --accent-foreground: var(--black-dark);
+  --ring: #8a5a1f;
+  --halo-a: rgba(138, 90, 31, 0.08);
+}
+
 .dark [data-edicion="dental"] {
   --background: #000000;
   --surface-muted: #10242a;
@@ -173,6 +185,17 @@
   --accent: #ffb57a;
   --ring: #ffb57a;
   --halo-a: rgba(245, 146, 88, 0.2);
+}
+
+.dark [data-edicion="barber"] {
+  --background: #000000;
+  --surface-muted: #1d1a16;
+  --primary: #d9a55b;
+  --primary-foreground: #07090d;
+  --primary-hover: #e4b877;
+  --accent: #e0b36e;
+  --ring: #e0b36e;
+  --halo-a: rgba(217, 165, 91, 0.2);
 }
 
 @theme inline {

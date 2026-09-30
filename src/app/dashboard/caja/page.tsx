@@ -7,7 +7,7 @@ import { enviarMensaje } from "@/app/actions/mensajes";
 import { cobrarEnLinea, registrarPago } from "@/app/actions/pagos";
 import { Badge, Callout, EmptyState, Input, MetricCard, NavTabs, PageHeader, SectionCard, Select, SubmitButton, buttonClasses } from "@/components/ui";
 import { ZONA_CLINICA, fechaEnChile } from "@/lib/citas";
-import { PACIENTES_POR_EDICION, VENTAS_POR_EDICION } from "@/lib/ediciones";
+import { PACIENTES_POR_EDICION, VENTAS_POR_EDICION, clinicaDe } from "@/lib/ediciones";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
 import { ETIQUETA_ESTADO_PAGO, ETIQUETA_MEDIO, MEDIOS_EN_CAJA, type EstadoPago, type MedioDePago } from "@/lib/pagos/medios";
 import { pasarelaActiva } from "@/lib/pagos/pasarela";
@@ -42,7 +42,7 @@ function primerNombre(nombre: string): string {
 export default async function CajaPage({ searchParams }: { searchParams: Promise<{ enlace?: string }> }) {
   noStore();
   const { edicion, empresa } = await contextoDeMiEmpresa();
-  const clinica = edicion === "vet" ? "vet" : "dental";
+  const clinica = clinicaDe(edicion);
   const voc = PACIENTES_POR_EDICION[clinica];
   const ventas = VENTAS_POR_EDICION[clinica];
   const hoy = fechaEnChile(new Date());
@@ -169,7 +169,7 @@ export default async function CajaPage({ searchParams }: { searchParams: Promise
         icon={Wallet}
         tone="green"
         title="Por cobrar"
-        description={`Cada fila es ${voc.singular.toLowerCase() === "tutor" ? "un tutor" : "un paciente"} con atenciones sin pagar. Cobrar en el mesón las deja al día; el enlace las deja al día cuando la persona paga.`}
+        description={`Cada fila es un ${voc.singular.toLowerCase()} con atenciones sin pagar. Cobrar en el mesón las deja al día; el enlace las deja al día cuando la persona paga.`}
       >
         {error ? (
           <p className="px-4 py-6 text-sm text-danger">No se pudieron leer las atenciones. Vuelve a cargar para reintentar.</p>

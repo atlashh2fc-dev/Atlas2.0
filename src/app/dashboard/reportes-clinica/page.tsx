@@ -4,6 +4,7 @@ import { unstable_noStore as noStore } from "next/cache";
 import { TableroClinica } from "@/components/reporte-clinica/tablero";
 import { Callout } from "@/components/ui";
 import { fechaEnChile } from "@/lib/citas";
+import { clinicaDe } from "@/lib/ediciones";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
 import { formatReportRangeLabel, resolveReportRange, toDateInput } from "@/lib/report-range";
 import { inicioDeLosHechos } from "@/lib/reporte-clinica";
@@ -24,7 +25,7 @@ export default async function ReportesClinicaPage({
 }) {
   noStore();
   const { edicion, empresa } = await contextoDeMiEmpresa();
-  if (edicion !== "dental" && edicion !== "vet") notFound();
+  if (edicion === "center") notFound();
 
   const parametros = await searchParams;
   const rango = resolveReportRange({ preset: parametros.preset, from: parametros.from, to: parametros.to });
@@ -47,7 +48,7 @@ export default async function ReportesClinicaPage({
           raw={data}
           periodo={periodo}
           hoy={fechaEnChile(new Date())}
-          edicion={edicion}
+          edicion={clinicaDe(edicion)}
           empresa={empresa}
           etiquetaPeriodo={formatReportRangeLabel(rango)}
           filtrosIniciales={filtros}

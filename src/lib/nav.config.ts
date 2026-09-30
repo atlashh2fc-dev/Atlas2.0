@@ -158,7 +158,7 @@ const CONSOLE: NavSpace = {
           description: "Citas del día por profesional: confirmar, pasar a sala, atender",
           match: ["/dashboard/citas"],
           modules: ["ventas_b2c"],
-          ediciones: ["dental", "vet"],
+          ediciones: ["dental", "vet", "barber"],
         },
         {
           id: "caja",
@@ -173,7 +173,7 @@ const CONSOLE: NavSpace = {
             { label: "Presupuestos", href: "/dashboard/ventas" },
           ],
           modules: ["ventas_b2c"],
-          ediciones: ["dental", "vet"],
+          ediciones: ["dental", "vet", "barber"],
         },
         {
           id: "campanas-clinica",
@@ -184,7 +184,7 @@ const CONSOLE: NavSpace = {
           description: "Segmentos de la clínica, un mensaje y una fecha; resultados en la misma cola",
           match: ["/dashboard/campanas-clinica"],
           modules: ["ventas_b2c"],
-          ediciones: ["dental", "vet"],
+          ediciones: ["dental", "vet", "barber"],
         },
         {
           id: "recordatorios",
@@ -195,7 +195,7 @@ const CONSOLE: NavSpace = {
           description: "A quién contactar hoy: citas sin confirmar, vacunas, presupuestos sin respuesta, pacientes que no vuelven",
           match: ["/dashboard/recordatorios"],
           modules: ["ventas_b2c"],
-          ediciones: ["dental", "vet"],
+          ediciones: ["dental", "vet", "barber"],
         },
         {
           id: "ventas",
@@ -294,7 +294,7 @@ const CONSOLE: NavSpace = {
           description: "El WhatsApp de la clínica: lo que Atlas envió y lo que respondieron, en el mismo hilo",
           match: ["/dashboard/mensajes"],
           modules: ["whatsapp"],
-          ediciones: ["dental", "vet"],
+          ediciones: ["dental", "vet", "barber"],
         },
         {
           id: "agenda",
@@ -337,7 +337,7 @@ const CONSOLE: NavSpace = {
           description: "Tableros de la clínica: producción, profesionales, agenda, presupuestos, pacientes y caja, con descarga a Excel",
           match: ["/dashboard/reportes-clinica"],
           modules: ["ventas_b2c"],
-          ediciones: ["dental", "vet"],
+          ediciones: ["dental", "vet", "barber"],
         },
         {
           id: "validacion-ventas",
@@ -485,7 +485,7 @@ const ADMIN: NavSpace = {
           description: "El buzón desde el que la clínica lee y responde correos",
           match: ["/dashboard/admin/correo"],
           modules: ["ventas_b2c"],
-          ediciones: ["dental", "vet"],
+          ediciones: ["dental", "vet", "barber"],
         },
         {
           id: "insumos",

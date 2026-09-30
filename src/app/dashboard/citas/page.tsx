@@ -18,7 +18,7 @@ import {
   type Cita,
   type Profesional,
 } from "@/lib/citas";
-import { PACIENTES_POR_EDICION } from "@/lib/ediciones";
+import { ATENCION_POR_EDICION, PACIENTES_POR_EDICION, clinicaDe } from "@/lib/ediciones";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
 import { createClient } from "@/lib/supabase/server";
 
@@ -77,8 +77,11 @@ function Accion({
 export default async function AgendaPage({ searchParams }: { searchParams: Promise<{ dia?: string }> }) {
   noStore();
   const { edicion, empresa } = await contextoDeMiEmpresa();
-  const esVet = edicion === "vet";
-  const voc = PACIENTES_POR_EDICION[esVet ? "vet" : "dental"];
+  const clinica = clinicaDe(edicion);
+  const esVet = clinica === "vet";
+  const voc = PACIENTES_POR_EDICION[clinica];
+  const at = ATENCION_POR_EDICION[clinica];
+  const Cita1 = at.cita[0].toUpperCase() + at.cita.slice(1);
   const ahora = new Date();
   const hoy = fechaEnChile(ahora);
   const { dia: diaParam } = await searchParams;
@@ -125,7 +128,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
     <div className="space-y-5">
       <PageHeader
         title="Agenda"
-        description={`${capitalizar(fechaLarga.format(desde))} · ${activas.length} ${activas.length === 1 ? "cita" : "citas"}${sinConfirmar ? ` · ${sinConfirmar} sin confirmar` : ""}${enSala ? ` · ${enSala} en sala` : ""}`}
+        description={`${capitalizar(fechaLarga.format(desde))} · ${activas.length} ${activas.length === 1 ? at.cita : at.citas}${sinConfirmar ? ` · ${sinConfirmar} sin confirmar` : ""}${enSala ? ` · ${enSala} en sala` : ""}`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Link href={`/dashboard/citas?dia=${sumarDias(dia, -1)}`} className={buttonClasses({ variant: "secondary", size: "sm" })} aria-label="Día anterior">
@@ -141,17 +144,17 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
               <Input type="date" name="dia" defaultValue={dia} aria-label="Ir a una fecha" className="w-40" />
             </form>
             <CreatePanel
-              label="Nueva cita"
-              title="Nueva cita"
-              description="Con la persona, el profesional y la hora basta. El horario tiene que estar libre."
+              label={`Nueva ${at.cita}`}
+              title={`Nueva ${at.cita}`}
+              description={`Con la persona, ${at.profesional.toLowerCase() === "barbero" ? "el barbero" : "el profesional"} y la hora basta. El horario tiene que estar libre.`}
               action={agendarCita}
               submitLabel="Agendar"
-              successLabel="Cita agendada"
+              successLabel={`${Cita1} agendada`}
             >
               <Field label={voc.singular}>
                 <Select name="cuenta_id" required defaultValue="" data-autofocus>
                   <option value="" disabled>
-                    Elige {voc.singular.toLowerCase() === "tutor" ? "al tutor" : "al paciente"}
+                    Elige al {voc.singular.toLowerCase()}
                   </option>
                   {(cuentas ?? []).map((cuenta) => (
                     <option key={cuenta.id as string} value={cuenta.id as string}>
@@ -172,7 +175,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
                   </Select>
                 </Field>
               )}
-              <Field label="Profesional">
+              <Field label={at.profesional}>
                 <Select name="profesional_id" required defaultValue={profesionales[0]?.id ?? ""}>
                   {profesionales.map((profesional) => (
                     <option key={profesional.id} value={profesional.id}>
@@ -199,7 +202,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
                 </Field>
               </div>
               <Field label="Motivo">
-                <Input name="motivo" required list="motivos-de-cita" placeholder={esVet ? "Control · vacuna · esterilización" : "Control · limpieza · restauración"} />
+                <Input name="motivo" required list="motivos-de-cita" placeholder={at.motivoPlaceholder} />
                 <datalist id="motivos-de-cita">
                   {(productos ?? []).map((producto) => (
                     <option key={producto.name as string} value={producto.name as string} />
@@ -217,12 +220,12 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       {error && <Callout tone="danger">No se pudo leer la agenda. Vuelve a cargar para reintentar.</Callout>}
 
       {profesionales.length === 0 ? (
-        <EmptyState icon={Stethoscope} title="Todavía no hay profesionales" description="La agenda se arma por profesional. Registra la primera atención y aparecerá acá, o pídenos que los carguemos." />
+        <EmptyState icon={Stethoscope} title={`Todavía no hay ${at.profesionales.toLowerCase()}`} description={`La agenda se arma por ${at.profesional.toLowerCase()}. Registra la primera atención y aparecerá acá, o pídenos que los carguemos.`} />
       ) : (
         <SectionCard
           icon={CalendarDays}
           tone="amber"
-          title="Por profesional"
+          title={`Por ${at.profesional.toLowerCase()}`}
           description={`${profesionales.length} ${profesionales.length === 1 ? "agenda" : "agendas"} · ${HORA_APERTURA}:00 a ${HORA_CIERRE}:00. Lo cancelado y quien no vino quedan en gris y liberan la hora.`}
         >
           <div className="relative max-h-[70vh] overflow-auto">
@@ -240,7 +243,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-foreground">{profesional.nombre}</p>
                         <p className="text-[11px] text-muted-foreground">
-                          {propias.length} {propias.length === 1 ? "cita" : "citas"}
+                          {propias.length} {propias.length === 1 ? at.cita : at.citas}
                           {propias.filter((cita) => cita.estado === "reservada").length ? ` · ${propias.filter((cita) => cita.estado === "reservada").length} sin confirmar` : ""}
                         </p>
                       </div>
@@ -335,9 +338,9 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
               <thead>
                 <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground">
                   <th className="px-4 py-2 font-medium">Hora</th>
-                  <th className="px-3 py-2 font-medium">{esVet ? "Mascota y tutor" : "Paciente"}</th>
+                  <th className="px-3 py-2 font-medium">{esVet ? "Mascota y tutor" : voc.singular}</th>
                   <th className="px-3 py-2 font-medium">Motivo</th>
-                  <th className="px-3 py-2 font-medium">Profesional</th>
+                  <th className="px-3 py-2 font-medium">{at.profesional}</th>
                   <th className="px-3 py-2 font-medium">Estado</th>
                   <th className="px-4 py-2 font-medium text-right">Acciones</th>
                 </tr>

@@ -34,13 +34,14 @@ import {
   buttonClasses,
   type IconTone,
 } from "@/components/ui";
-import { PACIENTES_POR_EDICION, VENTAS_POR_EDICION } from "@/lib/ediciones";
+import { ATENCION_POR_EDICION, PACIENTES_POR_EDICION, VENTAS_POR_EDICION, clinicaDe } from "@/lib/ediciones";
 import { ETIQUETA_VACUNA, edad, estadoVacuna } from "@/lib/mascotas";
 import { denticionPorEdad, type RegistroOdontograma } from "@/lib/odontograma";
 import { costoDeReceta, porCategoria, type Atencion, type Insumo, type Procedimiento } from "@/lib/arancel";
 import { InsumosProvider } from "@/components/insumos-context";
 import type { Estudio } from "@/lib/estudios";
 import { Odontograma } from "@/components/odontograma/odontograma";
+import { ServiciosBarber } from "@/components/barber/servicios-barber";
 import { FichaMascota3D, type MascotaFicha, type RegistroMascota } from "@/components/mascota3d/ficha-mascota-3d";
 import { contextoDeMiEmpresa, puedeLeerConversaciones } from "@/lib/modules.server";
 import { REPORT_TIME_ZONE } from "@/lib/report-range";
@@ -120,10 +121,13 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
   const profile = await requireProfile(["admin", "supervisor"]);
   const { id } = await params;
   const [{ edicion }, leeConversaciones] = await Promise.all([contextoDeMiEmpresa(), puedeLeerConversaciones(profile.role)]);
-  const clinica = edicion === "vet" ? "vet" : "dental";
+  const clinica = clinicaDe(edicion);
   const voc = PACIENTES_POR_EDICION[clinica];
   const ventas = VENTAS_POR_EDICION[clinica];
+  const at = ATENCION_POR_EDICION[clinica];
   const esVet = clinica === "vet";
+  const esBarber = clinica === "barber";
+  const esDental = clinica === "dental";
   const supabase = await createClient();
 
   const { data: ficha } = await supabase
@@ -149,6 +153,7 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
     { data: registrosMascota },
     { data: estudiosData },
     { data: insumosData },
+    { data: barberosData },
   ] =
     await Promise.all([
       supabase
@@ -172,7 +177,7 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
       leadIds.length > 0
         ? supabase.from("whatsapp_conversations").select("id, status, last_message_at").in("lead_id", leadIds).order("last_message_at", { ascending: false })
         : Promise.resolve({ data: [] as Record<string, unknown>[] }),
-      !esVet
+      esDental
         ? supabase
             .from("odontograma_registros")
             .select("id, pieza, superficies, estado, avance, sintoma, diagnostico, tratamiento, profesional, nota, fecha, created_at")
@@ -205,6 +210,9 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
         .eq("activo", true)
         .order("categoria")
         .order("nombre"),
+      esBarber
+        ? supabase.from("profesionales").select("nombre").eq("activo", true).order("orden")
+        : Promise.resolve({ data: [] as { nombre: string }[] }),
     ]);
 
   // Los estudios se ven con enlaces firmados que expiran en una hora.
@@ -242,6 +250,7 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
   const texto = (clave: string) => (typeof metadata[clave] === "string" && metadata[clave] ? (metadata[clave] as string) : null);
   const edadPaciente = edad(texto("nacimiento"));
   const telefono = (ficha.phone ?? "").replace(/\D/g, "");
+  const ultimoServicio = ((atencionesData ?? []) as { fecha: string }[])[0]?.fecha ?? null;
   const abiertos = (negocios ?? []).filter((negocio) => negocio.status === "abierta");
   const registrosOdontograma = (odontograma ?? []) as unknown as RegistroOdontograma[];
   const arancel = (productos ?? []) as unknown as Procedimiento[];
@@ -253,6 +262,7 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
     ...new Set(
       [
         texto("profesional"),
+        ...((barberosData ?? []) as { nombre: string }[]).map((barbero) => barbero.nombre),
         ...registrosOdontograma.map((registro) => registro.profesional),
         ...((registrosMascota ?? []) as { profesional: string | null }[]).map((registro) => registro.profesional),
       ].filter((valor): valor is string => Boolean(valor)),
@@ -298,13 +308,18 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
     ["Celular", ficha.phone],
     ["Correo", ficha.email],
     ["Comuna", ficha.commune],
-    ...(!esVet
+    ...(esDental
       ? ([
           ["Previsión", texto("prevision")],
           ["Edad", edadPaciente],
           ["Profesional", texto("profesional")],
         ] as [string, string | null][])
-      : ([["Veterinario", texto("profesional")]] as [string, string | null][])),
+      : esBarber
+        ? ([
+            ["Cumpleaños", fechaCorta(texto("nacimiento"))],
+            [at.profesional, texto("profesional")],
+          ] as [string, string | null][])
+        : ([["Veterinario", texto("profesional")]] as [string, string | null][])),
     ["Cómo llegó", ficha.source ? ORIGEN[ficha.source] ?? ficha.source : null],
     ["Ficha desde", fechaCorta((ficha.created_at as string).slice(0, 10))],
   ];
@@ -315,8 +330,9 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
         title={ficha.name}
         description={[
           voc.singular,
-          !esVet && texto("prevision"),
-          !esVet && edadPaciente,
+          esDental && texto("prevision"),
+          esDental && edadPaciente,
+          esBarber && ultimoServicio && `Último servicio ${fechaCorta(ultimoServicio)}`,
           esVet && `${(mascotas ?? []).length} ${(mascotas ?? []).length === 1 ? "mascota" : "mascotas"}`,
           abiertos.length > 0 && `${abiertos.length} ${ventas.negocio.toLowerCase()} abierto`,
         ]
@@ -404,7 +420,17 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
         />
       )}
 
-      {!esVet && (
+      {esBarber && (
+        <ServiciosBarber
+          cuentaId={id}
+          nombre={ficha.name.split(" ")[0]}
+          arancel={arancel}
+          atenciones={atenciones}
+          profesionales={profesionales}
+        />
+      )}
+
+      {esDental && (
         <Odontograma
           cuentaId={id}
           registros={registrosOdontograma}
@@ -568,12 +594,12 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
                   <option value="llamada">Llamada</option>
                   <option value="whatsapp">WhatsApp</option>
                   <option value="correo">Correo</option>
-                  <option value="reunion">{esVet ? "Consulta" : "Cita"}</option>
+                  <option value="reunion">{at.atencion}</option>
                   <option value="nota">Nota</option>
                 </Select>
               </Field>
               <Field label="Qué pasó">
-                <Input name="nota" required placeholder={esVet ? "Tutor confirma hora de vacuna" : "Paciente pide cuotas para el implante"} />
+                <Input name="nota" required placeholder={at.notaPlaceholder} />
               </Field>
               <ActionSubmit size="sm">
                 <CalendarClock size={14} aria-hidden="true" /> Registrar
@@ -584,7 +610,9 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
           <p className="px-1 text-xs text-muted-foreground">
             {esVet
               ? "La ficha clínica (anamnesis, exámenes, recetas) sigue en el software de la clínica. Atlas lleva la relación con el tutor."
-              : "Las evoluciones, recetas e imágenes siguen en el software clínico. Atlas lleva el odontograma y la relación con el paciente."}
+              : esBarber
+                ? "Las fotos del Estudio de Look se guardan solo con el consentimiento del cliente y se borran a los 90 días; el look aprobado queda en su historia."
+                : "Las evoluciones, recetas e imágenes siguen en el software clínico. Atlas lleva el odontograma y la relación con el paciente."}
           </p>
         </div>
       </div>

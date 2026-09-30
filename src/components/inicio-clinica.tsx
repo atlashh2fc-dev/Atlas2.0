@@ -2,14 +2,14 @@ import Link from "next/link";
 import { BadgeCheck, CalendarClock, CalendarX2, ChartColumn, CheckCheck, HandCoins, Hourglass, Megaphone, MessageCircle, Percent, PhoneCall, Plus, UserPlus, UserRound } from "lucide-react";
 
 import { Badge, Callout, EmptyState, MetricCard, PageHeader, SectionCard, buttonClasses } from "@/components/ui";
-import { PACIENTES_POR_EDICION, VENTAS_POR_EDICION, type Edicion } from "@/lib/ediciones";
+import { PACIENTES_POR_EDICION, VENTAS_POR_EDICION, type Clinica } from "@/lib/ediciones";
 import { ETIQUETA_ESTADO, ocupaHorario, primero as primeroDe, type Cita } from "@/lib/citas";
 import { REPORT_TIME_ZONE } from "@/lib/report-range";
 import { createClient } from "@/lib/supabase/server";
 import type { Profile } from "@/lib/types";
 
 /**
- * Inicio de una clínica (Dental o Vet).
+ * Inicio de una clínica (Dental o Vet) o de una barbería.
  *
  * Una clínica no opera colas ni discador: vive de presupuestos que se aceptan
  * o se enfrían. Lo primero que tiene que ver quien abre Atlas es a quién hay que
@@ -84,12 +84,13 @@ export async function InicioClinica({
   leeConversaciones,
 }: {
   profile: Profile;
-  edicion: Exclude<Edicion, "center">;
+  edicion: Clinica;
   empresa: string | null;
   leeConversaciones: boolean;
 }) {
   const supabase = await createClient();
   const voc = VENTAS_POR_EDICION[edicion];
+  const genteDeLaFicha = PACIENTES_POR_EDICION[edicion].titulo.toLowerCase();
   const mensual = voc.monto === "mensual";
   const soloMios = profile.role === "agente";
   const ahora = new Date();
@@ -209,7 +210,7 @@ export async function InicioClinica({
     <div className="space-y-5">
       <PageHeader
         title={`Hola, ${primerNombre}`}
-        description={`${empresa ?? "Tu clínica"} · ${fechaLarga.format(ahora)}${soloMios ? " · tus pacientes" : ""}`}
+        description={`${empresa ?? (edicion === "barber" ? "Tu barbería" : "Tu clínica")} · ${fechaLarga.format(ahora)}${soloMios ? ` · tus ${genteDeLaFicha}` : ""}`}
         actions={
           <div className="flex flex-wrap gap-2">
             <Link href="/dashboard/citas" className={buttonClasses()}>
@@ -385,7 +386,7 @@ export async function InicioClinica({
             </div>
           </SectionCard>
 
-          <SectionCard icon={MessageCircle} tone="green" title="WhatsApp" description="Conversaciones con pacientes que siguen abiertas.">
+          <SectionCard icon={MessageCircle} tone="green" title="WhatsApp" description={`Conversaciones con ${genteDeLaFicha} que siguen abiertas.`}>
             <div className="flex items-end gap-3 px-4 py-4">
               <dl className="grid flex-1 grid-cols-2 gap-3">
                 <Baldosa label="Abiertas" valor={abiertas} />
@@ -405,7 +406,7 @@ export async function InicioClinica({
         <SectionCard icon={UserRound} tone="blue" title="Aceptación por profesional" description={`${voc.negocios} de cada profesional y cuánto se aceptó.`}>
           <TablaConversion filas={porProfesional} />
         </SectionCard>
-        <SectionCard icon={Megaphone} tone="rose" title="Por canal de origen" description="De dónde llegan los pacientes que aceptan.">
+        <SectionCard icon={Megaphone} tone="rose" title="Por canal de origen" description={`De dónde llegan los ${genteDeLaFicha} que aceptan.`}>
           <TablaConversion filas={porOrigen} />
         </SectionCard>
       </div>

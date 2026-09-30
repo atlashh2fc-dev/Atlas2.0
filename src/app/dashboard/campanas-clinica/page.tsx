@@ -78,11 +78,11 @@ export default async function CampanasClinicaPage({ searchParams }: { searchPara
     <div className="space-y-5">
       <PageHeader
         title="Campañas"
-        description={`Segmentos de ${empresa ?? "la clínica"}, un mensaje y una fecha. Salen por la misma cola que los recordatorios; los resultados se leen de ahí.`}
+        description={`Segmentos de ${empresa ?? (edicion === "barber" ? "la barbería" : "la clínica")}, un mensaje y una fecha. Salen por la misma cola que los recordatorios; los resultados se leen de ahí.`}
         actions={
           <CreatePanel label="Nueva campaña" title="Nueva campaña" description="Elige a quién, escribe el mensaje y decide cuándo. Antes de lanzar vas a ver cuántas fichas entran." action={crearCampana} submitLabel="Guardar borrador" successLabel="Campaña guardada">
             <Field label="Nombre">
-              <Input name="nombre" required placeholder={esVet ? "Vacunas de primavera" : "Control semestral"} data-autofocus />
+              <Input name="nombre" required placeholder={esVet ? "Vacunas de primavera" : edicion === "barber" ? "Fade de fin de mes" : "Control semestral"} data-autofocus />
             </Field>
             <Field label="Segmento">
               <Select name="segmento" required defaultValue={segmentos[0]?.id}>
@@ -94,7 +94,7 @@ export default async function CampanasClinicaPage({ searchParams }: { searchPara
               </Select>
             </Field>
             <Field label="Parámetro del segmento (días, meses o especie, según el segmento)">
-              <Input name="parametro" placeholder="30 · 6 · Perro" />
+              <Input name="parametro" placeholder={esVet ? "30 · 6 · Perro" : edicion === "barber" ? "1 (meses sin venir)" : "6 (meses sin venir)"} />
             </Field>
             <Field label="Canal">
               <Select name="canal" defaultValue="auto">

@@ -62,7 +62,7 @@ async function campaignForEvent(
 async function clinicaDelCanal(admin: AdminClient, organizationId: string | null): Promise<string | null> {
   if (!organizationId) return null;
   const { data } = await admin.from("organizations").select("id, edicion").eq("id", organizationId).maybeSingle();
-  return data && (data.edicion === "vet" || data.edicion === "dental") ? (data.id as string) : null;
+  return data && (data.edicion === "vet" || data.edicion === "dental" || data.edicion === "barber") ? (data.id as string) : null;
 }
 
 async function channelForEvent(admin: AdminClient, event: ParsedWhatsAppEvent) {

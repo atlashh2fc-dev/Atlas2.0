@@ -1,12 +1,13 @@
 import { unstable_noStore as noStore } from "next/cache";
-import { Stethoscope } from "lucide-react";
+import { Scissors, Stethoscope } from "lucide-react";
 
 import { crearProcedimiento, guardarProcedimiento } from "@/app/actions/atenciones";
 import { CreatePanel } from "@/components/create-panel";
 import { ActionForm, ActionSubmit, Badge, Callout, Field, Input, PageHeader, SectionCard, Select } from "@/components/ui";
 import { InsumosProvider } from "@/components/insumos-context";
 import { RecetaEditor } from "@/components/receta-editor";
-import { CATEGORIAS, ETIQUETA_APLICA_A, porCategoria, type Insumo, type Procedimiento } from "@/lib/arancel";
+import { APLICA_POR_EDICION, CATEGORIAS, ETIQUETA_APLICA_A, porCategoria, type Insumo, type Procedimiento } from "@/lib/arancel";
+import { clinicaDe } from "@/lib/ediciones";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
 import { ESTADOS, INFO_ESTADO } from "@/lib/odontograma";
 import { createClient } from "@/lib/supabase/server";
@@ -22,7 +23,9 @@ import { createClient } from "@/lib/supabase/server";
 export default async function ArancelesPage() {
   noStore();
   const { edicion } = await contextoDeMiEmpresa();
-  const clinica = edicion === "vet" ? "vet" : "dental";
+  const clinica = clinicaDe(edicion);
+  const esBarber = clinica === "barber";
+  const nombre = esBarber ? { titulo: "Servicios y precios", singular: "servicio", plural: "servicios", nuevo: "Nuevo servicio", de: "la barbería" } : { titulo: "Procedimientos y precios", singular: "procedimiento", plural: "procedimientos", nuevo: "Nuevo procedimiento", de: "la clínica" };
   const supabase = await createClient();
   const [{ data, error }, { data: insumosData }] = await Promise.all([
     supabase
@@ -39,25 +42,25 @@ export default async function ArancelesPage() {
 
   const procedimientos = (data ?? []) as Procedimiento[];
   const grupos = porCategoria(procedimientos);
-  const aplicables = clinica === "vet" ? (["mascota", "region"] as const) : (["boca", "pieza", "superficie"] as const);
+  const aplicables = APLICA_POR_EDICION[clinica];
 
   return (
     <InsumosProvider insumos={(insumosData ?? []) as unknown as Insumo[]}>
     <div className="space-y-5">
       <PageHeader
-        title="Procedimientos y precios"
-        description={`El arancel de la clínica: de acá salen los presupuestos y las atenciones. ${procedimientos.length} procedimientos en ${grupos.length} categorías.`}
+        title={nombre.titulo}
+        description={`El arancel de ${nombre.de}: de acá salen los ${esBarber ? "paquetes" : "presupuestos"} y las atenciones. ${procedimientos.length} ${nombre.plural} en ${grupos.length} categorías.`}
         actions={
           <CreatePanel
-            label="Nuevo procedimiento"
-            title="Nuevo procedimiento"
-            description="Queda disponible de inmediato para presupuestos y atenciones."
+            label={nombre.nuevo}
+            title={nombre.nuevo}
+            description={`Queda disponible de inmediato para ${esBarber ? "paquetes" : "presupuestos"} y atenciones.`}
             action={crearProcedimiento}
             submitLabel="Agregar al arancel"
-            successLabel="Procedimiento agregado"
+            successLabel={`${nombre.singular[0].toUpperCase()}${nombre.singular.slice(1)} agregado`}
           >
             <Field label="Nombre">
-              <Input name="nombre" required placeholder={clinica === "vet" ? "Ecografía cardíaca" : "Carilla de resina"} data-autofocus />
+              <Input name="nombre" required placeholder={clinica === "vet" ? "Ecografía cardíaca" : esBarber ? "Skin fade + diseño" : "Carilla de resina"} data-autofocus />
             </Field>
             <Field label="Categoría">
               <Select name="categoria" defaultValue={CATEGORIAS[clinica][0]}>
@@ -68,10 +71,10 @@ export default async function ArancelesPage() {
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Precio (CLP)">
-                <Input name="precio" inputMode="numeric" placeholder="45000" />
+                <Input name="precio" inputMode="numeric" placeholder={esBarber ? "15000" : "45000"} />
               </Field>
               <Field label="Duración (min)">
-                <Input name="duracion" inputMode="numeric" placeholder="40" />
+                <Input name="duracion" inputMode="numeric" placeholder={esBarber ? "45" : "40"} />
               </Field>
             </div>
             <Field label="Se aplica a">
@@ -96,7 +99,7 @@ export default async function ArancelesPage() {
               </Field>
             )}
             <label className="flex items-center gap-2 text-sm text-foreground">
-              <input type="checkbox" name="urgencia" value="si" className="size-4 accent-[var(--primary)]" /> Es una urgencia
+              <input type="checkbox" name="urgencia" value="si" className="size-4 accent-[var(--primary)]" /> {esBarber ? "Es de última hora (sin reserva)" : "Es una urgencia"}
             </label>
           </CreatePanel>
         }
@@ -105,7 +108,7 @@ export default async function ArancelesPage() {
       {error && <Callout tone="danger">No se pudo leer el arancel. Vuelve a cargar para reintentar.</Callout>}
 
       {grupos.map(([categoria, items]) => (
-        <SectionCard key={categoria} icon={Stethoscope} tone="green" title={categoria} description={`${items.length} ${items.length === 1 ? "procedimiento" : "procedimientos"}`}>
+        <SectionCard key={categoria} icon={esBarber ? Scissors : Stethoscope} tone="green" title={categoria} description={`${items.length} ${items.length === 1 ? nombre.singular : nombre.plural}`}>
           <div className="divide-y divide-border">
             {items.map((procedimiento) => (
               <div key={procedimiento.id}>
@@ -129,7 +132,7 @@ export default async function ArancelesPage() {
                         {INFO_ESTADO[procedimiento.resultado_odontograma as keyof typeof INFO_ESTADO]?.label.toLowerCase()}
                       </span>
                     )}
-                    {procedimiento.es_urgencia && <Badge tone="danger">Urgencia</Badge>}
+                    {procedimiento.es_urgencia && <Badge tone="danger">{esBarber ? "Última hora" : "Urgencia"}</Badge>}
                     {!procedimiento.active && <Badge tone="neutral">Inactivo</Badge>}
                   </div>
                 </div>
@@ -158,7 +161,7 @@ export default async function ArancelesPage() {
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   <label className="flex items-center gap-1.5">
                     <input type="checkbox" name="urgencia" value="si" defaultChecked={procedimiento.es_urgencia} className="size-3.5 accent-[var(--primary)]" />
-                    Urgencia
+                    {esBarber ? "Última hora" : "Urgencia"}
                   </label>
                   <label className="flex items-center gap-1.5">
                     <input type="hidden" name="activo" value="no" />
