@@ -22,6 +22,7 @@ import {
   type LucideIcon,
   HeartPulse,
   Package,
+  PawPrint,
   Receipt,
   CalendarDays,
   Wallet,
@@ -395,7 +396,7 @@ const WORKSPACE_SECTIONS: Record<AppRole, Record<NavSpaceId, SectionSpec[]>> = {
     ],
     admin: [
       { id: "setup-contact-center", label: "Contact center", itemIds: ["campanas", "colas", "flujos", "estados-agente", "cargas", "correo-empresa"] },
-      { id: "setup-clinic", label: "Clínica", itemIds: ["aranceles", "insumos", "correo-clinica"] },
+      { id: "setup-clinic", label: "Clínica", itemIds: ["aranceles", "insumos", "mascotas-3d", "correo-clinica"] },
       // Lo de la cuenta de esta empresa. Crear empresas, contratar
       // aplicaciones y mover personas entre empresas no es de ninguna empresa:
       // vive en la consola de plataforma (/plataforma), fuera de este menú.
@@ -497,6 +498,17 @@ const ADMIN: NavSpace = {
           roles: ["admin"],
           description: "Materiales de la clínica: costo, precio, stock y consumo",
           modules: ["ventas_b2c"],
+        },
+        {
+          // Solo en Vet: las razas de la clínica y el modelo realista de cada una.
+          id: "mascotas-3d",
+          label: "Mascotas 3D",
+          href: "/dashboard/admin/mascotas",
+          icon: PawPrint,
+          roles: ["admin"],
+          description: "Las razas de tus mascotas y su modelo realista para la ficha",
+          modules: ["ventas_b2c"],
+          ediciones: ["vet"],
         },
         {
           id: "cargas",

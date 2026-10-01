@@ -2,12 +2,15 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { RAZAS } from "@/lib/anatomia";
+import { RAZAS, razaDe } from "@/lib/anatomia";
 import {
   BUCKET_MASCOTA_MODELOS,
   LISTA_MOTORES,
+  MOTOR_DE_CLINICA,
+  claveDeRaza,
   type ModeloDeMascota,
   type Motor3D,
+  type RazaDeClinica,
 } from "@/lib/mascota-modelos";
 
 /**
@@ -197,4 +200,82 @@ export async function listarModelos(admin: SupabaseClient): Promise<ModeloDeMasc
   return ((data ?? []) as (Omit<ModeloDeMascota, "foto_url" | "modelo_url"> & { foto_path: string | null; modelo_path: string | null })[]).map(
     ({ foto_path, modelo_path, ...fila }) => ({ ...fila, foto_url: urlPublica(admin, foto_path), modelo_url: urlPublica(admin, modelo_path) }),
   );
+}
+
+type FilaDeRaza = { id: string; especie: "Perro" | "Gato"; raza: string; motor: Motor3D; estado: ModeloDeMascota["estado"]; foto_path: string | null; error: string | null; elegido: boolean; created_at: string };
+
+const EN_COLA = new Set<ModeloDeMascota["estado"]>(["generando", "guardando"]);
+
+async function filasPorRaza(admin: SupabaseClient) {
+  const { data } = await admin
+    .from("mascota_modelos")
+    .select("id, especie, raza, motor, estado, foto_path, error, elegido, created_at")
+    .order("created_at", { ascending: false })
+    .limit(500);
+  const porRaza = new Map<string, FilaDeRaza[]>();
+  for (const fila of (data ?? []) as FilaDeRaza[]) {
+    const clave = claveDeRaza(fila.especie, fila.raza);
+    porRaza.set(clave, [...(porRaza.get(clave) ?? []), fila]);
+  }
+  return porRaza;
+}
+
+/**
+ * Deja puesto el modelo de las razas que tienen uno listo y ninguno elegido:
+ * quien lo pide desde Configuración no compara, así que el primero que termina
+ * es el que va a las fichas. Si la plataforma ya eligió uno, no se toca.
+ */
+export async function elegirLosListos(admin: SupabaseClient) {
+  for (const filas of (await filasPorRaza(admin)).values()) {
+    if (filas.some((fila) => fila.elegido)) continue;
+    const listo = filas.find((fila) => fila.estado === "listo" && fila.motor === MOTOR_DE_CLINICA) ?? filas.find((fila) => fila.estado === "listo");
+    // El índice único (un elegido por raza) descarta el segundo si dos consultas llegan juntas.
+    if (listo) await admin.from("mascota_modelos").update({ elegido: true, updated_at: new Date().toISOString() }).eq("id", listo.id);
+  }
+}
+
+/**
+ * Las razas de las mascotas de la clínica, de la más común a la menos, con el
+ * estado de su modelo. `clinica` es el cliente de la sesión: solo ve las
+ * mascotas de su empresa. Una raza fuera del catálogo se dibuja como mestizo,
+ * así que cuenta ahí.
+ */
+export async function razasDeLaClinica(clinica: SupabaseClient, admin: SupabaseClient): Promise<RazaDeClinica[]> {
+  const [{ data: mascotas }, modelos] = await Promise.all([clinica.from("mascotas").select("especie, raza").limit(10000), filasPorRaza(admin)]);
+  const cuenta = new Map<string, { especie: "Perro" | "Gato"; raza: string; mascotas: number }>();
+  for (const mascota of (mascotas ?? []) as { especie: string | null; raza: string | null }[]) {
+    const raza = razaDe(mascota.especie, mascota.raza);
+    const clave = claveDeRaza(raza.especie, raza.nombre);
+    const actual = cuenta.get(clave) ?? { especie: raza.especie, raza: raza.nombre, mascotas: 0 };
+    cuenta.set(clave, { ...actual, mascotas: actual.mascotas + 1 });
+  }
+  return [...cuenta.entries()]
+    .map(([clave, raza]): RazaDeClinica => {
+      const filas = modelos.get(clave) ?? [];
+      const ultima = filas[0];
+      const estado = filas.some((fila) => fila.elegido)
+        ? "realista"
+        : filas.some((fila) => EN_COLA.has(fila.estado) || fila.estado === "listo")
+          ? "generando"
+          : ultima?.estado === "fallido"
+            ? "fallida"
+            : "dibujada";
+      return {
+        ...raza,
+        estado,
+        foto_url: urlPublica(admin, filas.find((fila) => fila.foto_path)?.foto_path ?? null),
+        error: estado === "fallida" ? (ultima?.error ?? null) : null,
+      };
+    })
+    .sort((a, b) => b.mascotas - a.mascotas || a.raza.localeCompare(b.raza));
+}
+
+/**
+ * Pide el modelo de una raza desde Configuración. No repite un pedido: si la
+ * raza ya tiene modelo o hay uno en camino, no gasta de nuevo.
+ */
+export async function pedirParaClinica(admin: SupabaseClient, especie: "Perro" | "Gato", raza: string) {
+  const filas = (await filasPorRaza(admin)).get(claveDeRaza(especie, raza)) ?? [];
+  if (filas.some((fila) => fila.elegido || fila.estado === "listo" || EN_COLA.has(fila.estado))) return;
+  await pedirPrueba(admin, especie, raza, [MOTOR_DE_CLINICA]);
 }

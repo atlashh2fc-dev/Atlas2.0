@@ -47,3 +47,24 @@ export function costoDePrueba(motores: Motor3D[]): { total: number; incompleto: 
   }
   return { total, incompleto };
 }
+
+/**
+ * Desde Configuración la clínica no compara motores: pide el modelo de una raza
+ * y queda puesto solo. Va con un único motor para que el gasto por raza sea
+ * conocido; comparar y cambiar de motor sigue en la consola de plataforma.
+ */
+export const MOTOR_DE_CLINICA: Motor3D = "tripo";
+
+/** Lo que cuesta pedir una raza desde Configuración: la foto y ese motor. */
+export const COSTO_POR_RAZA = costoDePrueba([MOTOR_DE_CLINICA]).total;
+
+/** Una raza de las mascotas de la clínica y en qué está su modelo. */
+export type RazaDeClinica = {
+  especie: "Perro" | "Gato";
+  raza: string;
+  /** Cuántas mascotas de la clínica son de esta raza. */
+  mascotas: number;
+  estado: "realista" | "generando" | "fallida" | "dibujada";
+  foto_url: string | null;
+  error: string | null;
+};
