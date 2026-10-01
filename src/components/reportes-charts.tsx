@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import { BarChart3 } from "lucide-react";
 import { EmptyState } from "@/components/ui";
+import { ChartTooltip } from "@/components/report-kit";
 import type { AgentPerformance, WorkflowCompliance } from "@/lib/types";
 import {
   CHART_AXIS_TICK as AXIS_TICK,
@@ -22,8 +23,6 @@ import {
   CHART_CURSOR,
   CHART_GRID,
   CHART_LEGEND_STYLE,
-  CHART_TOOLTIP_LABEL_STYLE,
-  CHART_TOOLTIP_STYLE as TOOLTIP_STYLE,
   chartGradients,
   gradientUrl,
   useChartId,
@@ -107,9 +106,9 @@ export function AgentPerformanceChart({ agents }: { agents: AgentPerformance[] }
       <BarChart data={top} layout="vertical" margin={{ left: 8, right: 16 }} barGap={3}>
         {chartGradients(chartId, ["primary", "teal", "green"], "horizontal-bars")}
         <CartesianGrid {...CHART_GRID} horizontal={false} />
-        <XAxis type="number" tick={AXIS_TICK} allowDecimals={false} />
-        <YAxis type="category" dataKey="name" width={140} tick={AXIS_TICK} />
-        <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} cursor={CHART_CURSOR} formatter={(value) => fmtInt(Number(value))} />
+        <XAxis type="number" tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false} />
+        <YAxis type="category" dataKey="name" width={140} tick={AXIS_TICK} tickLine={false} axisLine={false} />
+        <Tooltip cursor={CHART_CURSOR} content={<ChartTooltip />} />
         <Legend wrapperStyle={CHART_LEGEND_STYLE} iconType="circle" iconSize={8} />
         <Bar dataKey="Gestiones" fill={gradientUrl(chartId, "primary")} radius={[0, 6, 6, 0]} maxBarSize={14} />
         <Bar dataKey="Registros gestionados" fill={gradientUrl(chartId, "teal")} radius={[0, 6, 6, 0]} maxBarSize={14} />
@@ -142,11 +141,11 @@ export function WorkflowComplianceChart({ workflows }: { workflows: WorkflowComp
       <BarChart data={data} layout="vertical" margin={{ left: 8, right: 24 }}>
         {chartGradients(chartId, ["success", "warning", "danger", "muted"], "horizontal-bars")}
         <CartesianGrid {...CHART_GRID} horizontal={false} />
-        <XAxis type="number" domain={[0, 100]} tick={AXIS_TICK} unit="%" />
-        <YAxis type="category" dataKey="name" width={150} tick={AXIS_TICK} />
+        <XAxis type="number" domain={[0, 100]} tick={AXIS_TICK} tickLine={false} axisLine={false} unit="%" />
+        <YAxis type="category" dataKey="name" width={150} tick={AXIS_TICK} tickLine={false} axisLine={false} />
         <Tooltip
-          contentStyle={TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} cursor={CHART_CURSOR}
-          formatter={(value) => [value !== null ? `${value}%` : "—", "Cumplimiento"] as [string, string]}
+          cursor={CHART_CURSOR}
+          content={<ChartTooltip names={{ rate: "Cumplimiento" }} formatValue={(value) => `${value}%`} />}
         />
         <Bar dataKey="rate" radius={[0, 6, 6, 0]} maxBarSize={22}>
           {data.map((entry, i) => (
@@ -177,12 +176,16 @@ export function SupervisorTipificationsChart({ tipifications }: { tipifications:
       <BarChart data={top} layout="vertical" margin={{ top: 4, right: 24, bottom: 4, left: 8 }}>
         {chartGradients(chartId, ["violet", "primary"], "horizontal-bars")}
         <CartesianGrid {...CHART_GRID} horizontal={false} />
-        <XAxis type="number" tick={AXIS_TICK} allowDecimals={false} />
-        <YAxis type="category" dataKey="name" width={190} tick={AXIS_TICK} />
+        <XAxis type="number" tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false} />
+        <YAxis type="category" dataKey="name" width={190} tick={AXIS_TICK} tickLine={false} axisLine={false} />
         <Tooltip
-          contentStyle={TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} cursor={CHART_CURSOR}
-          formatter={(value) => [fmtInt(Number(value)), "Cantidad"] as [string, string]}
-          labelFormatter={(_, payload) => payload?.[0]?.payload?.fullName ?? ""}
+          cursor={CHART_CURSOR}
+          content={
+            <ChartTooltip
+              names={{ count: "Cantidad" }}
+              formatLabel={(_, payload) => String(payload[0]?.payload?.fullName ?? "")}
+            />
+          }
         />
         <Bar dataKey="count" fill={gradientUrl(chartId, "primary")} radius={[0, 6, 6, 0]} maxBarSize={20}>
           {top.map((_, i) => (
@@ -214,9 +217,9 @@ export function SupervisorDailyChart({ daily }: { daily: SupervisorDailyPoint[] 
       <AreaChart data={data} margin={{ top: 8, right: 18, bottom: 0, left: 0 }}>
         {chartGradients(chartId, ["primary", "teal", "green"], "area")}
         <CartesianGrid {...CHART_GRID} vertical={false} />
-        <XAxis dataKey="day" tick={AXIS_TICK} tickMargin={8} />
-        <YAxis tick={AXIS_TICK} allowDecimals={false} tickFormatter={(value) => fmtInt(Number(value))} />
-        <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} cursor={{ stroke: "var(--border-strong)" }} formatter={(value) => fmtInt(Number(value))} />
+        <XAxis dataKey="day" tick={AXIS_TICK} tickLine={false} axisLine={false} tickMargin={8} />
+        <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false} tickFormatter={(value) => fmtInt(Number(value))} />
+        <Tooltip cursor={{ stroke: "var(--border-strong)" }} content={<ChartTooltip />} />
         <Legend wrapperStyle={CHART_LEGEND_STYLE} iconType="circle" iconSize={8} />
         <Area type="monotone" dataKey="Gestiones" stroke={CHART_COLOR.primary} fill={gradientUrl(chartId, "primary")} strokeWidth={2.25} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
         <Area type="monotone" dataKey="Contactados" stroke={CHART_COLOR.teal} fill={gradientUrl(chartId, "teal")} strokeWidth={2.25} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
@@ -242,9 +245,9 @@ export function SupervisorPipelineChart({ kpis }: { kpis: SupervisorPipelineKpis
       <BarChart data={data} layout="vertical" margin={{ top: 8, right: 28, bottom: 0, left: 8 }}>
         {chartGradients(chartId, ["primary", "amber", "green"], "horizontal-bars")}
         <CartesianGrid {...CHART_GRID} horizontal={false} />
-        <XAxis type="number" tick={AXIS_TICK} tickFormatter={(value) => fmtInt(Number(value))} />
-        <YAxis type="category" dataKey="name" width={120} tick={AXIS_TICK} />
-        <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} cursor={CHART_CURSOR} formatter={(value) => fmtInt(Number(value))} />
+        <XAxis type="number" tick={AXIS_TICK} tickLine={false} axisLine={false} tickFormatter={(value) => fmtInt(Number(value))} />
+        <YAxis type="category" dataKey="name" width={120} tick={AXIS_TICK} tickLine={false} axisLine={false} />
+        <Tooltip cursor={CHART_CURSOR} content={<ChartTooltip />} />
         <Bar dataKey="value" radius={[0, 6, 6, 0]} maxBarSize={26}>
           {data.map((entry) => (
             <Cell
@@ -285,9 +288,9 @@ export function SupervisorAgentFocusChart({ agents }: { agents: SupervisorAgentC
     <ResponsiveContainer width="100%" height={Math.max(320, data.length * 38)}>
       <BarChart data={data} layout="vertical" margin={{ top: 8, right: 24, bottom: 0, left: 8 }}>
         <CartesianGrid {...CHART_GRID} horizontal={false} />
-        <XAxis type="number" tick={AXIS_TICK} tickFormatter={(value) => fmtInt(Number(value))} />
-        <YAxis type="category" dataKey="name" width={150} tick={AXIS_TICK} />
-        <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} cursor={CHART_CURSOR} formatter={(value) => fmtInt(Number(value))} />
+        <XAxis type="number" tick={AXIS_TICK} tickLine={false} axisLine={false} tickFormatter={(value) => fmtInt(Number(value))} />
+        <YAxis type="category" dataKey="name" width={150} tick={AXIS_TICK} tickLine={false} axisLine={false} />
+        <Tooltip cursor={CHART_CURSOR} content={<ChartTooltip />} />
         <Legend wrapperStyle={CHART_LEGEND_STYLE} iconType="circle" iconSize={8} />
         <Bar dataKey="Contactados" stackId="a" fill={CHART_COLOR.teal} maxBarSize={20} />
         <Bar dataKey="No contacto" stackId="a" fill={CHART_COLOR.amber} maxBarSize={20} />

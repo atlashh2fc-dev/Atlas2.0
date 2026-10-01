@@ -51,12 +51,10 @@ function ResultColumn({ group, total }: { group: TipificationGroup; total: numbe
   const share = total > 0 ? (group.count / total) * 100 : 0;
 
   return (
-    <div
-      className="flex flex-col rounded-lg border border-border border-l-2 bg-background p-4"
-      style={{ borderLeftColor: palette.bar }}
-    >
+    <div className="flex flex-col rounded-lg border border-border bg-surface-raised p-4">
       <div className="flex items-baseline justify-between gap-2">
-        <span className={`text-xs font-medium ${palette.text}`}>
+        <span className="flex items-center gap-2 text-xs font-medium text-foreground">
+          <span aria-hidden="true" className="size-2 rounded-full" style={{ background: palette.bar }} />
           {palette.label}
         </span>
         <span className="text-[11px] tabular-nums text-muted-foreground">{fmtPct(share)}</span>
@@ -76,15 +74,24 @@ function ResultColumn({ group, total }: { group: TipificationGroup; total: numbe
         />
       </div>
 
-      <ul className="mt-3 space-y-1.5">
+      <ul className="mt-3 space-y-2">
         {shown.map((detail) => (
-          <li key={detail.reason} className="flex items-baseline justify-between gap-2">
-            <span className="truncate text-xs text-muted-foreground" title={detail.label}>
-              {detail.label}
-            </span>
-            <span className="shrink-0 text-xs font-medium tabular-nums text-foreground">
-              {fmtInt(detail.count)}
-            </span>
+          <li key={detail.reason}>
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="truncate text-xs text-muted-foreground" title={detail.label}>
+                {detail.label}
+              </span>
+              <span className="shrink-0 text-xs font-medium tabular-nums text-foreground">
+                {fmtInt(detail.count)}
+              </span>
+            </div>
+            {/* Peso del motivo dentro de su resultado. */}
+            <div className="mt-1 h-0.5 overflow-hidden rounded-full bg-surface-muted">
+              <div
+                className="h-full rounded-full"
+                style={{ width: `${group.count > 0 ? (detail.count / group.count) * 100 : 0}%`, background: palette.bar, opacity: 0.6 }}
+              />
+            </div>
           </li>
         ))}
       </ul>

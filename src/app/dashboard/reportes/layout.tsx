@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { ChartColumnBig } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { requireModule } from "@/lib/modules.server";
 import { NavTabs, PageHeader } from "@/components/ui";
@@ -17,6 +18,7 @@ export default async function ReportesLayout({ children }: { children: React.Rea
     <div className="space-y-5">
       <PageHeader
         title="Reportes"
+        icon={ChartColumnBig}
         description="Indicadores de gestión del equipo y métricas del discador."
         className="border-b-0 pb-0"
       />

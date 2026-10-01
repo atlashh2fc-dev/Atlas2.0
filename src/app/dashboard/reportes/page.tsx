@@ -16,9 +16,7 @@ import {
 } from "@/components/reportes-charts";
 import { SupervisorAgentMetricsTable } from "@/components/supervisor-agent-metrics-table";
 import { ChartDownloadButton } from "@/components/chart-download-button";
-import Link from "next/link";
 import {
-  ArrowRight,
   BarChart3,
   CalendarClock,
   CalendarX2,
@@ -44,13 +42,11 @@ import {
   Callout,
   Card,
   EmptyState,
-  InfoTooltip,
-  MetricIconChip,
   SectionCard,
   Select,
-  type IconTone,
   type SectionTone,
 } from "@/components/ui";
+import { KpiStrip, KpiStripItem } from "@/components/report-kit";
 import { metricDefinition, type MetricId } from "@/lib/metric-definitions";
 import { resolveCampaignScope } from "@/lib/campaign-scope";
 import {
@@ -170,90 +166,10 @@ function percent(part: number | null | undefined, total: number | null | undefin
   return (Number(part ?? 0) / denominator) * 100;
 }
 
-/**
- * Tarjeta local del tablero de gestión: agrega definición del glosario y enlace
- * al detalle sobre el mismo diseño del sistema.
- */
-function MetricCard({
-  label,
-  value,
-  detail,
-  tone = "default",
-  progress,
-  metric,
-  href,
-  icon,
-  iconTone,
-}: {
-  label: string;
-  value: string;
-  detail?: string;
-  tone?: "default" | "good" | "warn" | "danger";
-  progress?: number;
-  metric?: MetricId;
-  href?: string;
-  icon: LucideIcon;
-  iconTone: IconTone;
-}) {
-  const toneClass =
-    tone === "good"
-      ? "border-success/30"
-      : tone === "warn"
-        ? "border-warning/40"
-        : tone === "danger"
-          ? "border-danger/30"
-          : "border-border";
-  const valueClass =
-    tone === "good" ? "text-success" : tone === "warn" ? "text-warning" : tone === "danger" ? "text-danger" : "text-foreground";
-  // Con alerta el chip toma el color del estado, igual que la tarjeta del sistema.
-  const chipTone: IconTone = tone === "warn" ? "amber" : tone === "danger" ? "rose" : iconTone;
-  const clampedProgress =
-    typeof progress === "number" ? Math.min(100, Math.max(0, progress)) : null;
-  const barClass =
-    tone === "good"
-      ? "bg-success"
-      : tone === "warn"
-        ? "bg-warning"
-        : tone === "danger"
-          ? "bg-danger"
-          : "bg-primary";
-
-  const definition = metric ? metricDefinition(metric) : null;
-  const body = (
-    <>
-      <div className="flex items-start justify-between gap-2">
-        <p className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
-          {label}
-          {definition && <InfoTooltip text={definition.definition} formula={definition.formula} />}
-        </p>
-        <MetricIconChip icon={icon} tone={chipTone} />
-      </div>
-      <p className={`mt-1.5 text-2xl font-semibold tabular-nums tracking-tight ${valueClass}`}>{value}</p>
-      {detail && <p className="mt-1.5 text-xs text-muted-foreground">{detail}</p>}
-      {clampedProgress !== null && (
-        <div className="mt-3 h-1 overflow-hidden rounded-full bg-surface-muted">
-          <div className={`h-full rounded-full ${barClass}`} style={{ width: `${clampedProgress}%` }} />
-        </div>
-      )}
-      {href && (
-        <span className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary">
-          Ver detalle
-          <ArrowRight size={13} aria-hidden="true" />
-        </span>
-      )}
-    </>
-  );
-
-  const base = `block rounded-xl border ${toneClass} bg-surface p-4 shadow-sm`;
-  if (!href) return <div className={base}>{body}</div>;
-  return (
-    <Link
-      href={href}
-      className={`${base} transition-[border-color,box-shadow] hover:border-border-strong hover:shadow-md`}
-    >
-      {body}
-    </Link>
-  );
+/** Definición del glosario en la forma que pide la franja de KPIs. */
+function glosario(metric: MetricId) {
+  const definition = metricDefinition(metric);
+  return { text: definition.definition, formula: definition.formula };
 }
 
 function ChartPanel({
@@ -479,112 +395,107 @@ export default async function ReportesPage({
           </div>
         </div>
 
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <MetricCard
+        {/* Doce indicadores en tres franjas con nombre: cobertura de la base,
+            contacto y agenda, resultado. Doce cajas sueltas no se leían. */}
+        <KpiStrip title="Cobertura de la base" columns={4}>
+          <KpiStripItem
             label={vocabulary.base}
+            icon={Database}
             href={`/dashboard/leads${campaignQuery}`}
             value={formatNumber(kpis.base_total)}
             detail={`${formatNumber(kpis.asignados)} asignados`}
             progress={percent(kpis.asignados, kpis.base_total)}
-            icon={Database}
-            iconTone="blue"
           />
-          <MetricCard
+          <KpiStripItem
             label="Recorridos"
+            icon={Route}
             value={formatNumber(kpis.recorridos)}
             detail={`${formatNumber(kpis.vocalcom_recorridos)} desde Vocalcom`}
             progress={percent(kpis.recorridos, kpis.base_total)}
-            icon={Route}
-            iconTone="primary"
           />
-          <MetricCard
+          <KpiStripItem
             label="Contactados"
-            metric="contactabilidad"
+            icon={UserCheck}
+            definition={glosario("contactabilidad")}
             href={`/dashboard/leads?view=gestionados${selectedCampaign ? `&campaign=${encodeURIComponent(selectedCampaign.id)}` : ""}`}
             value={formatNumber(kpis.contactados)}
             detail={`Contactabilidad ${formatPercent(kpis.contactabilidad)} · ${formatNumber(kpis.vocalcom_contactados)} Vocalcom`}
             tone="good"
-            progress={kpis.contactabilidad ?? 0}
-            icon={UserCheck}
-            iconTone="teal"
+            trend={report.daily.map((day) => day.contactos_efectivos)}
           />
-          <MetricCard
+          <KpiStripItem
             label={vocabulary.kpi.gestiones}
+            icon={ClipboardList}
             value={formatNumber(kpis.crm_gestiones)}
             detail={
               kpis.llamadas_atlas1
-                ? `${formatNumber(kpis.llamadas_cerradas)} llamadas cerradas · ${formatNumber(kpis.llamadas_atlas1)} del historial de Atlas 1`
+                ? `${formatNumber(kpis.llamadas_cerradas)} llamadas cerradas · ${formatNumber(kpis.llamadas_atlas1)} de Atlas 1`
                 : `${formatNumber(kpis.llamadas_cerradas)} llamadas cerradas`
             }
-            progress={percent(kpis.crm_gestiones, kpis.llamadas_cerradas)}
-            icon={ClipboardList}
-            iconTone="violet"
+            trend={report.daily.map((day) => day.crm_gestiones)}
           />
-          <MetricCard
+        </KpiStrip>
+
+        <KpiStrip title="Contacto y agenda" columns={4}>
+          <KpiStripItem
             label="No contacto"
+            icon={PhoneMissed}
             value={formatNumber(kpis.no_contacto)}
             detail="No contesta, ocupado, buzón o fuera de servicio"
             progress={percent(kpis.no_contacto, kpis.llamadas_cerradas)}
             tone="warn"
-            icon={PhoneMissed}
-            iconTone="amber"
           />
-          <MetricCard
+          <KpiStripItem
             label={vocabulary.kpi.agendas}
+            icon={CalendarClock}
             href={`/dashboard/leads?view=hoy${selectedCampaign ? `&campaign=${encodeURIComponent(selectedCampaign.id)}` : ""}`}
             value={formatNumber(kpis.agendas_creadas)}
             detail={`${formatNumber(kpis.agendas_pendientes)} pendientes`}
-            progress={percent(kpis.agendas_pendientes, kpis.agendas_creadas)}
-            icon={CalendarClock}
-            iconTone="amber"
+            trend={report.daily.map((day) => day.agendas)}
           />
-          <MetricCard
+          <KpiStripItem
             label={vocabulary.kpi.agendasVencidas}
+            icon={CalendarX2}
             href={`/dashboard/leads?view=vencidas${selectedCampaign ? `&campaign=${encodeURIComponent(selectedCampaign.id)}` : ""}`}
             value={formatNumber(kpis.agendas_vencidas)}
             detail={vocabulary.kpi.agendasVencidasDetalle}
             tone={kpis.agendas_vencidas > 0 ? "danger" : "default"}
             progress={percent(kpis.agendas_vencidas, kpis.agendas_creadas)}
-            icon={CalendarX2}
-            iconTone="amber"
           />
-          <MetricCard
+          <KpiStripItem
             label="TMO"
-            metric="tmo"
+            icon={Timer}
+            definition={glosario("tmo")}
             value={formatDuration(kpis.tmo_seconds)}
             detail="Promedio de llamadas cerradas"
-            icon={Timer}
-            iconTone="amber"
           />
-          <MetricCard
+        </KpiStrip>
+
+        <KpiStrip title="Resultado" columns={4}>
+          <KpiStripItem
             label={vocabulary.kpi.intermedio}
-            value={formatNumber(kpis.cotizaciones)}
-            progress={percent(kpis.cotizaciones, kpis.contactados)}
             icon={Target}
-            iconTone="green"
+            value={formatNumber(kpis.cotizaciones)}
+            detail={`${formatPercent(percent(kpis.cotizaciones, kpis.contactados))} de lo contactado`}
+            progress={percent(kpis.cotizaciones, kpis.contactados)}
           />
-          <MetricCard
+          <KpiStripItem
             label={vocabulary.kpi.cierre}
+            icon={Trophy}
             value={formatNumber(kpis.ventas)}
+            detail={`${formatPercent(percent(kpis.ventas, kpis.cotizaciones))} de ${vocabulary.kpi.intermedio.toLowerCase()}`}
             tone="good"
             progress={percent(kpis.ventas, kpis.cotizaciones)}
-            icon={Trophy}
-            iconTone="green"
           />
-          <MetricCard
+          <KpiStripItem
             label={vertical === "cobranza" ? vocabulary.kpi.monto : "UF comercial"}
-            metric="uf"
-            value={formatUf(kpis.uf)}
             icon={Coins}
-            iconTone="green"
+            definition={glosario("uf")}
+            value={formatUf(kpis.uf)}
+            tone="good"
           />
-          <MetricCard
-            label="Ejecutivos reportados"
-            value={formatNumber(report.agents.length)}
-            icon={Users}
-            iconTone="blue"
-          />
-        </section>
+          <KpiStripItem label="Ejecutivos reportados" icon={Users} value={formatNumber(report.agents.length)} />
+        </KpiStrip>
 
         <section>
           <h2 className="mb-3 flex items-center gap-2.5 text-sm font-semibold text-foreground">

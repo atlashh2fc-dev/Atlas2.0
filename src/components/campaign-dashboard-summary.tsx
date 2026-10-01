@@ -4,6 +4,7 @@ import {
   Area,
   Bar,
   CartesianGrid,
+  Cell,
   ComposedChart,
   Line,
   ResponsiveContainer,
@@ -13,32 +14,25 @@ import {
 } from "recharts";
 import {
   CalendarClock,
-  CalendarRange,
   Clock,
   Coins,
-  Funnel,
   Headset,
-  Minus,
   Network,
   PhoneCall,
   Trophy,
-  TrendingDown,
   TrendingUp,
-  Users,
-  type LucideIcon,
 } from "lucide-react";
 import {
   CHART_AXIS_TICK,
   CHART_COLOR,
   CHART_CURSOR,
   CHART_GRID,
-  CHART_TOOLTIP_LABEL_STYLE,
-  CHART_TOOLTIP_STYLE,
   chartGradients,
   gradientUrl,
   useChartId,
 } from "@/components/chart-theme";
-import { Badge, EmptyState, MetricIconChip, SectionCard, type IconTone } from "@/components/ui";
+import { Avatar, Badge, EmptyState, SectionCard } from "@/components/ui";
+import { ChartLegend, ChartTooltip, DeltaChip, KpiStrip, KpiStripItem, Leaderboard } from "@/components/report-kit";
 import type {
   CampaignDashboardSummary as CampaignDashboardSummaryData,
   CampaignDashboardSummaryMetric,
@@ -123,7 +117,7 @@ function formatOperationDate(value: string): string {
  * porque se alimentaba de un campo que nadie carga. Es la lectura que en
  * outbound decide la programación del día: en qué horas contesta la gente.
  */
-function ContactabilityByHour({ data }: { data: ContactabilityHour[] }) {
+function ContactabilityByHour({ data, className }: { data: ContactabilityHour[]; className?: string }) {
   const chartId = useChartId("contactabilidad-hora");
   // Se recorta al tramo con actividad. Mostrar de 00:00 a 23:00 dejaría el
   // gráfico casi todo vacío y aplastaría las horas que importan.
@@ -140,11 +134,13 @@ function ContactabilityByHour({ data }: { data: ContactabilityHour[] }) {
     return top;
   }, null);
 
+  const totalGestiones = window.reduce((sum, row) => sum + row.gestiones, 0);
+  const totalContactos = window.reduce((sum, row) => sum + row.contactos, 0);
+
   return (
     <SectionCard
       title="Contactabilidad por hora"
-      icon={Clock}
-      tone="amber"
+      className={className}
       actions={
         best && (
           <Badge tone="success" className="shrink-0">
@@ -154,53 +150,66 @@ function ContactabilityByHour({ data }: { data: ContactabilityHour[] }) {
         )
       }
     >
-      <div className="p-5">
+      <div className="px-5 pb-5">
       {window.length === 0 ? (
         <EmptyState icon={Clock} title="Sin gestiones cerradas en el período." />
       ) : (
-        <ResponsiveContainer width="100%" height={280}>
-          <ComposedChart data={window} barGap={2}>
-            {chartGradients(chartId, ["slate", "primary"])}
+        <>
+        <ChartLegend
+          items={[
+            { label: "Gestiones", color: "color-mix(in srgb, var(--tone-slate) 55%, transparent)", value: fmtInt(totalGestiones) },
+            { label: "Contactos", color: CHART_COLOR.primary, value: fmtInt(totalContactos) },
+            { label: "% de contacto", color: CHART_COLOR.green },
+          ]}
+        />
+        <div className="mt-4">
+        <ResponsiveContainer width="100%" height={260}>
+          <ComposedChart data={window} barGap={2} margin={{ top: 4, right: 0, bottom: 0, left: -12 }}>
+            {chartGradients(chartId, ["slate", "primary", "green"])}
             <CartesianGrid {...CHART_GRID} vertical={false} />
-            <XAxis dataKey="label" tick={{ ...CHART_AXIS_TICK, fontSize: 10 }} />
-            <YAxis yAxisId="left" tick={CHART_AXIS_TICK} />
+            <XAxis dataKey="label" tick={{ ...CHART_AXIS_TICK, fontSize: 10 }} tickLine={false} axisLine={false} tickMargin={8} />
+            <YAxis yAxisId="left" tick={CHART_AXIS_TICK} tickLine={false} axisLine={false} tickFormatter={(value) => fmtInt(Number(value))} />
             <YAxis
               yAxisId="right"
               orientation="right"
               domain={[0, 100]}
               unit="%"
               tick={CHART_AXIS_TICK}
+              tickLine={false}
+              axisLine={false}
             />
             <Tooltip
-              contentStyle={CHART_TOOLTIP_STYLE}
-              labelStyle={CHART_TOOLTIP_LABEL_STYLE}
               cursor={CHART_CURSOR}
-              formatter={(value, name) =>
-                name === "contactabilidad"
-                  ? [`${Number(value).toFixed(1)}%`, "Contactabilidad"]
-                  : [fmtInt(Number(value)), name === "contactos" ? "Contactos" : "Gestiones"]
+              content={
+                <ChartTooltip
+                  names={{ gestiones: "Gestiones", contactos: "Contactos", contactabilidad: "% de contacto" }}
+                  formatValue={(value, key) => (key === "contactabilidad" ? `${value.toFixed(1)}%` : fmtInt(value))}
+                />
               }
             />
-            <Bar yAxisId="left" dataKey="gestiones" fill={gradientUrl(chartId, "slate")} fillOpacity={0.55} radius={[5, 5, 0, 0]} maxBarSize={22} />
-            <Bar yAxisId="left" dataKey="contactos" fill={gradientUrl(chartId, "primary")} radius={[5, 5, 0, 0]} maxBarSize={22} />
+            <Bar yAxisId="left" dataKey="gestiones" fill={gradientUrl(chartId, "slate")} fillOpacity={0.45} radius={[4, 4, 0, 0]} maxBarSize={20} />
+            <Bar yAxisId="left" dataKey="contactos" radius={[4, 4, 0, 0]} maxBarSize={20}>
+              {/* La mejor franja va en verde: es la respuesta que busca quien mira. */}
+              {window.map((row) => (
+                <Cell key={row.hora} fill={gradientUrl(chartId, best && row.hora === best.hora ? "green" : "primary")} />
+              ))}
+            </Bar>
             <Line
               yAxisId="right"
               type="monotone"
               dataKey="contactabilidad"
               stroke={CHART_COLOR.green}
-              strokeWidth={2.5}
+              strokeWidth={2}
+              strokeDasharray="4 3"
               dot={false}
               activeDot={{ r: 4, strokeWidth: 0 }}
               connectNulls={false}
             />
           </ComposedChart>
         </ResponsiveContainer>
+        </div>
+        </>
       )}
-
-      <p className="mt-2 text-xs text-muted-foreground">
-        Barras: gestiones cerradas y cuántas terminaron en conversación. Línea: porcentaje de
-        contacto de esa hora.
-      </p>
       </div>
     </SectionCard>
   );
@@ -225,7 +234,7 @@ function FunnelStages({
   const base = stages[0]?.value ?? 0;
 
   return (
-    <ol className="space-y-3">
+    <ol>
       {stages.map((stage, index) => {
         const previous = index > 0 ? stages[index - 1].value : null;
         const shareOfBase = base > 0 ? stage.value / base : 0;
@@ -233,48 +242,65 @@ function FunnelStages({
         // Sin el mínimo, cualquier etapa por debajo del 1% de la base
         // desaparece y no se distingue de un cero.
         const width = stage.value > 0 ? Math.max(shareOfBase * 100, 1.5) : 0;
+        const last = index === stages.length - 1;
+        const color = last ? "var(--success)" : "var(--primary)";
 
         return (
           <li key={stage.name}>
-            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-              <span className="text-sm font-medium text-foreground">{stage.name}</span>
-              <span className="flex items-baseline gap-2">
-                <span className="text-sm font-semibold tabular-nums text-foreground">
-                  {fmtInt(stage.value)}
+            {stepConversion !== null && (
+              /* Lo que importa de un embudo: cuánto pasa de una etapa a la siguiente. */
+              <div className="flex items-center gap-2 py-1.5 pl-3 text-[11px] text-muted-foreground">
+                <span aria-hidden="true" className="h-4 w-px bg-border-strong" />
+                <span className="rounded-md bg-surface-muted px-1.5 py-0.5 font-semibold tabular-nums text-foreground">
+                  {fmtPct(stepConversion)}
                 </span>
-                {stepConversion !== null && (
-                  <span className="text-xs tabular-nums text-muted-foreground">
-                    {fmtPct(stepConversion)} de {stages[index - 1].name.toLowerCase()}
-                  </span>
-                )}
-              </span>
-            </div>
-            <div className="mt-1.5 h-2.5 w-full overflow-hidden rounded-full bg-surface-muted">
-              {/* La última etapa es el cierre y va en verde; las demás en la marca. */}
-              <div
-                className="h-full rounded-full"
-                style={{
-                  width: `${width}%`,
-                  background: index === stages.length - 1 ? "var(--success)" : "var(--primary)",
-                }}
-                role="presentation"
-              />
-            </div>
-            {showOrigins && (
-              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-                <span className="font-medium">Origen:</span>
-                {(stage.origins ?? []).length === 0 ? (
-                  <span>Sin desglose disponible</span>
-                ) : (
-                  stage.origins?.map((origin) => (
-                    <Badge key={origin.name} tone="neutral">
-                      {origin.name}: <span className="font-semibold text-foreground">{fmtInt(origin.value)}</span>
-                      {stage.value > 0 && ` · ${fmtPct(origin.value / stage.value)}`}
-                    </Badge>
-                  ))
-                )}
+                pasa a {stage.name.toLowerCase()}
               </div>
             )}
+            <div className="rounded-lg border border-border bg-surface-raised px-3.5 py-2.5">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="flex items-center gap-2 text-[13px] font-medium text-foreground">
+                  <span
+                    aria-hidden="true"
+                    className="flex size-5 items-center justify-center rounded-md text-[10px] font-semibold"
+                    style={{ background: `color-mix(in srgb, ${color} 16%, transparent)`, color }}
+                  >
+                    {index + 1}
+                  </span>
+                  {stage.name}
+                </span>
+                <span className="flex items-baseline gap-2">
+                  <span className={`text-lg font-semibold leading-none tracking-tight tabular-nums ${last ? "text-success" : "text-foreground"}`}>
+                    {fmtInt(stage.value)}
+                  </span>
+                  {index > 0 && (
+                    <span className="text-[11px] tabular-nums text-muted-foreground">{fmtPct(shareOfBase)} de la base</span>
+                  )}
+                </span>
+              </div>
+              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-muted">
+                <div
+                  className="h-full rounded-full"
+                  style={{ width: `${width}%`, background: `linear-gradient(90deg, color-mix(in srgb, ${color} 50%, transparent), ${color})` }}
+                  role="presentation"
+                />
+              </div>
+              {showOrigins && (
+                <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <span className="font-medium">Origen:</span>
+                  {(stage.origins ?? []).length === 0 ? (
+                    <span>Sin desglose disponible</span>
+                  ) : (
+                    stage.origins?.map((origin) => (
+                      <Badge key={origin.name} tone="neutral">
+                        {origin.name}: <span className="font-semibold text-foreground">{fmtInt(origin.value)}</span>
+                        {stage.value > 0 && ` · ${fmtPct(origin.value / stage.value)}`}
+                      </Badge>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
           </li>
         );
       })}
@@ -292,51 +318,14 @@ function metricPct(metric: CampaignDashboardSummaryMetric): number | null {
   return (metric.current - metric.previous) / metric.previous;
 }
 
-function DeltaBadge({ metric, invert = false }: { metric: CampaignDashboardSummaryMetric; invert?: boolean }) {
-  const pct = metricPct(metric);
-  if (pct === null) return <span className="text-xs text-muted-foreground">vs. período anterior: n/d</span>;
-  const positive = invert ? pct < 0 : pct > 0;
-  const isZero = Math.abs(pct) < 0.001;
-  const color = isZero ? "text-muted-foreground" : positive ? "text-success" : "text-danger";
-  const Arrow = isZero ? Minus : pct > 0 ? TrendingUp : TrendingDown;
-  return (
-    <span className={`mt-1 inline-flex items-center gap-1 text-xs font-medium tabular-nums ${color}`}>
-      <Arrow size={13} aria-hidden="true" />
-      {Math.abs(pct * 100).toFixed(1)}%
-      <span className="font-normal text-muted-foreground">vs. período anterior</span>
-    </span>
-  );
+function Delta({ metric, invert = false }: { metric: CampaignDashboardSummaryMetric; invert?: boolean }) {
+  return <DeltaChip change={metricPct(metric)} invert={invert} />;
 }
 
-function KpiCard({
-  label,
-  value,
-  metric,
-  icon,
-  iconTone,
-  highlight = false,
-}: {
-  label: string;
-  value: string;
-  metric?: CampaignDashboardSummaryMetric;
-  icon: LucideIcon;
-  iconTone: IconTone;
-  highlight?: boolean;
-}) {
-  return (
-    <div
-      className={`rounded-xl border bg-surface p-4 shadow-sm ${highlight ? "border-success/40 ring-1 ring-success/20" : "border-border"}`}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-xs font-medium text-muted-foreground">{label}</p>
-        <MetricIconChip icon={icon} tone={iconTone} />
-      </div>
-      <p className={`mt-1.5 text-2xl font-semibold tabular-nums tracking-tight ${highlight ? "text-success" : "text-foreground"}`}>
-        {value}
-      </p>
-      {metric && <DeltaBadge metric={metric} />}
-    </div>
-  );
+/** Suma corrida: los cierres diarios son pocos y sueltos; acumulados muestran el ritmo. */
+function cumulative(values: number[]): number[] {
+  let total = 0;
+  return values.map((value) => (total += value));
 }
 
 function ratio(current: number, total: number): number {
@@ -495,68 +484,110 @@ export function CampaignDashboardSummary({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-xs text-muted-foreground shadow-sm">
-        <CalendarRange size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
-        {/* Con la zona del navegador, quien mire desde otro huso vería un día
-            distinto al del reporte. El período es el de la operación. */}
-        <span>
-          Período analizado:{" "}
-          <span className="font-medium text-foreground">
-            {formatOperationDate(summary.range.from)} - {formatOperationDate(summary.range.to)}
-          </span>
-        </span>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <KpiCard label={vocabulary.kpi.gestiones} value={fmtInt(kpis.gestionadas.current)} metric={kpis.gestionadas} icon={Headset} iconTone="primary" />
-        <KpiCard label={vocabulary.kpi.contactabilidad} value={fmtPct(contactabilidad.current)} metric={contactabilidad} icon={PhoneCall} iconTone="teal" />
-        <KpiCard label={vocabulary.kpi.cierre} value={fmtInt(kpis.ventas.current)} metric={kpis.ventas} icon={Trophy} iconTone="green" highlight />
-        <KpiCard label={vocabulary.kpi.conversion} value={fmtPct(tasaConversion.current)} metric={tasaConversion} icon={TrendingUp} iconTone="green" />
-        <KpiCard label={vocabulary.kpi.monto} value={`${Number(kpis.uf_total.current).toFixed(1)} UF`} metric={kpis.uf_total} icon={Coins} iconTone="green" />
-      </div>
+      {/* Con la zona del navegador, quien mire desde otro huso vería un día
+          distinto al del reporte. El período es el de la operación. */}
+      <KpiStrip
+        title="Resumen del período"
+        meta={
+          <>
+            {formatOperationDate(summary.range.from)} → {formatOperationDate(summary.range.to)}
+          </>
+        }
+      >
+        <KpiStripItem
+          label={vocabulary.kpi.gestiones}
+          icon={Headset}
+          value={fmtInt(kpis.gestionadas.current)}
+          delta={<Delta metric={kpis.gestionadas} />}
+          trend={summary.time_series.map((point) => point.gestiones)}
+        />
+        <KpiStripItem
+          label={vocabulary.kpi.contactabilidad}
+          icon={PhoneCall}
+          value={fmtPct(contactabilidad.current)}
+          delta={<Delta metric={contactabilidad} />}
+          detail={`${fmtInt(kpis.contactadas.current)} contactadas`}
+          progress={contactabilidad.current * 100}
+        />
+        <KpiStripItem
+          label={vocabulary.kpi.cierre}
+          icon={Trophy}
+          tone="good"
+          value={fmtInt(kpis.ventas.current)}
+          delta={<Delta metric={kpis.ventas} />}
+          detail="Curva: acumulado del período"
+          trend={cumulative(summary.time_series.map((point) => point.ventas))}
+        />
+        <KpiStripItem
+          label={vocabulary.kpi.conversion}
+          icon={TrendingUp}
+          value={fmtPct(tasaConversion.current)}
+          delta={<Delta metric={tasaConversion} />}
+          detail="Sobre lo contactado"
+          progress={tasaConversion.current * 100}
+          tone="good"
+        />
+        <KpiStripItem
+          label={vocabulary.kpi.monto}
+          icon={Coins}
+          value={`${Number(kpis.uf_total.current).toLocaleString("es-CL", { maximumFractionDigits: 1 })} UF`}
+          delta={<Delta metric={kpis.uf_total} />}
+        />
+      </KpiStrip>
 
       {channelFunnel && channelFunnel.length > 0 && <ChannelFunnelTable rows={channelFunnel} range={summary.range} />}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <SectionCard
           title={vertical === "cobranza" ? "Embudo de recuperación" : "Embudo de gestión"}
-          description={showFunnelOrigins ? "Cada etapa se desglosa por la procedencia registrada del lead." : undefined}
-          icon={Funnel}
-          tone="violet"
+          description={showFunnelOrigins ? "Cada etapa se desglosa por la procedencia registrada del lead." : "Cuánto se conserva de una etapa a la siguiente."}
         >
-          <div className="p-5">
+          <div className="px-5 pb-5">
             <FunnelStages stages={funnel} showOrigins={showFunnelOrigins} />
           </div>
         </SectionCard>
 
-        <SectionCard title={vocabulary.evolucionTitle} icon={TrendingUp} tone="violet">
-          <div className="p-5">
-          <ResponsiveContainer width="100%" height={280}>
-            <ComposedChart data={summary.time_series}>
+        <SectionCard title={vocabulary.evolucionTitle} description="Gestiones del día (área) y cierres (barras, eje derecho).">
+          <div className="px-5 pb-5">
+          <ChartLegend
+            items={[
+              { label: vocabulary.kpi.gestiones, color: CHART_COLOR.primary, value: fmtInt(summary.time_series.reduce((sum, point) => sum + point.gestiones, 0)) },
+              { label: vocabulary.kpi.cierre, color: CHART_COLOR.green, value: fmtInt(summary.time_series.reduce((sum, point) => sum + point.ventas, 0)) },
+            ]}
+          />
+          <div className="mt-4">
+          <ResponsiveContainer width="100%" height={300}>
+            <ComposedChart data={summary.time_series} margin={{ top: 4, right: 0, bottom: 0, left: -12 }}>
               {chartGradients(evolutionChartId, ["primary"], "area")}
               <CartesianGrid {...CHART_GRID} vertical={false} />
-              <XAxis dataKey="date" tick={{ ...CHART_AXIS_TICK, fontSize: 10 }} />
-              <YAxis tick={CHART_AXIS_TICK} />
+              <XAxis dataKey="date" tick={{ ...CHART_AXIS_TICK, fontSize: 10 }} tickLine={false} axisLine={false} tickMargin={8} minTickGap={16} />
+              <YAxis yAxisId="left" tick={CHART_AXIS_TICK} tickLine={false} axisLine={false} tickFormatter={(value) => fmtInt(Number(value))} />
+              {/* Los cierres son dos órdenes de magnitud menores: en el mismo eje
+                  quedaban como una raya pegada al cero. */}
+              <YAxis yAxisId="right" orientation="right" allowDecimals={false} tick={CHART_AXIS_TICK} tickLine={false} axisLine={false} />
               <Tooltip
-                contentStyle={CHART_TOOLTIP_STYLE}
-                labelStyle={CHART_TOOLTIP_LABEL_STYLE}
-                cursor={{ stroke: "var(--border-strong)" }}
+                cursor={{ stroke: "var(--border-strong)", strokeDasharray: "3 3" }}
+                content={<ChartTooltip names={{ gestiones: vocabulary.kpi.gestiones, ventas: vocabulary.kpi.cierre }} />}
               />
               <Area
+                yAxisId="left"
                 type="monotone"
                 dataKey="gestiones"
                 stroke={CHART_COLOR.primary}
                 fill={gradientUrl(evolutionChartId, "primary")}
                 strokeWidth={2.25}
-                activeDot={{ r: 4, strokeWidth: 0 }}
+                activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--surface)" }}
               />
-              <Line type="monotone" dataKey="ventas" stroke={CHART_COLOR.green} strokeWidth={2.5} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
+              {/* Cierres en barras: son pocos por día (0, 1, 2) y como línea
+                  quedaban en zigzag. */}
+              <Bar yAxisId="right" dataKey="ventas" fill={CHART_COLOR.green} radius={[3, 3, 0, 0]} maxBarSize={8} />
             </ComposedChart>
           </ResponsiveContainer>
           </div>
+          </div>
         </SectionCard>
 
-        <ContactabilityByHour data={hourly} />
+        <ContactabilityByHour data={hourly} className="lg:col-span-2" />
       </div>
 
       {/* A ancho completo: es el bloque con más contenido del tablero y en media
@@ -565,79 +596,62 @@ export function CampaignDashboardSummary({
       <TipificationBreakdown breakdown={tipifications} title={vocabulary.motivosTitle} />
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <SectionCard title={vocabulary.agendaTitle} icon={CalendarClock} tone="amber">
-          <div className="max-h-80 overflow-y-auto px-5 pb-4">
-            <table className="w-full text-left text-xs">
-              <thead className="sticky top-0 border-b border-border bg-surface text-left text-xs text-muted-foreground">
-                <tr>
-                  <th className="h-10 font-medium">
-                    {vertical === "cobranza" ? "Deudor" : "Lead"}
-                  </th>
-                  <th className="h-10 font-medium">Ejecutivo</th>
-                  <th className="h-10 font-medium">Resultado</th>
-                  <th className="h-10 font-medium">Próxima acción</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {visibleAgenda.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="py-4 text-center text-muted-foreground">
-                      Sin agenda pendiente en el período.
-                    </td>
-                  </tr>
-                )}
-                {visibleAgenda.map((item) => (
-                  <tr key={item.id}>
-                    <td className="py-1.5 text-foreground">{item.lead_full_name}</td>
-                    <td className="py-1.5 text-muted-foreground">{item.agent_name}</td>
-                    <td className="py-1.5 text-muted-foreground">{item.reason ? reasonLabel(item.reason) : "-"}</td>
-                    <td className={`py-1.5 font-medium ${item.overdue ? "text-danger" : "text-foreground"}`}>
-                      {new Date(item.next_action_at).toLocaleString("es-CL", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                      {item.overdue && " (vencida)"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <SectionCard title={vocabulary.agendaTitle} description={`${fmtInt(visibleAgenda.length)} compromisos por delante.`}>
+          <div className="max-h-96 overflow-y-auto border-t border-border">
+            {visibleAgenda.length === 0 ? (
+              <EmptyState icon={CalendarClock} title="Sin agenda pendiente en el período." className="py-10" />
+            ) : (
+              <ul className="divide-y divide-border/70">
+                {visibleAgenda.map((item) => {
+                  const when = new Date(item.next_action_at);
+                  return (
+                    <li key={item.id} className="flex items-center gap-3 px-5 py-2.5 transition-colors hover:bg-surface-muted/50">
+                      {/* La hora en una baldosa de calendario: se lee primero. */}
+                      <span className="flex w-12 shrink-0 flex-col items-center rounded-lg border border-border bg-surface-raised py-1 leading-none">
+                        <span className="text-[9px] font-semibold uppercase text-muted-foreground">
+                          {when.toLocaleDateString("es-CL", { month: "short", timeZone: REPORT_TIME_ZONE }).replace(".", "")}
+                        </span>
+                        <span className="mt-0.5 text-sm font-semibold tabular-nums text-foreground">
+                          {when.toLocaleDateString("es-CL", { day: "numeric", timeZone: REPORT_TIME_ZONE })}
+                        </span>
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[13px] font-medium text-foreground">{item.lead_full_name}</p>
+                        <p className="truncate text-[11px] text-muted-foreground">{item.reason ? reasonLabel(item.reason) : "Sin resultado"}</p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                        <Avatar name={item.agent_name} size="xs" />
+                        <span className="hidden max-w-28 truncate sm:inline">{item.agent_name}</span>
+                        <span className={`tabular-nums font-medium ${item.overdue ? "text-danger" : "text-foreground"}`}>
+                          {when.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: REPORT_TIME_ZONE })}
+                          {item.overdue && " · vencida"}
+                        </span>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
         </SectionCard>
 
-        <SectionCard title="Ranking de ejecutivos" icon={Users} tone="blue">
-          <div className="max-h-80 overflow-y-auto px-5 pb-4">
-            <table className="w-full text-left text-xs">
-              <thead className="sticky top-0 border-b border-border bg-surface text-left text-xs text-muted-foreground">
-                <tr>
-                  <th className="h-10 font-medium">Ejecutivo</th>
-                  <th className="h-10 font-medium text-right">Gestiones</th>
-                  <th className="h-10 font-medium text-right">Contactos</th>
-                  <th className="h-10 font-medium text-right">{vocabulary.kpi.cierreNota}</th>
-                  <th className="h-10 font-medium text-right">UF</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {summary.agents.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="py-4 text-center text-muted-foreground">
-                      Sin datos en el período.
-                    </td>
-                  </tr>
-                )}
-                {summary.agents.map((agent) => (
-                  <tr key={agent.agent_id ?? agent.name}>
-                    <td className="py-1.5 text-foreground">{agent.name}</td>
-                    <td className="py-1.5 text-right text-muted-foreground">{fmtInt(agent.gestiones)}</td>
-                    <td className="py-1.5 text-right text-muted-foreground">{fmtInt(agent.contactos)}</td>
-                    <td className={`py-1.5 text-right font-semibold tabular-nums ${agent.ventas > 0 ? "text-success" : "text-foreground"}`}>{fmtInt(agent.ventas)}</td>
-                    <td className="py-1.5 text-right text-muted-foreground">{Number(agent.uf).toFixed(1)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <SectionCard title="Ranking de ejecutivos" description={`Ordenado por ${vocabulary.kpi.gestiones.toLowerCase()} del período.`}>
+          <div className="max-h-96 overflow-y-auto border-t border-border">
+            <Leaderboard
+              primaryLabel={vocabulary.kpi.gestiones}
+              rows={[...summary.agents]
+                .sort((a, b) => b.gestiones - a.gestiones)
+                .map((agent) => ({
+                  id: agent.agent_id ?? agent.name,
+                  name: agent.name,
+                  primary: agent.gestiones,
+                  stats: [
+                    { label: "Contactos", value: fmtInt(agent.contactos) },
+                    { label: vocabulary.kpi.cierreNota, value: fmtInt(agent.ventas), tone: agent.ventas > 0 ? ("good" as const) : undefined, strong: true },
+                    { label: "UF", value: Number(agent.uf).toLocaleString("es-CL", { maximumFractionDigits: 1 }) },
+                  ],
+                }))}
+            />
           </div>
         </SectionCard>
       </div>
