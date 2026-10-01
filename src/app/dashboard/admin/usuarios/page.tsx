@@ -1,6 +1,6 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { unstable_noStore as noStore } from "next/cache";
+import { connection } from "next/server";
 import Link from "next/link";
 import type { AppRole } from "@/lib/types";
 import { UsersTable, type UserRow } from "@/components/users-table";
@@ -19,7 +19,7 @@ export default async function UsersAdminPage({
 }) {
   // Los roles se administran acá y deben leerse siempre desde Supabase: una
   // respuesta cacheada mostraba el rol anterior después de guardar.
-  noStore();
+  await connection();
   await requireProfile(["admin"]);
   const supabase = await createClient();
   const { campaign: requestedCampaignId, role: roleFilter, active: activeFilter } = await searchParams;

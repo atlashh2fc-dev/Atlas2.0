@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { unstable_noStore as noStore } from "next/cache";
+import { connection } from "next/server";
 import { ListChecks, Megaphone, MousePointerClick } from "lucide-react";
 
 import { cancelarCampana, crearCampana, lanzarCampana } from "@/app/actions/campanas-clinica";
@@ -37,7 +37,7 @@ function Baldosa({ label, valor, detalle }: { label: string; valor: number; deta
 }
 
 export default async function CampanasClinicaPage({ searchParams }: { searchParams: Promise<{ c?: string }> }) {
-  noStore();
+  await connection();
   const { edicion, empresa } = await contextoDeMiEmpresa();
   const esVet = edicion === "vet";
   const { c } = await searchParams;

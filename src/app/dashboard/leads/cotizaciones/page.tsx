@@ -1,4 +1,4 @@
-import { unstable_noStore as noStore } from "next/cache";
+import { connection } from "next/server";
 import { Clock, Hourglass, Percent, Trophy } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { getTabs } from "@/lib/nav.config";
@@ -12,7 +12,7 @@ import { Callout, MetricCard, NavTabs, PageHeader } from "@/components/ui";
  * supervisión ve el resultado en Validación de ventas y en Reportes.
  */
 export default async function CotizacionesPage() {
-  noStore();
+  await connection();
   const profile = await requireProfile(["agente"]);
 
   let rows: QuotationRow[] = [];

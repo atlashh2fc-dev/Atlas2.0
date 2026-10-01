@@ -79,8 +79,8 @@ export default async function LeadsPage({
   const view = parseLeadView(viewParam);
   const supabase = await createClient();
   // La campaña decide cómo se llama lo que hay en la cola: registros o deudores.
-  const vertical = await fetchCampaignVertical(supabase, campaignScope || null);
-  const copy = roleCopy(profile.role, vertical);
+  // Sale junto con las demás consultas, no antes: solo cambia textos.
+  const verticalPromise = fetchCampaignVertical(supabase, campaignScope || null);
   const canManage = profile.role === "supervisor" || profile.role === "admin";
   // Llega desde una celda de "Resultado por canal de origen" en Reportes.
   const segment = canManage ? parseChannelSegment(params) : null;
@@ -92,16 +92,18 @@ export default async function LeadsPage({
     status: canManage ? status || "" : "",
   };
 
-  const [{ data: agentOptions }, { data: campaignOptions }] = canManage
-    ? await Promise.all([
+  const optionsPromise = canManage
+    ? Promise.all([
         supabase.from("profiles").select("id, full_name").eq("role", "agente").eq("active", true).order("full_name"),
         profile.role === "supervisor"
           ? supabase.rpc("get_report_scope_campaigns")
           : supabase.from("campaigns").select("id, name").order("name"),
       ])
-    : [{ data: [] }, { data: [] }];
+    : Promise.resolve([{ data: [] }, { data: [] }] as const);
 
-  const [result, tracksQuotations, { data: respuestasData }] = await Promise.all([
+  const [vertical, [{ data: agentOptions }, { data: campaignOptions }], result, tracksQuotations, { data: respuestasData }] = await Promise.all([
+    verticalPromise,
+    optionsPromise,
     fetchLeadsPage<LeadQueueRow>(supabase, {
       role: profile.role,
       filters,
@@ -128,6 +130,7 @@ export default async function LeadsPage({
           .limit(20)
       : Promise.resolve({ data: [] }),
   ]);
+  const copy = roleCopy(profile.role, vertical);
   const respuestasPendientes = (respuestasData ?? []) as unknown as {
     id: string;
     lead_id: string;

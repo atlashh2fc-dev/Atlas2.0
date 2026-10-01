@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { unstable_noStore as noStore } from "next/cache";
+import { headers } from "next/headers";
+import { connection } from "next/server";
 import { Inbox, Mail, MessageCircle, MessagesSquare, Send, UserRound } from "lucide-react";
 
 import { marcarConversacionLeida, responderConversacion, responderCorreo } from "@/app/actions/conversaciones-clinica";
@@ -8,6 +9,7 @@ import { Badge, Callout, EmptyState, Input, PageHeader, SectionCard, SubmitButto
 import { ZONA_CLINICA } from "@/lib/citas";
 import { ATENCION_POR_EDICION, PACIENTES_POR_EDICION, clinicaDe } from "@/lib/ediciones";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
+import { esPrecarga } from "@/lib/ruta-pedida";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -49,7 +51,7 @@ function primero<T>(valor: T | T[] | null | undefined): T | null {
 const ESTADO_MENSAJE: Record<string, string> = { pending: "enviando", accepted: "enviado", sent: "enviado", delivered: "entregado", read: "leído", failed: "falló", received: "" };
 
 export default async function MensajesPage({ searchParams }: { searchParams: Promise<{ c?: string; e?: string }> }) {
-  noStore();
+  await connection();
   const { edicion, empresa } = await contextoDeMiEmpresa();
   const esVet = edicion === "vet";
   const voc = PACIENTES_POR_EDICION[clinicaDe(edicion)];
@@ -106,7 +108,9 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
   const hilosCorreo = [...hilos.values()].sort((a, b) => b.ultimo.localeCompare(a.ultimo));
   const hiloActual = fichaCorreo ? hilos.get(fichaCorreo) ?? null : null;
   const correoSinLeer = hilosCorreo.reduce((total, hilo) => total + hilo.sinLeer, 0);
-  if (hiloActual && hiloActual.sinLeer > 0) {
+  // Abrir un hilo lo deja leído; una precarga del navegador no es abrirlo.
+  const esVisitaReal = !esPrecarga(await headers());
+  if (esVisitaReal && hiloActual && hiloActual.sinLeer > 0) {
     await createAdminClient().from("inbound_emails").update({ status: "converted", converted_at: new Date().toISOString() }).eq("company_id", hiloActual.company_id).eq("status", "new");
   }
   const ids = conversaciones.map((conversacion) => conversacion.id);
@@ -134,7 +138,7 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
       saldo: (pendientes ?? []).reduce((total, atencion) => total + Number(atencion.precio ?? 0), 0),
     };
     // Abrirla la deja leída. El acceso ya lo comprobó la consulta de arriba.
-    if (actual.unread_count > 0) {
+    if (esVisitaReal && actual.unread_count > 0) {
       await createAdminClient().from("whatsapp_conversations").update({ unread_count: 0 }).eq("id", actual.id);
     }
   }

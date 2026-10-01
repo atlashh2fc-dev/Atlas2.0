@@ -23,8 +23,8 @@ export async function createUserAccount(formData: FormData) {
   if (!fullName || !email || !password) {
     throw new Error("Nombre, correo y contraseña son obligatorios.");
   }
-  if (password.length < 6) {
-    throw new Error("La contraseña debe tener al menos 6 caracteres.");
+  if (password.length < 8) {
+    throw new Error("La contraseña debe tener al menos 8 caracteres.");
   }
 
   // La persona queda en la empresa que se está mirando, no en la por defecto.

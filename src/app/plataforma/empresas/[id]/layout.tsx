@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { unstable_noStore as noStore } from "next/cache";
+import { connection } from "next/server";
 import { ArrowUpRight } from "lucide-react";
 
 import { Badge, NavTabs, buttonClasses } from "@/components/ui";
@@ -18,7 +18,7 @@ export default async function EmpresaLayout({
   params: Promise<{ id: string }>;
   children: React.ReactNode;
 }) {
-  noStore();
+  await connection();
   const { id } = await params;
   const { empresa } = await leerEmpresa(id);
   const base = `/plataforma/empresas/${empresa.id}`;

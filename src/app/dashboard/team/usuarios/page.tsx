@@ -1,4 +1,4 @@
-import { unstable_noStore as noStore } from "next/cache";
+import { connection } from "next/server";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -14,7 +14,7 @@ import { Callout, NavTabs, PageHeader } from "@/components/ui";
  * servidor (requireAgentManager), esta pantalla solo decide qué se muestra.
  */
 export default async function TeamUsersPage() {
-  noStore();
+  await connection();
   await requireProfile(["supervisor"]);
   const supabase = await createClient();
 

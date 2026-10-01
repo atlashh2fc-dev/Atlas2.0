@@ -1,4 +1,4 @@
-import { unstable_noStore as noStore } from "next/cache";
+import { connection } from "next/server";
 
 import { crearEmpresa } from "@/app/actions/organizaciones";
 import { CreatePanel } from "@/components/create-panel";
@@ -14,7 +14,7 @@ import { haceCuanto, iniciales, leerPlataforma } from "@/lib/plataforma.server";
  * primaria es crear una empresa.
  */
 export default async function PlataformaEmpresasPage() {
-  noStore();
+  await connection();
   const { empresas } = await leerPlataforma();
   const activas = empresas.filter((empresa) => empresa.activa).length;
 

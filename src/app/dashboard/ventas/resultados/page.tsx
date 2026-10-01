@@ -1,4 +1,4 @@
-import { unstable_noStore as noStore } from "next/cache";
+import { connection } from "next/server";
 import { BadgeDollarSign, Compass, Layers, MailCheck, Percent, Timer, Users } from "lucide-react";
 
 import { alternarSeguimientoAutomatico } from "@/app/actions/pipeline";
@@ -22,7 +22,7 @@ type Negocio = { id: string; status: string; monthly_amount: number | null; one_
 type Etapa = { id: string; name: string; position: number; probability: number | null; is_won: boolean; is_lost: boolean };
 
 export default async function ResultadosPage() {
-  noStore();
+  await connection();
   const profile = await requireProfile(["admin", "supervisor"]);
   const { edicion, empresa } = await contextoDeMiEmpresa();
   const voc = VENTAS_POR_EDICION[edicion];

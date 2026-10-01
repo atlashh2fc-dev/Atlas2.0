@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { unstable_noStore as noStore } from "next/cache";
+import { connection } from "next/server";
 import { ArrowRightLeft, Building2, ClipboardList, FileText, History, Mail, MessageCircle, Send, Signpost, UserRound } from "lucide-react";
 
 import { moverEtapa, registrarGestion } from "@/app/actions/ventas";
@@ -77,7 +77,7 @@ function primero<T>(valor: T | T[] | null | undefined): T | null {
 
 /** Ficha del negocio: quién es, en qué va, qué se hizo y qué sigue. */
 export default async function OportunidadPage({ params }: { params: Promise<{ id: string }> }) {
-  noStore();
+  await connection();
   await requireProfile(["admin", "supervisor"]);
   const { id } = await params;
   const supabase = await createClient();

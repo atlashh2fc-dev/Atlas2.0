@@ -1,4 +1,4 @@
-import { unstable_noStore as noStore } from "next/cache";
+import { connection } from "next/server";
 import { Coins, Package, PackageX, Receipt, Wallet } from "lucide-react";
 
 import { crearInsumo, guardarInsumo } from "@/app/actions/insumos";
@@ -39,7 +39,7 @@ function hace30Dias() {
 }
 
 export default async function InsumosPage() {
-  noStore();
+  await connection();
   const { edicion } = await contextoDeMiEmpresa();
   const clinica = clinicaDe(edicion);
   const voc = VOCABULARIO[clinica];

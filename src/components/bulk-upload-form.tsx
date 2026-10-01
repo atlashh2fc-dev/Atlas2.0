@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import * as XLSX from "xlsx";
 import { createClient } from "@/lib/supabase/client";
 import { Check, ChevronLeft, ChevronRight, FileCheck2 } from "lucide-react";
 import { Callout, LoadingState, buttonClasses } from "@/components/ui";
@@ -155,7 +154,8 @@ export function BulkUploadForm({
 
     setParsing(true);
     try {
-      const buffer = await file.arrayBuffer();
+      // xlsx pesa ~135 KB: se carga al elegir el archivo, no con la pantalla.
+      const [buffer, XLSX] = await Promise.all([file.arrayBuffer(), import("xlsx")]);
       const workbook = XLSX.read(buffer, { type: "array" });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       const parsedRows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(sheet, { defval: "" });
@@ -364,8 +364,9 @@ export function BulkUploadForm({
    * Descarga las filas que no entraron, con su motivo y sus datos originales.
    * Sin esto, corregir un archivo de 20.000 filas era adivinar.
    */
-  function downloadRejected() {
+  async function downloadRejected() {
     if (!result || result.errors.length === 0) return;
+    const XLSX = await import("xlsx");
     const sheetRows = result.errors.map((issue) => {
       const original = issue.row > 1 ? rows?.[issue.row - 2] : undefined;
       return { Fila: issue.row > 0 ? issue.row : "—", Motivo: issue.message, ...(original ?? {}) };

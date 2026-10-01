@@ -1,13 +1,13 @@
 import { UsersRound } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { unstable_noStore as noStore } from "next/cache";
+import { connection } from "next/server";
 import { createTeam, updateTeamSupervisors } from "@/app/actions/admin";
 import { CreatePanel } from "@/components/create-panel";
 import { ActionForm, ActionSubmit, EmptyState, Field, Input, SectionCard, Table, Tbody, Td, Th, Thead, TableEmpty, Tr } from "@/components/ui";
 
 export default async function TeamsAdminPage() {
-  noStore();
+  await connection();
   await requireProfile(["admin"]);
   const supabase = await createClient();
 

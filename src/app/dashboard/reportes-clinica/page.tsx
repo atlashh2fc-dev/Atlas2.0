@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { unstable_noStore as noStore } from "next/cache";
+import { connection } from "next/server";
 
 import { TableroClinica } from "@/components/reporte-clinica/tablero";
 import { ResumenLooks } from "@/components/barber/resumen-looks";
@@ -24,7 +24,7 @@ export default async function ReportesClinicaPage({
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  noStore();
+  await connection();
   const { edicion, empresa } = await contextoDeMiEmpresa();
   if (edicion === "center") notFound();
 

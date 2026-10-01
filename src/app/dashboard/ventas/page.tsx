@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { unstable_noStore as noStore } from "next/cache";
+import { connection } from "next/server";
 import { BadgeDollarSign, Briefcase, CalendarClock, Filter, Trophy } from "lucide-react";
 
 import { NuevoNegocio } from "@/components/nuevo-negocio";
@@ -49,7 +49,7 @@ const fecha = new Intl.DateTimeFormat("es-CL", { day: "2-digit", month: "short" 
  * edición.
  */
 export default async function VentasPage() {
-  noStore();
+  await connection();
   await requireProfile(["admin", "supervisor"]);
   const supabase = await createClient();
   const { edicion } = await contextoDeMiEmpresa();

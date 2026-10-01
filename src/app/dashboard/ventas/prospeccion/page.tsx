@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { unstable_noStore as noStore } from "next/cache";
+import { connection } from "next/server";
 import { CheckCheck, Flame, History, Inbox, Undo2 } from "lucide-react";
 
 import { deshacerToque } from "@/app/actions/prospeccion";
@@ -63,7 +63,7 @@ function primero<T>(valor: T | T[] | null | undefined): T | null {
 }
 
 export default async function ProspeccionPage({ searchParams }: { searchParams: Promise<{ vista?: string }> }) {
-  noStore();
+  await connection();
   const profile = await requireProfile(["admin", "supervisor"]);
   const { empresa: empresaPropia } = await contextoDeMiEmpresa();
   const { vista = "cola" } = await searchParams;

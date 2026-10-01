@@ -43,7 +43,7 @@ export function UserCreatePanel({ teams, empresa }: { teams: { id: string; name:
           </Field>
 
           <Field label="Contraseña temporal">
-            <Input type="text" name="password" required minLength={6} placeholder="Mínimo 6 caracteres" />
+            <Input type="text" name="password" required minLength={8} placeholder="Mínimo 8 caracteres" />
           </Field>
           <p className="-mt-2 text-xs text-muted-foreground">
             Compártela por un canal seguro y pídele que la cambie al primer ingreso.

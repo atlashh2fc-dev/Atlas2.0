@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { unstable_noStore as noStore } from "next/cache";
+import { connection } from "next/server";
 import { AlertTriangle, CalendarClock, CheckCheck, Clock, HandCoins, MessageSquareReply, MessagesSquare, Send, Syringe, UserRoundX } from "lucide-react";
 
 import { cambiarEstadoCita } from "@/app/actions/citas";
@@ -130,7 +130,7 @@ function Enviar({
 }
 
 export default async function RecordatoriosPage() {
-  noStore();
+  await connection();
   const profile = await requireProfile(["admin", "supervisor"]);
   const esAdmin = profile.role === "admin";
   const { edicion, empresa } = await contextoDeMiEmpresa();

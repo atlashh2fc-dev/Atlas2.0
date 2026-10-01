@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { unstable_noStore as noStore } from "next/cache";
+import { connection } from "next/server";
 import { CalendarDays, CalendarX2, Check, CheckCheck, ChevronLeft, ChevronRight, Clock, ListChecks, Stethoscope, XCircle } from "lucide-react";
 
 import { agendarCita, cambiarEstadoCita, type OpcionDeCita } from "@/app/actions/citas";
@@ -82,7 +82,7 @@ function Accion({
 }
 
 export default async function AgendaPage({ searchParams }: { searchParams: Promise<{ dia?: string; cuenta?: string; mascota?: string }> }) {
-  noStore();
+  await connection();
   const { edicion, empresa } = await contextoDeMiEmpresa();
   const clinica = clinicaDe(edicion);
   const esVet = clinica === "vet";

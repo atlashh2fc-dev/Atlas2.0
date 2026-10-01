@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { unstable_noStore as noStore } from "next/cache";
+import { connection } from "next/server";
 import {
   CalendarClock,
   ClipboardList,
@@ -122,7 +122,7 @@ function fechaCorta(valor: string | null): string {
 }
 
 export default async function FichaPacientePage({ params }: { params: Promise<{ id: string }> }) {
-  noStore();
+  await connection();
   const profile = await requireProfile(["admin", "supervisor"]);
   const { id } = await params;
   const [{ edicion }, leeConversaciones] = await Promise.all([contextoDeMiEmpresa(), puedeLeerConversaciones(profile.role)]);

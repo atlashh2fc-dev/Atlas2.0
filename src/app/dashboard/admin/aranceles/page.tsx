@@ -1,4 +1,4 @@
-import { unstable_noStore as noStore } from "next/cache";
+import { connection } from "next/server";
 import { Scissors, Stethoscope } from "lucide-react";
 
 import { crearProcedimiento, guardarProcedimiento } from "@/app/actions/atenciones";
@@ -21,7 +21,7 @@ import { createClient } from "@/lib/supabase/server";
  * uno, su receta de materiales con el costo y el margen que deja.
  */
 export default async function ArancelesPage() {
-  noStore();
+  await connection();
   const { edicion } = await contextoDeMiEmpresa();
   const clinica = clinicaDe(edicion);
   const esBarber = clinica === "barber";

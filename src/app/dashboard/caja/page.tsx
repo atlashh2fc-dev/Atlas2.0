@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { unstable_noStore as noStore } from "next/cache";
+import { connection } from "next/server";
 import { headers } from "next/headers";
 import { CalendarCheck, Copy, HandCoins, Link2, MessageCircle, Receipt, Wallet } from "lucide-react";
 
@@ -40,7 +40,7 @@ function primerNombre(nombre: string): string {
 }
 
 export default async function CajaPage({ searchParams }: { searchParams: Promise<{ enlace?: string }> }) {
-  noStore();
+  await connection();
   const { edicion, empresa } = await contextoDeMiEmpresa();
   const clinica = clinicaDe(edicion);
   const voc = PACIENTES_POR_EDICION[clinica];

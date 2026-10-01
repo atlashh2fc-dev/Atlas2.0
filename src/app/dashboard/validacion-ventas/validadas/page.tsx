@@ -1,4 +1,4 @@
-import { unstable_noStore as noStore } from "next/cache";
+import { connection } from "next/server";
 import { BadgeCheck, Calculator, Coins, Users } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { searchSaleValidations, type SaleValidationRow, type SaleValidationStatus } from "@/app/actions/validacion-ventas";
@@ -37,7 +37,7 @@ function sumUf(rows: SaleValidationRow[]) {
 }
 
 export default async function VentasValidadasPage({ searchParams }: { searchParams: Promise<SaleFilterParams> }) {
-  noStore();
+  await connection();
   await requireProfile(["supervisor", "admin"]);
   const params = await searchParams;
   const status = ESTADOS.find((estado) => estado.value === params.estado)?.value ?? "aprobada";

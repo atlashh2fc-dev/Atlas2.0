@@ -61,7 +61,11 @@ export default async function CampaignsPage({
     ),
     supabase.from("dialer_campaign_configs").select("campaign_id, dial_mode, is_active, trunk_context"),
     supabase.from("ai_voice_campaign_configs").select("campaign_id, is_active, phone_number_id"),
-    supabase.from("campaign_agents").select("campaign_id"),
+    // Acotado a las campañas de la lista: sin filtro, pasado el tope de filas
+    // de la API «sin ejecutivos» daría falsos positivos.
+    list.length > 0
+      ? supabase.from("campaign_agents").select("campaign_id").in("campaign_id", list.map((campaign) => campaign.id as string))
+      : Promise.resolve({ data: [] as { campaign_id: string }[] }),
   ]);
 
   const countById = new Map(counts.map((row) => [row.id, row]));

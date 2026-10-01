@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { EspecieYRaza } from "@/components/especie-y-raza";
 import { razasDe } from "@/lib/anatomia";
-import { unstable_noStore as noStore } from "next/cache";
+import { connection } from "next/server";
 import { PawPrint, Scissors, Search, SearchX, Users } from "lucide-react";
 
 import { crearPaciente } from "@/app/actions/pacientes";
@@ -63,7 +63,7 @@ export default async function PacientesPage({
 }: {
   searchParams: Promise<{ q?: string; vista?: string }>;
 }) {
-  noStore();
+  await connection();
   const { edicion } = await contextoDeMiEmpresa();
   const clinica = clinicaDe(edicion);
   const voc = PACIENTES_POR_EDICION[clinica];

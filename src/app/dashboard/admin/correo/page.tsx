@@ -1,4 +1,4 @@
-import { unstable_noStore as noStore } from "next/cache";
+import { connection } from "next/server";
 import Link from "next/link";
 import { Inbox, Mail } from "lucide-react";
 
@@ -43,7 +43,7 @@ function causaDeLectura(error: string, address: string): string {
 const cuando = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 
 export default async function CorreoPage() {
-  noStore();
+  await connection();
   const { empresa, edicion } = await contextoDeMiEmpresa();
   // El contact center tiene un buzón por cuenta, elegido por campaña.
   if (edicion === "center") return <BuzonesDeEnvio empresa={empresa} />;

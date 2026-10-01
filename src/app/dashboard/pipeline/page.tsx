@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { unstable_noStore as noStore } from "next/cache";
+import { connection } from "next/server";
 import { AlertTriangle, ArrowRight, Briefcase, CheckCircle2, Inbox, Search } from "lucide-react";
 
 import { asignarNegocio } from "@/app/actions/pipeline";
@@ -43,7 +43,7 @@ function iniciales(nombre: string): string {
 }
 
 export default async function PipelinePage({ searchParams }: { searchParams: Promise<{ q?: string; origen?: string; responsable?: string; vencidas?: string }> }) {
-  noStore();
+  await connection();
   const profile = await requireProfile(["admin", "supervisor"]);
   const { edicion, empresa } = await contextoDeMiEmpresa();
   const voc = VENTAS_POR_EDICION[edicion];
