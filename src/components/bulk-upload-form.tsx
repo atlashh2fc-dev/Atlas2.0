@@ -4,8 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
 import { createClient } from "@/lib/supabase/client";
-import { FileCheck2 } from "lucide-react";
-import { Callout, LoadingState } from "@/components/ui";
+import { Check, ChevronLeft, ChevronRight, FileCheck2 } from "lucide-react";
+import { Callout, LoadingState, buttonClasses } from "@/components/ui";
 import {
   buildCandidates,
   chunk,
@@ -43,6 +43,18 @@ interface Mapping {
   phone: string[];
   email: string[];
 }
+
+/**
+ * La carga va en tres pasos con progreso visible. Antes archivo, columnas,
+ * destino y vista previa eran un solo formulario largo y era fácil cargar sin
+ * haber revisado el mapeo.
+ */
+type Step = 1 | 2 | 3;
+const STEPS: { id: Step; label: string }[] = [
+  { id: 1, label: "Archivo" },
+  { id: 2, label: "Columnas" },
+  { id: 3, label: "Destino y confirmación" },
+];
 
 const EMPTY_MAPPING: Mapping = { full_name: "", rut: "", status: "", phone: [], email: [] };
 
@@ -117,6 +129,10 @@ export function BulkUploadForm({
   const [rows, setRows] = useState<Record<string, unknown>[] | null>(null);
   const [headers, setHeaders] = useState<string[] | null>(null);
   const [mapping, setMapping] = useState<Mapping>(EMPTY_MAPPING);
+  const [step, setStep] = useState<Step>(1);
+  const [stepError, setStepError] = useState<string | null>(null);
+  // Cambia tras una carga completa para vaciar el selector de archivo.
+  const [fileInputKey, setFileInputKey] = useState(0);
 
   const [teamId, setTeamId] = useState("");
   const [campaignId, setCampaignId] = useState(defaultCampaignId ?? "");
@@ -131,6 +147,7 @@ export function BulkUploadForm({
     const file = e.target.files?.[0];
     setResult(null);
     setError(null);
+    setStepError(null);
     setRows(null);
     setHeaders(null);
     setFileName(null);
@@ -332,6 +349,8 @@ export function BulkUploadForm({
         setHeaders(null);
         setFileName(null);
         setMapping(EMPTY_MAPPING);
+        setStep(1);
+        setFileInputKey((key) => key + 1);
       }
       router.refresh();
     } catch (err) {
@@ -367,232 +386,401 @@ export function BulkUploadForm({
   }));
 
   const busy = pending || parsing;
+  const campaignName = campaigns.find((c) => c.id === campaignId)?.name ?? null;
+  const teamName = teams.find((t) => t.id === teamId)?.name ?? null;
+  const workflowName = campaignWorkflowId ? campaignWorkflowName : (workflows.find((w) => w.id === workflowId)?.name ?? null);
+
+  /** Lo que falta para dejar avanzar desde cada paso; null si está completo. */
+  function stepProblem(target: Step): string | null {
+    if (target === 1 && (!rows || !headers)) return "Elige un archivo CSV o Excel con al menos una fila de datos.";
+    if (target === 2) {
+      if (!mapping.full_name) return "Indica qué columna corresponde al nombre completo.";
+      if (!mapping.rut && mapping.phone.length === 0) {
+        return "Marca la columna de RUT o al menos una de teléfono: sin ninguna de las dos no se pueden detectar duplicados y no entra ninguna fila.";
+      }
+    }
+    return null;
+  }
+
+  function goTo(target: Step) {
+    // Se puede volver siempre; avanzar solo con los pasos anteriores completos.
+    for (let previous = 1 as Step; previous < target; previous = (previous + 1) as Step) {
+      const problem = stepProblem(previous);
+      if (problem) {
+        setStep(previous);
+        setStepError(problem);
+        return;
+      }
+    }
+    setStepError(null);
+    setStep(target);
+  }
+
+  function onFormSubmit(e: React.FormEvent<HTMLFormElement>) {
+    // Enter en los pasos 1 y 2 avanza en vez de cargar.
+    if (step < 3) {
+      e.preventDefault();
+      goTo((step + 1) as Step);
+      return;
+    }
+    void handleSubmit(e);
+  }
 
   return (
     <div className="space-y-4">
-      <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-border bg-surface p-5 shadow-sm">
-        <div>
-          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-            Archivo (.csv, .xlsx)
-          </label>
-          <input
-            type="file"
-            name="file"
-            accept=".csv,.xlsx,.xls"
-            disabled={busy}
-            onChange={handleFileChange}
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-60"
-          />
-          {parsing && <LoadingState label="Estamos leyendo el archivo" compact className="mt-2" />}
-        </div>
-
-        {headers && rows && (
-          <div className="rounded-lg border border-border bg-background p-4">
-            <p className="mb-3 text-xs font-medium text-foreground">
-              {fileName}: {rows.length.toLocaleString("es-CL")} fila(s), {headers.length} columna(s)
-              detectada(s). Indica qué columna de tu archivo corresponde a cada dato:
-            </p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {(Object.keys(SINGLE_FIELD_LABELS) as SingleFieldKey[]).map((field) => (
-                <div key={field}>
-                  <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                    {SINGLE_FIELD_LABELS[field]}
-                    {field === "full_name" ? " (obligatorio)" : " (opcional)"}
-                  </label>
-                  <select
-                    value={mapping[field]}
-                    disabled={busy}
-                    onChange={(e) => setMapping((m) => ({ ...m, [field]: e.target.value }))}
-                    className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground disabled:opacity-60"
+      <form onSubmit={onFormSubmit} className="space-y-5 rounded-xl border border-border bg-surface p-5 shadow-sm" aria-busy={busy}>
+        {/* Progreso: tres pasos unidos por una línea, el actual marcado. */}
+        <ol className="flex items-center gap-2" aria-label="Pasos de la carga">
+          {STEPS.map((item, index) => {
+            const done = item.id < step;
+            const current = item.id === step;
+            return (
+              <li key={item.id} className="flex flex-1 items-center gap-2 last:flex-none">
+                <button
+                  type="button"
+                  onClick={() => goTo(item.id)}
+                  disabled={busy}
+                  aria-current={current ? "step" : undefined}
+                  className="flex min-h-11 items-center gap-2 rounded-lg px-1 text-left text-sm disabled:pointer-events-none"
+                >
+                  <span
+                    className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full border text-xs font-semibold ${
+                      current
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : done
+                          ? "border-primary text-primary"
+                          : "border-border-strong text-muted-foreground"
+                    }`}
                   >
-                    <option value="">(ninguna columna)</option>
-                    {headers.map((h) => (
-                      <option key={h} value={h}>
-                        {h}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ))}
-            </div>
+                    {done ? <Check size={14} aria-hidden="true" /> : item.id}
+                  </span>
+                  <span className={current ? "font-medium text-foreground" : "text-muted-foreground"}>
+                    {item.label}
+                    <span className="sr-only">{done ? " (completo)" : current ? " (paso actual)" : ""}</span>
+                  </span>
+                </button>
+                {index < STEPS.length - 1 && (
+                  <span className={`h-px flex-1 ${done ? "bg-primary" : "bg-border"}`} aria-hidden="true" />
+                )}
+              </li>
+            );
+          })}
+        </ol>
 
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              {(Object.keys(MULTI_FIELD_LABELS) as MultiFieldKey[]).map((field) => (
-                <div key={field}>
-                  <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                    {MULTI_FIELD_LABELS[field]} (opcional, marca todas las que apliquen)
-                  </label>
-                  <div className="max-h-32 overflow-y-auto rounded-lg border border-border bg-surface p-2">
-                    {headers.map((h) => (
-                      <label key={h} className="flex items-center gap-2 px-1 py-0.5 text-sm text-foreground">
-                        <input
-                          type="checkbox"
-                          checked={mapping[field].includes(h)}
-                          disabled={busy}
-                          onChange={() => toggleMultiField(field, h)}
-                        />
-                        {h}
-                      </label>
-                    ))}
-                  </div>
-                  {mapping[field].length > 1 && (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Se usará la primera con dato, en este orden: {mapping[field].join(" → ")}.
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-            <p className="mt-3 text-xs text-muted-foreground">
-              Cada fila necesita al menos RUT o teléfono para poder detectar duplicados.
+        {/* Paso 1 · Archivo. Los pasos se ocultan sin desmontarse para no perder el archivo elegido. */}
+        <section hidden={step !== 1} aria-labelledby="paso-archivo" className="space-y-3">
+          <h3 id="paso-archivo" className="text-sm font-semibold text-foreground">
+            Elige el archivo
+          </h3>
+          <div>
+            <label htmlFor="carga-archivo" className="mb-1.5 block text-xs font-medium text-muted-foreground">
+              Archivo (.csv, .xlsx)
+            </label>
+            <input
+              key={fileInputKey}
+              id="carga-archivo"
+              type="file"
+              name="file"
+              accept=".csv,.xlsx,.xls"
+              disabled={busy}
+              onChange={handleFileChange}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-60"
+            />
+            {parsing && <LoadingState label="Estamos leyendo el archivo" compact className="mt-2" />}
+          </div>
+          {headers && rows && (
+            <p className="flex items-center gap-2 text-sm text-foreground">
+              <FileCheck2 size={16} className="text-success" aria-hidden="true" />
+              {fileName}: {rows.length.toLocaleString("es-CL")} fila(s) y {headers.length} columna(s).
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Todas las demás columnas se conservarán como datos de campaña y se mostrarán en la ficha del ejecutivo.
+          )}
+          <p className="text-xs text-muted-foreground">
+            Funciona con cualquier archivo: en el paso siguiente indicas qué columna corresponde a cada dato, sin tener que
+            renombrar nada.
+          </p>
+        </section>
+
+        {/* Paso 2 · Columnas, con la vista previa del mapeo. */}
+        <section hidden={step !== 2} aria-labelledby="paso-columnas" className="space-y-4">
+          <div>
+            <h3 id="paso-columnas" className="text-sm font-semibold text-foreground">
+              Indica qué columna de tu archivo corresponde a cada dato
+            </h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Ya adivinamos lo que pudimos por el nombre de la columna; corrige lo que no calce.
             </p>
           </div>
-        )}
+          {headers && (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {(Object.keys(SINGLE_FIELD_LABELS) as SingleFieldKey[]).map((field) => (
+                  <div key={field}>
+                    <label htmlFor={`mapeo-${field}`} className="mb-1 block text-xs font-medium text-muted-foreground">
+                      {SINGLE_FIELD_LABELS[field]}
+                      {field === "full_name" ? " (obligatorio)" : " (opcional)"}
+                    </label>
+                    <select
+                      id={`mapeo-${field}`}
+                      value={mapping[field]}
+                      disabled={busy}
+                      onChange={(e) => {
+                        setStepError(null);
+                        setMapping((m) => ({ ...m, [field]: e.target.value }));
+                      }}
+                      aria-invalid={field === "full_name" && Boolean(stepError) && !mapping.full_name ? true : undefined}
+                      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground disabled:opacity-60"
+                    >
+                      <option value="">(ninguna columna)</option>
+                      {headers.map((h) => (
+                        <option key={h} value={h}>
+                          {h}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
 
-        <div>
-          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-            Campaña (opcional)
-          </label>
-          <select
-            value={campaignId}
-            onChange={(e) => setCampaignId(e.target.value)}
-            disabled={busy}
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-60"
-          >
-            <option value="">Sin campaña</option>
-            {campaigns.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Si eliges una campaña, estos registros quedan en su base y, si la campaña tiene flujo,
-            heredan ese flujo.
-          </p>
-        </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {(Object.keys(MULTI_FIELD_LABELS) as MultiFieldKey[]).map((field) => (
+                  <fieldset key={field}>
+                    <legend className="mb-1 block text-xs font-medium text-muted-foreground">
+                      {MULTI_FIELD_LABELS[field]} (opcional, marca todas las que apliquen)
+                    </legend>
+                    <div className="max-h-32 overflow-y-auto rounded-lg border border-border bg-surface p-2">
+                      {headers.map((h) => (
+                        <label key={h} className="flex items-center gap-2 px-1 py-0.5 text-sm text-foreground">
+                          <input
+                            type="checkbox"
+                            checked={mapping[field].includes(h)}
+                            disabled={busy}
+                            onChange={() => {
+                              setStepError(null);
+                              toggleMultiField(field, h);
+                            }}
+                          />
+                          {h}
+                        </label>
+                      ))}
+                    </div>
+                    {mapping[field].length > 1 && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Se usará la primera con dato, en este orden: {mapping[field].join(" → ")}.
+                      </p>
+                    )}
+                  </fieldset>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Cada fila necesita al menos RUT o teléfono para poder detectar duplicados. Todas las demás columnas se
+                conservan como datos de campaña y se muestran en la ficha del ejecutivo.
+              </p>
+            </>
+          )}
 
-        <div className="grid gap-3 sm:grid-cols-2">
+          {previewRows.length > 0 && (
+            <div className="rounded-xl border border-border bg-background p-4">
+              <p className="text-xs font-medium text-foreground">
+                Vista previa · {(rows ?? []).length.toLocaleString("es-CL")} filas en el archivo
+              </p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                Así quedarán guardadas las primeras {previewRows.length} filas con el mapeo actual.
+              </p>
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full min-w-[560px] text-left text-xs">
+                  <thead className="border-b border-border text-left text-xs text-muted-foreground">
+                    <tr>
+                      <th className="py-1.5 pr-3 font-medium">Nombre</th>
+                      <th className="py-1.5 pr-3 font-medium">RUT</th>
+                      <th className="py-1.5 pr-3 font-medium">Teléfono</th>
+                      <th className="py-1.5 pr-3 font-medium">Correo</th>
+                      <th className="py-1.5 font-medium">Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {previewRows.map((row, index) => (
+                      <tr key={index}>
+                        <td className="py-1.5 pr-3 text-foreground">{row.full_name || "—"}</td>
+                        <td className="py-1.5 pr-3 text-muted-foreground">{row.rut || "—"}</td>
+                        <td className={`py-1.5 pr-3 ${row.phone ? "text-muted-foreground" : "text-danger"}`}>
+                          {row.phone || "sin teléfono"}
+                        </td>
+                        <td className="py-1.5 pr-3 text-muted-foreground">{row.email || "—"}</td>
+                        <td className="py-1.5 text-muted-foreground">{row.status || "nuevo"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* Paso 3 · Destino y confirmación. */}
+        <section hidden={step !== 3} aria-labelledby="paso-destino" className="space-y-4">
+          <h3 id="paso-destino" className="text-sm font-semibold text-foreground">
+            ¿Dónde quedan los registros?
+          </h3>
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-              Equipo destino (opcional)
+            <label htmlFor="carga-campana" className="mb-1.5 block text-xs font-medium text-muted-foreground">
+              Campaña (opcional)
             </label>
             <select
-              value={teamId}
-              onChange={(e) => setTeamId(e.target.value)}
+              id="carga-campana"
+              value={campaignId}
+              onChange={(e) => setCampaignId(e.target.value)}
               disabled={busy}
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-60"
             >
-              <option value="">Sin equipo</option>
-              {teams.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
+              <option value="">Sin campaña</option>
+              {campaigns.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
                 </option>
               ))}
             </select>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Si eliges una campaña, estos registros quedan en su base y, si la campaña tiene flujo, heredan ese flujo.
+            </p>
           </div>
-          <div>
-            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-              Flujo de gestión (opcional)
-            </label>
-            <select
-              value={campaignWorkflowId ? "__campaign__" : workflowId}
-              onChange={(e) => setWorkflowId(e.target.value)}
-              disabled={busy || Boolean(campaignWorkflowId)}
-              aria-describedby={campaignWorkflowId ? "flujo-de-la-campana" : undefined}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-60"
-            >
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label htmlFor="carga-equipo" className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                Equipo destino (opcional)
+              </label>
+              <select
+                id="carga-equipo"
+                value={teamId}
+                onChange={(e) => setTeamId(e.target.value)}
+                disabled={busy}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-60"
+              >
+                <option value="">Sin equipo</option>
+                {teams.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="carga-flujo" className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                Flujo de gestión (opcional)
+              </label>
+              <select
+                id="carga-flujo"
+                value={campaignWorkflowId ? "__campaign__" : workflowId}
+                onChange={(e) => setWorkflowId(e.target.value)}
+                disabled={busy || Boolean(campaignWorkflowId)}
+                aria-describedby={campaignWorkflowId ? "flujo-de-la-campana" : undefined}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-60"
+              >
+                {campaignWorkflowId && (
+                  <option value="__campaign__">
+                    {campaignWorkflowName ? `Flujo de la campaña · ${campaignWorkflowName}` : "Flujo de la campaña"}
+                  </option>
+                )}
+                <option value="">Sin flujo</option>
+                {workflows.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name}
+                  </option>
+                ))}
+              </select>
               {campaignWorkflowId && (
-                <option value="__campaign__">
-                  {campaignWorkflowName ? `Flujo de la campaña · ${campaignWorkflowName}` : "Flujo de la campaña"}
-                </option>
+                <p id="flujo-de-la-campana" className="mt-1 text-xs text-muted-foreground">
+                  Se usa el flujo de la campaña elegida. Para cambiarlo, edítalo en el Resumen de la campaña.
+                </p>
               )}
-              <option value="">Sin flujo</option>
-              {workflows.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
-                </option>
-              ))}
-            </select>
-            {campaignWorkflowId && (
-              <p id="flujo-de-la-campana" className="mt-1 text-xs text-muted-foreground">
-                Se usa el flujo de la campaña elegida. Para cambiarlo, edítalo en el Resumen de la campaña.
-              </p>
-            )}
+            </div>
           </div>
-        </div>
 
-        <p className="text-xs text-muted-foreground">
-          Funciona con cualquier archivo: elige el Excel/CSV y arriba indicas qué columna de tu
-          archivo corresponde a cada dato, sin tener que renombrar nada.
-        </p>
-        <p className="text-xs text-muted-foreground">
-          La carga es segura para archivos grandes (decenas de miles de filas) y evita duplicados
-          automáticamente: si dos filas comparten el mismo RUT (o el mismo teléfono cuando no hay
-          RUT) dentro de la misma campaña o bolsa sin campaña, solo se crea un lead. Esto aplica
-          tanto a duplicados dentro del propio archivo como contra leads ya cargados antes.
-        </p>
+          {/* Resumen de lo que se va a cargar: nada que recordar de los pasos anteriores. */}
+          {rows && (
+            <dl className="grid gap-x-6 gap-y-2 rounded-lg border border-border bg-background p-4 text-sm sm:grid-cols-2">
+              <div>
+                <dt className="text-xs text-muted-foreground">Archivo</dt>
+                <dd className="truncate text-foreground">
+                  {fileName} · {rows.length.toLocaleString("es-CL")} filas
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">Columnas</dt>
+                <dd className="text-foreground">
+                  Nombre: {mapping.full_name || "—"} · RUT: {mapping.rut || "—"} · Teléfono:{" "}
+                  {mapping.phone.length ? mapping.phone.join(", ") : "—"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">Destino</dt>
+                <dd className="text-foreground">
+                  {campaignName ?? "Sin campaña"} · {teamName ?? "Sin equipo"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">Flujo</dt>
+                <dd className="text-foreground">{workflowName ?? "Sin flujo"}</dd>
+              </div>
+            </dl>
+          )}
 
-        {pending && (
-          <div>
-            <LoadingState label={progressLabel || "Estamos preparando la carga"} compact />
-            <div className="h-2 w-full overflow-hidden rounded-full bg-surface-muted">
+          <p className="text-xs text-muted-foreground">
+            La carga es segura para archivos grandes (decenas de miles de filas) y evita duplicados automáticamente: si dos
+            filas comparten el mismo RUT (o el mismo teléfono cuando no hay RUT) dentro de la misma campaña o bolsa sin
+            campaña, solo se crea un lead. Esto aplica tanto a duplicados dentro del propio archivo como contra leads ya
+            cargados antes.
+          </p>
+
+          {pending && (
+            <div>
+              <LoadingState label={progressLabel || "Estamos preparando la carga"} compact />
               <div
-                className="h-full bg-primary transition-[width] duration-150"
-                style={{ width: `${progress}%` }}
-              />
+                className="h-2 w-full overflow-hidden rounded-full bg-surface-muted"
+                role="progressbar"
+                aria-label="Avance de la carga"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={progress}
+              >
+                <div className="h-full bg-primary transition-[width] duration-150" style={{ width: `${progress}%` }} />
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">Avance real: {progress > 0 ? `${progress}%` : "iniciando"}</p>
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">Avance real: {progress > 0 ? `${progress}%` : "iniciando"}</p>
-          </div>
+          )}
+        </section>
+
+        {stepError && (
+          <p role="alert" className="text-sm text-danger">
+            {stepError}
+          </p>
         )}
 
-        {previewRows.length > 0 && (
-          <div className="rounded-xl border border-border bg-background p-4">
-            <p className="text-xs font-medium text-foreground">
-              Vista previa · {(rows ?? []).length.toLocaleString("es-CL")} filas en el archivo
-            </p>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">
-              Así quedarán guardadas las primeras {previewRows.length} filas con el mapeo actual.
-            </p>
-            <div className="mt-3 overflow-x-auto">
-              <table className="w-full min-w-[560px] text-left text-xs">
-                <thead className="border-b border-border text-left text-xs text-muted-foreground">
-                  <tr>
-                    <th className="py-1.5 pr-3 font-medium">Nombre</th>
-                    <th className="py-1.5 pr-3 font-medium">RUT</th>
-                    <th className="py-1.5 pr-3 font-medium">Teléfono</th>
-                    <th className="py-1.5 pr-3 font-medium">Correo</th>
-                    <th className="py-1.5 font-medium">Estado</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {previewRows.map((row, index) => (
-                    <tr key={index}>
-                      <td className="py-1.5 pr-3 text-foreground">{row.full_name || "—"}</td>
-                      <td className="py-1.5 pr-3 text-muted-foreground">{row.rut || "—"}</td>
-                      <td className={`py-1.5 pr-3 ${row.phone ? "text-muted-foreground" : "text-danger"}`}>
-                        {row.phone || "sin teléfono"}
-                      </td>
-                      <td className="py-1.5 pr-3 text-muted-foreground">{row.email || "—"}</td>
-                      <td className="py-1.5 text-muted-foreground">{row.status || "nuevo"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        <button
-          type="submit"
-          disabled={busy || !rows || !mapping.full_name}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
-        >
-          {pending ? "Carga en curso…" : `Cargar ${(rows ?? []).length.toLocaleString("es-CL")} filas`}
-        </button>
+        <div className="flex items-center justify-between gap-2 border-t border-border pt-4">
+          {step > 1 ? (
+            <button
+              type="button"
+              onClick={() => goTo((step - 1) as Step)}
+              disabled={busy}
+              className={buttonClasses({ variant: "secondary" })}
+            >
+              <ChevronLeft size={16} aria-hidden="true" />
+              Atrás
+            </button>
+          ) : (
+            <span />
+          )}
+          {step < 3 ? (
+            <button type="submit" disabled={busy} className={buttonClasses()}>
+              Siguiente
+              <ChevronRight size={16} aria-hidden="true" />
+            </button>
+          ) : (
+            <button type="submit" disabled={busy || !rows || !mapping.full_name} className={buttonClasses()}>
+              {pending ? "Carga en curso…" : `Cargar ${(rows ?? []).length.toLocaleString("es-CL")} filas`}
+            </button>
+          )}
+        </div>
       </form>
 
       {error && (
@@ -621,7 +809,7 @@ export function BulkUploadForm({
                 <button
                   type="button"
                   onClick={downloadRejected}
-                  className="rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-medium text-foreground hover:bg-surface-muted"
+                  className={buttonClasses({ variant: "secondary", size: "sm" })}
                 >
                   Descargar rechazadas
                 </button>

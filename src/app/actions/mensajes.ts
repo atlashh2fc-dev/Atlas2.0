@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { revalidatePath } from "next/cache";
 
 import { requireProfile } from "@/lib/auth";
@@ -63,7 +64,7 @@ export async function enviarMensaje(formData: FormData) {
     p_programado_para: null,
     p_canal: canal,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   const asunto = texto(formData, "asunto", 300);
   const inReplyTo = texto(formData, "in_reply_to", 300);
   if (canal === "correo" && typeof mensajeId === "string" && (asunto || inReplyTo)) {
@@ -81,7 +82,7 @@ export async function cancelarMensaje(formData: FormData) {
   if (!UUID.test(id)) throw new Error("Mensaje inválido.");
   const supabase = await createClient();
   const { error } = await supabase.from("mensajes_salientes").update({ estado: "cancelado", updated_at: new Date().toISOString() }).eq("id", id).in("estado", ["programado", "fallido"]);
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidar();
 }
 
@@ -91,7 +92,7 @@ export async function reintentarMensaje(formData: FormData) {
   if (!UUID.test(id)) throw new Error("Mensaje inválido.");
   const supabase = await createClient();
   const { error } = await supabase.from("mensajes_salientes").update({ estado: "programado", programado_para: new Date().toISOString(), error: null, updated_at: new Date().toISOString() }).eq("id", id).eq("estado", "fallido");
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   await despacharMensajes({ generar: false, limite: 20 });
   revalidar();
 }

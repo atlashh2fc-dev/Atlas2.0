@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
@@ -15,7 +16,7 @@ export async function getAgentLiveStatus(): Promise<AgentLiveStatus[]> {
   await requireProfile(["admin", "supervisor"]);
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("get_agent_live_status");
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   return (data ?? []) as AgentLiveStatus[];
 }
 
@@ -35,7 +36,7 @@ export async function getStatusReasonCaps(): Promise<StatusReasonCap[]> {
     .select("id, max_seconds")
     .eq("is_pause", true)
     .not("max_seconds", "is", null);
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   return (data ?? []) as StatusReasonCap[];
 }
 
@@ -48,7 +49,7 @@ export async function getQueueHealth(): Promise<QueueHealth[]> {
   await requireProfile(["admin", "supervisor"]);
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("get_queue_health");
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   return (data ?? []) as QueueHealth[];
 }
 
@@ -73,7 +74,7 @@ export async function forceAgentLogout(
     p_target_profile_id: profileId,
     p_reason: reason?.trim() || null,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   if (typeof data !== "string") throw new Error("La orden de cierre no devolvió un identificador.");
 
   revalidatePath("/dashboard/supervision/monitor");
@@ -179,6 +180,6 @@ export async function getLiveWallboard(campaignId?: string | null): Promise<Live
   await requireProfile(["admin", "supervisor"]);
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("get_live_wallboard", { p_campaign_id: campaignId || null });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   return data as LiveWallboard;
 }

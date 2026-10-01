@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { revalidatePath } from "next/cache";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -75,7 +76,7 @@ export async function listSaleValidations(status: SaleValidationStatus): Promise
   await requireProfile(["supervisor", "admin"]);
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("list_sale_validations", { p_status: status, p_limit: 1000 });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   return ((data ?? []) as Record<string, unknown>[]).map(toRow);
 }
 
@@ -110,7 +111,7 @@ export async function searchSaleValidations(filters: SaleValidationFilters): Pro
     p_limit: 5000,
     p_date_field: filters.dateField ?? "venta",
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   return ((data ?? []) as Record<string, unknown>[]).map(toRow);
 }
 
@@ -134,7 +135,7 @@ export async function resolveSales(input: {
       p_decision: input.decision,
       p_note: note,
     });
-    if (error) throw new Error(error.message);
+    if (error) throw errorDeAccion(error);
     revalidatePath("/dashboard/validacion-ventas");
     revalidatePath("/dashboard/validacion-ventas/validadas");
     return { ok: true, count: Number(data ?? 0) };
@@ -163,7 +164,7 @@ export async function setSaleDate(input: {
       p_sold_on: input.soldOn,
       p_note: input.note.trim(),
     });
-    if (error) throw new Error(error.message);
+    if (error) throw errorDeAccion(error);
     revalidatePath("/dashboard/validacion-ventas");
     revalidatePath("/dashboard/validacion-ventas/validadas");
     revalidatePath("/dashboard/reportes");
@@ -177,7 +178,7 @@ export async function countSaleValidations(): Promise<Record<SaleValidationStatu
   await requireProfile(["supervisor", "admin"]);
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("count_sale_validations");
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   const counts: Record<SaleValidationStatus, number> = { pendiente: 0, aprobada: 0, rechazada: 0, anulada: 0 };
   for (const row of (data ?? []) as { status: SaleValidationStatus; total: number }[]) {
     counts[row.status] = Number(row.total);

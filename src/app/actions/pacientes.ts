@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -53,7 +54,7 @@ export async function crearPaciente(formData: FormData) {
     p_datos: datos,
     p_mascota: mascota,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/pacientes");
   redirect(`/dashboard/pacientes/${data}`);
 }
@@ -68,7 +69,7 @@ export async function registrarCuidado(formData: FormData) {
 
   const supabase = await createClient();
   const { error } = await supabase.rpc("registrar_cuidado_de_mascota", { p_mascota: mascota, p_tipo: tipo });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath(`/dashboard/pacientes/${cuenta}`);
   revalidatePath("/dashboard/pacientes");
 }
@@ -99,6 +100,6 @@ export async function agregarNota(formData: FormData) {
     done: true,
     owner_id: profile.id,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath(`/dashboard/pacientes/${cuenta}`);
 }

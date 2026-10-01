@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { randomBytes } from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -85,7 +86,7 @@ export async function setMyActiveCampaign(campaignId: string): Promise<void> {
   const { error } = await supabase.rpc("set_my_active_campaign", {
     p_campaign_id: campaignId,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 }
 
 export type AgentDialerHistoryItem = {
@@ -170,7 +171,7 @@ export async function reportAgentPhoneTelemetry(input: AgentPhoneTelemetryInput)
       attempt,
     },
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 }
 
 /**
@@ -197,9 +198,9 @@ export async function listAgentSipRows(): Promise<AgentSipRow[]> {
       .select("profile_id, status, failure_code, last_success_at"),
   ]);
 
-  if (profilesError) throw new Error(profilesError.message);
-  if (credsError) throw new Error(credsError.message);
-  if (provisioningError) throw new Error(provisioningError.message);
+  if (profilesError) throw errorDeAccion(profilesError);
+  if (credsError) throw errorDeAccion(credsError);
+  if (provisioningError) throw errorDeAccion(provisioningError);
 
   const credByProfile = new Map((creds ?? []).map((c) => [c.profile_id, c]));
   const provisioningByProfile = new Map((provisioning ?? []).map((row) => [row.profile_id, row]));
@@ -228,7 +229,7 @@ async function nextFreeExtension(service: SupabaseClient): Promise<string> {
   // intentara reutilizar la extensión 6010. El cliente de servicio se usa
   // solo en este action, después de validar el rol admin, y no expone claves.
   const { data, error } = await service.from("agent_sip_credentials").select("extension");
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 
   let max = EXTENSION_RANGE_START - 1;
   for (const row of data ?? []) {
@@ -236,6 +237,20 @@ async function nextFreeExtension(service: SupabaseClient): Promise<string> {
     if (Number.isFinite(n) && n > max) max = n;
   }
   return String(Math.max(max + 1, EXTENSION_RANGE_START));
+}
+
+/**
+ * La clave de servicio se salta la política
+ * agent_sip_credentials_organization_isolation, así que antes de usarla se
+ * comprueba con el cliente de SESIÓN que la persona destino sea visible para
+ * quien actúa: la RLS de profiles solo muestra gente de sus empresas.
+ */
+async function exigirPerfilDeMiEmpresa(profileId: string) {
+  if (!profileId) throw new Error("No se pudo identificar al ejecutivo.");
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("profiles").select("id").eq("id", profileId).maybeSingle();
+  if (error) throw errorDeAccion(error);
+  if (!data) throw new Error("Solo puedes administrar extensiones de personas de tu empresa.");
 }
 
 /**
@@ -248,6 +263,7 @@ export async function provisionAgentExtension(formData: FormData) {
   await requireProfile(["admin"]);
   const profileId = String(formData.get("profile_id") ?? "").trim();
   if (!profileId) throw new Error("No se pudo identificar al ejecutivo.");
+  await exigirPerfilDeMiEmpresa(profileId);
 
   // Toda esta operación es administrativa. Usar el cliente autenticado aquí
   // rompe el cálculo de disponibilidad por RLS y termina en un 23505 que
@@ -259,7 +275,7 @@ export async function provisionAgentExtension(formData: FormData) {
     .select("id, role, active")
     .eq("id", profileId)
     .maybeSingle();
-  if (agentError) throw new Error(agentError.message);
+  if (agentError) throw errorDeAccion(agentError);
   if (!agent || agent.role !== "agente") {
     throw new Error("El usuario seleccionado ya no es un ejecutivo válido.");
   }
@@ -272,7 +288,7 @@ export async function provisionAgentExtension(formData: FormData) {
     .select("id")
     .eq("profile_id", profileId)
     .maybeSingle();
-  if (existingError) throw new Error(existingError.message);
+  if (existingError) throw errorDeAccion(existingError);
   if (existing) throw new Error("Este agente ya tiene una extensión asignada.");
 
   const sipPassword = randomBytes(16).toString("hex");
@@ -294,14 +310,14 @@ export async function provisionAgentExtension(formData: FormData) {
       provisioned = true;
       break;
     }
-    if (error.code !== "23505") throw new Error(error.message);
+    if (error.code !== "23505") throw errorDeAccion(error);
 
     const { data: concurrentlyCreated, error: concurrentError } = await service
       .from("agent_sip_credentials")
       .select("id")
       .eq("profile_id", profileId)
       .maybeSingle();
-    if (concurrentError) throw new Error(concurrentError.message);
+    if (concurrentError) throw errorDeAccion(concurrentError);
     if (concurrentlyCreated) {
       throw new Error("Este agente ya recibió una extensión en otra operación.");
     }
@@ -319,6 +335,7 @@ export async function provisionAgentExtension(formData: FormData) {
  */
 export async function revealAgentSipCredential(profileId: string): Promise<{ extension: string; sip_password: string } | null> {
   const admin = await requireProfile(["admin"]);
+  await exigirPerfilDeMiEmpresa(String(profileId ?? "").trim());
 
   // La política de lectura ahora deja la contraseña solo en manos del dueño,
   // así que este acceso pasa por la clave de servicio y queda registrado: con
@@ -332,7 +349,7 @@ export async function revealAgentSipCredential(profileId: string): Promise<{ ext
     .eq("profile_id", profileId)
     .maybeSingle();
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 
   const { error: logError } = await service.from("sensitive_access_log").insert({
     actor_id: admin.id,
@@ -340,7 +357,7 @@ export async function revealAgentSipCredential(profileId: string): Promise<{ ext
     target_profile_id: profileId,
     metadata: { found: Boolean(data) },
   });
-  if (logError) throw new Error(logError.message);
+  if (logError) throw errorDeAccion(logError);
 
   return data ?? null;
 }
@@ -356,7 +373,7 @@ export async function setAgentExtensionActive(formData: FormData) {
     .update({ is_active: !active, updated_at: new Date().toISOString() })
     .eq("profile_id", profileId);
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/admin/agentes-sip");
 }
 
@@ -376,7 +393,7 @@ export async function getMySipCredentials(): Promise<{ extension: string; sip_pa
     .eq("is_active", true)
     .maybeSingle();
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   return data ?? null;
 }
 
@@ -396,7 +413,7 @@ export async function listMyDialerContacts(): Promise<DialerContact[]> {
     .eq("assigned_to", profile.id);
 
   const { data, error } = await query;
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 
   return (data ?? [])
     .filter((row): row is typeof row & { phone: string } => Boolean(row.phone?.trim()))
@@ -422,14 +439,14 @@ export async function getMyDialerOperatingMode(): Promise<AgentDialerOperatingMo
   // Corre con su sesión: la RPC solo puede tocar la cola del propio ejecutivo.
   const supabase = await createClient();
   const { error: ensureError } = await supabase.rpc("ensure_my_active_campaign");
-  if (ensureError) throw new Error(ensureError.message);
+  if (ensureError) throw errorDeAccion(ensureError);
 
   const { data: memberships, error: membershipsError } = await admin
     .from("campaign_agents")
     .select("campaign_id, manual_dial_enabled, priority")
     .eq("profile_id", profile.id);
 
-  if (membershipsError) throw new Error(membershipsError.message);
+  if (membershipsError) throw errorDeAccion(membershipsError);
 
   const campaignIds = [...new Set((memberships ?? []).map((row) => row.campaign_id))];
   const manualDialPermissions = new Map(
@@ -469,9 +486,9 @@ export async function getMyDialerOperatingMode(): Promise<AgentDialerOperatingMo
         .maybeSingle(),
     ]);
 
-  if (configsError) throw new Error(configsError.message);
-  if (campaignsError) throw new Error(campaignsError.message);
-  if (hybridRequestError) throw new Error(hybridRequestError.message);
+  if (configsError) throw errorDeAccion(configsError);
+  if (campaignsError) throw errorDeAccion(campaignsError);
+  if (hybridRequestError) throw errorDeAccion(hybridRequestError);
 
   const activeCampaignNames = new Map((campaigns ?? []).map((row) => [row.id, row.name]));
   const priorities = new Map((memberships ?? []).map((row) => [row.campaign_id, row.priority ?? 100]));
@@ -500,7 +517,7 @@ export async function getMyDialerOperatingMode(): Promise<AgentDialerOperatingMo
     .select("campaign_id, locked, source, assigned_by:profiles!agent_active_campaigns_assigned_by_fkey(full_name)")
     .eq("profile_id", profile.id)
     .maybeSingle();
-  if (selectionError) throw new Error(selectionError.message);
+  if (selectionError) throw errorDeAccion(selectionError);
   const assignedBy = Array.isArray(selection?.assigned_by) ? selection?.assigned_by[0] : selection?.assigned_by;
 
   const selectedAutomaticCampaignId = automaticCampaignIds.includes(selection?.campaign_id ?? "")
@@ -524,7 +541,7 @@ export async function getMyDialerOperatingMode(): Promise<AgentDialerOperatingMo
           .maybeSingle()
       : { data: null, error: null };
 
-  if (sessionError) throw new Error(sessionError.message);
+  if (sessionError) throw errorDeAccion(sessionError);
 
   return {
     mode: automaticCampaignIds.length > 0 ? "automatic" : "manual",
@@ -569,7 +586,7 @@ export async function listMyAutomaticDialHistory(): Promise<AgentDialerHistoryIt
     .order("created_at", { ascending: false })
     .limit(25);
 
-  if (attemptsError) throw new Error(attemptsError.message);
+  if (attemptsError) throw errorDeAccion(attemptsError);
   if (!attempts?.length) return [];
 
   const leadIds = [...new Set(attempts.map((attempt) => attempt.lead_id))];
@@ -578,7 +595,7 @@ export async function listMyAutomaticDialHistory(): Promise<AgentDialerHistoryIt
     .select("id, full_name")
     .in("id", leadIds);
 
-  if (leadsError) throw new Error(leadsError.message);
+  if (leadsError) throw errorDeAccion(leadsError);
   const leadNames = new Map((leads ?? []).map((lead) => [lead.id, lead.full_name]));
 
   return attempts.map((attempt) => ({
@@ -619,7 +636,7 @@ export async function getMyIncomingDialContext(): Promise<IncomingDialContext | 
     .limit(1)
     .maybeSingle();
 
-  if (attemptError) throw new Error(attemptError.message);
+  if (attemptError) throw errorDeAccion(attemptError);
   if (!attempt) return null;
 
   const [{ data: lead, error: leadError }, { data: campaign, error: campaignError }] =
@@ -632,8 +649,8 @@ export async function getMyIncomingDialContext(): Promise<IncomingDialContext | 
       admin.from("campaigns").select("name").eq("id", attempt.campaign_id).single(),
     ]);
 
-  if (leadError) throw new Error(leadError.message);
-  if (campaignError) throw new Error(campaignError.message);
+  if (leadError) throw errorDeAccion(leadError);
+  if (campaignError) throw errorDeAccion(campaignError);
 
   return {
     dial_attempt_id: attempt.id,

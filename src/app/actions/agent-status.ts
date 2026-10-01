@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { requireProfile, getCurrentProfile } from "@/lib/auth";
@@ -22,7 +23,7 @@ export async function listActiveStatusReasons(): Promise<AgentStatusReason[]> {
     .eq("is_active", true)
     .eq("is_system", false)
     .order("sort_order");
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   return data ?? [];
 }
 
@@ -45,7 +46,7 @@ export async function markAgentLoggedOut(): Promise<void> {
   if (!profile || profile.role !== "agente") return;
   const supabase = await createClient();
   const { error } = await supabase.rpc("mark_my_agent_logged_out");
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 }
 
 /**
@@ -72,7 +73,7 @@ export async function heartbeat(): Promise<void> {
     .from("agent_current_status")
     .update({ last_heartbeat_at: new Date().toISOString() })
     .eq("profile_id", profile.id);
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 }
 
 /**
@@ -87,7 +88,7 @@ export async function getMyCurrentStatus(): Promise<{ reason: AgentStatusReason;
     .select("reason_id, since, agent_status_reasons(*)")
     .eq("profile_id", profile.id)
     .maybeSingle();
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   if (!data) return null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const reason = (data as any).agent_status_reasons as AgentStatusReason | null;
@@ -114,7 +115,7 @@ export async function getMyPauseBeforeDisconnect(): Promise<AgentStatusReason | 
     .order("until", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const reason = (data as any)?.agent_status_reasons as AgentStatusReason | null | undefined;
   return reason?.is_pause && reason.code !== "desconectado" ? reason : null;
@@ -132,7 +133,7 @@ export async function setMyCurrentStatus(reasonId: string): Promise<void> {
   const { error } = await supabase.rpc("set_my_agent_current_status", {
     p_reason_id: reasonId,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 }
 
 /**
@@ -147,7 +148,7 @@ export async function enterMyHybridManualMode(campaignId: string): Promise<void>
   const { error } = await supabase.rpc("enter_agent_hybrid_manual_mode", {
     p_campaign_id: campaignId,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 }
 
 /** Vuelve a Disponible solo si no queda llamada ni gestion manual abierta. */
@@ -155,7 +156,7 @@ export async function exitMyHybridManualMode(): Promise<void> {
   await requireProfile(["agente"]);
   const supabase = await createClient();
   const { error } = await supabase.rpc("exit_agent_hybrid_manual_mode");
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 }
 
 // --- Administración de motivos (solo admin) ---
@@ -164,7 +165,7 @@ export async function listAllStatusReasons(): Promise<AgentStatusReason[]> {
   await requireProfile(["admin"]);
   const supabase = await createClient();
   const { data, error } = await supabase.from("agent_status_reasons").select("*").order("sort_order");
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   return data ?? [];
 }
 
@@ -185,7 +186,7 @@ export async function createStatusReason(formData: FormData) {
     sort_order: Number.isFinite(sortOrder) ? sortOrder : 0,
     max_seconds: tope.segundos,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/admin/estados-agente");
 }
 
@@ -202,7 +203,7 @@ export async function toggleStatusReasonActive(formData: FormData) {
     .select("is_system")
     .eq("id", id)
     .maybeSingle();
-  if (readError) throw new Error(readError.message);
+  if (readError) throw errorDeAccion(readError);
   if (!reason) throw new Error("No se encontró el motivo o no es de tu empresa.");
   if (reason.is_system) {
     throw new Error("Los estados del sistema no se pueden desactivar: el teléfono los necesita para funcionar.");
@@ -213,7 +214,7 @@ export async function toggleStatusReasonActive(formData: FormData) {
     .update({ is_active: !active })
     .eq("id", id)
     .eq("is_system", false);
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/admin/estados-agente");
 }
 
@@ -237,7 +238,7 @@ export async function updateStatusReasonCap(formData: FormData) {
     .eq("id", id)
     .eq("is_pause", true)
     .select("id");
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   if (!data?.length) throw new Error("No se encontró la pausa o no es de tu empresa.");
   revalidatePath("/dashboard/admin/estados-agente");
 }
@@ -260,7 +261,7 @@ export async function updateStatusReasonCanales(formData: FormData) {
     .eq("id", id)
     .eq("is_pause", true)
     .select("id");
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   if (!data?.length) throw new Error("No se encontró la pausa o no es de tu empresa.");
   revalidatePath("/dashboard/admin/estados-agente");
 }
@@ -279,6 +280,6 @@ export async function getMyStatusDay(): Promise<MyStatusDay | null> {
   await requireProfile(["agente"]);
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("get_my_status_day");
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   return (data ?? null) as MyStatusDay | null;
 }

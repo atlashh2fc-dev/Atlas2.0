@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
 import type { AgentActivityReportRow, CallMetricsReportRow } from "@/lib/types";
@@ -23,7 +24,7 @@ export async function getCallMetricsReport(
     p_date_to: dateTo,
     p_campaign_id: campaignId ?? null,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   return (data ?? []) as CallMetricsReportRow[];
 }
 
@@ -47,7 +48,7 @@ export async function getAgentActivityReport(
     p_date_to: dateTo,
     p_campaign_id: campaignId ?? null,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   return (data ?? []) as AgentActivityReportRow[];
 }
 
@@ -66,7 +67,7 @@ export async function listCampaignsForReports(): Promise<ReportCampaign[]> {
     .from("campaigns")
     .select("id, name, dialer_campaign_configs(campaign_type)")
     .order("name");
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 
   return (data ?? []).map((campaign) => {
     // El embed llega como arreglo cuando PostgREST no puede probar que la

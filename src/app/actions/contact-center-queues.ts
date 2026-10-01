@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { revalidatePath } from "next/cache";
 
 import { requireProfile } from "@/lib/auth";
@@ -14,6 +15,18 @@ function revalidateQueue(queueId: string) {
   revalidatePath("/dashboard/conversaciones/whatsapp");
   revalidatePath("/dashboard/operacion");
   revalidatePath(`/dashboard/operacion/colas/${queueId}`);
+}
+
+/**
+ * Las escrituras van con la clave de servicio (las colas mezclan tablas que la
+ * sesión no puede tocar), así que antes se comprueba con el cliente de SESIÓN
+ * que la cola sea visible para quien actúa: la RLS solo muestra las de sus
+ * empresas. Sin esto, un id de otra empresa se podía editar desde acá.
+ */
+async function exigirColaVisible(supabase: Awaited<ReturnType<typeof createClient>>, queueId: string) {
+  const { data: queue, error } = await supabase.from("contact_center_queues").select("id").eq("id", queueId).maybeSingle();
+  if (error) throw errorDeAccion(error);
+  if (!queue) throw new Error("La cola no existe o no es de tu empresa. Actualiza la página y vuelve a elegirla.");
 }
 
 export async function saveContactCenterQueue(formData: FormData) {
@@ -43,6 +56,7 @@ export async function saveContactCenterQueue(formData: FormData) {
     throw new Error("La primera respuesta al correo debe estar entre 15 minutos (0,25 h) y 168 horas.");
   }
 
+  await exigirColaVisible(await createClient(), queueId);
   const admin = createAdminClient();
   const { error } = await admin
     .from("contact_center_queues")
@@ -55,7 +69,7 @@ export async function saveContactCenterQueue(formData: FormData) {
       updated_by: profile.id,
     })
     .eq("id", queueId);
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidateQueue(queueId);
 }
 
@@ -74,10 +88,9 @@ export async function saveContactCenterQueueMembers(formData: FormData) {
   if (!UUID.test(queueId)) throw new Error("Cola inválida.");
 
   const supabase = await createClient();
-  const admin = createAdminClient();
   // La cola tiene que estar al alcance de quien edita (su RLS decide cuáles ve).
-  const { data: queue } = await supabase.from("contact_center_queues").select("id").eq("id", queueId).maybeSingle();
-  if (!queue) throw new Error("La cola no existe o no está a tu alcance.");
+  await exigirColaVisible(supabase, queueId);
+  const admin = createAdminClient();
 
   // Supervisión solo mueve a quienes ve: los ejecutivos de sus equipos.
   let editables: Set<string> | null = null;
@@ -87,22 +100,25 @@ export async function saveContactCenterQueueMembers(formData: FormData) {
     if (selectedIds.some((id) => !editables!.has(id))) throw new Error("Solo puedes mover a ejecutivos de tus equipos.");
   }
 
+  // Leídos con la sesión: un ejecutivo de otra empresa no aparece y no entra a la cola.
   const { data: agents } = selectedIds.length > 0
-    ? await admin.from("profiles").select("id").in("id", selectedIds).eq("role", "agente").eq("active", true)
+    ? await supabase.from("profiles").select("id").in("id", selectedIds).eq("role", "agente").eq("active", true)
     : { data: [] as { id: string }[] };
-  if ((agents ?? []).length !== selectedIds.length) throw new Error("Uno de los agentes no está activo.");
+  if ((agents ?? []).length !== selectedIds.length) {
+    throw new Error("Uno de los ejecutivos no está activo o no es de tu empresa. Actualiza la página y vuelve a elegir.");
+  }
 
   let disable = admin.from("contact_center_queue_members").update({ is_active: false }).eq("queue_id", queueId);
   if (editables) disable = disable.in("profile_id", [...editables]);
   const { error: disableError } = await disable;
-  if (disableError) throw new Error(disableError.message);
+  if (disableError) throw errorDeAccion(disableError);
 
   if (selectedIds.length > 0) {
     const { error: upsertError } = await admin.from("contact_center_queue_members").upsert(
       selectedIds.map((profileId) => ({ queue_id: queueId, profile_id: profileId, is_active: true })),
       { onConflict: "queue_id,profile_id" },
     );
-    if (upsertError) throw new Error(upsertError.message);
+    if (upsertError) throw errorDeAccion(upsertError);
   }
 
   // Quien entra a una cola con correo recibe lo que esperaba sin esperar al próximo ciclo.
@@ -121,6 +137,13 @@ export async function conectarCorreoDeCampana(formData: FormData) {
   const campaignId = String(formData.get("campaign_id") ?? "").trim();
   if (!UUID.test(queueId) || !UUID.test(campaignId)) throw new Error("Elige una campaña.");
 
+  const supabase = await createClient();
+  await exigirColaVisible(supabase, queueId);
+  // Leída con la sesión: una campaña de otra empresa no aparece.
+  const { data: campaign, error: campaignError } = await supabase.from("campaigns").select("id").eq("id", campaignId).maybeSingle();
+  if (campaignError) throw errorDeAccion(campaignError);
+  if (!campaign) throw new Error("Esa campaña no es de tu empresa. Actualiza la página y elige otra.");
+
   const admin = createAdminClient();
   const { data: existente } = await admin
     .from("contact_center_queue_sources")
@@ -136,7 +159,7 @@ export async function conectarCorreoDeCampana(formData: FormData) {
   const { error } = existente
     ? await admin.from("contact_center_queue_sources").update({ is_active: true }).eq("id", existente.id)
     : await admin.from("contact_center_queue_sources").insert({ queue_id: queueId, channel_type: "email", campaign_id: campaignId, is_active: true });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 
   await admin.rpc("repartir_correos_pendientes");
   revalidateQueue(queueId);
@@ -147,6 +170,7 @@ export async function desconectarFuenteDeCola(formData: FormData) {
   const queueId = String(formData.get("queue_id") ?? "").trim();
   const sourceId = String(formData.get("source_id") ?? "").trim();
   if (!UUID.test(queueId) || !UUID.test(sourceId)) throw new Error("Fuente inválida.");
+  await exigirColaVisible(await createClient(), queueId);
   const admin = createAdminClient();
   // Solo correo: WhatsApp y voz tienen su propia configuración (línea y discador).
   const { error } = await admin
@@ -155,6 +179,6 @@ export async function desconectarFuenteDeCola(formData: FormData) {
     .eq("id", sourceId)
     .eq("queue_id", queueId)
     .eq("channel_type", "email");
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidateQueue(queueId);
 }

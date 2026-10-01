@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -139,7 +140,7 @@ export async function createCampaign(formData: FormData) {
     if (error.code === "23505") {
       redirect("/dashboard/admin/campanas?error=duplicate-name");
     }
-    throw new Error(error.message);
+    throw errorDeAccion(error);
   }
   revalidatePath("/dashboard/admin/campanas");
   redirect(`/dashboard/admin/campanas/${data.id}`);
@@ -156,7 +157,7 @@ export async function setCampaignWorkflow(formData: FormData) {
     .update({ workflow_id: workflowId, updated_at: new Date().toISOString() })
     .eq("id", campaignId);
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath(`/dashboard/admin/campanas/${campaignId}`);
 }
 
@@ -183,7 +184,7 @@ export async function setCampaignVertical(formData: FormData) {
     .update({ vertical, updated_at: new Date().toISOString() })
     .eq("id", campaignId);
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath(`/dashboard/admin/campanas/${campaignId}`);
   revalidatePath("/dashboard/reportes");
   revalidatePath("/dashboard/leads");
@@ -214,7 +215,7 @@ export async function mapAtlasLeadMailCampaign(formData: FormData) {
       routing_team_id: routingTeamId,
     },
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   const result = data as { mapped?: boolean; readiness?: string } | null;
   if (!result?.mapped) throw new Error("CRM no pudo registrar el vínculo de campaña.");
 
@@ -265,7 +266,7 @@ export async function toggleCampaignActive(formData: FormData) {
     .update({ is_active: !active, updated_at: new Date().toISOString() })
     .eq("id", campaignId);
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/admin/campanas");
   revalidatePath(`/dashboard/admin/campanas/${campaignId}`);
 }
@@ -286,7 +287,7 @@ export async function addCampaignAgent(formData: FormData) {
     .in("id", profileIds)
     .eq("role", "agente")
     .eq("active", true);
-  if (agentsError) throw new Error(agentsError.message);
+  if (agentsError) throw errorDeAccion(agentsError);
   if ((validAgents ?? []).length !== profileIds.length) {
     throw new Error("Solo se pueden asignar ejecutivos activos.");
   }
@@ -298,7 +299,7 @@ export async function addCampaignAgent(formData: FormData) {
       { onConflict: "campaign_id,profile_id", ignoreDuplicates: true }
     );
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath(`/dashboard/admin/campanas/${campaignId}`);
   revalidatePath("/dashboard/admin/usuarios");
 }
@@ -311,7 +312,7 @@ export async function removeCampaignAgent(formData: FormData) {
   const supabase = await createClient();
   const { error } = await supabase.from("campaign_agents").delete().eq("id", membershipId);
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath(`/dashboard/admin/campanas/${campaignId}`);
   revalidatePath("/dashboard/admin/usuarios");
 }
@@ -330,7 +331,7 @@ export async function setCampaignAgentManualDial(formData: FormData) {
     .eq("id", membershipId)
     .eq("campaign_id", campaignId);
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath(`/dashboard/admin/campanas/${campaignId}/ejecutivos`);
 }
 
@@ -346,7 +347,7 @@ export async function setCampaignManualDialForAll(formData: FormData) {
     .update({ manual_dial_enabled: enabled })
     .eq("campaign_id", campaignId);
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath(`/dashboard/admin/campanas/${campaignId}/ejecutivos`);
 }
 
@@ -378,7 +379,7 @@ export async function addCampaignAgentSchedule(formData: FormData) {
     end_time: endTime,
     timezone: "America/Santiago",
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath(`/dashboard/admin/campanas/${campaignId}`);
 }
 
@@ -390,6 +391,6 @@ export async function removeCampaignAgentSchedule(formData: FormData) {
 
   const supabase = await createClient();
   const { error } = await supabase.from("campaign_agent_schedules").delete().eq("id", scheduleId);
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath(`/dashboard/admin/campanas/${campaignId}`);
 }

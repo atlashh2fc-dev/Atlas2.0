@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { requireProfile } from "@/lib/auth";
@@ -139,7 +140,7 @@ export async function upsertDialerCampaignConfig(formData: FormData) {
     { onConflict: "campaign_id" }
   );
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/admin/campanas");
   revalidatePath(`/dashboard/admin/campanas/${campaignId}`);
 }
@@ -167,7 +168,7 @@ export async function setDialerCampaignActive(formData: FormData) {
     .eq("campaign_id", campaignId)
     .maybeSingle();
 
-  if (configError) throw new Error(configError.message);
+  if (configError) throw errorDeAccion(configError);
   if (!config) {
     throw new Error("Configura el discador de la campaña antes de iniciarlo");
   }
@@ -180,7 +181,7 @@ export async function setDialerCampaignActive(formData: FormData) {
       .from("dialer_campaign_configs")
       .update({ is_active: desiredActive, updated_at: new Date().toISOString() })
       .eq("campaign_id", campaignId);
-    if (error) throw new Error(error.message);
+    if (error) throw errorDeAccion(error);
   }
 
   revalidatePath("/dashboard/admin/campanas");

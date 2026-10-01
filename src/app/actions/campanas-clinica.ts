@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -42,7 +43,7 @@ export async function crearCampana(formData: FormData) {
     .insert({ nombre, segmento, parametros, canal, asunto: texto(formData, "asunto", 200) || nombre, texto: cuerpo, programada_para: programada })
     .select("id")
     .single();
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/campanas-clinica");
   redirect(`/dashboard/campanas-clinica?c=${data.id}`);
 }
@@ -53,7 +54,7 @@ export async function lanzarCampana(formData: FormData) {
   if (!UUID.test(id)) throw new Error("Campaña inválida.");
   const supabase = await createClient();
   const { error } = await supabase.rpc("lanzar_campana_de_clinica", { p_campana: id });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   // Lo que toca ahora sale ahora; lo programado espera su hora.
   await despacharMensajes({ generar: false, limite: 100 });
   revalidatePath("/dashboard/campanas-clinica");
@@ -68,6 +69,6 @@ export async function cancelarCampana(formData: FormData) {
   const ahora = new Date().toISOString();
   await supabase.from("mensajes_salientes").update({ estado: "cancelado", updated_at: ahora }).eq("origen_ref", id).eq("regla", "campana").eq("estado", "programado");
   const { error } = await supabase.from("campanas_de_clinica").update({ estado: "cancelada", updated_at: ahora }).eq("id", id).in("estado", ["borrador", "programada"]);
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/campanas-clinica");
 }

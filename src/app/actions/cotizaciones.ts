@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { revalidatePath } from "next/cache";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -67,7 +68,7 @@ export async function getAgentQuotations(): Promise<{ campaigns: QuotationCampai
   await requireProfile(["agente"]);
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("get_agent_quotations");
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   const value = (data ?? {}) as { campaigns?: Record<string, unknown>[]; rows?: Record<string, unknown>[] };
   return {
     campaigns: (value.campaigns ?? []).map((campaign) => ({
@@ -97,7 +98,7 @@ export async function resolveQuotation(input: {
       p_reason: input.result === "no_vendida" ? input.reason : null,
       p_notes: input.notes?.trim() || null,
     });
-    if (error) throw new Error(error.message);
+    if (error) throw errorDeAccion(error);
     revalidatePath("/dashboard/leads/cotizaciones");
     revalidatePath(`/dashboard/leads/${input.leadId}`);
     revalidatePath("/dashboard/leads");

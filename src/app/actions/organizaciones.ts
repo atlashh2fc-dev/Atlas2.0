@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { revalidatePath } from "next/cache";
 import { redirect, RedirectType } from "next/navigation";
 
@@ -50,7 +51,7 @@ export async function crearEmpresa(formData: FormData) {
     p_name: nombre,
     p_edicion: edicion,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidarEmpresas();
 }
 
@@ -65,7 +66,7 @@ export async function cambiarEstadoEmpresa(formData: FormData) {
     p_organization_id: empresaId,
     p_activa: activa,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidarEmpresas();
 }
 
@@ -81,7 +82,7 @@ export async function moverPersonaDeEmpresa(formData: FormData) {
     p_profile_id: perfilId,
     p_organization_id: empresaId,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidarEmpresas();
 }
 
@@ -102,7 +103,7 @@ export async function elegirEmpresaActiva(formData: FormData) {
   const { error } = await supabase.rpc("elegir_organizacion_activa", {
     p_organization_id: empresaId === "" ? null : empresaId,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   // La empresa elegida cambia lo que ve cada consulta: se revalida todo el panel.
   revalidatePath("/dashboard", "layout");
   const ruta = desde.startsWith("/dashboard") ? desde : "/dashboard";
@@ -131,6 +132,6 @@ export async function cambiarAplicacionDeEmpresa(formData: FormData) {
     p_module: modulo,
     p_enabled: activar,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidarEmpresas();
 }

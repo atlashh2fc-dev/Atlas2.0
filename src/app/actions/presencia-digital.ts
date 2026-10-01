@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { revalidatePath } from "next/cache";
 
 import { requireProfile } from "@/lib/auth";
@@ -44,7 +45,7 @@ export async function obtenerMiPresenciaDigital(): Promise<PresenciaDigital | nu
   if (profile.role !== "agente") return null;
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("mi_presencia_digital");
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   return leer(data);
 }
 
@@ -53,7 +54,7 @@ export async function cambiarMiPresenciaDigital(canal: CanalDigital, activo: boo
   if (canal !== "correo" && canal !== "whatsapp") throw new Error("Canal desconocido.");
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("cambiar_mi_presencia_digital", { p_canal: canal, p_activo: activo });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/conversaciones", "layout");
   return leer(data);
 }

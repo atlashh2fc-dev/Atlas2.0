@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { revalidatePath } from "next/cache";
 
 import { requireProfile } from "@/lib/auth";
@@ -34,7 +35,7 @@ export async function guardarBuzon(formData: FormData) {
     p_clave: texto(formData, "clave", 400) || null,
     p_remitente: texto(formData, "remitente") || null,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/admin/correo");
   revalidatePath("/dashboard/mensajes");
 }
@@ -69,6 +70,6 @@ export async function guardarBuzonDeEnvio(formData: FormData) {
     p_remitente: texto(formData, "remitente") || null,
     p_campanas: campanas,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/admin/correo");
 }

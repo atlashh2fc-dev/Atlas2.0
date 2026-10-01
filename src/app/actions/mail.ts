@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion, mensajeDeError } from "@/lib/errores-de-accion";
 import { revalidatePath } from "next/cache";
 
 import { requireProfile } from "@/lib/auth";
@@ -39,7 +40,7 @@ export async function queueAssignedMailReply(formData: FormData) {
     p_body_text: bodyText,
     p_idempotency_key: idempotencyKey,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   const result = data as { queued?: boolean } | null;
   if (!result?.queued) throw new Error("La respuesta no pudo quedar encolada.");
 
@@ -78,7 +79,7 @@ export async function convertInboundEmail(
     p_full_name: fullName.trim() || null,
   });
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mensajeDeError(error) };
   const payload = data as { lead_id?: string } | null;
   revalidatePath("/dashboard/correo-abogado-legal");
   revalidatePath("/dashboard/leads");
@@ -104,7 +105,7 @@ export async function assignMailEngagementLead(formData: FormData) {
     p_campaign_id: null,
   });
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 
   revalidatePath("/dashboard/mail");
   if (mailCampaignId) revalidatePath(`/dashboard/mail?mailCampaign=${mailCampaignId}`);
@@ -139,7 +140,7 @@ export async function bulkAssignMailEngagementLeads(
     p_mail_campaign_id: null,
     p_campaign_id: null,
   });
-  if (error) return { ok: 0, skipped: ids.length, error: error.message };
+  if (error) return { ok: 0, skipped: ids.length, error: mensajeDeError(error) };
   const payload = data as { assigned?: number } | null;
   const ok = Number(payload?.assigned ?? 0);
 

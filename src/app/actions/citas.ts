@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -47,7 +48,7 @@ export async function agendarCita(formData: FormData) {
     p_mascota: mascota || null,
     p_nota: texto(formData, "nota", 600) || null,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/citas");
   revalidatePath(`/dashboard/pacientes/${cuenta}`);
   redirect(`/dashboard/citas?dia=${fecha}`);
@@ -63,7 +64,7 @@ export async function cambiarEstadoCita(formData: FormData) {
 
   const supabase = await createClient();
   const { error } = await supabase.rpc("cambiar_estado_cita", { p_cita: cita, p_estado: estado });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 
   revalidatePath("/dashboard/citas");
   revalidatePath("/dashboard/recordatorios");
@@ -78,4 +79,78 @@ export async function cambiarEstadoCita(formData: FormData) {
   const volver = texto(formData, "volver");
   if (volver.startsWith("/dashboard/")) redirect(volver);
   redirect(`/dashboard/citas?dia=${fechaEnChile(new Date())}`);
+}
+
+/*
+ * Búsqueda para el selector de «Nueva cita». La pantalla carga las primeras
+ * personas y mascotas; cuando la empresa tiene más, el selector pregunta acá
+ * para no dejar a nadie fuera. El patrón es tolerante (vocales y ñ como
+ * comodín, RUT sin puntos ni guion) y el cliente vuelve a filtrar ignorando
+ * tildes, así que lo que se muestra coincide de verdad con lo escrito.
+ */
+
+export type OpcionDeCita = {
+  value: string;
+  label: string;
+  detalle?: string;
+  /** Persona dueña, en las mascotas. */
+  cuentaId?: string;
+  cuentaNombre?: string;
+};
+
+const MAX_RESULTADOS = 50;
+
+function patronTolerante(consulta: string): string | null {
+  const limpia = consulta.replace(/[%_,()*\\"]/g, " ").replace(/\s+/g, " ").trim();
+  if (limpia.length < 2) return null;
+  return `%${limpia.replace(/[aeiouáéíóúünñ]/gi, "_").replace(/ /g, "%")}%`;
+}
+
+export async function buscarCuentasParaCita(consulta: string): Promise<OpcionDeCita[]> {
+  await requireProfile(["admin", "supervisor"]);
+  const patron = patronTolerante(String(consulta ?? "").slice(0, 80));
+  if (!patron) return [];
+  const rut = String(consulta).replace(/[^0-9kK]/g, "").toUpperCase();
+
+  const supabase = await createClient();
+  const filtros = [`name.ilike.${patron}`];
+  if (rut.length >= 3) filtros.push(`normalized_rut.ilike.%${rut}%`);
+  const { data, error } = await supabase
+    .from("sales_companies")
+    .select("id, name, rut")
+    .or(filtros.join(","))
+    .order("name")
+    .limit(MAX_RESULTADOS);
+  if (error) throw errorDeAccion(error, "No se pudo buscar. Inténtalo de nuevo.");
+  return (data ?? []).map((cuenta) => ({
+    value: cuenta.id as string,
+    label: cuenta.name as string,
+    detalle: (cuenta.rut as string | null) ?? undefined,
+  }));
+}
+
+export async function buscarMascotasParaCita(consulta: string, cuentaId?: string | null): Promise<OpcionDeCita[]> {
+  await requireProfile(["admin", "supervisor"]);
+  const cuenta = cuentaId && UUID.test(cuentaId) ? cuentaId : null;
+  const patron = patronTolerante(String(consulta ?? "").slice(0, 80));
+  // Sin texto solo tiene sentido pedir las mascotas de una persona ya elegida.
+  if (!patron && !cuenta) return [];
+
+  const supabase = await createClient();
+  let pedido = supabase.from("mascotas").select("id, nombre, especie, cuenta_id, sales_companies(name)").order("nombre").limit(MAX_RESULTADOS);
+  if (patron) pedido = pedido.ilike("nombre", patron);
+  if (cuenta) pedido = pedido.eq("cuenta_id", cuenta);
+  const { data, error } = await pedido;
+  if (error) throw errorDeAccion(error, "No se pudo buscar. Inténtalo de nuevo.");
+  return (data ?? []).map((mascota) => {
+    const tutor = mascota.sales_companies as { name?: string } | { name?: string }[] | null;
+    const nombreTutor = (Array.isArray(tutor) ? tutor[0]?.name : tutor?.name) ?? "";
+    return {
+      value: mascota.id as string,
+      label: mascota.nombre as string,
+      detalle: [mascota.especie, nombreTutor].filter(Boolean).join(" · "),
+      cuentaId: mascota.cuenta_id as string,
+      cuentaNombre: nombreTutor,
+    };
+  });
 }

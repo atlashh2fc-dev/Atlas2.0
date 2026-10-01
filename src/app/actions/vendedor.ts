@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { revalidatePath } from "next/cache";
 
 import { requireProfile } from "@/lib/auth";
@@ -26,7 +27,7 @@ async function decidir(formData: FormData, estado: "enviado" | "descartado") {
     .update({ estado, decidido_por: profile.id, decidido_at: new Date().toISOString() })
     .eq("id", id);
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/ventas/prospeccion");
   revalidatePath("/dashboard/ventas");
 }

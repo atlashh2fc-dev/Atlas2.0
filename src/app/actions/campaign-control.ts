@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { revalidatePath } from "next/cache";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -26,7 +27,7 @@ export async function listAgentCampaignBoard(): Promise<AgentCampaignBoardRow[]>
   await requireProfile(["supervisor", "admin"]);
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("supervisor_agent_campaign_board");
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   return (data ?? []) as AgentCampaignBoardRow[];
 }
 
@@ -39,7 +40,7 @@ export async function assignAgentCampaign(profileId: string, campaignId: string)
     p_profile_id: profileId,
     p_campaign_id: campaignId,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/team", "layout");
 }
 
@@ -48,7 +49,7 @@ export async function releaseAgentCampaign(profileId: string): Promise<void> {
   await requireProfile(["supervisor", "admin"]);
   const supabase = await createClient();
   const { error } = await supabase.rpc("supervisor_release_agent_campaign", { p_profile_id: profileId });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/team", "layout");
 }
 
@@ -60,6 +61,6 @@ export async function setAgentCampaignPriorities(profileId: string, campaignIds:
     p_profile_id: profileId,
     p_campaign_ids: campaignIds,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/team", "layout");
 }

@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { revalidatePath } from "next/cache";
 
 import { requireProfile } from "@/lib/auth";
@@ -74,7 +75,7 @@ export async function responderCorreo(formData: FormData) {
     p_programado_para: null,
     p_canal: "correo",
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   if (typeof mensajeId === "string") {
     await supabase.from("mensajes_salientes").update({ asunto, in_reply_to: inReplyTo || null }).eq("id", mensajeId);
   }

@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { revalidatePath } from "next/cache";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -25,7 +26,7 @@ export async function listLeadDialPhones(leadId: string): Promise<LeadDialPhone[
   await requireProfile();
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("lead_dial_phones", { p_lead_id: leadId });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
     contactId: typeof row.contact_id === "string" ? row.contact_id : null,
     dialDigits: String(row.dial_digits),
@@ -49,7 +50,7 @@ export async function addLeadPhone(formData: FormData) {
     p_phone: phone,
     p_label: label || null,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath(`/dashboard/leads/${leadId}`);
 }
 
@@ -60,7 +61,7 @@ export async function deactivateLeadPhone(formData: FormData) {
   if (!contactId) throw new Error("No se identificó el número.");
   const supabase = await createClient();
   const { error } = await supabase.rpc("deactivate_lead_phone", { p_contact_id: contactId });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath(`/dashboard/leads/${leadId}`);
 }
 
@@ -71,7 +72,7 @@ export async function setLeadPrimaryPhone(formData: FormData) {
   if (!leadId || !phone) throw new Error("No se identificó el número.");
   const supabase = await createClient();
   const { error } = await supabase.rpc("set_lead_primary_phone", { p_lead_id: leadId, p_phone: phone });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath(`/dashboard/leads/${leadId}`);
 }
 
@@ -93,6 +94,6 @@ export async function liftLeadPhoneSuppression(formData: FormData) {
     p_phone: phone,
     p_reason: reason,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath(`/dashboard/leads/${leadId}`);
 }

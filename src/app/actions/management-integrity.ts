@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
@@ -74,6 +75,6 @@ export async function getManagementIntegrityReport(input: {
     p_burst_seconds: input.burstSeconds ?? 5,
   });
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   return data as ManagementIntegrityReport;
 }

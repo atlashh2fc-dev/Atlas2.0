@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { revalidatePath } from "next/cache";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -40,7 +41,7 @@ export async function saveLeadOrchestratorConfig(formData: FormData) {
     fallback_order: fallbackOrder,
     updated_at: new Date().toISOString(),
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath(campaignPath(campaignId));
 }
 
@@ -72,7 +73,7 @@ export async function createLeadPriorityRule(formData: FormData) {
     position,
   });
   if (error?.code === "23505") throw new Error("Ya existe una regla en esa posición.");
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath(campaignPath(campaignId));
 }
 
@@ -85,7 +86,7 @@ export async function toggleLeadPriorityRule(formData: FormData) {
 
   const supabase = await createClient();
   const { error } = await supabase.from("lead_priority_rules").update({ is_active: !active }).eq("id", ruleId);
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath(campaignPath(campaignId));
 }
 
@@ -97,7 +98,7 @@ export async function deleteLeadPriorityRule(formData: FormData) {
 
   const supabase = await createClient();
   const { error } = await supabase.from("lead_priority_rules").delete().eq("id", ruleId);
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath(campaignPath(campaignId));
 }
 
@@ -108,7 +109,7 @@ export async function completeKovacsDemoAssignment(formData: FormData) {
 
   const supabase = await createClient();
   const { error } = await supabase.rpc("complete_my_kovacs_demo_assignment", { p_lead_id: leadId });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath(`/dashboard/leads/${leadId}`);
   revalidatePath("/dashboard/leads");
   void profile;

@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion, mensajeDeError } from "@/lib/errores-de-accion";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
@@ -37,7 +38,7 @@ export async function createUserAccount(formData: FormData) {
     .eq("email", email)
     .maybeSingle();
 
-  if (existingProfileError) throw new Error(existingProfileError.message);
+  if (existingProfileError) throw errorDeAccion(existingProfileError);
   if (existingProfile) {
     throw new Error("Ya existe una cuenta con este correo.");
   }
@@ -55,7 +56,7 @@ export async function createUserAccount(formData: FormData) {
   // y completamos la configuración en vez de mostrar una página de error.
   let userId = data.user?.id;
   if (error) {
-    if (error.status !== 500) throw new Error(error.message);
+    if (error.status !== 500) throw errorDeAccion(error);
 
     const { data: recoveredProfile, error: recoveryError } = await admin
       .from("profiles")
@@ -64,7 +65,7 @@ export async function createUserAccount(formData: FormData) {
       .maybeSingle();
 
     if (recoveryError || !recoveredProfile) {
-      throw new Error(recoveryError?.message ?? error.message);
+      throw errorDeAccion(recoveryError ?? error);
     }
 
     userId = recoveredProfile.id;
@@ -84,7 +85,7 @@ export async function createUserAccount(formData: FormData) {
       .delete()
       .eq("profile_id", userId)
       .neq("organization_id", empresaActiva);
-    if (membresiaError) throw new Error(membresiaError.message);
+    if (membresiaError) throw errorDeAccion(membresiaError);
   }
 
   const { error: profileError } = await admin
@@ -98,7 +99,7 @@ export async function createUserAccount(formData: FormData) {
       ...(typeof empresaActiva === "string" ? { organization_id: empresaActiva } : {}),
     })
     .eq("id", userId);
-  if (profileError) throw new Error(profileError.message);
+  if (profileError) throw errorDeAccion(profileError);
 
   revalidatePath("/dashboard/admin/usuarios");
 }
@@ -125,7 +126,7 @@ export async function updateUserRole(formData: FormData) {
     p_team_id: role === "supervisor" ? null : teamId,
     p_supervised_team_ids: role === "supervisor" ? supervisorTeamIds : [],
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/admin/usuarios");
 }
 
@@ -152,7 +153,7 @@ export async function updateUserPassword(formData: FormData) {
   const admin = createAdminClient();
   const { data, error } = await admin.auth.admin.updateUserById(userId, { password });
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   if (data.user.id !== userId) {
     throw new Error("Supabase no confirmó el cambio de contraseña.");
   }
@@ -168,7 +169,7 @@ export async function toggleUserActive(formData: FormData) {
     .update({ active: !active })
     .eq("id", userId);
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/admin/usuarios");
   revalidatePath("/dashboard/team", "layout");
 }
@@ -188,7 +189,7 @@ export async function bulkSetUserActive(
   }
 
   const { error } = await writer.from("profiles").update({ active }).in("id", ids);
-  if (error) return { ok: 0, error: error.message };
+  if (error) return { ok: 0, error: mensajeDeError(error) };
 
   revalidatePath("/dashboard/admin/usuarios");
   revalidatePath("/dashboard/team", "layout");
@@ -205,7 +206,7 @@ export async function createTeam(formData: FormData) {
     p_name: name,
     p_supervisor_ids: supervisorIds,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/admin/usuarios");
   revalidatePath("/dashboard/admin/usuarios/equipos");
 }
@@ -223,7 +224,7 @@ export async function updateTeamSupervisors(formData: FormData) {
     p_supervisor_ids: supervisorIds,
   });
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/admin/usuarios");
   revalidatePath("/dashboard/admin/usuarios/equipos");
 }
@@ -249,7 +250,7 @@ export async function assignLead(formData: FormData) {
     .select("next_action_at")
     .eq("id", leadId)
     .maybeSingle();
-  if (readError) throw new Error(readError.message);
+  if (readError) throw errorDeAccion(readError);
   const { error } = await supabase.rpc("assign_lead", {
     p_lead_id: leadId,
     p_agent_id: agentId,
@@ -259,7 +260,7 @@ export async function assignLead(formData: FormData) {
     p_next_action_at: null,
   });
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/team");
   revalidatePath("/dashboard/leads");
   revalidatePath(`/dashboard/leads/${leadId}`);
@@ -292,7 +293,7 @@ export async function reassignAgenda(formData: FormData) {
     p_set_managed_by: true,
     p_next_action_at: nextActionAt?.toISOString() ?? null,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/team");
   revalidatePath("/dashboard/leads");
   revalidatePath(`/dashboard/leads/${leadId}`);
@@ -323,7 +324,7 @@ export async function rescheduleCallbacks(
     p_next_action_at: when.toISOString(),
     p_agent_id: agentId || null,
   });
-  if (error) return { ok: 0, error: error.message };
+  if (error) return { ok: 0, error: mensajeDeError(error) };
 
   revalidatePath("/dashboard/team");
   revalidatePath("/dashboard/leads");
@@ -349,7 +350,7 @@ export async function releaseCallbacksToPool(
     p_lead_ids: ids,
     p_keep_schedule: keepSchedule,
   });
-  if (error) return { ok: 0, error: error.message };
+  if (error) return { ok: 0, error: mensajeDeError(error) };
 
   revalidatePath("/dashboard/team");
   revalidatePath("/dashboard/leads");

@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 
@@ -375,7 +376,7 @@ export async function markWhatsAppConversationRead(formData: FormData) {
     .from("whatsapp_conversations")
     .update({ unread_count: 0 })
     .eq("id", conversationId);
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidateWhatsApp(conversationId);
 }
 
@@ -398,7 +399,7 @@ export async function setWhatsAppConversationStatus(formData: FormData) {
 
   const admin = createAdminClient();
   const { error } = await admin.from("whatsapp_conversations").update({ status }).eq("id", conversationId);
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidateWhatsApp(conversationId);
 }
 
@@ -434,7 +435,7 @@ export async function closeWhatsAppConversation(formData: FormData) {
     if (error.message.includes("note_required")) {
       throw new Error("Esta tipificación requiere una observación de cierre.");
     }
-    throw new Error(error.message);
+    throw errorDeAccion(error);
   }
   revalidateWhatsApp(conversationId);
 }
@@ -474,7 +475,7 @@ export async function setWhatsAppAutomationEnabled(formData: FormData) {
   // The transaction derives scope from the session; the client cannot submit
   // campaign IDs, actors, conversation state, or owners to widen its authority.
   const { error } = await supabase.rpc("set_whatsapp_automation_enabled", { p_enabled: enabled === "true" });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/operacion");
   revalidatePath("/dashboard/operacion/colas");
   revalidateWhatsApp();
@@ -522,14 +523,14 @@ export async function assignWhatsAppConversation(formData: FormData) {
     p_set_managed_by: false,
     p_next_action_at: null,
   });
-  if (assignmentError) throw new Error(assignmentError.message);
+  if (assignmentError) throw errorDeAccion(assignmentError);
 
   const admin = createAdminClient();
   const { error: conversationUpdateError } = await admin
     .from("whatsapp_conversations")
     .update({ assigned_to: agentId })
     .eq("id", conversationId);
-  if (conversationUpdateError) throw new Error(conversationUpdateError.message);
+  if (conversationUpdateError) throw errorDeAccion(conversationUpdateError);
 
   revalidateWhatsApp(conversationId);
   revalidatePath(`/dashboard/leads/${conversation.lead_id}`);
@@ -598,7 +599,7 @@ export async function saveWhatsAppChannelConfig(formData: FormData) {
     )
     .select("id")
     .single();
-  if (channelError || !channel) throw new Error(channelError?.message ?? "No se pudo guardar el canal.");
+  if (channelError || !channel) throw errorDeAccion(channelError, "No se pudo guardar el canal.");
 
   if (!campaignId) {
     revalidatePath("/dashboard/admin/integraciones/whatsapp");
@@ -611,7 +612,7 @@ export async function saveWhatsAppChannelConfig(formData: FormData) {
     .eq("channel_id", channel.id)
     .eq("is_default", true)
     .maybeSingle();
-  if (routeReadError) throw new Error(routeReadError.message);
+  if (routeReadError) throw errorDeAccion(routeReadError);
 
   const routePayload = {
     channel_id: channel.id,
@@ -623,7 +624,7 @@ export async function saveWhatsAppChannelConfig(formData: FormData) {
   const routeResult = defaultRoute
     ? await admin.from("whatsapp_campaign_routes").update(routePayload).eq("id", defaultRoute.id)
     : await admin.from("whatsapp_campaign_routes").insert(routePayload);
-  if (routeResult.error) throw new Error(routeResult.error.message);
+  if (routeResult.error) throw errorDeAccion(routeResult.error);
 
   revalidatePath("/dashboard/admin/integraciones/whatsapp");
   revalidatePath("/dashboard/conversaciones/whatsapp");
@@ -701,7 +702,7 @@ export async function conectarWhatsAppDesdeMeta(entrada: {
       )
       .select("id")
       .single();
-    if (canalError || !canal) throw new Error(canalError?.message ?? "No se pudo guardar el canal.");
+    if (canalError || !canal) throw errorDeAccion(canalError, "No se pudo guardar el canal.");
 
     const { error: tokenError } = await admin.rpc("guardar_token_de_canal_whatsapp", { p_channel_id: canal.id, p_token: token });
     if (tokenError) throw new Error("No se pudo guardar la credencial del número.");

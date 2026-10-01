@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { revalidatePath } from "next/cache";
 
 import { requireProfile } from "@/lib/auth";
@@ -71,7 +72,7 @@ export async function crearOportunidad(formData: FormData) {
     p_source: texto(formData, "origen") || null,
     p_expected_close_date: cierre === "" ? null : cierre,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/ventas");
 }
 
@@ -88,7 +89,7 @@ export async function moverEtapa(formData: FormData) {
     p_stage_key: etapa,
     p_note: texto(formData, "nota") || null,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/ventas");
   revalidatePath(`/dashboard/ventas/${oportunidad}`);
 }
@@ -115,7 +116,7 @@ export async function registrarGestion(formData: FormData) {
     p_due_at: vence === "" ? null : new Date(vence).toISOString(),
     p_next_action_note: null,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/ventas");
   revalidatePath(`/dashboard/ventas/${oportunidad}`);
 }

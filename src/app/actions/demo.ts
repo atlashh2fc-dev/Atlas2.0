@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { revalidatePath } from "next/cache";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -37,7 +38,7 @@ export async function switchDemoAccount(targetProfileId: string) {
     .eq("id", targetProfileId)
     .maybeSingle();
 
-  if (targetError) throw new Error(targetError.message);
+  if (targetError) throw errorDeAccion(targetError);
   if (
     !target ||
     !target.is_demo ||
@@ -55,7 +56,7 @@ export async function switchDemoAccount(targetProfileId: string) {
     type: "magiclink",
     email: target.email,
   });
-  if (linkError) throw new Error(linkError.message);
+  if (linkError) throw errorDeAccion(linkError);
 
   const tokenHash = link?.properties?.hashed_token;
   if (!tokenHash) throw new Error("No fue posible preparar la vista de demostración.");
@@ -65,7 +66,7 @@ export async function switchDemoAccount(targetProfileId: string) {
     type: "magiclink",
     token_hash: tokenHash,
   });
-  if (verifyError) throw new Error(verifyError.message);
+  if (verifyError) throw errorDeAccion(verifyError);
 
   // El menú, las insignias y el alcance de cada consulta se arman en el layout
   // del servidor con el perfil de la sesión.

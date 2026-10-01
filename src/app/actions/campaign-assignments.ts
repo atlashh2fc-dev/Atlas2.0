@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { requireAgentManager } from "@/lib/agent-management";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
@@ -20,8 +21,8 @@ export async function setAgentCampaigns(formData: FormData) {
     writer.from("profiles").select("id").eq("id", profileId).eq("role", "agente").eq("active", true).maybeSingle(),
     supabase.from("campaigns").select("id").eq("is_active", true),
   ]);
-  if (agentError) throw new Error(agentError.message);
-  if (campaignsError) throw new Error(campaignsError.message);
+  if (agentError) throw errorDeAccion(agentError);
+  if (campaignsError) throw errorDeAccion(campaignsError);
   if (!agent) throw new Error("Solo se pueden configurar ejecutivos activos.");
 
   const activeCampaignIds = new Set((activeCampaigns ?? []).map((campaign) => campaign.id));
@@ -33,7 +34,7 @@ export async function setAgentCampaigns(formData: FormData) {
     .from("campaign_agents")
     .select("campaign_id")
     .eq("profile_id", profileId);
-  if (existingError) throw new Error(existingError.message);
+  if (existingError) throw errorDeAccion(existingError);
 
   // Solo tocamos campañas activas. Una membresía histórica/inactiva se conserva
   // para no perder su configuración si la campaña vuelve a habilitarse.
@@ -51,7 +52,7 @@ export async function setAgentCampaigns(formData: FormData) {
         onConflict: "campaign_id,profile_id",
         ignoreDuplicates: true,
       });
-    if (error) throw new Error(error.message);
+    if (error) throw errorDeAccion(error);
   }
   if (toRemove.length > 0) {
     const { error } = await writer
@@ -59,7 +60,7 @@ export async function setAgentCampaigns(formData: FormData) {
       .delete()
       .eq("profile_id", profileId)
       .in("campaign_id", toRemove);
-    if (error) throw new Error(error.message);
+    if (error) throw errorDeAccion(error);
   }
 
   revalidatePath("/dashboard/admin/usuarios");

@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion, mensajeDeError } from "@/lib/errores-de-accion";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
@@ -38,7 +39,7 @@ async function clearLegalIntercallBreak(userId: string) {
     .from("profiles")
     .update({ intercall_break_until: null })
     .eq("id", userId);
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 }
 
 /**
@@ -57,7 +58,7 @@ async function sessionStatusAfterWrapUp(
     .select("agent_status_reasons(is_pause)")
     .eq("profile_id", userId)
     .maybeSingle();
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const reason = (data as any)?.agent_status_reasons as { is_pause: boolean } | null | undefined;
   return reason?.is_pause ? "paused" : "available";
@@ -81,14 +82,14 @@ async function releaseAgentFromWrapUp(userId: string) {
     })
     .eq("profile_id", userId)
     .eq("status", "wrap_up");
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 }
 
 async function restoreAgentFromHybridManualMode(
   supabase: Awaited<ReturnType<typeof createClient>>
 ) {
   const { error } = await supabase.rpc("exit_agent_hybrid_manual_mode");
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 }
 
 /**
@@ -111,7 +112,7 @@ async function assertNotOnDoNotCallList(
     // La web puede quedar publicada antes que la migración 20260924181100: sin
     // la función todavía no hay lista que consultar, y no se bloquea el marcado.
     if (error.code === "PGRST202" || error.code === "42883") return;
-    throw new Error(error.message);
+    throw errorDeAccion(error);
   }
   const message = dialerSuppressionMessage(typeof data === "string" ? data : null);
   if (message) throw new Error(message);
@@ -126,7 +127,7 @@ async function getLeadCampaignId(
     .select("campaign_id")
     .eq("id", leadId)
     .single();
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   return data.campaign_id;
 }
 
@@ -142,7 +143,7 @@ export async function startLegalIntercallBreak(): Promise<void> {
     .from("profiles")
     .update({ intercall_break_until: until })
     .eq("id", userId);
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 }
 
 /**
@@ -168,7 +169,7 @@ export async function registerManualCall(input: {
       contact_name: input.contactName ?? null,
     },
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 
   // Si la llamada es sobre un registro conocido, además queda en su historial.
   if (input.leadId) {
@@ -178,7 +179,7 @@ export async function registerManualCall(input: {
       event_type: "cti.manual_call",
       payload: { phone: input.phone, source: "cti" },
     });
-    if (eventError) throw new Error(eventError.message);
+    if (eventError) throw errorDeAccion(eventError);
   }
 }
 
@@ -240,7 +241,7 @@ export async function getMyOpenManagement(): Promise<OpenManagement | null> {
     .is("discarded_reason", null)
     .order("started_at", { ascending: false })
     .limit(1);
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   const row = data?.[0];
   if (!row) return null;
   const lead = Array.isArray(row.leads) ? row.leads[0] : row.leads;
@@ -285,7 +286,7 @@ export async function getMyPendingCallManagement(): Promise<PendingCallManagemen
     .is("ended_at", null)
     .order("started_at", { ascending: false })
     .limit(1);
-  if (callsError) throw new Error(callsError.message);
+  if (callsError) throw errorDeAccion(callsError);
   if (openCalls?.[0]) {
     return { leadId: openCalls[0].lead_id, callId: openCalls[0].id };
   }
@@ -298,7 +299,7 @@ export async function getMyPendingCallManagement(): Promise<PendingCallManagemen
     .eq("status", "wrap_up")
     .order("updated_at", { ascending: false })
     .limit(1);
-  if (sessionsError) throw new Error(sessionsError.message);
+  if (sessionsError) throw errorDeAccion(sessionsError);
   const session = sessions?.[0];
   if (!session) return null;
 
@@ -317,7 +318,7 @@ export async function getMyPendingCallManagement(): Promise<PendingCallManagemen
     .gte("updated_at", new Date(Date.now() - LIVE_ATTEMPT_MAX_IDLE_MS).toISOString())
     .order("updated_at", { ascending: false })
     .limit(1);
-  if (liveError) throw new Error(liveError.message);
+  if (liveError) throw errorDeAccion(liveError);
   if (liveAttempts?.[0]) {
     return { leadId: liveAttempts[0].lead_id, callId: null };
   }
@@ -335,7 +336,7 @@ export async function getMyPendingCallManagement(): Promise<PendingCallManagemen
       sessionId: session.id,
       error: releaseError.message,
     });
-    throw new Error(releaseError.message);
+    throw errorDeAccion(releaseError);
   }
   return null;
 }
@@ -363,7 +364,7 @@ export async function beginAgendaCallback(
       p_lead_id: leadId,
       p_phone: chosenPhone || null,
     });
-    if (error) throw new Error(error.message);
+    if (error) throw errorDeAccion(error);
 
     const value = data && typeof data === "object" ? (data as Record<string, unknown>) : null;
     const callId = value?.call_id;
@@ -413,7 +414,7 @@ export async function beginAssignedLeadCall(
       p_lead_id: leadId,
       p_phone: chosenPhone || null,
     });
-    if (error) throw new Error(error.message);
+    if (error) throw errorDeAccion(error);
 
     const value = data && typeof data === "object" ? (data as Record<string, unknown>) : null;
     const callId = value?.call_id;
@@ -508,7 +509,7 @@ export async function beginManualCallManagement(input: {
       p_full_name: input.contactName?.trim() || null,
       p_entry_mode: input.entryMode,
     });
-    if (error) throw new Error(error.message);
+    if (error) throw errorDeAccion(error);
 
     const value = data && typeof data === "object" ? (data as Record<string, unknown>) : null;
     const leadId = value?.lead_id;
@@ -554,7 +555,7 @@ async function assertIntercallBreakCompleted(params: {
     .select("intercall_break_until")
     .eq("id", userId)
     .maybeSingle();
-  if (profileError) throw new Error(profileError.message);
+  if (profileError) throw errorDeAccion(profileError);
 
   const breakUntil = profile?.intercall_break_until
     ? new Date(profile.intercall_break_until).getTime()
@@ -577,7 +578,7 @@ async function assertIntercallBreakCompleted(params: {
     .eq("campaign_id", campaignId)
     .maybeSingle();
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   if (!session) return;
 
   if (
@@ -641,7 +642,7 @@ export async function getOpenCall(leadId: string): Promise<Call | null> {
     .order("started_at", { ascending: false })
     .limit(1);
 
-  if (findError) throw new Error(findError.message);
+  if (findError) throw errorDeAccion(findError);
   return existing?.[0] ? (existing[0] as Call) : null;
 }
 
@@ -662,7 +663,7 @@ export async function getRevisableCall(leadId: string): Promise<Call | null> {
     .order("ended_at", { ascending: false })
     .limit(1);
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   const latest = data?.[0] as Call | undefined;
   // Una gestión traída de Atlas 1 no se corrige: reescribirla borraría la
   // versión original, la que se concilia con Vocalcom y el histórico. Lo que
@@ -689,7 +690,7 @@ export async function ensureOpenCallForIncomingDialer(leadId: string): Promise<C
     .is("ended_at", null)
     .order("started_at", { ascending: false })
     .limit(1);
-  if (openError) throw new Error(openError.message);
+  if (openError) throw errorDeAccion(openError);
   if (anotherOpen?.[0]) {
     throw new Error("Tienes otra gestión pendiente de tipificación.");
   }
@@ -705,7 +706,7 @@ export async function ensureOpenCallForIncomingDialer(leadId: string): Promise<C
   // llamada si corresponde al mismo evento/lead.
   const raced = await getOpenCall(leadId);
   if (raced) return raced;
-  throw new Error(insertError?.message ?? "No se pudo abrir la gestión de la llamada entrante.");
+  throw errorDeAccion(insertError, "No se pudo abrir la gestión de la llamada entrante.");
 }
 
 /**
@@ -727,7 +728,7 @@ async function findAgendaConflict(params: {
     .select("id, rut, phone, team_id, campaign_id")
     .eq("id", leadId)
     .single();
-  if (leadError) throw new Error(leadError.message);
+  if (leadError) throw errorDeAccion(leadError);
 
   let relatedLeadIds = [leadId];
   if (lead.rut || lead.phone) {
@@ -743,7 +744,7 @@ async function findAgendaConflict(params: {
       relatedQuery = relatedQuery.or(orFilters.join(","));
     }
     const { data: relatedLeads, error: relatedError } = await relatedQuery;
-    if (relatedError) throw new Error(relatedError.message);
+    if (relatedError) throw errorDeAccion(relatedError);
     relatedLeadIds = (relatedLeads ?? []).map((l) => l.id);
     if (!relatedLeadIds.includes(leadId)) relatedLeadIds.push(leadId);
   }
@@ -757,7 +758,7 @@ async function findAgendaConflict(params: {
     .neq("id", excludeCallId)
     .limit(1);
 
-  if (conflictError) throw new Error(conflictError.message);
+  if (conflictError) throw errorDeAccion(conflictError);
   return (conflicts ?? []).length > 0;
 }
 
@@ -774,7 +775,7 @@ async function getLeadCallReasonCatalog(params: {
       .select("workflow_id")
       .eq("id", lead.campaign_id)
       .maybeSingle();
-    if (campaignError) throw new Error(campaignError.message);
+    if (campaignError) throw errorDeAccion(campaignError);
     workflowId = campaign?.workflow_id ?? null;
   }
 
@@ -785,8 +786,8 @@ async function getLeadCallReasonCatalog(params: {
     supabase.from("workflow_step_branches").select("*").eq("workflow_id", workflowId),
   ]);
 
-  if (stepsError) throw new Error(stepsError.message);
-  if (branchesError) throw new Error(branchesError.message);
+  if (stepsError) throw errorDeAccion(stepsError);
+  if (branchesError) throw errorDeAccion(branchesError);
 
   const catalog = buildCallReasonCatalogFromWorkflow(
     (steps ?? []) as WorkflowStep[],
@@ -831,7 +832,7 @@ export async function saveCallProgress(input: {
       .is("ended_at", null)
       .select("id")
       .single();
-    if (updateError) throw new Error(updateError.message);
+    if (updateError) throw errorDeAccion(updateError);
 
     const { error: eventError } = await supabase.from("call_events").insert({
       call_id: callId,
@@ -840,7 +841,7 @@ export async function saveCallProgress(input: {
       event_type: "call.progress_updated",
       payload: { status, outcome, reason },
     });
-    if (eventError) throw new Error(eventError.message);
+    if (eventError) throw errorDeAccion(eventError);
 
     // Sincronización no destructiva: solo se actualizan los campos que el
     // agente efectivamente está dejando en esta gestión.
@@ -849,7 +850,7 @@ export async function saveCallProgress(input: {
     if (notes !== null && notes !== undefined && notes !== "") leadUpdate.observacion_actual = notes;
     if (Object.keys(leadUpdate).length > 0) {
       const { error: leadError } = await supabase.from("leads").update(leadUpdate).eq("id", leadId);
-      if (leadError) throw new Error(leadError.message);
+      if (leadError) throw errorDeAccion(leadError);
     }
 
     revalidatePath(`/dashboard/leads/${leadId}`);
@@ -895,7 +896,7 @@ export async function saveCallAgenda(input: CallAgendaPayload): Promise<CallActi
       .is("ended_at", null)
       .select("id")
       .single();
-    if (error) throw new Error(error.message);
+    if (error) throw errorDeAccion(error);
 
     const { error: eventError } = await supabase.from("call_events").insert({
       call_id: callId,
@@ -908,7 +909,7 @@ export async function saveCallAgenda(input: CallAgendaPayload): Promise<CallActi
         notes_saved: Boolean(notes),
       },
     });
-    if (eventError) throw new Error(eventError.message);
+    if (eventError) throw errorDeAccion(eventError);
 
     // Igual que "Guardar avance", conserva el último contexto operativo sin
     // borrar una observación previa cuando la agenda se guarda sin texto.
@@ -917,7 +918,7 @@ export async function saveCallAgenda(input: CallAgendaPayload): Promise<CallActi
         .from("leads")
         .update({ observacion_actual: notes })
         .eq("id", leadId);
-      if (leadError) throw new Error(leadError.message);
+      if (leadError) throw errorDeAccion(leadError);
     }
 
     revalidatePath(`/dashboard/leads/${leadId}`);
@@ -947,7 +948,7 @@ async function readShortCallFacts(
     .order("bridged_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (attemptError) throw new Error(attemptError.message);
+  if (attemptError) throw errorDeAccion(attemptError);
   if (!attempt) return { state: "off" };
 
   const { data: config, error: configError } = await supabase
@@ -959,7 +960,7 @@ async function readShortCallFacts(
     // La web puede publicarse antes que la migración 20260926150000: sin las
     // columnas no hay regla que aplicar y la ficha sigue como siempre.
     if (configError.code === "42703") return { state: "off" };
-    throw new Error(configError.message);
+    throw errorDeAccion(configError);
   }
   return measureShortCall(readShortCallConfig(config), attempt);
 }
@@ -1008,7 +1009,7 @@ async function recordShortCallAutoClose(params: {
       source: "dial_attempts.bridged_at-ended_at",
     },
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 }
 
 /** Cerrar la gestión ("Guardar y terminar"): valida todo y persiste el cierre. */
@@ -1051,7 +1052,7 @@ export async function closeCall(input: {
       .select("id, email, workflow_id, campaign_id")
       .eq("id", leadId)
       .single();
-    if (leadFetchError) throw new Error(leadFetchError.message);
+    if (leadFetchError) throw errorDeAccion(leadFetchError);
     const [reasonCatalog, agendaPolicy] = await Promise.all([
       getLeadCallReasonCatalog({ supabase, lead }),
       fetchCampaignAgendaPolicy(supabase, lead.campaign_id),
@@ -1114,7 +1115,7 @@ export async function closeCall(input: {
         .eq("agent_id", userId)
         .maybeSingle();
       if (existingError || !existingCall?.ended_at) {
-        throw new Error(closeError.message);
+        throw errorDeAccion(closeError);
       }
       console.info("[calls.closeCall] idempotent replay", { callId, leadId, userId });
     }
@@ -1163,7 +1164,7 @@ async function saveEquifaxQ(
 ) {
   if (q === undefined) return;
   const { error } = await supabase.rpc("set_call_equifax_q", { p_call_id: callId, p_q: q });
-  if (error) throw new Error(`La gestión se guardó, pero no la Q: ${error.message}`);
+  if (error) throw new Error(`La gestión se guardó, pero no la Q: ${mensajeDeError(error)}`);
 }
 
 /**
@@ -1201,7 +1202,7 @@ export async function reviseCallManagement(input: {
       .eq("lead_id", input.leadId)
       .eq("agent_id", userId)
       .maybeSingle();
-    if (originalError) throw new Error(originalError.message);
+    if (originalError) throw errorDeAccion(originalError);
     if (!original) throw new Error("La gestión no existe o no pertenece a tu usuario.");
     if (original.legacy_call_id) {
       throw new Error("Esta gestión viene de Atlas 1 y no se puede corregir. Registra una gestión nueva.");
@@ -1251,7 +1252,7 @@ export async function reviseCallManagement(input: {
       p_equifax_uf_amount: input.equifax_uf_amount,
       p_equifax_recipient_email: input.equifax_recipient_email,
     });
-    if (error) throw new Error(error.message);
+    if (error) throw errorDeAccion(error);
     await saveEquifaxQ(supabase, input.callId, input.equifax_q_consultas);
 
     revalidatePath(`/dashboard/leads/${input.leadId}`);
@@ -1291,7 +1292,7 @@ export async function getLeadSupervisionContext(leadId: string): Promise<LeadSup
   await requireProfile(["supervisor", "admin"]);
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("lead_supervision_context", { p_lead_id: leadId });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   const raw = (data ?? {}) as {
     default_agent_id?: string | null;
     agents?: { id: string; name: string }[];
@@ -1324,7 +1325,7 @@ export async function getSupervisableCall(leadId: string, callId: string): Promi
     .not("ended_at", "is", null)
     .is("discarded_reason", null)
     .maybeSingle();
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   return (data as Call | null) ?? null;
 }
 
@@ -1409,7 +1410,7 @@ export async function superviseCallManagement(input: {
       // Una venta antigua cargada hoy cuenta en su período, no en el actual.
       p_managed_on: input.callId ? null : input.managedOn || null,
     });
-    if (error) throw new Error(error.message);
+    if (error) throw errorDeAccion(error);
     const supervisedCallId = (supervised as { call_id?: string } | null)?.call_id ?? input.callId;
     if (supervisedCallId) await saveEquifaxQ(supabase, supervisedCallId, input.equifax_q_consultas);
 
@@ -1439,7 +1440,7 @@ export async function discardCallTechnicalError(input: { callId: string; leadId:
     .select("campaign_id")
     .eq("id", leadId)
     .single();
-  if (leadError) throw new Error(leadError.message);
+  if (leadError) throw errorDeAccion(leadError);
   await assertIntercallBreakCompleted({
     userId,
     campaignId: lead.campaign_id,
@@ -1463,7 +1464,7 @@ export async function discardCallTechnicalError(input: { callId: string; leadId:
     .eq("lead_id", leadId)
     .eq("agent_id", userId)
     .is("ended_at", null);
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 
   await supabase.from("call_events").insert({
     call_id: callId,
@@ -1499,7 +1500,7 @@ export async function beginOfflineManagement(
       p_lead_id: leadId,
       p_channel: channel,
     });
-    if (error) throw new Error(error.message);
+    if (error) throw errorDeAccion(error);
     const value = data && typeof data === "object" ? (data as Record<string, unknown>) : null;
     if (typeof value?.call_id !== "string") throw new Error("La gestión no se pudo abrir.");
     revalidatePath(`/dashboard/leads/${leadId}`);

@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion, mensajeDeError } from "@/lib/errores-de-accion";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
@@ -30,7 +31,7 @@ export async function bulkAssignLeads(leadIds: string[], agentId: string | null)
       p_set_managed_by: false,
       p_next_action_at: null,
     });
-    if (error) return { ok, skipped: ids.length - ok, error: error.message };
+    if (error) return { ok, skipped: ids.length - ok, error: mensajeDeError(error) };
     ok += 1;
   }
 
@@ -60,7 +61,7 @@ export async function distributeLeads(leadIds: string[], agentIds: string[]): Pr
     .select("assigned_to")
     .in("assigned_to", agents)
     .limit(20000);
-  if (loadError) return { ok: 0, skipped: ids.length, error: loadError.message };
+  if (loadError) return { ok: 0, skipped: ids.length, error: mensajeDeError(loadError) };
 
   const load = new Map<string, number>(agents.map((id) => [id, 0]));
   for (const row of current ?? []) {
@@ -78,7 +79,7 @@ export async function distributeLeads(leadIds: string[], agentIds: string[]): Pr
       p_set_managed_by: false,
       p_next_action_at: null,
     });
-    if (error) return { ok, skipped: ids.length - ok, error: error.message };
+    if (error) return { ok, skipped: ids.length - ok, error: mensajeDeError(error) };
     load.set(target, (load.get(target) ?? 0) + 1);
     ok += 1;
   }
@@ -105,7 +106,7 @@ export async function bulkRescheduleLeads(leadIds: string[], nextActionAt: strin
     .from("leads")
     .select("id, assigned_to, managed_by")
     .in("id", ids);
-  if (readError) return { ok: 0, skipped: ids.length, error: readError.message };
+  if (readError) return { ok: 0, skipped: ids.length, error: mensajeDeError(readError) };
 
   let ok = 0;
   let skipped = 0;
@@ -124,7 +125,7 @@ export async function bulkRescheduleLeads(leadIds: string[], nextActionAt: strin
       p_set_managed_by: false,
       p_next_action_at: when.toISOString(),
     });
-    if (error) return { ok, skipped, error: error.message };
+    if (error) return { ok, skipped, error: mensajeDeError(error) };
     ok += 1;
   }
 
@@ -161,14 +162,14 @@ export async function registerInteraction(formData: FormData) {
     workflow_step_id: workflowStepId,
   });
 
-  if (insertError) throw new Error(insertError.message);
+  if (insertError) throw errorDeAccion(insertError);
 
   if (newStatus) {
     const { error: updateError } = await supabase
       .from("leads")
       .update({ status: newStatus })
       .eq("id", leadId);
-    if (updateError) throw new Error(updateError.message);
+    if (updateError) throw errorDeAccion(updateError);
   }
 
   revalidatePath(`/dashboard/leads/${leadId}`);

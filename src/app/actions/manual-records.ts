@@ -1,5 +1,6 @@
 "use server";
 
+import { mensajeDeError } from "@/lib/errores-de-accion";
 import { revalidatePath } from "next/cache";
 import { requireProfile } from "@/lib/auth";
 import { normalizeChilePhone } from "@/lib/chile-phone";
@@ -100,7 +101,7 @@ export async function createManualLeadRecord(input: ManualRecordInput): Promise<
       },
     });
 
-    if (error) return { ok: false, message: error.message };
+    if (error) return { ok: false, message: mensajeDeError(error) };
 
     const leadId =
       data && typeof data === "object" && "lead_id" in data && typeof data.lead_id === "string"

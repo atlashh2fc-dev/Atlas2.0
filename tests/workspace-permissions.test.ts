@@ -11,6 +11,7 @@ import {
   getWorkspacePermissions,
 } from "../src/lib/workspace-permissions.ts";
 import type { AppRole } from "../src/lib/types.ts";
+import * as erroresDeAccion from "../src/lib/errores-de-accion.ts";
 
 const nodeRequire = createRequire(import.meta.url);
 const conversationId = "10000000-0000-4000-8000-000000000001";
@@ -86,6 +87,7 @@ function harness(role: AppRole, assignedTo: string | null = agentId, aiState = "
       getCurrentProfile: async () => profile,
     },
     "@/lib/workspace-permissions": { getWorkspacePermissions, assertCanOperateAssignedConversation },
+    "@/lib/errores-de-accion": erroresDeAccion,
     "@/lib/supabase/server": { createClient: async () => client },
     "@/lib/supabase/admin": { createAdminClient: () => client },
     "@/lib/whatsapp-media": {

@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { revalidatePath } from "next/cache";
 
 import { requireProfile } from "@/lib/auth";
@@ -66,7 +67,7 @@ export async function registrarEnOdontograma(formData: FormData) {
     ...(fecha ? { fecha } : {}),
     registrado_por: profile.id,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 
   await supabase.from("sales_activities").insert({
     organization_id: ficha.organization_id,

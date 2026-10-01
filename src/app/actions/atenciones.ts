@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { revalidatePath } from "next/cache";
 
 import { requireProfile } from "@/lib/auth";
@@ -95,7 +96,7 @@ export async function registrarAtenciones(formData: FormData) {
     p_actualizar_odontograma: formData.get("actualizar_odontograma") !== "no",
     p_pagado: formData.get("pagado") === "si",
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath(`/dashboard/pacientes/${cuenta}`);
 }
 
@@ -108,7 +109,7 @@ export async function marcarAtencionPagada(formData: FormData) {
 
   const supabase = await createClient();
   const { error } = await supabase.from("atenciones").update({ pagado }).eq("id", atencion);
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath(`/dashboard/pacientes/${cuenta}`);
 }
 
@@ -131,7 +132,7 @@ export async function guardarProcedimiento(formData: FormData) {
       updated_at: new Date().toISOString(),
     })
     .eq("id", id);
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/admin/aranceles");
 }
 
@@ -170,6 +171,6 @@ export async function crearProcedimiento(formData: FormData) {
     resultado_odontograma: resultado,
     orden: 500,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/admin/aranceles");
 }

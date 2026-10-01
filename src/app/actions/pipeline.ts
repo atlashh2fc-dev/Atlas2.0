@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { revalidatePath } from "next/cache";
 
 import { requireProfile } from "@/lib/auth";
@@ -34,7 +35,7 @@ export async function asignarNegocio(formData: FormData) {
   if (responsable !== "nadie" && !UUID.test(responsable)) throw new Error("Responsable inválido.");
   const supabase = await createClient();
   const { error } = await supabase.from("sales_opportunities").update({ owner_id: responsable === "nadie" ? null : responsable, updated_at: new Date().toISOString() }).eq("id", id);
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidar(id);
 }
 
@@ -51,7 +52,7 @@ export async function fijarProximaAccion(formData: FormData) {
     .from("sales_opportunities")
     .update({ next_action_at: new Date(`${fecha}T${/^\d{2}:\d{2}$/.test(hora) ? hora : "09:00"}:00-03:00`).toISOString(), next_action_note: nota || null, updated_at: new Date().toISOString() })
     .eq("id", id);
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidar(id);
 }
 
@@ -76,7 +77,7 @@ export async function escribirAlNegocio(formData: FormData) {
     p_programado_para: null,
     p_canal: canal,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   if (canal === "correo" && typeof mensajeId === "string") {
     await supabase.from("mensajes_salientes").update({ asunto: asunto || "Mensaje de " + (profile.full_name ?? "Atlas") }).eq("id", mensajeId);
   }
@@ -106,7 +107,7 @@ export async function cerrarNegocio(formData: FormData) {
   const { data: etapa } = await supabase.from("sales_stages").select("key").eq("active", true).eq(resultado === "ganado" ? "is_won" : "is_lost", true).limit(1).maybeSingle();
   if (!etapa) throw new Error("No hay una etapa de cierre configurada.");
   const { error } = await supabase.rpc("mover_oportunidad_de_etapa", { p_opportunity_id: oportunidad, p_stage_key: etapa.key, p_note: motivo || null });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidar(oportunidad);
 }
 
@@ -115,6 +116,6 @@ export async function alternarSeguimientoAutomatico(formData: FormData) {
   const activo = String(formData.get("activo") ?? "") === "si";
   const supabase = await createClient();
   const { error } = await supabase.rpc("alternar_seguimiento_automatico", { p_activo: activo });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/ventas/resultados");
 }

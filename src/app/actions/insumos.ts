@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { revalidatePath } from "next/cache";
 
 import { requireProfile } from "@/lib/auth";
@@ -59,7 +60,7 @@ export async function guardarInsumo(formData: FormData) {
       updated_at: new Date().toISOString(),
     })
     .eq("id", id);
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidar();
 }
 
@@ -95,7 +96,7 @@ export async function crearInsumo(formData: FormData) {
     stock: cantidad(formData.get("stock")),
     stock_minimo: cantidad(formData.get("stock_minimo")),
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidar();
 }
 
@@ -120,7 +121,7 @@ export async function guardarReceta(formData: FormData) {
   if (!procedimiento) throw new Error("No encontramos ese procedimiento.");
 
   const { error: borrado } = await supabase.from("procedimiento_insumos").delete().eq("producto_id", producto);
-  if (borrado) throw new Error(borrado.message);
+  if (borrado) throw errorDeAccion(borrado);
   if (lineas.size > 0) {
     const { error } = await supabase.from("procedimiento_insumos").insert(
       [...lineas.entries()].map(([insumo, valor]) => ({
@@ -130,7 +131,7 @@ export async function guardarReceta(formData: FormData) {
         cantidad: valor,
       })),
     );
-    if (error) throw new Error(error.message);
+    if (error) throw errorDeAccion(error);
   }
   revalidar();
 }

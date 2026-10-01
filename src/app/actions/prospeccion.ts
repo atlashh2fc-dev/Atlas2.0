@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -36,7 +37,7 @@ export async function registrarToque(formData: FormData) {
     p_nota: nota || null,
     p_dias: Number.isFinite(dias) ? dias : null,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidar();
 
   // Interesado es el paso al pipeline: se sigue trabajando en el negocio.
@@ -51,6 +52,6 @@ export async function deshacerToque(formData: FormData) {
   if (!UUID.test(id)) throw new Error("Gestión inválida.");
   const supabase = await createClient();
   const { error } = await supabase.from("prospeccion_toques").delete().eq("id", id);
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidar();
 }

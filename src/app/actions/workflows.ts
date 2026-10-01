@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -28,7 +29,7 @@ export async function createWorkflow(formData: FormData) {
       .eq("id", campaignId)
       .maybeSingle();
 
-    if (campaignError) throw new Error(campaignError.message);
+    if (campaignError) throw errorDeAccion(campaignError);
     if (!campaign) throw new Error("La campaña seleccionada ya no existe.");
   }
 
@@ -45,7 +46,7 @@ export async function createWorkflow(formData: FormData) {
       if (campaignId) query.set("campaign_id", campaignId);
       redirect(`/dashboard/admin/flujos?${query.toString()}`);
     }
-    throw new Error(error.message);
+    throw errorDeAccion(error);
   }
 
   if (campaignId) {
@@ -58,7 +59,7 @@ export async function createWorkflow(formData: FormData) {
       // La creación ya ocurrió; compensamos para que la acción no deje un
       // flujo sin la campaña que el administrador pidió conectar.
       await supabase.from("workflows").delete().eq("id", data.id);
-      throw new Error(campaignError.message);
+      throw errorDeAccion(campaignError);
     }
     revalidatePath(`/dashboard/admin/campanas/${campaignId}`);
     revalidatePath("/dashboard/admin/campanas");
@@ -100,7 +101,7 @@ export async function createWorkflowFromTemplate(formData: FormData) {
     if (workflowError.code === "23505") {
       redirect("/dashboard/admin/flujos?error=duplicate-name");
     }
-    throw new Error(workflowError.message);
+    throw errorDeAccion(workflowError);
   }
   const workflowId = workflow.id as string;
 
@@ -125,7 +126,7 @@ export async function createWorkflowFromTemplate(formData: FormData) {
 
   if (stepsError) {
     await supabase.from("workflows").delete().eq("id", workflowId);
-    throw new Error(stepsError.message);
+    throw errorDeAccion(stepsError);
   }
 
   // step_order es 1-based y coincide con templateIndex + 1
@@ -150,7 +151,7 @@ export async function createWorkflowFromTemplate(formData: FormData) {
 
   if (branchRows.length > 0) {
     const { error: branchesError } = await supabase.from("workflow_step_branches").insert(branchRows);
-    if (branchesError) throw new Error(branchesError.message);
+    if (branchesError) throw errorDeAccion(branchesError);
   }
 
   revalidatePath("/dashboard/admin/flujos");
@@ -168,7 +169,7 @@ export async function toggleWorkflowActive(formData: FormData) {
     .update({ is_active: !active })
     .eq("id", workflowId);
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/admin/flujos");
 }
 
@@ -209,7 +210,7 @@ export async function setWorkflowStatus(formData: FormData) {
     })
     .eq("id", workflowId);
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/admin/flujos");
   revalidatePath(`/dashboard/admin/flujos/${workflowId}`);
 }
@@ -247,7 +248,7 @@ export async function addWorkflowStep(formData: FormData) {
     allowed_results: allowedResults.length > 0 ? allowedResults : null,
   });
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath(`/dashboard/admin/flujos/${workflowId}`);
 }
 
@@ -259,7 +260,7 @@ export async function deleteWorkflowStep(formData: FormData) {
   const supabase = await createClient();
   const { error } = await supabase.from("workflow_steps").delete().eq("id", stepId);
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath(`/dashboard/admin/flujos/${workflowId}`);
 }
 
@@ -308,7 +309,7 @@ export async function createWorkflowStepNode(input: {
     .select("*")
     .single();
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   return data as WorkflowStep;
 }
 
@@ -335,7 +336,7 @@ export async function updateWorkflowStepNode(input: {
     })
     .eq("id", input.stepId);
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 }
 
 export async function updateWorkflowStepPosition(input: {
@@ -349,7 +350,7 @@ export async function updateWorkflowStepPosition(input: {
     .from("workflow_steps")
     .update({ pos_x: input.posX, pos_y: input.posY })
     .eq("id", input.stepId);
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 }
 
 export async function setStartStep(input: {
@@ -364,7 +365,7 @@ export async function setStartStep(input: {
       .from("workflow_steps")
       .update({ is_start: false })
       .eq("workflow_id", input.workflowId);
-    if (error) throw new Error(error.message);
+    if (error) throw errorDeAccion(error);
     return;
   }
   // Marcar como inicio un paso intermedio corta la cascada que ve el ejecutivo
@@ -375,7 +376,7 @@ export async function setStartStep(input: {
     .eq("workflow_id", input.workflowId)
     .eq("to_step_id", input.stepId)
     .limit(1);
-  if (incomingError) throw new Error(incomingError.message);
+  if (incomingError) throw errorDeAccion(incomingError);
   if (incoming && incoming.length > 0) {
     throw new Error("Este paso recibe conexiones de otro paso; no puede ser el inicio del flujo.");
   }
@@ -387,7 +388,7 @@ export async function setStartStep(input: {
     .from("workflow_steps")
     .update({ is_start: true })
     .eq("id", input.stepId);
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 }
 
 // Lo que se pierde al borrar un paso: la fila, sus conexiones (caen en
@@ -412,14 +413,14 @@ export async function deleteWorkflowStepNode(input: {
     .eq("id", input.stepId)
     .eq("workflow_id", input.workflowId)
     .single();
-  if (stepError || !step) throw new Error(stepError?.message ?? "El paso ya no existe.");
+  if (stepError || !step) throw stepError ? errorDeAccion(stepError) : new Error("El paso ya no existe.");
 
   const { data: branches, error: branchesError } = await supabase
     .from("workflow_step_branches")
     .select("*")
     .eq("workflow_id", input.workflowId)
     .or(`from_step_id.eq.${input.stepId},to_step_id.eq.${input.stepId}`);
-  if (branchesError) throw new Error(branchesError.message);
+  if (branchesError) throw errorDeAccion(branchesError);
 
   // Si no se puede leer el diccionario legado, el borrado sigue: solo se
   // perdería ese vínculo al deshacer.
@@ -429,7 +430,7 @@ export async function deleteWorkflowStepNode(input: {
     .eq("workflow_step_id", input.stepId);
 
   const { error } = await supabase.from("workflow_steps").delete().eq("id", input.stepId);
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 
   return {
     step: step as WorkflowStep,
@@ -453,7 +454,7 @@ async function putBranch(
     .neq("id", branch.id);
   clash = branch.from_option === null ? clash.is("from_option", null) : clash.eq("from_option", branch.from_option);
   const { error: clashError } = await clash;
-  if (clashError) throw new Error(clashError.message);
+  if (clashError) throw errorDeAccion(clashError);
 
   const { data, error } = await supabase
     .from("workflow_step_branches")
@@ -470,7 +471,7 @@ async function putBranch(
     )
     .select("*")
     .single();
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   return data as WorkflowStepBranch;
 }
 
@@ -515,7 +516,7 @@ export async function restoreWorkflowStepNode(input: {
     .insert({ ...step, step_order: stepOrder })
     .select("*")
     .single();
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 
   // Una conexión hacia o desde un paso que ya no está no se puede devolver.
   const { data: alive } = await supabase
@@ -573,7 +574,7 @@ export async function upsertBranch(input: {
       .eq("from_step_id", input.fromStepId)
       .is("from_option", null)
       .order("created_at", { ascending: true });
-    if (findError) throw new Error(findError.message);
+    if (findError) throw errorDeAccion(findError);
 
     if (defaults && defaults.length > 0) {
       const keeper = defaults[0] as WorkflowStepBranch;
@@ -583,7 +584,7 @@ export async function upsertBranch(input: {
         .eq("id", keeper.id)
         .select("*")
         .single();
-      if (error) throw new Error(error.message);
+      if (error) throw errorDeAccion(error);
 
       const duplicateIds = defaults.slice(1).map((branch) => branch.id);
       if (duplicateIds.length > 0) {
@@ -591,7 +592,7 @@ export async function upsertBranch(input: {
           .from("workflow_step_branches")
           .delete()
           .in("id", duplicateIds);
-        if (deleteError) throw new Error(deleteError.message);
+        if (deleteError) throw errorDeAccion(deleteError);
       }
       return data as WorkflowStepBranch;
     }
@@ -606,7 +607,7 @@ export async function upsertBranch(input: {
       })
       .select("*")
       .single();
-    if (error) throw new Error(error.message);
+    if (error) throw errorDeAccion(error);
     return data as WorkflowStepBranch;
   }
 
@@ -624,7 +625,7 @@ export async function upsertBranch(input: {
     .select("*")
     .single();
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   return data as WorkflowStepBranch;
 }
 
@@ -635,7 +636,7 @@ export async function deleteBranch(input: {
   await requireProfile(["admin", "supervisor"]);
   const supabase = await createClient();
   const { error } = await supabase.from("workflow_step_branches").delete().eq("id", input.branchId);
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 }
 
 export async function assignLeadWorkflow(formData: FormData) {
@@ -649,6 +650,6 @@ export async function assignLeadWorkflow(formData: FormData) {
     .update({ workflow_id: workflowId })
     .eq("id", leadId);
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidatePath(`/dashboard/leads/${leadId}`);
 }

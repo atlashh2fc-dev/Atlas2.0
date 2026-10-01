@@ -2,7 +2,7 @@ import Link from "next/link";
 import { unstable_noStore as noStore } from "next/cache";
 import { CalendarDays, CalendarX2, Check, CheckCheck, ChevronLeft, ChevronRight, Clock, ListChecks, Stethoscope, XCircle } from "lucide-react";
 
-import { agendarCita, cambiarEstadoCita } from "@/app/actions/citas";
+import { agendarCita, cambiarEstadoCita, type OpcionDeCita } from "@/app/actions/citas";
 import { CreatePanel } from "@/components/create-panel";
 import { ActionForm, ActionSubmit, Badge, Callout, EmptyState, Field, Input, PageHeader, SectionCard, Select, buttonClasses, type ConfirmOptions } from "@/components/ui";
 import {
@@ -21,6 +21,8 @@ import {
 import { ATENCION_POR_EDICION, PACIENTES_POR_EDICION, clinicaDe } from "@/lib/ediciones";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
 import { createClient } from "@/lib/supabase/server";
+
+import { SelectorPaciente } from "./selector-paciente";
 
 /**
  * La agenda del día, por profesional.
@@ -98,8 +100,15 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
   const hasta = instanteEnChile(sumarDias(dia, 1), "00:00");
 
   const supabase = await createClient();
-  const [{ data: profesionalesData }, { data: citasData, error }, { data: cuentas }, { data: mascotas }, { data: productos }] =
-    await Promise.all([
+  const [
+    { data: profesionalesData },
+    { data: citasData, error },
+    { data: cuentas, count: totalCuentas },
+    { data: mascotas, count: totalMascotas },
+    { data: productos },
+    { data: cuentaPedida },
+    { data: mascotaPedida },
+  ] = await Promise.all([
       supabase.from("profesionales").select("id, nombre, especialidad, color, activo").eq("activo", true).order("orden").order("nombre"),
       supabase
         .from("citas")
@@ -107,14 +116,42 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
         .gte("inicio", desde.toISOString())
         .lt("inicio", hasta.toISOString())
         .order("inicio"),
-      supabase.from("sales_companies").select("id, name").order("name").limit(800),
-      esVet ? supabase.from("mascotas").select("id, nombre, cuenta_id").order("nombre").limit(1500) : Promise.resolve({ data: [] }),
+      // El selector de «Nueva cita» busca en el servidor lo que no alcance a cargarse acá.
+      supabase.from("sales_companies").select("id, name, rut", { count: "exact" }).order("name").limit(800),
+      esVet
+        ? supabase.from("mascotas").select("id, nombre, especie, cuenta_id", { count: "exact" }).order("nombre").limit(1500)
+        : Promise.resolve({ data: [], count: 0 }),
       supabase.from("sales_products").select("name, duracion_min").eq("active", true).order("name").limit(300),
+      // Lo que viene elegido desde Recordatorios puede no estar entre lo cargado.
+      cuentaElegida ? supabase.from("sales_companies").select("id, name, rut").eq("id", cuentaElegida).maybeSingle() : Promise.resolve({ data: null }),
+      esVet && mascotaElegida
+        ? supabase.from("mascotas").select("id, nombre, especie, cuenta_id").eq("id", mascotaElegida).maybeSingle()
+        : Promise.resolve({ data: null }),
     ]);
 
   const profesionales = (profesionalesData ?? []) as Profesional[];
   const citas = (citasData ?? []) as unknown as Cita[];
   const nombreCuenta = new Map((cuentas ?? []).map((cuenta) => [cuenta.id as string, cuenta.name as string]));
+  if (cuentaPedida) nombreCuenta.set(cuentaPedida.id as string, cuentaPedida.name as string);
+  const opcionDeCuenta = (cuenta: { id: unknown; name: unknown; rut?: unknown }): OpcionDeCita => ({
+    value: cuenta.id as string,
+    label: cuenta.name as string,
+    detalle: (cuenta.rut as string | null) ?? undefined,
+  });
+  const opcionDeMascota = (mascota: { id: unknown; nombre: unknown; especie?: unknown; cuenta_id: unknown }): OpcionDeCita => {
+    const tutor = nombreCuenta.get(mascota.cuenta_id as string) ?? "";
+    return {
+      value: mascota.id as string,
+      label: mascota.nombre as string,
+      detalle: [mascota.especie as string | null, tutor].filter(Boolean).join(" · "),
+      cuentaId: mascota.cuenta_id as string,
+      cuentaNombre: tutor,
+    };
+  };
+  const opcionesCuenta = (cuentas ?? []).map(opcionDeCuenta);
+  const opcionesMascota = (mascotas ?? []).map(opcionDeMascota);
+  const cuentaInicial = cuentaPedida ? opcionDeCuenta(cuentaPedida) : null;
+  const mascotaInicial = mascotaPedida && (!cuentaInicial || mascotaPedida.cuenta_id === cuentaInicial.value) ? opcionDeMascota(mascotaPedida) : null;
   const activas = citas.filter((cita) => ocupaHorario(cita.estado));
   const sinConfirmar = activas.filter((cita) => cita.estado === "reservada").length;
   const enSala = activas.filter((cita) => cita.estado === "en_sala").length;
@@ -162,30 +199,16 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
               submitLabel="Agendar"
               successLabel={`${Cita1} agendada`}
             >
-              <Field label={voc.singular}>
-                <Select name="cuenta_id" required defaultValue={cuentaElegida && nombreCuenta.has(cuentaElegida) ? cuentaElegida : ""} data-autofocus>
-                  <option value="" disabled>
-                    Elige al {voc.singular.toLowerCase()}
-                  </option>
-                  {(cuentas ?? []).map((cuenta) => (
-                    <option key={cuenta.id as string} value={cuenta.id as string}>
-                      {cuenta.name as string}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              {esVet && (
-                <Field label="Mascota (opcional)">
-                  <Select name="mascota_id" defaultValue={mascotaElegida}>
-                    <option value="">Sin mascota</option>
-                    {(mascotas ?? []).map((mascota) => (
-                      <option key={mascota.id as string} value={mascota.id as string}>
-                        {mascota.nombre as string} · {nombreCuenta.get(mascota.cuenta_id as string) ?? ""}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-              )}
+              <SelectorPaciente
+                etiqueta={voc.singular}
+                cuentas={opcionesCuenta}
+                totalCuentas={totalCuentas ?? opcionesCuenta.length}
+                mascotas={opcionesMascota}
+                totalMascotas={totalMascotas ?? opcionesMascota.length}
+                esVet={esVet}
+                cuentaInicial={cuentaInicial}
+                mascotaInicial={mascotaInicial}
+              />
               <Field label={at.profesional}>
                 <Select name="profesional_id" required defaultValue={profesionales[0]?.id ?? ""}>
                   {profesionales.map((profesional) => (

@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -49,7 +50,7 @@ export async function registrarPago(formData: FormData) {
     p_atenciones: null,
     p_nota: texto(formData, "nota", 400) || null,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   revalidarCaja(cuenta);
 }
 
@@ -70,7 +71,7 @@ export async function cobrarEnLinea(formData: FormData) {
     p_pasarela: "transbank",
     p_atenciones: null,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   const pago = data as string;
   revalidarCaja(cuenta);
   redirect(destino === "enlace" ? `/dashboard/caja?enlace=${pago}` : `/pagar/${pago}`);

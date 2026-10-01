@@ -5,6 +5,7 @@ import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
 import type { AppRole } from "../src/lib/types.ts";
+import * as erroresDeAccion from "../src/lib/errores-de-accion.ts";
 import * as topeDePausa from "../src/lib/tope-de-pausa.ts";
 
 const nodeRequire = createRequire(import.meta.url);
@@ -38,6 +39,7 @@ function harness(role: AppRole, owner: string | null = agentId, manager: string 
       },
       getCurrentProfile: async () => profile,
     },
+    "@/lib/errores-de-accion": erroresDeAccion,
     "@/lib/supabase/server": { createClient: async () => { connections++; return client; } },
     "@/lib/supabase/admin": { createAdminClient: () => { connections++; return client; } },
     "next/cache": { revalidatePath() {} },

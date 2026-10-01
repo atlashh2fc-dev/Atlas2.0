@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
@@ -25,7 +26,7 @@ export async function getMyViewPreference<T>(viewKey: ViewKey): Promise<T | null
     .eq("view_key", viewKey)
     .maybeSingle();
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   return (data?.config as T) ?? null;
 }
 
@@ -47,7 +48,7 @@ export async function saveMyViewPreference(
       { onConflict: "profile_id,view_key" }
     );
 
-    if (error) throw new Error(error.message);
+    if (error) throw errorDeAccion(error);
     return { ok: true };
   } catch (error) {
     // Perder una preferencia no puede tumbar la pantalla que la usa.
@@ -75,7 +76,7 @@ export async function listMySavedViews(viewKey: ViewKey): Promise<SavedView[]> {
     .eq("view_key", viewKey)
     .order("name");
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   return (data ?? []) as SavedView[];
 }
 
@@ -110,7 +111,7 @@ export async function saveMyNamedView(
       .select("id, name, config, updated_at")
       .single();
 
-    if (error) throw new Error(error.message);
+    if (error) throw errorDeAccion(error);
     return { ok: true, view: data as SavedView };
   } catch (error) {
     const message = error instanceof Error ? error.message : "No se pudo guardar la vista.";
@@ -128,7 +129,7 @@ export async function deleteMySavedView(viewId: string): Promise<void> {
     .eq("id", viewId)
     .eq("profile_id", profile.id);
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 }
 
 export async function resetMyViewPreference(viewKey: ViewKey): Promise<void> {
@@ -141,5 +142,5 @@ export async function resetMyViewPreference(viewKey: ViewKey): Promise<void> {
     .eq("profile_id", profile.id)
     .eq("view_key", viewKey);
 
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 }

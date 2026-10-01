@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { requireProfile } from "@/lib/auth";
 import { normalizeChilePhone } from "@/lib/chile-phone";
 import { createClient } from "@/lib/supabase/server";
@@ -53,7 +54,7 @@ export async function upsertAiVoiceCampaignConfig(formData: FormData) {
     max_attempts_per_contact: maxAttemptsPerContact,
     is_active: isActive,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 
   revalidatePath("/dashboard/admin/campanas");
   revalidatePath(campaignPath(campaignId));
@@ -78,7 +79,7 @@ export async function requestAiVoiceTestCall(formData: FormData) {
     .eq("campaign_id", campaignId)
     .maybeSingle();
 
-  if (configError) throw new Error(configError.message);
+  if (configError) throw errorDeAccion(configError);
   if (!config) throw new Error("Configura primero el agente de voz de esta campaña.");
   if (!config.phone_number_id) throw new Error("Falta conectar el número / troncal SIP de ElevenLabs.");
 
@@ -98,7 +99,7 @@ export async function requestAiVoiceTestCall(formData: FormData) {
   if (error?.code === "23505") {
     throw new Error("Ese número ya tiene una prueba pendiente o en curso.");
   }
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
 
   revalidatePath(`${campaignPath(campaignId)}/ia`);
 }

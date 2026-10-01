@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion, mensajeDeError } from "@/lib/errores-de-accion";
 import { revalidatePath } from "next/cache";
 
 import { requireProfile } from "@/lib/auth";
@@ -29,7 +30,7 @@ async function correoRecibido(leadId: string, correoId: string) {
     .eq("id", correoId)
     .eq("lead_id", leadId)
     .maybeSingle();
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   if (!data) throw new Error("No encontramos ese correo en este registro.");
   return { supabase, correo: data };
 }
@@ -91,7 +92,7 @@ export async function responderCorreoDeRegistro(formData: FormData) {
     })
     .select("id")
     .single();
-  if (registroError || !registro) throw new Error(registroError?.message ?? "No se pudo registrar la respuesta.");
+  if (registroError || !registro) throw errorDeAccion(registroError, "No se pudo registrar la respuesta.");
 
   try {
     const { messageId } = await enviarCorreo(buzon, {
@@ -145,7 +146,7 @@ export async function gestionarCorreoDeBuzon(input: { correoId: string; agenteId
       p_rut: input.rut?.trim() || null,
       p_cerrar: Boolean(input.cerrar),
     });
-    if (error) return { ok: false, error: error.message };
+    if (error) return { ok: false, error: mensajeDeError(error) };
     revalidatePath("/dashboard/mail");
     return { ok: true };
   } catch (error) {

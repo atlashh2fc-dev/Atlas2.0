@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion, mensajeDeError as mensajeHumano } from "@/lib/errores-de-accion";
 import { revalidatePath } from "next/cache";
 
 import { requireProfile } from "@/lib/auth";
@@ -61,9 +62,8 @@ export type ContextoCotizador = {
   historial: CotizacionEnviada[];
 };
 
-function mensajeDeError(error: unknown, porDefecto: string): string {
-  if (error && typeof error === "object" && "message" in error && typeof error.message === "string" && error.message) return error.message;
-  return porDefecto;
+function mensajeDeError(error: unknown, porDefecto?: string): string {
+  return mensajeHumano(error, porDefecto);
 }
 
 async function leerFirma(supabase: Awaited<ReturnType<typeof createClient>>, userId: string): Promise<FirmaComercial> {
@@ -142,7 +142,7 @@ export async function guardarMiFirma(input: { cargo: string; whatsapp: string; c
       p_correo: input.correo,
       p_firma: input.firma,
     });
-    if (error) return { ok: false, error: error.message };
+    if (error) return { ok: false, error: mensajeDeError(error) };
     return { ok: true, data: await leerFirma(supabase, profile.id) };
   } catch (error) {
     return { ok: false, error: mensajeDeError(error, "No se pudo guardar tu firma.") };
@@ -223,7 +223,7 @@ async function registrar(
     p_clp_total: total.clp,
     p_valor_uf: preparado.valorUf,
   });
-  if (error || typeof data !== "string") throw new Error(error?.message ?? "No se pudo registrar la cotización.");
+  if (error || typeof data !== "string") throw errorDeAccion(error, "No se pudo registrar la cotización.");
   return data;
 }
 
@@ -253,7 +253,8 @@ export async function enviarCotizacionPorCorreo(entrada: Entrada & { para: strin
       });
       await admin.from("equifax_cotizaciones").update({ estado: "enviada", proveedor_id: messageId, enviada_at: new Date().toISOString() }).eq("id", id);
     } catch (error) {
-      const detalle = mensajeDeError(error, "El servidor de correo no aceptó el mensaje.");
+      // El detalle del proveedor SMTP se guarda en la cotización para diagnosticar.
+      const detalle = error instanceof Error && error.message ? error.message : "El servidor de correo no aceptó el mensaje.";
       await admin.from("equifax_cotizaciones").update({ estado: "fallida", error: detalle.slice(0, 800) }).eq("id", id);
       return { ok: false, error: `No salió el correo: ${detalle}` };
     }

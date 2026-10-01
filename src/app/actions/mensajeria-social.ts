@@ -1,5 +1,6 @@
 "use server";
 
+import { errorDeAccion } from "@/lib/errores-de-accion";
 import { revalidatePath } from "next/cache";
 
 import { requireProfile } from "@/lib/auth";
@@ -91,7 +92,7 @@ export async function conectarCanalSocial(entrada: { tokenDeUsuario: string; pag
     const guardado = existente
       ? await admin.from("whatsapp_channels").update(fila).eq("id", existente.id).select("id").single()
       : await admin.from("whatsapp_channels").insert({ ...fila, created_by: profile.id }).select("id").single();
-    if (guardado.error || !guardado.data) throw new Error(guardado.error?.message ?? "No se pudo guardar el canal.");
+    if (guardado.error || !guardado.data) throw errorDeAccion(guardado.error, "No se pudo guardar el canal.");
 
     const { error: tokenError } = await admin.rpc("guardar_token_de_canal_whatsapp", { p_channel_id: guardado.data.id, p_token: pagina.token });
     if (tokenError) throw new Error("No se pudo guardar la credencial de la página.");
@@ -134,12 +135,12 @@ export async function guardarCampanaDelCanalSocial(formData: FormData) {
     .eq("channel_id", channelId)
     .eq("is_default", true)
     .maybeSingle();
-  if (leerError) throw new Error(leerError.message);
+  if (leerError) throw errorDeAccion(leerError);
   const ruta = { channel_id: channelId, campaign_id: campaignId, is_default: true, is_active: true, created_by: profile.id };
   const guardado = actual
     ? await admin.from("whatsapp_campaign_routes").update(ruta).eq("id", actual.id)
     : await admin.from("whatsapp_campaign_routes").insert(ruta);
-  if (guardado.error) throw new Error(guardado.error.message);
+  if (guardado.error) throw errorDeAccion(guardado.error);
 
   rutasDelCanal(channel.canal);
 }
@@ -159,6 +160,6 @@ export async function pausarCanalSocial(formData: FormData) {
     .from("whatsapp_channels")
     .update({ status: pausar ? "paused" : "active", updated_by: profile.id })
     .eq("id", channelId);
-  if (error) throw new Error(error.message);
+  if (error) throw errorDeAccion(error);
   rutasDelCanal(channel.canal);
 }
