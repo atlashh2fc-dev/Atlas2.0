@@ -72,17 +72,17 @@ function duracion(desde: string, hasta: number): string {
   return `${Math.floor(horas / 24)} d ${horas % 24} h`;
 }
 
-/** Borde y cifra de cada estado, igual que las baldosas de la cola de campañas. */
+/** Punto y cifra de cada estado, igual que las prioridades del centro de control. */
 function tonoBaldosa(tone: "danger" | "warning" | "success" | "neutral" | "info") {
   return tone === "danger"
-    ? { edge: "border-l-danger", value: "text-danger" }
+    ? { dot: "bg-danger", value: "text-danger" }
     : tone === "warning"
-      ? { edge: "border-l-warning", value: "text-warning" }
+      ? { dot: "bg-warning", value: "text-warning" }
       : tone === "success"
-        ? { edge: "border-l-success", value: "text-success" }
+        ? { dot: "bg-success", value: "text-success" }
         : tone === "info"
-          ? { edge: "border-l-primary", value: "text-primary" }
-          : { edge: "border-l-border-strong", value: "text-foreground" };
+          ? { dot: "bg-primary", value: "text-foreground" }
+          : { dot: "bg-muted-foreground/50", value: "text-foreground" };
 }
 
 export function MailBuzon({ rows, agents, ahora }: { rows: BuzonRow[]; agents: BuzonAgent[]; ahora: number }) {
@@ -122,8 +122,8 @@ export function MailBuzon({ rows, agents, ahora }: { rows: BuzonRow[]; agents: B
       tone="teal"
       actions={<Badge tone={abiertos > 0 ? "warning" : "success"}>{abiertos > 0 ? `${abiertos} por atender` : "Al día"}</Badge>}
     >
-      <div className="border-b border-border px-4 py-4">
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="border-y border-border">
+        <div className="grid gap-px bg-border sm:grid-cols-2 xl:grid-cols-3">
           {baldosas.map((baldosa) => {
             const activa = filtro === baldosa.id;
             const estilo = tonoBaldosa(baldosa.tone);
@@ -133,17 +133,19 @@ export function MailBuzon({ rows, agents, ahora }: { rows: BuzonRow[]; agents: B
                 type="button"
                 onClick={() => setFiltro(baldosa.id)}
                 aria-pressed={activa}
-                className={`rounded-lg border border-l-2 px-3 py-2.5 text-left transition-[border-color,background-color,box-shadow] focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${estilo.edge} ${
-                  activa ? "border-primary/50 bg-primary/10 shadow-sm ring-1 ring-primary/40" : "border-border bg-background hover:border-border-strong hover:bg-surface-muted"
+                className={`relative flex flex-col gap-2 px-4 py-3.5 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
+                  activa ? "bg-primary/[0.07]" : "bg-surface hover:bg-surface-muted/70"
                 }`}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <span className="text-xs font-medium text-muted-foreground">{baldosa.label}</span>
-                  <span className={`text-xl font-semibold leading-none tracking-tight tabular-nums ${baldosa.count > 0 ? estilo.value : "text-muted-foreground"}`}>
-                    {baldosa.count.toLocaleString("es-CL")}
-                  </span>
-                </div>
-                <p className="mt-1.5 text-xs text-muted-foreground">{baldosa.description}</p>
+                {activa && <span aria-hidden="true" className="absolute inset-x-0 top-0 h-0.5 bg-primary" />}
+                <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                  <span aria-hidden="true" className={`size-1.5 shrink-0 rounded-full ${baldosa.count > 0 ? estilo.dot : "bg-muted-foreground/30"}`} />
+                  <span className={activa ? "text-foreground" : undefined}>{baldosa.label}</span>
+                </span>
+                <span className={`text-2xl font-semibold leading-none tracking-tight tabular-nums ${baldosa.count > 0 ? estilo.value : "text-muted-foreground/60"}`}>
+                  {baldosa.count.toLocaleString("es-CL")}
+                </span>
+                <span className="text-[11px] text-muted-foreground">{baldosa.description}</span>
               </button>
             );
           })}

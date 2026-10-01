@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { CalendarClock } from "lucide-react";
 import { rescheduleCallbacks, releaseCallbacksToPool } from "@/app/actions/admin";
 import {
+  Avatar,
   Badge,
   Button,
   DataTable,
@@ -30,8 +31,13 @@ export type CallbackRow = {
   overdue_minutes: number;
 };
 
+const DAY_FORMAT = new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", day: "numeric", month: "short" });
+const HOUR_FORMAT = new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", hour: "2-digit", minute: "2-digit" });
+
+/** "24 may · 09:27", siempre en hora de Chile (el navegador puede estar en otra zona). */
 function formatDateTime(value: string): string {
-  return new Date(value).toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short" });
+  const date = new Date(value);
+  return `${DAY_FORMAT.format(date).replace(".", "")} · ${HOUR_FORMAT.format(date)}`;
 }
 
 function formatDelay(minutes: number): string {
@@ -77,56 +83,73 @@ export function CallbacksPanel({
 
   const columns = useMemo<Column<CallbackRow>[]>(
     () => [
-      { id: "registro", header: "Registro", value: (row) => row.full_name },
       {
-        id: "telefono",
-        header: "Teléfono",
-        value: (row) => row.phone ?? "",
-        className: "text-muted-foreground",
+        // Nombre y teléfono en una celda; el Excel los sigue separando.
+        id: "registro",
+        header: "Registro",
+        value: (row) => row.full_name,
+        exportValues: (row) => ({ Registro: row.full_name, "Teléfono": row.phone ?? "" }),
+        cell: (row) => (
+          <span className="flex min-w-0 items-center gap-3">
+            <Avatar name={row.full_name} size="md" />
+            <span className="min-w-0">
+              <span className="block max-w-[16rem] truncate font-medium text-foreground group-hover:text-primary">{row.full_name}</span>
+              <span className="mt-0.5 block truncate text-xs tabular-nums text-muted-foreground">{row.phone ?? "Sin teléfono"}</span>
+            </span>
+          </span>
+        ),
       },
       {
         id: "campana",
         header: "Campaña",
         value: (row) => row.campaign ?? "",
-        cell: (row) => row.campaign ?? "—",
-        className: "text-muted-foreground",
+        cell: (row) =>
+          row.campaign ? (
+            <span className="flex min-w-0 items-center gap-2">
+              <Avatar name={row.campaign} size="xs" shape="square" />
+              <span className="max-w-[12rem] truncate text-foreground">{row.campaign}</span>
+            </span>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          ),
       },
       {
         id: "ejecutivo",
         header: "Comprometido por",
         value: (row) => row.owner_name,
         cell: (row) =>
-          row.mode === "campaign" ? <span className="text-muted-foreground">En el pool</span> : row.owner_name,
+          row.mode === "campaign" ? (
+            <span className="text-muted-foreground">En el pool</span>
+          ) : (
+            <span className="flex min-w-0 items-center gap-2">
+              <Avatar name={row.owner_name} size="xs" />
+              <span className="max-w-[12rem] truncate text-foreground">{row.owner_name}</span>
+            </span>
+          ),
       },
       {
+        // Hora y estado juntos: "vencido hace 2 h" ya dice el estado.
         id: "hora",
         header: "Hora comprometida",
         value: (row) => row.next_action_at,
+        exportValues: (row) => ({
+          "Hora comprometida": formatDateTime(row.next_action_at),
+          Estado: row.overdue_minutes > 0 ? "Vencido" : "Por venir",
+        }),
         cell: (row) => (
           <span className="block">
-            {formatDateTime(row.next_action_at)}
+            <span className="block whitespace-nowrap tabular-nums text-foreground">{formatDateTime(row.next_action_at)}</span>
             {row.overdue_minutes > 0 ? (
-              <span className="mt-0.5 block text-xs text-danger">
-                vencido hace {formatDelay(row.overdue_minutes)}
-              </span>
+              <Badge tone="danger" className="mt-0.5">
+                Vencido hace {formatDelay(row.overdue_minutes)}
+              </Badge>
             ) : (
               <span className="mt-0.5 block text-xs text-muted-foreground">
-                en {formatDelay(Math.abs(row.overdue_minutes))}
+                En {formatDelay(Math.abs(row.overdue_minutes))}
               </span>
             )}
           </span>
         ),
-      },
-      {
-        id: "estado",
-        header: "Estado",
-        value: (row) => (row.overdue_minutes > 0 ? "Vencido" : "Por venir"),
-        cell: (row) =>
-          row.overdue_minutes > 0 ? (
-            <Badge tone="danger">Vencido</Badge>
-          ) : (
-            <Badge tone="neutral">Por venir</Badge>
-          ),
       },
       {
         id: "intentos",

@@ -4,24 +4,16 @@ import { resolveCampaignScope } from "@/lib/campaign-scope";
 import { reassignAgenda } from "@/app/actions/admin";
 import { LEAD_STATUSES } from "@/lib/types";
 import Link from "next/link";
-import {
-  CalendarClock,
-  CalendarX2,
-  Database,
-  Gauge,
-  Handshake,
-  Megaphone,
-  UserPlus,
-  Users,
-  type LucideIcon,
-} from "lucide-react";
+import type { ReactNode } from "react";
+import { CalendarX2, Database, MessageCircle, Phone, UserPlus, Users, Video, MapPin } from "lucide-react";
 import {
   ActionForm,
   ActionSubmit,
+  Avatar,
+  Badge,
   Callout,
   FilterBar,
   Field,
-  MetricCard,
   NavTabs,
   PageHeader,
   SectionCard,
@@ -34,6 +26,7 @@ import {
   TableEmpty,
   Tr,
 } from "@/components/ui";
+import { KpiStrip, KpiStripItem } from "@/components/report-kit";
 import { CallbacksPanel, type CallbackRow } from "@/components/callbacks-panel";
 import { TeamCampaignControl } from "@/components/team-campaign-control";
 import { listAgentCampaignBoard, type AgentCampaignBoardRow } from "@/app/actions/campaign-control";
@@ -80,12 +73,13 @@ function toDatetimeLocal(iso: string): string {
   return toDateTimeInput(new Date(iso));
 }
 
+const AGENDA_DAY = new Intl.DateTimeFormat("es-CL", { timeZone: REPORT_TIME_ZONE, day: "numeric", month: "short" });
+const AGENDA_HOUR = new Intl.DateTimeFormat("es-CL", { timeZone: REPORT_TIME_ZONE, hour: "2-digit", minute: "2-digit" });
+
+/** "24 may · 09:27", en hora de Chile. */
 function formatAgendaDateTime(iso: string): string {
-  return new Date(iso).toLocaleString("es-CL", {
-    dateStyle: "short",
-    timeStyle: "short",
-    timeZone: REPORT_TIME_ZONE,
-  });
+  const date = new Date(iso);
+  return `${AGENDA_DAY.format(date).replace(".", "")} · ${AGENDA_HOUR.format(date)}`;
 }
 
 function agendaChannelLabel(channel: AgendaLead["next_action_channel"]): string {
@@ -93,6 +87,48 @@ function agendaChannelLabel(channel: AgendaLead["next_action_channel"]): string 
   if (channel === "video_meeting") return "Videollamada";
   if (channel === "in_person") return "Presencial";
   return "Llamada";
+}
+
+function agendaChannelIcon(channel: AgendaLead["next_action_channel"]) {
+  if (channel === "whatsapp") return MessageCircle;
+  if (channel === "video_meeting") return Video;
+  if (channel === "in_person") return MapPin;
+  return Phone;
+}
+
+/**
+ * Título de una sección cuya tabla ya trae su propia tarjeta (DataTable):
+ * envolverla en otra tarjeta dejaba un marco dentro de otro.
+ */
+function SectionHeading({
+  id,
+  title,
+  description,
+  count,
+  actions,
+}: {
+  id?: string;
+  title: string;
+  description?: ReactNode;
+  count?: number;
+  actions?: ReactNode;
+}) {
+  return (
+    <div id={id} className="flex scroll-mt-20 flex-wrap items-end justify-between gap-3 px-1">
+      <div className="min-w-0">
+        <h2 className="flex items-center gap-2 text-[15px] font-semibold tracking-tight text-foreground">
+          {title}
+          {typeof count === "number" && (
+            <span className="rounded-md bg-surface-muted px-1.5 text-[11px] font-semibold tabular-nums text-muted-foreground">
+              {count.toLocaleString("es-CL")}
+            </span>
+          )}
+        </h2>
+        {description && <p className="mt-0.5 max-w-3xl text-[13px] text-muted-foreground">{description}</p>}
+      </div>
+      {actions}
+    </div>
+  );
 }
 
 const TEAM_REPORT_WINDOW_DAYS = 180;
@@ -135,7 +171,6 @@ function AgendaTable({
   agents,
   overdue,
   emptyText,
-  icon,
 }: {
   title: string;
   description?: string;
@@ -143,43 +178,73 @@ function AgendaTable({
   agents: AgentOption[];
   overdue: boolean;
   emptyText: string;
-  icon: LucideIcon;
 }) {
   return (
-    <SectionCard title={title} description={description} icon={icon} tone="amber">
-      <Table>
-        <Thead>
-          <Th>Registro</Th>
-          <Th>Ejecutivo</Th>
-          <Th>Canal</Th>
-          <Th>Agenda</Th>
-          <Th>Reagendar</Th>
-        </Thead>
-        <Tbody>
-          {rows.length === 0 && <TableEmpty colSpan={5}>{emptyText}</TableEmpty>}
-          {rows.map((lead) => {
-            const managerName = one(lead.profiles)?.full_name ?? "—";
-            return (
-              <Tr key={lead.id}>
-                <Td strong>
-                  <Link href={`/dashboard/leads/${lead.id}`} className="hover:text-primary">
-                    {lead.full_name}
-                  </Link>
-                </Td>
-                <Td muted>{managerName}</Td>
-                <Td muted>{agendaChannelLabel(lead.next_action_channel)}</Td>
-                <Td className={overdue ? "font-medium text-danger" : "text-foreground"}>
-                  {overdue ? "Vencida: " : ""}
-                  {formatAgendaDateTime(lead.next_action_at!)}
-                </Td>
-                <Td>
-                  <ReassignForm lead={lead} agents={agents} />
-                </Td>
-              </Tr>
-            );
-          })}
-        </Tbody>
-      </Table>
+    <SectionCard
+      title={title}
+      description={description}
+      actions={
+        <span className="rounded-md bg-surface-muted px-1.5 text-[11px] font-semibold tabular-nums text-muted-foreground">
+          {rows.length}
+        </span>
+      }
+    >
+      <div className="overflow-x-auto">
+        <Table>
+          <Thead>
+            <Th>Registro</Th>
+            <Th>Ejecutivo</Th>
+            <Th>Agenda</Th>
+            <Th>Reagendar</Th>
+          </Thead>
+          <Tbody>
+            {rows.length === 0 && <TableEmpty colSpan={4}>{emptyText}</TableEmpty>}
+            {rows.map((lead) => {
+              const managerName = one(lead.profiles)?.full_name ?? null;
+              const ChannelIcon = agendaChannelIcon(lead.next_action_channel);
+              return (
+                <Tr key={lead.id}>
+                  <Td>
+                    <Link href={`/dashboard/leads/${lead.id}`} className="flex min-w-0 items-center gap-3">
+                      <Avatar name={lead.full_name} size="md" />
+                      <span className="min-w-0">
+                        <span className="block max-w-[16rem] truncate font-medium text-foreground group-hover:text-primary">
+                          {lead.full_name}
+                        </span>
+                        <span className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                          <ChannelIcon size={12} aria-hidden="true" />
+                          {agendaChannelLabel(lead.next_action_channel)}
+                        </span>
+                      </span>
+                    </Link>
+                  </Td>
+                  <Td>
+                    {managerName ? (
+                      <span className="flex items-center gap-2">
+                        <Avatar name={managerName} size="xs" />
+                        <span className="truncate text-foreground">{managerName}</span>
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">Sin responsable</span>
+                    )}
+                  </Td>
+                  <Td>
+                    <span className="block whitespace-nowrap tabular-nums text-foreground">{formatAgendaDateTime(lead.next_action_at!)}</span>
+                    {overdue && (
+                      <Badge tone="danger" className="mt-0.5">
+                        Vencida
+                      </Badge>
+                    )}
+                  </Td>
+                  <Td>
+                    <ReassignForm lead={lead} agents={agents} />
+                  </Td>
+                </Tr>
+              );
+            })}
+          </Tbody>
+        </Table>
+      </div>
     </SectionCard>
   );
 }
@@ -333,9 +398,17 @@ export default async function TeamPage({
   return (
     <div className="space-y-6">
       <PageHeader
+        icon={Users}
         title="Mi equipo"
         description="Reparte registros, corrige agendas vencidas y vigila la carga de tus ejecutivos."
-        className="border-b-0 pb-0"
+        meta={
+          <>
+            <span>
+              {activeAgents.length} {activeAgents.length === 1 ? "ejecutivo activo" : "ejecutivos activos"}
+            </span>
+            {overdueCallbacks > 0 && <Badge tone="danger">{overdueCallbacks} compromisos vencidos</Badge>}
+          </>
+        }
       />
       <NavTabs
         tabs={[
@@ -344,55 +417,47 @@ export default async function TeamPage({
         ]}
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard
+      {/* El color solo aparece cuando hay algo que atender: un cero va gris. */}
+      <KpiStrip columns={4}>
+        <KpiStripItem
           label="Ejecutivos"
-          href="/dashboard/team#carga"
-          hrefLabel="Ver carga"
-          value={reportedAgentsCount}
-          hint={`${activeAgents.length} activos para asignación${historicalAgentsCount ? ` · ${historicalAgentsCount} históricos` : ""}`}
-          progress={percent(activeAgents.length, reportedAgentsCount)}
-          tone="good"
           icon={Users}
-          iconTone="blue"
+          value={reportedAgentsCount.toLocaleString("es-CL")}
+          detail={`${activeAgents.length} activos para asignación${historicalAgentsCount ? ` · ${historicalAgentsCount} históricos` : ""}`}
+          progress={percent(activeAgents.length, reportedAgentsCount)}
+          href="/dashboard/team#carga"
         />
-        <MetricCard
+        <KpiStripItem
           label="Base del equipo"
-          value={visibleBaseTotal.toLocaleString("es-CL")}
-          hint="Registros visibles para tu equipo"
-          href="/dashboard/leads"
-          hrefLabel="Ver registros"
-          progress={percent(reportKpis?.asignados ?? 0, visibleBaseTotal)}
           icon={Database}
-          iconTone="blue"
+          value={visibleBaseTotal.toLocaleString("es-CL")}
+          detail="Registros visibles · barra: asignados"
+          progress={percent(reportKpis?.asignados ?? 0, visibleBaseTotal)}
+          href="/dashboard/leads"
         />
-        <MetricCard
+        <KpiStripItem
           label="Sin asignar"
-          value={visibleUnassigned.toLocaleString("es-CL")}
-          hint="Disponible para repartir"
-          href="/dashboard/leads?view=disponibles"
-          hrefLabel="Ver disponibles"
-          progress={percent(visibleUnassigned, visibleBaseTotal)}
-          tone={visibleUnassigned > 0 ? "warn" : "good"}
           icon={UserPlus}
-          iconTone="blue"
+          value={visibleUnassigned.toLocaleString("es-CL")}
+          tone={visibleUnassigned > 0 ? "warn" : "default"}
+          detail="Disponible para repartir"
+          progress={percent(visibleUnassigned, visibleBaseTotal)}
+          href="/dashboard/leads?view=disponibles"
         />
-        <MetricCard
+        <KpiStripItem
           label="Agendas vencidas"
-          value={visibleOverdue.toLocaleString("es-CL")}
-          hint="Compromisos a recuperar"
-          href="/dashboard/leads?view=vencidas"
-          hrefLabel="Ver vencidas"
-          tone={visibleOverdue > 0 ? "danger" : "good"}
           icon={CalendarX2}
-          iconTone="amber"
+          value={visibleOverdue.toLocaleString("es-CL")}
+          tone={visibleOverdue > 0 ? "danger" : "default"}
+          detail="Compromisos a recuperar"
+          href="/dashboard/leads?view=vencidas"
         />
-      </div>
+      </KpiStrip>
 
       <FilterBar storageKey="equipo">
-        <Field label="Ejecutivo" className="w-48">
+        <Field label="Ejecutivo" hideLabel className="w-52">
           <Select name="agent" defaultValue={filters.agent}>
-            <option value="">Todos</option>
+            <option value="">Todos los ejecutivos</option>
             {(activeAgents as Option[]).map((option) => (
               <option key={option.id} value={option.id}>
                 {option.full_name}
@@ -400,9 +465,9 @@ export default async function TeamPage({
             ))}
           </Select>
         </Field>
-        <Field label="Campaña" className="w-48">
+        <Field label="Campaña" hideLabel className="w-52">
           <Select name="campaign" defaultValue={filters.campaign}>
-            <option value="">Todas</option>
+            <option value="">Todas las campañas</option>
             {((campaigns ?? []) as Option[]).map((option) => (
               <option key={option.id} value={option.id}>
                 {option.name}
@@ -410,9 +475,9 @@ export default async function TeamPage({
             ))}
           </Select>
         </Field>
-        <Field label="Estado" className="w-44">
+        <Field label="Estado" hideLabel className="w-48">
           <Select name="status" defaultValue={filters.status}>
-            <option value="">Todos</option>
+            <option value="">Todos los estados</option>
             {LEAD_STATUSES.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
@@ -423,47 +488,43 @@ export default async function TeamPage({
       </FilterBar>
 
       {/* Lo que el supervisor hace más seguido va primero, pegado a los filtros que lo acotan. */}
-      <SectionCard
-        title="Asignación de registros"
-        description={`Los ${assignmentRows.length} registros movidos más recientemente. Selecciona varios y asígnalos de una vez, o reparte automáticamente según la carga de cada ejecutivo.`}
-        icon={UserPlus}
-        tone="blue"
-      >
-        <div className="p-4">
-          <TeamLeadsAssignment rows={assignmentRows} agents={activeAgents} />
-        </div>
-      </SectionCard>
+      <section className="space-y-3">
+        <SectionHeading
+          title="Asignación de registros"
+          count={assignmentRows.length}
+          description="Los movidos más recientemente. Selecciona varios y asígnalos de una vez, o reparte automáticamente según la carga de cada ejecutivo."
+        />
+        <TeamLeadsAssignment rows={assignmentRows} agents={activeAgents} />
+      </section>
 
-      <div id="carga" />
-      <SectionCard
-        title="Carga por ejecutivo"
-        description="Quién está sobrecargado y quién puede recibir más trabajo."
-        icon={Gauge}
-        tone="blue"
-      >
-        <div className="p-4">
-          {loadError ? (
-            <Callout tone="danger">No se pudo calcular la carga del equipo. Vuelve a cargar la página; si sigue igual, avisa a un administrador.</Callout>
-          ) : (
-            <TeamAgentsTable rows={agentRows} />
-          )}
-        </div>
-      </SectionCard>
+      <section className="space-y-3">
+        <SectionHeading
+          id="carga"
+          title="Carga por ejecutivo"
+          count={loadError ? undefined : agentRows.length}
+          description="Quién está sobrecargado y quién puede recibir más trabajo. Abre a cualquiera para ver su cartera."
+        />
+        {loadError ? (
+          <Callout tone="danger">No se pudo calcular la carga del equipo. Vuelve a cargar la página; si sigue igual, avisa a un administrador.</Callout>
+        ) : (
+          <TeamAgentsTable rows={agentRows} />
+        )}
+      </section>
 
-      <div id="campanas" />
       <SectionCard
         title="Campaña de cada ejecutivo"
         description="Ordena qué campaña se le disca primero a cada uno, o asígnale una y déjala fija: solo tú (o un admin) podrás cambiarla."
-        icon={Megaphone}
-        tone="rose"
       >
-        <div className="p-4">
-          {campaignBoardError ? (
+        <div id="campanas" />
+        {campaignBoardError ? (
+          <div className="px-5 pb-5">
             <Callout tone="danger">No se pudo leer qué campaña tiene cada ejecutivo. Vuelve a cargar la página; si sigue igual, avisa a un administrador.</Callout>
-          ) : (
+          </div>
+        ) : (
+          <div className="overflow-x-auto border-t border-border">
             <TeamCampaignControl rows={campaignBoard} viewerId={viewer.id} isAdmin={false} />
-          )}
-        </div>
+          </div>
+        )}
       </SectionCard>
 
       <AgendaTable
@@ -473,33 +534,29 @@ export default async function TeamPage({
         agents={activeAgents}
         overdue
         emptyText="No hay agendas vencidas con estos filtros."
-        icon={CalendarX2}
       />
 
       <AgendaTable
         title="Próximas agendas"
+        description="Las que vienen, en orden de hora."
         rows={upcomingAgenda}
         agents={activeAgents}
         overdue={false}
         emptyText="No hay próximas agendas con estos filtros."
-        icon={CalendarClock}
       />
 
-      <SectionCard
-        title="Compromisos con clientes"
-        description={
-          overdueCallbacks > 0
-            ? `${overdueCallbacks} vencidos y ${callbacks.length - overdueCallbacks} por venir. Reagéndalos, tráspasalos a otro ejecutivo o derívalos al discador para que los tome el primero disponible.`
-            : `${callbacks.length} agendados, ninguno vencido. Acá puedes reagendar, traspasar a otro ejecutivo o derivar al discador.`
-        }
-        icon={Handshake}
-        tone="amber"
-      >
-        <div className="p-4">
-          <CallbacksPanel rows={callbacks} agents={activeAgents} />
-        </div>
-      </SectionCard>
-
+      <section className="space-y-3">
+        <SectionHeading
+          title="Compromisos con clientes"
+          count={callbacks.length}
+          description={
+            overdueCallbacks > 0
+              ? `${overdueCallbacks} vencidos y ${callbacks.length - overdueCallbacks} por venir. Reagéndalos, traspásalos a otro ejecutivo o derívalos al discador para que los tome el primero disponible.`
+              : `${callbacks.length} agendados, ninguno vencido. Acá puedes reagendar, traspasar a otro ejecutivo o derivar al discador.`
+          }
+        />
+        <CallbacksPanel rows={callbacks} agents={activeAgents} />
+      </section>
     </div>
   );
 }

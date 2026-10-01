@@ -4,6 +4,7 @@ import { Scissors, Stethoscope } from "lucide-react";
 import { crearProcedimiento, guardarProcedimiento } from "@/app/actions/atenciones";
 import { CreatePanel } from "@/components/create-panel";
 import { ActionForm, ActionSubmit, Badge, Callout, EmptyState, Field, Input, PageHeader, SectionCard, Select } from "@/components/ui";
+import { Conteo } from "../_diseno";
 import { InsumosProvider } from "@/components/insumos-context";
 import { RecetaEditor } from "@/components/receta-editor";
 import { APLICA_POR_EDICION, CATEGORIAS, ETIQUETA_APLICA_A, porCategoria, type Insumo, type Procedimiento } from "@/lib/arancel";
@@ -49,6 +50,7 @@ export default async function ArancelesPage() {
     <div className="space-y-5">
       <PageHeader
         title={nombre.titulo}
+        icon={esBarber ? Scissors : Stethoscope}
         description={`El arancel de ${nombre.de}: de acá salen los ${esBarber ? "paquetes" : "presupuestos"} y las atenciones. ${procedimientos.length} ${nombre.plural} en ${grupos.length} categorías.`}
         actions={
           <CreatePanel
@@ -108,7 +110,7 @@ export default async function ArancelesPage() {
       {error && <Callout tone="danger">No se pudo leer el arancel. Vuelve a cargar para reintentar.</Callout>}
 
       {!error && grupos.length === 0 && (
-        <SectionCard icon={esBarber ? Scissors : Stethoscope} tone="green" title={nombre.titulo}>
+        <SectionCard>
           <EmptyState
             icon={esBarber ? Scissors : Stethoscope}
             title={`Todavía no hay ${nombre.plural}`}
@@ -119,14 +121,22 @@ export default async function ArancelesPage() {
       )}
 
       {grupos.map(([categoria, items]) => (
-        <SectionCard key={categoria} icon={esBarber ? Scissors : Stethoscope} tone="green" title={categoria} description={`${items.length} ${items.length === 1 ? nombre.singular : nombre.plural}`}>
-          <div className="divide-y divide-border">
+        <SectionCard
+          key={categoria}
+          title={
+            <>
+              {categoria}
+              <Conteo>{items.length}</Conteo>
+            </>
+          }
+        >
+          <div className="divide-y divide-border/70 border-t border-border">
             {items.map((procedimiento) => (
               <div key={procedimiento.id}>
               <ActionForm
                 action={guardarProcedimiento}
                 success={`${procedimiento.name} guardado`}
-                className={`grid items-center gap-3 px-4 pb-1 pt-2.5 sm:grid-cols-[minmax(0,1fr)_130px_90px_auto_auto] ${procedimiento.active ? "" : "opacity-60"}`}
+                className={`grid items-center gap-3 px-5 pb-1 pt-3 sm:grid-cols-[minmax(0,1fr)_130px_90px_auto_auto] ${procedimiento.active ? "" : "opacity-60"}`}
               >
                 <input type="hidden" name="id" value={procedimiento.id} />
                 <div className="min-w-0">

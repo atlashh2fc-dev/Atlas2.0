@@ -177,12 +177,11 @@ export function MailAgentControl({ rows }: { rows: MailAgentControlRow[] }) {
   );
 }
 
-/** Baldosa mínima de la tarjeta del ejecutivo: borde izquierdo con el estado. */
+/** Cifra mínima de la tarjeta del ejecutivo: el color solo si hay algo que atender. */
 function Metric({ label, value, danger = false, good = false }: { label: string; value: number; danger?: boolean; good?: boolean }) {
-  const edge = danger ? "border-l-danger" : good ? "border-l-success" : "border-l-border-strong";
   return (
-    <span className={`block rounded-lg border border-border border-l-2 bg-surface px-2 py-1.5 ${edge}`}>
-      <span className={`block text-lg font-semibold tabular-nums tracking-tight ${danger ? "text-danger" : "text-foreground"}`}>{value.toLocaleString("es-CL")}</span>
+    <span className="block rounded-lg bg-surface-raised px-2.5 py-1.5">
+      <span className={`block text-lg font-semibold tabular-nums tracking-tight ${danger ? "text-danger" : good && value > 0 ? "text-success" : "text-foreground"}`}>{value.toLocaleString("es-CL")}</span>
       <span className="block truncate text-xs font-medium text-muted-foreground">{label}</span>
     </span>
   );
@@ -199,7 +198,7 @@ function AgentDetail({ row }: { row: MailAgentControlRow }) {
         {stats.map(([label, value]) => {
           const overdue = label === "Agendas vencidas" && value > 0;
           return (
-            <div key={label} className={`rounded-lg border border-border border-l-2 bg-background px-3 py-2.5 ${overdue ? "border-l-danger" : "border-l-border-strong"}`}>
+            <div key={label} className="rounded-lg bg-surface-raised px-3 py-2.5">
               <p className="text-xs font-medium text-muted-foreground">{label}</p>
               <p className={`mt-1 text-xl font-semibold tabular-nums tracking-tight ${overdue ? "text-danger" : "text-foreground"}`}>{value.toLocaleString("es-CL")}</p>
             </div>

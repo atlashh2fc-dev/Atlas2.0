@@ -1,4 +1,4 @@
-import { Activity, CheckCircle2, ListOrdered, Send, Settings2, Workflow } from "lucide-react";
+import { Activity, CheckCircle2, Send } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -10,12 +10,12 @@ import {
 import {
   ActionForm,
   ActionSubmit,
+  Avatar,
   Badge,
   Callout,
   EmptyState,
   Field,
   Input,
-  MetricCard,
   SectionCard,
   Select,
   Table,
@@ -25,7 +25,9 @@ import {
   Thead,
   Tr,
 } from "@/components/ui";
+import { KpiStrip, KpiStripItem } from "@/components/report-kit";
 import { FormularioConEncendido } from "../formulario-con-encendido";
+import { Conteo, Grupo, PieDeFormulario, fechaLegible } from "../../../_diseno";
 
 /** Estados de lead_orchestrator_assignments en el idioma de quien supervisa. */
 const ASSIGNMENT_STATUS: Record<string, { label: string; tone: "success" | "warning" | "danger" | "neutral" | "info" }> = {
@@ -76,22 +78,30 @@ export default async function CampaignPriorityPage({ params }: { params: Promise
         Este motor asigna el siguiente lead dentro de Atlas. No inicia llamadas, no se conecta a Asterisk y no utiliza la instancia del discador telefónico.
       </Callout>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <MetricCard label="Motor de leads" value={config?.is_active ? "En ejecución" : "Detenido"} tone={config?.is_active ? "good" : "warn"} icon={Activity} iconTone="green" />
-        <MetricCard label="Asignaciones activas" value={(activeAssignments.count ?? 0).toLocaleString("es-CL")} icon={Send} iconTone="blue" />
-        <MetricCard label="Últimas completadas" value={deliveredCount.toLocaleString("es-CL")} hint="Dentro de las 10 entregas más recientes" icon={CheckCircle2} iconTone="green" />
-      </div>
+      <KpiStrip columns={3}>
+        <KpiStripItem
+          label="Motor de leads"
+          icon={Activity}
+          value={config?.is_active ? "En ejecución" : "Detenido"}
+          tone={config?.is_active ? "good" : "warn"}
+        />
+        <KpiStripItem label="Asignaciones activas" icon={Send} value={(activeAssignments.count ?? 0).toLocaleString("es-CL")} />
+        <KpiStripItem
+          label="Últimas completadas"
+          icon={CheckCircle2}
+          value={deliveredCount.toLocaleString("es-CL")}
+          detail="Dentro de las 10 entregas más recientes"
+        />
+      </KpiStrip>
 
       <SectionCard
-        icon={Settings2}
-        tone="slate"
         title="Motor de asignación"
         description="Solo entrega registros a ejecutivos asignados a esta campaña, disponibles y con Atlas abierto."
       >
         <FormularioConEncendido
           action={saveLeadOrchestratorConfig}
           success="Configuración del motor guardada"
-          className="grid gap-4 p-4 sm:grid-cols-2 xl:grid-cols-4"
+          className="divide-y divide-border border-t border-border"
           toggleName="is_active"
           savedOn={config?.is_active ?? false}
           turnOn={{
@@ -110,6 +120,7 @@ export default async function CampaignPriorityPage({ params }: { params: Promise
           }}
         >
           <input type="hidden" name="campaign_id" value={id} />
+          <Grupo titulo="Ritmo de entrega" descripcion="Cada cuánto revisa el motor, cuánto reserva un registro antes de que el ejecutivo lo abra y cuántos entrega por vuelta.">
           <Field label="Intervalo de revisión (segundos)">
             <Input type="number" name="tick_seconds" min="2" max="300" defaultValue={config?.tick_seconds ?? 5} />
           </Field>
@@ -119,47 +130,56 @@ export default async function CampaignPriorityPage({ params }: { params: Promise
           <Field label="Máximo de entregas por ciclo">
             <Input type="number" name="max_dispatch_per_tick" min="1" max="100" defaultValue={config?.max_dispatch_per_tick ?? 10} />
           </Field>
+          </Grupo>
+          <Grupo titulo="Orden y encendido" descripcion="El desempate es el fallback: se aplica a lo que no coincide con ninguna regla de abajo.">
           <Field label="Desempate por defecto">
             <Select name="fallback_order" defaultValue={config?.fallback_order ?? "oldest_first"}>
               <option value="oldest_first">Más antiguo primero</option>
               <option value="newest_first">Más reciente primero</option>
             </Select>
           </Field>
-          <label className="flex items-center gap-2 text-sm text-foreground sm:col-span-2">
-            <input type="checkbox" name="is_active" value="true" defaultChecked={config?.is_active ?? false} className="accent-primary" />
+          <label className="flex min-h-11 items-center gap-2.5 text-sm text-foreground sm:col-span-2">
+            <input type="checkbox" name="is_active" value="true" defaultChecked={config?.is_active ?? false} className="size-4 accent-primary" />
             Motor activo para esta campaña
           </label>
-          <div className="flex items-center sm:col-span-2 sm:justify-end">
+          </Grupo>
+          <PieDeFormulario>
             <ActionSubmit pendingLabel="Guardando…">Guardar configuración</ActionSubmit>
-          </div>
+          </PieDeFormulario>
         </FormularioConEncendido>
       </SectionCard>
 
       <SectionCard
-        icon={ListOrdered}
-        tone="rose"
-        title="Orden de prioridad"
+        title={
+          <>
+            Orden de prioridad
+            <Conteo>{(rules ?? []).length}</Conteo>
+          </>
+        }
         description="Se evalúa desde el número más bajo. Si un lead no coincide con ninguna regla, entra al fallback configurado arriba."
       >
         <div className="overflow-x-auto">
           <Table>
             <Thead>
-              <Th>Orden</Th>
+              <Th className="w-16">Orden</Th>
               <Th>Regla</Th>
-              <Th>Condición</Th>
               <Th>Estado</Th>
               <Th />
             </Thead>
             <Tbody>
               {(rules ?? []).map((rule) => (
                 <Tr key={rule.id}>
-                  <Td strong>
-                    <span className="tabular-nums">{rule.position}</span>
+                  <Td>
+                    <span className="inline-flex size-7 items-center justify-center rounded-md bg-surface-muted text-xs font-semibold tabular-nums text-foreground">
+                      {rule.position}
+                    </span>
                   </Td>
-                  <Td strong>{rule.name}</Td>
-                  <Td muted>
-                    {rule.field_name} {OPERATOR_LABELS[rule.operator] ?? rule.operator}{" "}
-                    {rule.comparison_value ?? ""}
+                  <Td>
+                    <span className="block font-medium text-foreground">{rule.name}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {rule.field_name} {OPERATOR_LABELS[rule.operator] ?? rule.operator}{" "}
+                      {rule.comparison_value ?? ""}
+                    </span>
                   </Td>
                   <Td><Badge tone={rule.is_active ? "success" : "neutral"}>{rule.is_active ? "Activa" : "Pausada"}</Badge></Td>
                   <Td align="right">
@@ -193,12 +213,16 @@ export default async function CampaignPriorityPage({ params }: { params: Promise
                 </Tr>
               ))}
               <Tr>
-                <Td strong>
-                  <span className="text-muted-foreground">—</span>
+                <Td>
+                  <span className="inline-flex size-7 items-center justify-center rounded-md bg-surface-muted text-xs text-muted-foreground">—</span>
                 </Td>
-                <Td strong>Fallback</Td>
-                <Td muted>Todo lo demás · {config?.fallback_order === "newest_first" ? "más reciente primero" : "más antiguo primero"}</Td>
-                <Td><Badge tone="success">Siempre activo</Badge></Td>
+                <Td>
+                  <span className="block font-medium text-foreground">Fallback</span>
+                  <span className="block text-xs text-muted-foreground">
+                    Todo lo demás · {config?.fallback_order === "newest_first" ? "más reciente primero" : "más antiguo primero"}
+                  </span>
+                </Td>
+                <Td><Badge>Siempre activo</Badge></Td>
                 <Td />
               </Tr>
             </Tbody>
@@ -208,13 +232,14 @@ export default async function CampaignPriorityPage({ params }: { params: Promise
         <ActionForm
           action={createLeadPriorityRule}
           success="Regla de prioridad creada"
-          className="grid gap-3 border-t border-border p-4 sm:grid-cols-2 xl:grid-cols-6"
+          className="divide-y divide-border border-t border-border"
         >
           <input type="hidden" name="campaign_id" value={id} />
+          <Grupo titulo="Nueva regla" descripcion="Prioriza los registros cuyo campo cumple la condición. Se ubica según su número de orden.">
           <Field label="Orden">
             <Input type="number" name="position" min="1" max="1000" defaultValue={defaultPosition} />
           </Field>
-          <Field label="Nombre" className="xl:col-span-2">
+          <Field label="Nombre">
             <Input name="name" required placeholder="Scoring alto" />
           </Field>
           <Field label="Campo">
@@ -234,13 +259,14 @@ export default async function CampaignPriorityPage({ params }: { params: Promise
           <Field label="Valor">
             <Input name="comparison_value" placeholder="80" />
           </Field>
-          <div className="flex items-end xl:col-span-6 xl:justify-end">
-            <ActionSubmit pendingLabel="Agregando…">Agregar regla</ActionSubmit>
-          </div>
+          </Grupo>
+          <PieDeFormulario>
+            <ActionSubmit variant="secondary" pendingLabel="Agregando…">Agregar regla</ActionSubmit>
+          </PieDeFormulario>
         </ActionForm>
       </SectionCard>
 
-      <SectionCard icon={Workflow} tone="blue" title="Últimas entregas" description="Trazabilidad del motor, aunque el ejecutivo todavía no haya gestionado el registro.">
+      <SectionCard title="Últimas entregas" description="Trazabilidad del motor, aunque el ejecutivo todavía no haya gestionado el registro.">
         <div className="overflow-x-auto">
           <Table>
             <Thead>
@@ -256,9 +282,18 @@ export default async function CampaignPriorityPage({ params }: { params: Promise
                 const agent = Array.isArray(assignment.profiles) ? assignment.profiles[0] : assignment.profiles;
                 return (
                   <Tr key={assignment.id}>
-                    <Td muted>{new Date(assignment.claimed_at).toLocaleString("es-CL", { timeZone: "America/Santiago" })}</Td>
+                    <Td muted className="whitespace-nowrap">{fechaLegible(assignment.claimed_at)}</Td>
                     <Td strong>{lead?.full_name ?? "—"}</Td>
-                    <Td>{agent?.full_name ?? "—"}</Td>
+                    <Td>
+                      {agent?.full_name ? (
+                        <span className="flex items-center gap-2 whitespace-nowrap">
+                          <Avatar name={agent.full_name} size="xs" />
+                          {agent.full_name}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </Td>
                     <Td muted>{assignment.priority_reason}</Td>
                     <Td>
                       <Badge tone={ASSIGNMENT_STATUS[assignment.status]?.tone ?? "neutral"}>

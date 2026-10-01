@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { connection } from "next/server";
-import { CheckCheck, Flame, History, Inbox, Undo2 } from "lucide-react";
+import { Briefcase, CheckCheck, ChevronRight, Flame, History, Inbox, Undo2 } from "lucide-react";
 
 import { deshacerToque } from "@/app/actions/prospeccion";
 import { BandejaProspeccion, type FilaProspecto } from "@/components/bandeja-prospeccion";
 import { RespuestasDelAgente, type BorradorAgente, type ConfigAgente } from "@/components/respuestas-del-agente";
-import { Callout, EmptyState, MetricCard, NavTabs, PageHeader, SectionCard, SubmitButton } from "@/components/ui";
-import { VistaSegmentada } from "@/components/vista-segmentada";
+import { KpiStrip, KpiStripItem } from "@/components/report-kit";
+import { Avatar, Badge, Callout, EmptyState, NavTabs, PageHeader, SegmentTabs, SubmitButton, type BadgeTone, type SegmentTab } from "@/components/ui";
 import { requireProfile } from "@/lib/auth";
 import { ZONA_CLINICA, fechaEnChile, instanteEnChile } from "@/lib/citas";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
@@ -42,6 +42,15 @@ const ESTADO: Record<Prospecto["estado"], { texto: string; tono: "info" | "warni
   volvio: { texto: "Volvió a abrir", tono: "warning" },
   seguimiento: { texto: "Toca seguimiento", tono: "neutral" },
   no_contactar: { texto: "No contactar", tono: "danger" },
+};
+
+/** El color del resultado solo cuando dice algo: interesado avanza, un número malo es un problema. */
+const TONO_RESULTADO: Record<string, BadgeTone> = {
+  interesado: "success",
+  numero_malo: "danger",
+  whatsapp: "info",
+  llamada: "info",
+  correo: "info",
 };
 
 type Toque = {
@@ -112,49 +121,64 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
   const conAgente = Boolean(config?.enabled) || borradores.length > 0;
   const vistaActiva = vista === "historial" ? "historial" : vista === "respuestas" && conAgente ? "respuestas" : "cola";
 
+  const pestanas: SegmentTab[] = [
+    { id: "cola", label: "Por contactar", href: "/dashboard/ventas/prospeccion", count: cola.length },
+    ...(conAgente ? [{ id: "respuestas", label: "Te respondieron", href: "/dashboard/ventas/prospeccion?vista=respuestas", count: borradores.length }] : []),
+    { id: "historial", label: "Ya contactados", href: "/dashboard/ventas/prospeccion?vista=historial", count: toques.length },
+  ];
+  const ayuda =
+    vistaActiva === "cola"
+      ? "Primero los más interesados. Escríbele y después anota cómo te fue: nadie sale de esta lista hasta que lo anotes."
+      : vistaActiva === "respuestas"
+        ? "Lo que el asistente propone contestar a quien respondió tu campaña."
+        : "Contactados en los últimos 7 días. Lo tuyo de las últimas 24 horas se puede deshacer, salvo lo que ya pasó a Negocios.";
+
   return (
     <div className="space-y-5">
       <PageHeader
         title="Ventas"
+        icon={Briefcase}
         description={`${empresaPropia ?? "Tu empresa"} · a quién escribirle hoy: personas que abrieron, hicieron clic o respondieron tu campaña de correo.`}
       />
       <NavTabs tabs={PESTANAS_VENTAS} />
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <MetricCard
+      <KpiStrip columns={3}>
+        <KpiStripItem
           label="Esperan que les escribas"
-          value={cola.length}
-          hint={sinGestionUnDia.length > 0 ? `${sinGestionUnDia.length} llevan más de un día: el interés se enfría` : "Nadie lleva más de un día esperando"}
-          tone={sinGestionUnDia.length > 0 ? "warn" : "default"}
+          value={cola.length.toLocaleString("es-CL")}
           icon={Inbox}
-          iconTone="teal"
+          tone={sinGestionUnDia.length > 0 ? "warn" : "default"}
+          detail={sinGestionUnDia.length > 0 ? `${sinGestionUnDia.length} llevan más de un día: el interés se enfría` : "Nadie lleva más de un día esperando"}
         />
-        <MetricCard label="Muy interesados" value={calientes.length} hint="Respondieron, hicieron clic o volvieron a abrir" icon={Flame} iconTone="amber" />
-        <MetricCard label="Contactados hoy" value={hechosHoy.length} hint={`${toques.length} en los últimos 7 días`} tone={hechosHoy.length > 0 ? "good" : "default"} icon={CheckCheck} iconTone="green" />
-      </div>
-
-      <VistaSegmentada
-        etiqueta="Qué ver"
-        activa={vistaActiva}
-        opciones={[
-          { clave: "cola", texto: "Por contactar", href: "/dashboard/ventas/prospeccion", cuenta: cola.length },
-          ...(conAgente ? [{ clave: "respuestas", texto: "Te respondieron", href: "/dashboard/ventas/prospeccion?vista=respuestas", cuenta: borradores.length }] : []),
-          { clave: "historial", texto: "Ya contactados", href: "/dashboard/ventas/prospeccion?vista=historial" },
-        ]}
-      />
+        <KpiStripItem
+          label="Muy interesados"
+          value={calientes.length.toLocaleString("es-CL")}
+          icon={Flame}
+          detail="Respondieron, hicieron clic o volvieron a abrir"
+          progress={cola.length > 0 ? (calientes.length / cola.length) * 100 : undefined}
+        />
+        <KpiStripItem
+          label="Contactados hoy"
+          value={hechosHoy.length.toLocaleString("es-CL")}
+          icon={CheckCheck}
+          tone={hechosHoy.length > 0 ? "good" : "default"}
+          detail={`${toques.length} en los últimos 7 días`}
+        />
+      </KpiStrip>
 
       {error && <Callout tone="danger">No se pudo leer la bandeja de prospección. Vuelve a cargar la página; si sigue igual, avisa a soporte.</Callout>}
 
-      {vistaActiva === "respuestas" ? (
-        <RespuestasDelAgente config={config} borradores={borradores} />
-      ) : vistaActiva === "cola" ? (
-        <SectionCard
-          title="Primero, los más interesados"
-          icon={Inbox}
-          tone="teal"
-          description="Escríbele y después anota cómo te fue. Nadie sale de esta lista hasta que lo anotes."
-        >
-          {todos.length === 0 ? (
+      {/* Las tres vistas son pestañas pegadas a la lista que filtran, como en HubSpot. */}
+      <section className="atlas-panel overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
+        <div className="border-b border-border px-3">
+          <SegmentTabs tabs={pestanas} activeId={vistaActiva} label="Qué ver" />
+        </div>
+        <p className="border-b border-border/70 bg-surface-raised px-5 py-2.5 text-xs text-muted-foreground">{ayuda}</p>
+
+        {vistaActiva === "respuestas" ? (
+          <RespuestasDelAgente config={config} borradores={borradores} />
+        ) : vistaActiva === "cola" ? (
+          todos.length === 0 ? (
             <EmptyState icon={Inbox} title="Estás al día" description="Nadie espera que le escribas. Cuando alguien abra o haga clic en tu campaña de correo, aparece acá." />
           ) : (
             <BandejaProspeccion
@@ -200,48 +224,52 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
                 };
               })}
             />
-          )}
-        </SectionCard>
-      ) : (
-        <SectionCard title="Contactados en los últimos 7 días" description="Lo tuyo de las últimas 24 horas se puede deshacer, salvo lo que ya pasó a Negocios." icon={History} tone="teal">
-          {toques.length === 0 ? (
-            <EmptyState icon={History} title="Todavía no contactas a nadie" description="Cada WhatsApp, llamada o resultado que anotes en Por contactar aparece acá." />
-          ) : (
-            <ul className="divide-y divide-border">
-              {toques.map((t) => {
-                const lead = primero(t.leads);
-                const nombre = String(lead?.extra?.company_name ?? lead?.full_name ?? "Prospecto");
-                // Sin autor: lo anotó el eco de un mensaje enviado desde la app del teléfono.
-                const quien = primero(t.profiles)?.full_name ?? (t.hecho_por ? "—" : "Desde tu WhatsApp");
-                const deshacible = t.hecho_por === profile.id && t.resultado !== "interesado" && ahora.getTime() - new Date(t.created_at).getTime() < 24 * 60 * 60 * 1000;
-                return (
-                  <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
+          )
+        ) : toques.length === 0 ? (
+          <EmptyState icon={History} title="Todavía no contactas a nadie" description="Cada WhatsApp, llamada o resultado que anotes en Por contactar aparece acá." />
+        ) : (
+          <ul className="divide-y divide-border/70">
+            {toques.map((t) => {
+              const lead = primero(t.leads);
+              const nombre = String(lead?.extra?.company_name ?? lead?.full_name ?? "Prospecto");
+              // Sin autor: lo anotó el eco de un mensaje enviado desde la app del teléfono.
+              const quien = primero(t.profiles)?.full_name ?? (t.hecho_por ? "—" : "Desde tu WhatsApp");
+              const deshacible = t.hecho_por === profile.id && t.resultado !== "interesado" && ahora.getTime() - new Date(t.created_at).getTime() < 24 * 60 * 60 * 1000;
+              return (
+                <li key={t.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 transition-colors hover:bg-surface-muted/55">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <Avatar name={nombre} shape="square" size="md" />
                     <div className="min-w-0">
-                      <p className="truncate font-medium text-foreground">{nombre}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {esResultado(t.resultado) ? ETIQUETA_RESULTADO[t.resultado] : t.resultado} · {quien} · {fechaHora.format(new Date(t.created_at))}
+                      <p className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
+                        <span className="truncate text-[13px] font-medium text-foreground">{nombre}</span>
+                        <Badge tone={TONO_RESULTADO[t.resultado] ?? "neutral"}>{esResultado(t.resultado) ? ETIQUETA_RESULTADO[t.resultado] : t.resultado}</Badge>
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {quien} · {fechaHora.format(new Date(t.created_at))}
                         {t.seguir_at ? ` · vuelve el ${fechaCorta.format(new Date(t.seguir_at))}` : ""}
                         {t.nota ? ` · ${t.nota}` : ""}
                       </p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {t.opportunity_id && (
-                        <Link href={`/dashboard/ventas/${t.opportunity_id}`} className="text-xs text-primary hover:underline">Ver negocio</Link>
-                      )}
-                      {deshacible && (
-                        <form action={deshacerToque}>
-                          <input type="hidden" name="toque_id" value={t.id} />
-                          <SubmitButton size="sm" variant="ghost" pendingLabel="…"><Undo2 size={12} aria-hidden="true" /> Deshacer</SubmitButton>
-                        </form>
-                      )}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </SectionCard>
-      )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {t.opportunity_id && (
+                      <Link href={`/dashboard/ventas/${t.opportunity_id}`} className="inline-flex items-center gap-0.5 text-xs font-medium text-primary hover:underline">
+                        Ver negocio <ChevronRight size={13} aria-hidden="true" />
+                      </Link>
+                    )}
+                    {deshacible && (
+                      <form action={deshacerToque}>
+                        <input type="hidden" name="toque_id" value={t.id} />
+                        <SubmitButton size="sm" variant="ghost" pendingLabel="…"><Undo2 size={12} aria-hidden="true" /> Deshacer</SubmitButton>
+                      </form>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }

@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
-import { CheckCircle2, Clock3, Mail, MailX, Phone, RefreshCw, Search, ShieldCheck, Trash2, UserRoundPlus, X } from "lucide-react";
+import { Clock3, Mail, MailX, Phone, RefreshCw, Search, ShieldCheck, Trash2, UserRoundPlus, X } from "lucide-react";
 
 import { convertInboundEmail, deleteInboundEmails, syncInboundMailbox } from "@/app/actions/mail";
-import { Badge, Button, Callout, EmptyState, Input, Select, SlideOver } from "@/components/ui";
+import { Avatar, Badge, Button, Callout, EmptyState, Input, Select, SlideOver } from "@/components/ui";
 import { useToast } from "@/components/ui/toast";
 
 export type InboundEmailRow = {
@@ -35,12 +35,27 @@ type AgentOption = { id: string; full_name: string; email: string };
 function formatDate(value: string | null) {
   if (!value) return "Nunca";
   return new Date(value).toLocaleString("es-CL", {
+    timeZone: "America/Santiago",
     day: "2-digit",
     month: "short",
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+const diaChile = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Santiago" });
+const horaChile = new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", hour: "2-digit", minute: "2-digit" });
+const diaCorto = new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", day: "numeric", month: "short" });
+
+/** "09:27" si llegó hoy, "Ayer" y después la fecha corta; la fecha completa queda en el título. */
+function fechaCorta(value: string) {
+  const fecha = new Date(value);
+  const ahora = new Date();
+  const dia = diaChile.format(fecha);
+  if (dia === diaChile.format(ahora)) return horaChile.format(fecha);
+  if (dia === diaChile.format(new Date(ahora.getTime() - 86_400_000))) return "Ayer";
+  return diaCorto.format(fecha);
 }
 
 function isBounce(message: InboundEmailRow) {
@@ -166,14 +181,14 @@ export function InboundMailbox({
   return (
     <>
       <section className="relative overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
-        <header className="flex flex-wrap items-center gap-3 border-b border-border bg-surface-muted/40 px-5 py-4">
-          <Mail size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+        <header className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-4">
+          <Avatar name={mailbox?.label ?? campaignName} icon={Mail} shape="square" size="md" />
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="font-semibold text-foreground">{mailbox?.label ?? campaignName}</h2>
-              <Badge tone="neutral">Sin respuestas</Badge>
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
+              <h2 className="text-[15px] font-semibold text-foreground">{mailbox?.label ?? campaignName}</h2>
+              <Badge tone="neutral">Solo lectura, sin respuestas</Badge>
             </div>
-            <p className="truncate text-sm text-muted-foreground">{mailbox?.address ?? "contacto@abogadolegal.cl"}</p>
+            <p className="truncate text-xs text-muted-foreground">{mailbox?.address ?? "contacto@abogadolegal.cl"}</p>
           </div>
           <div className="ml-auto flex items-center gap-3">
             <p className="hidden text-right text-xs text-muted-foreground sm:block">
@@ -193,7 +208,7 @@ export function InboundMailbox({
           </div>
         )}
 
-        <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background/50 px-5 py-3">
+        <div className="flex flex-wrap items-center gap-2 border-b border-border bg-surface-raised px-5 py-2.5">
           <label className="relative min-w-[16rem] flex-1">
             <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -214,17 +229,31 @@ export function InboundMailbox({
               </button>
             )}
           </label>
-          <Button type="button" variant={bounceOnly ? "primary" : "secondary"} onClick={() => setBounceOnly((value) => !value)}>
-            Rebotes
-          </Button>
-          <span className="text-xs text-muted-foreground">
-            {filteredMessages.length.toLocaleString("es-CL")} resultado(s)
+          {/* Todos o solo rebotes: un riel de dos opciones, no un botón que cambia de color. */}
+          <div role="group" aria-label="Qué correos ver" className="inline-flex gap-0.5 rounded-lg bg-surface-muted p-0.5">
+            {[
+              { valor: false, texto: "Todos" },
+              { valor: true, texto: "Rebotes" },
+            ].map((opcion) => (
+              <button
+                key={opcion.texto}
+                type="button"
+                aria-pressed={bounceOnly === opcion.valor}
+                onClick={() => setBounceOnly(opcion.valor)}
+                className={`inline-flex h-8 items-center rounded-md px-3 text-[13px] font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${bounceOnly === opcion.valor ? "bg-surface text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                {opcion.texto}
+              </button>
+            ))}
+          </div>
+          <span className="rounded-md bg-surface-muted px-1.5 py-px text-[11px] font-semibold tabular-nums text-muted-foreground" title="Resultados">
+            {filteredMessages.length.toLocaleString("es-CL")}
           </span>
         </div>
 
         {filteredMessages.length > 0 && (
-          <div className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-2.5">
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+          <div className="flex min-h-11 flex-wrap items-center gap-3 border-b border-border px-5 py-2">
+            <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
               <input
                 type="checkbox"
                 checked={allVisibleChecked}
@@ -235,8 +264,8 @@ export function InboundMailbox({
             </label>
             {checkedIds.size > 0 && (
               <>
-                <span className="text-sm font-medium text-foreground">{checkedIds.size} seleccionado(s)</span>
-                <Button type="button" size="sm" variant="danger" onClick={() => setDeleteIds([...checkedIds])}>
+                <span className="text-xs font-medium text-foreground">{checkedIds.size} seleccionado(s)</span>
+                <Button type="button" size="sm" variant="danger" onClick={() => setDeleteIds([...checkedIds])} className="ml-auto">
                   <Trash2 size={14} /> Eliminar seleccionados
                 </Button>
               </>
@@ -244,7 +273,7 @@ export function InboundMailbox({
           </div>
         )}
 
-        <div className="divide-y divide-border">
+        <div className="divide-y divide-border/70">
           {filteredMessages.length === 0 && (
             <EmptyState
               icon={Search}
@@ -253,46 +282,48 @@ export function InboundMailbox({
               className="py-14"
             />
           )}
-          {filteredMessages.map((message) => (
-            <article
-              key={message.id}
-              className={`grid gap-3 px-5 py-4 transition-colors hover:bg-surface-muted/60 md:grid-cols-[auto_minmax(12rem,0.8fr)_minmax(20rem,2fr)_auto] md:items-center ${checkedIds.has(message.id) ? "bg-primary/5" : ""}`}
-            >
-              <input
-                type="checkbox"
-                checked={checkedIds.has(message.id)}
-                onChange={() => toggleChecked(message.id)}
-                aria-label={`Seleccionar correo ${message.subject}`}
-                className="h-4 w-4 accent-primary"
-              />
-              <div className="min-w-0">
-                <button type="button" onClick={() => openMessage(message)} className="flex w-full items-center gap-3 text-left">
-                  {/* Rebote en rosa, correo real en el tono del canal. */}
-                  <span className="icon-chip size-8 rounded-lg" data-tone={isBounce(message) ? "rose" : "teal"} aria-hidden="true">
-                    {isBounce(message) ? <MailX size={15} /> : <Mail size={15} />}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-medium text-foreground">{message.from_name || message.from_address}</span>
-                    <span className="block truncate text-xs text-muted-foreground">{message.from_address}</span>
+          {filteredMessages.map((message) => {
+            const rebote = isBounce(message);
+            const remitente = message.from_name || message.from_address;
+            const nuevo = message.status !== "converted";
+            return (
+              <article
+                key={message.id}
+                className={`group flex items-center gap-3 px-5 py-3 transition-colors ${checkedIds.has(message.id) ? "bg-primary/[0.06]" : "hover:bg-surface-muted/55"}`}
+              >
+                <input
+                  type="checkbox"
+                  checked={checkedIds.has(message.id)}
+                  onChange={() => toggleChecked(message.id)}
+                  aria-label={`Seleccionar correo ${message.subject}`}
+                  className="h-4 w-4 shrink-0 accent-primary"
+                />
+                <button type="button" onClick={() => openMessage(message)} className="flex min-w-0 flex-1 items-center gap-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  {/* Un rebote no es una persona: va con el ícono y en rosa. */}
+                  {rebote ? (
+                    <Avatar icon={MailX} tone="rose" shape="square" size="md" />
+                  ) : (
+                    <Avatar name={remitente} seed={message.from_address} size="md" />
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-baseline justify-between gap-3">
+                      <span className={`truncate text-[13px] text-foreground ${nuevo ? "font-semibold" : "font-medium"}`}>{remitente}</span>
+                      <time dateTime={message.received_at} title={formatDate(message.received_at)} className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                        {fechaCorta(message.received_at)}
+                      </time>
+                    </span>
+                    <span className="mt-0.5 flex items-center justify-between gap-3">
+                      <span className="min-w-0 truncate text-xs">
+                        <span className="text-foreground">{message.subject}</span>
+                        <span className="text-muted-foreground"> — {message.preview || "Mensaje sin texto visible"}</span>
+                      </span>
+                      {message.status === "converted" ? <Badge tone="success">Convertido</Badge> : <Badge tone="info">Nuevo</Badge>}
+                    </span>
                   </span>
                 </button>
-              </div>
-              <div className="min-w-0">
-                <button type="button" onClick={() => openMessage(message)} className="block w-full text-left">
-                  <p className="truncate text-sm font-medium text-foreground">{message.subject}</p>
-                  <p className="mt-0.5 truncate text-xs text-muted-foreground">{message.preview || "Mensaje sin texto visible"}</p>
-                </button>
-              </div>
-              <div className="flex items-center justify-between gap-3 md:justify-end">
-                {message.status === "converted" ? (
-                  <Badge tone="success"><CheckCircle2 size={12} /> Convertido</Badge>
-                ) : (
-                  <Badge tone="info">Nuevo</Badge>
-                )}
-                <span className="whitespace-nowrap text-xs text-muted-foreground">{formatDate(message.received_at)}</span>
-              </div>
-            </article>
-          ))}
+              </article>
+            );
+          })}
         </div>
       </section>
 
@@ -305,28 +336,27 @@ export function InboundMailbox({
       >
         {selected && (
           <div className="space-y-6">
-            <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
-              <ShieldCheck size={15} className="text-primary" />
-              Esta bandeja no permite responder ni enviar correos.
-            </div>
-
-            <div className="flex justify-end">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                <ShieldCheck size={14} className="text-muted-foreground" aria-hidden="true" />
+                Esta bandeja no permite responder ni enviar correos.
+              </p>
               <Button type="button" size="sm" variant="danger" onClick={() => setDeleteIds([selected.id])}>
                 <Trash2 size={14} /> Eliminar correo
               </Button>
             </div>
 
-            <div className="max-h-80 overflow-y-auto whitespace-pre-wrap rounded-lg border border-border bg-background p-4 text-sm leading-6 text-foreground">
+            <div className="max-h-80 overflow-y-auto whitespace-pre-wrap rounded-xl bg-surface-muted/60 p-4 text-sm leading-6 text-foreground">
               {selected.body_text || "Este correo no contiene texto visible."}
             </div>
 
             {selected.status === "converted" && selected.lead_id ? (
-              <div className="rounded-lg border border-success/30 border-l-2 border-l-success bg-success-bg p-4">
-                <p className="font-medium text-success">Este correo ya fue convertido en lead.</p>
-                <Link href={`/dashboard/leads/${selected.lead_id}`} className="mt-2 inline-flex text-sm font-medium text-primary hover:underline">
+              <Callout tone="success" className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+                <span className="font-medium">Este correo ya fue convertido en lead.</span>
+                <Link href={`/dashboard/leads/${selected.lead_id}`} className="text-sm font-medium text-primary hover:underline">
                   Abrir registro
                 </Link>
-              </div>
+              </Callout>
             ) : (
               <div className="space-y-4 border-t border-border pt-5">
                 <div>

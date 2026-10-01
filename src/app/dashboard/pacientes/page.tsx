@@ -2,11 +2,11 @@ import Link from "next/link";
 import { EspecieYRaza } from "@/components/especie-y-raza";
 import { razasDe } from "@/lib/anatomia";
 import { connection } from "next/server";
-import { PawPrint, Scissors, Search, SearchX, Users } from "lucide-react";
+import { ChevronRight, PawPrint, Scissors, Search, SearchX, Users } from "lucide-react";
 
 import { crearPaciente } from "@/app/actions/pacientes";
 import { CreatePanel } from "@/components/create-panel";
-import { Badge, EmptyState, Field, Input, PageHeader, SectionCard, Select } from "@/components/ui";
+import { Avatar, Badge, EmptyState, Field, Input, PageHeader, SectionCard, SegmentTabs, Select, Table, Tbody, Td, Th, Thead, Tr } from "@/components/ui";
 import { ATENCION_POR_EDICION, PACIENTES_POR_EDICION, VENTAS_POR_EDICION, clinicaDe } from "@/lib/ediciones";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
 import { REPORT_TIME_ZONE } from "@/lib/report-range";
@@ -94,9 +94,9 @@ export default async function PacientesPage({
   const abiertoDe = (ficha: Ficha) => ficha.sales_opportunities.find((negocio) => negocio.status === "abierta") ?? null;
   const diasDesde = (instante: string) => Math.floor((ahora.getTime() - new Date(instante).getTime()) / DIA);
 
-  const fichas = todas.filter((ficha) => {
+  const enVista = (ficha: Ficha, id: string) => {
     const abierto = abiertoDe(ficha);
-    switch (vista) {
+    switch (id) {
       case "abiertos":
         return abierto !== null;
       case "sin_respuesta":
@@ -111,7 +111,8 @@ export default async function PacientesPage({
       default:
         return true;
     }
-  });
+  };
+  const fichas = todas.filter((ficha) => enVista(ficha, vista));
 
   const vistas = VISTAS[clinica];
   const hrefVista = (id: string) => {
@@ -126,7 +127,15 @@ export default async function PacientesPage({
     <div className="space-y-5">
       <PageHeader
         title={voc.titulo}
+        icon={IconoFicha}
         description={voc.descripcion}
+        meta={
+          <span>
+            <span className="font-medium text-foreground">{todas.length.toLocaleString("es-CL")}</span>{" "}
+            {todas.length === 1 ? voc.singular.toLowerCase() : voc.titulo.toLowerCase()}
+            {todas.length >= 500 ? " (primeros 500)" : ""}
+          </span>
+        }
         actions={
           <CreatePanel
             label={voc.nuevo}
@@ -204,37 +213,34 @@ export default async function PacientesPage({
         }
       />
 
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <nav aria-label="Vistas" className="flex flex-wrap gap-1.5">
-          {vistas.map((opcion) => (
-            <Link
-              key={opcion.id}
-              href={hrefVista(opcion.id)}
-              className={`inline-flex h-8 items-center rounded-lg px-2.5 text-[13px] font-medium transition-colors ${
-                vista === opcion.id || (opcion.id === "todos" && !vistas.some((otra) => otra.id === vista))
-                  ? "bg-surface text-foreground shadow-sm ring-1 ring-border"
-                  : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"
-              }`}
-            >
-              {opcion.label}
-            </Link>
-          ))}
-        </nav>
-        <form className="relative w-full lg:w-80" action="/dashboard/pacientes">
-          {vista !== "todos" && <input type="hidden" name="vista" value={vista} />}
-          <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-          <Input name="q" defaultValue={busqueda} placeholder="Buscar por nombre, celular, correo o RUT" className="pl-9" aria-label="Buscar" />
-        </form>
-      </div>
+      <SectionCard>
+        {/* Vistas y búsqueda pegadas a la lista, como en Attio o HubSpot. */}
+        <div className="flex flex-col gap-2 border-b border-border px-3 lg:flex-row lg:items-center lg:justify-between">
+          <SegmentTabs
+            label="Vistas"
+            activeId={vistas.some((otra) => otra.id === vista) ? vista : "todos"}
+            tabs={vistas.map((opcion) => ({
+              id: opcion.id,
+              label: opcion.label,
+              href: hrefVista(opcion.id),
+              count: todas.filter((ficha) => enVista(ficha, opcion.id)).length,
+              tone: opcion.id === "sin_respuesta" || opcion.id === "vacunas" ? ("warning" as const) : undefined,
+            }))}
+          />
+          <form className="relative w-full pb-2 lg:w-80 lg:pb-0" action="/dashboard/pacientes">
+            {vista !== "todos" && <input type="hidden" name="vista" value={vista} />}
+            <Search size={15} className="pointer-events-none absolute left-3 top-[1.125rem] -translate-y-1/2 text-muted-foreground lg:top-1/2" aria-hidden="true" />
+            <Input name="q" defaultValue={busqueda} placeholder="Buscar por nombre, celular, correo o RUT" className="pl-9" aria-label="Buscar" />
+          </form>
+        </div>
+        {busqueda && (
+          <p className="border-b border-border bg-surface-raised px-5 py-2 text-xs text-muted-foreground">
+            {fichas.length.toLocaleString("es-CL")} {fichas.length === 1 ? "resultado" : "resultados"} para «{busqueda}»
+          </p>
+        )}
 
-      <SectionCard
-        icon={IconoFicha}
-        tone="blue"
-        title={`${fichas.length} ${fichas.length === 1 ? voc.singular.toLowerCase() : voc.titulo.toLowerCase()}`}
-        description={busqueda ? `Resultados para "${busqueda}"` : undefined}
-      >
         {error ? (
-          <p className="px-4 py-6 text-sm text-danger">No se pudieron leer las fichas. Vuelve a cargar para reintentar.</p>
+          <p className="px-5 py-6 text-sm text-danger">No se pudieron leer las fichas. Vuelve a cargar para reintentar.</p>
         ) : fichas.length === 0 ? (
           <EmptyState
             icon={busqueda ? SearchX : IconoFicha}
@@ -243,75 +249,99 @@ export default async function PacientesPage({
           />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                  <th className="h-10 px-4 font-medium">{voc.singular}</th>
-                  <th className="h-10 px-4 font-medium">Contacto</th>
-                  <th className="h-10 px-4 font-medium">{esVet ? "Mascotas" : esBarber ? atencion.profesional : "Previsión"}</th>
-                  <th className="h-10 px-4 font-medium">{ventas.negocio} abierto</th>
-                  <th className="h-10 px-4 font-medium">Próxima acción</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
+            <Table>
+              <Thead>
+                <Th>{voc.singular}</Th>
+                <Th>Contacto</Th>
+                <Th>{esVet ? "Mascotas" : esBarber ? atencion.profesional : "Previsión"}</Th>
+                <Th>{ventas.negocio} abierto</Th>
+                <Th>Próxima acción</Th>
+                <Th className="w-10">
+                  <span className="sr-only">Abrir</span>
+                </Th>
+              </Thead>
+              <Tbody>
                 {fichas.map((ficha) => {
                   const abierto = abiertoDe(ficha);
                   const aceptados = ficha.sales_opportunities.filter((negocio) => negocio.status === "ganada").length;
                   const vencida = abierto?.next_action_at && new Date(abierto.next_action_at) < ahora;
+                  const valor = String(ficha.metadata?.[esBarber ? "profesional" : "prevision"] ?? "");
                   return (
-                    <tr key={ficha.id} className="transition-colors hover:bg-surface-muted/50">
-                      <td className="px-4 py-3">
-                        <Link href={`/dashboard/pacientes/${ficha.id}`} className="font-medium text-foreground hover:text-primary hover:underline">
-                          {ficha.name}
+                    <Tr key={ficha.id}>
+                      <Td>
+                        <Link href={`/dashboard/pacientes/${ficha.id}`} className="flex min-w-0 items-center gap-3">
+                          <Avatar name={ficha.name} size="md" />
+                          <span className="min-w-0">
+                            <span className="block truncate font-medium text-foreground group-hover:text-primary">{ficha.name}</span>
+                            <span className="block truncate text-xs text-muted-foreground">
+                              {ficha.commune ?? "Sin comuna"}
+                              {aceptados > 0 ? ` · ${aceptados} aceptado${aceptados === 1 ? "" : "s"}` : ""}
+                            </span>
+                          </span>
                         </Link>
-                        <p className="text-xs text-muted-foreground">
-                          {ficha.commune ?? "Sin comuna"}
-                          {aceptados > 0 ? ` · ${aceptados} aceptado${aceptados === 1 ? "" : "s"}` : ""}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        <p>{ficha.phone ?? "—"}</p>
-                        <p className="truncate text-xs">{ficha.email ?? ""}</p>
-                      </td>
-                      <td className="px-4 py-3">
+                      </Td>
+                      <Td>
+                        <span className={`block tabular-nums ${ficha.phone ? "text-foreground" : "text-muted-foreground"}`}>{ficha.phone ?? "Sin celular"}</span>
+                        {ficha.email && <span className="block max-w-56 truncate text-xs text-muted-foreground">{ficha.email}</span>}
+                      </Td>
+                      <Td>
                         {esVet ? (
-                          <div className="flex flex-wrap gap-1">
-                            {(ficha.mascotas ?? []).map((mascota) => {
-                              const estado = estadoVacuna(mascota.proxima_vacuna, ahora);
-                              return (
-                                <Badge
-                                  key={mascota.id}
-                                  tone={estado === "vencida" ? "danger" : estado === "por_vencer" ? "warning" : "neutral"}
-                                >
-                                  {mascota.nombre} · {mascota.especie.toLowerCase()}
-                                </Badge>
-                              );
-                            })}
-                          </div>
+                          (ficha.mascotas ?? []).length === 0 ? (
+                            <span className="text-muted-foreground">—</span>
+                          ) : (
+                            <div className="flex flex-col gap-1">
+                              {(ficha.mascotas ?? []).map((mascota) => {
+                                const estado = estadoVacuna(mascota.proxima_vacuna, ahora);
+                                return (
+                                  <span key={mascota.id} className="inline-flex items-center gap-2 whitespace-nowrap">
+                                    <span className="text-foreground">{mascota.nombre}</span>
+                                    <span className="text-xs text-muted-foreground">{mascota.especie.toLowerCase()}</span>
+                                    {estado === "vencida" && <Badge tone="danger">Vacuna vencida</Badge>}
+                                    {estado === "por_vencer" && <Badge tone="warning">Vacuna por vencer</Badge>}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )
                         ) : (
-                          <span className="text-muted-foreground">{String(ficha.metadata?.[esBarber ? "profesional" : "prevision"] ?? "—")}</span>
+                          <span className={valor ? "text-foreground" : "text-muted-foreground"}>{valor || "—"}</span>
                         )}
-                      </td>
-                      <td className="px-4 py-3">
+                      </Td>
+                      <Td>
                         {abierto ? (
                           <>
-                            <p className="text-foreground">{abierto.name}</p>
-                            <p className="text-xs tabular-nums text-muted-foreground">{pesos.format(Number(abierto.one_time_amount ?? 0))}</p>
+                            <span className="block text-foreground">{abierto.name}</span>
+                            <span className="block text-xs tabular-nums text-muted-foreground">{pesos.format(Number(abierto.one_time_amount ?? 0))}</span>
                           </>
                         ) : (
                           <span className="text-muted-foreground">—</span>
                         )}
-                      </td>
-                      <td className={`px-4 py-3 ${vencida ? "text-danger" : "text-muted-foreground"}`}>
-                        {abierto?.next_action_at
-                          ? `${vencida ? "Vencida · " : ""}${fecha.format(new Date(abierto.next_action_at))}`
-                          : "—"}
-                      </td>
-                    </tr>
+                      </Td>
+                      <Td className="whitespace-nowrap">
+                        {abierto?.next_action_at ? (
+                          vencida ? (
+                            <Badge tone="danger">Vencida · {fecha.format(new Date(abierto.next_action_at)).replace(".", "")}</Badge>
+                          ) : (
+                            <span className="text-foreground">{fecha.format(new Date(abierto.next_action_at)).replace(".", "")}</span>
+                          )
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </Td>
+                      <Td className="pl-0 pr-3">
+                        <Link
+                          href={`/dashboard/pacientes/${ficha.id}`}
+                          aria-label={`Abrir la ficha de ${ficha.name}`}
+                          className="flex size-8 items-center justify-center rounded-lg text-muted-foreground/50 transition-colors hover:bg-surface-muted hover:text-primary group-hover:text-primary"
+                        >
+                          <ChevronRight size={16} aria-hidden="true" />
+                        </Link>
+                      </Td>
+                    </Tr>
                   );
                 })}
-              </tbody>
-            </table>
+              </Tbody>
+            </Table>
           </div>
         )}
       </SectionCard>

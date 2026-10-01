@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { connection } from "next/server";
-import { AlertTriangle, CalendarClock, CheckCheck, Clock, HandCoins, MessageSquareReply, MessagesSquare, Send, Syringe, UserRoundX } from "lucide-react";
+import { AlertTriangle, BellRing, CalendarClock, CheckCheck, Clock, HandCoins, MessageSquareReply, MessagesSquare, Send, Syringe, UserRoundX } from "lucide-react";
 
 import { cambiarEstadoCita } from "@/app/actions/citas";
 import { cancelarMensaje, despacharAhora, enviarMensaje, reintentarMensaje } from "@/app/actions/mensajes";
-import { ActionForm, ActionSubmit, Badge, Callout, EmptyState, MetricCard, PageHeader, SectionCard, buttonClasses } from "@/components/ui";
+import { ActionForm, ActionSubmit, Avatar, Badge, Callout, EmptyState, PageHeader, SectionCard, Table, Tbody, Td, Th, Thead, Tr, buttonClasses } from "@/components/ui";
+import { KpiStrip, KpiStripItem } from "@/components/report-kit";
 import { requireProfile } from "@/lib/auth";
 import { ZONA_CLINICA, fechaEnChile, instanteEnChile, primero, sumarDias, type Cita } from "@/lib/citas";
 import { ATENCION_POR_EDICION, PACIENTES_POR_EDICION, VENTAS_POR_EDICION, clinicaDe } from "@/lib/ediciones";
@@ -25,9 +26,20 @@ import { createClient } from "@/lib/supabase/server";
 
 const DIA = 24 * 60 * 60 * 1000;
 const hora = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
-const fecha = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, day: "2-digit", month: "short" });
+const fecha = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, day: "numeric", month: "short" });
+const soloDia = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, day: "numeric", month: "short" });
 const fechaHora = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 const pesos = new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 });
+
+/** Título de sección con su conteo en caja suave. */
+function Titulo({ texto, total }: { texto: string; total: number }) {
+  return (
+    <span className="flex items-center gap-2">
+      {texto}
+      <span className="rounded-md bg-surface-muted px-1.5 py-px text-[11px] font-semibold tabular-nums text-muted-foreground">{total}</span>
+    </span>
+  );
+}
 
 function primerNombre(nombre: string): string {
   return nombre.split(" ")[0] ?? nombre;
@@ -123,7 +135,7 @@ function Enviar({
           <span className="hidden shrink-0 group-open:inline">Ocultar mensaje</span>
           <span className="shrink-0 text-primary group-open:hidden">Ver completo</span>
         </summary>
-        <p className="mt-1 whitespace-pre-line rounded-md bg-surface-muted/50 p-2 text-foreground">{texto}</p>
+        <p className="mt-1 whitespace-pre-line rounded-lg bg-surface-muted/60 px-3 py-2 text-foreground">{texto}</p>
       </details>
     </div>
   );
@@ -225,7 +237,13 @@ export default async function RecordatoriosPage() {
     <div className="space-y-5">
       <PageHeader
         title="Recordatorios"
-        description={`${total} ${total === 1 ? "contacto pendiente" : "contactos pendientes"}. Las reglas programan los mensajes solas cada día; acá ves si llegaron y puedes adelantar cualquiera.`}
+        icon={BellRing}
+        description="Las reglas programan los mensajes solas cada día; acá ves si llegaron y puedes adelantar cualquiera."
+        meta={
+          <span>
+            <span className="font-medium text-foreground">{total}</span> {total === 1 ? "contacto pendiente" : "contactos pendientes"}
+          </span>
+        }
         actions={
           <ActionForm
             action={despacharAhora}
@@ -270,32 +288,18 @@ export default async function RecordatoriosPage() {
         </Callout>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Programados" value={programados} hint="Salen en el próximo despacho" icon={Clock} iconTone="amber" />
-        <MetricCard label="Entregados" value={entregados} hint="Últimos 14 días" icon={CheckCheck} iconTone="teal" />
-        <MetricCard
-          label="Respondieron"
-          value={respondidos}
-          href="/dashboard/mensajes"
-          hrefLabel="Cayeron en Conversaciones"
-          icon={MessageSquareReply}
-          iconTone="teal"
-        />
-        <MetricCard
-          label="Fallidos"
-          value={fallidos}
-          hint="Revisa el número o el canal"
-          icon={AlertTriangle}
-          iconTone="rose"
-          tone={fallidos > 0 ? "danger" : "default"}
-        />
-      </div>
+      <KpiStrip columns={4} title="Mensajes" meta="Últimos 14 días">
+        <KpiStripItem label="Programados" value={String(programados)} icon={Clock} detail="Salen en el próximo despacho" />
+        <KpiStripItem label="Entregados" value={String(entregados)} icon={CheckCheck} tone={entregados > 0 ? "good" : "default"} detail="Llegaron al destinatario" />
+        <KpiStripItem label="Respondieron" value={String(respondidos)} icon={MessageSquareReply} href="/dashboard/mensajes" detail="Cayeron en Conversaciones" />
+        <KpiStripItem label="Fallidos" value={String(fallidos)} icon={AlertTriangle} tone={fallidos > 0 ? "danger" : "default"} detail="Revisa el número o el canal" />
+      </KpiStrip>
 
-      <SectionCard icon={CalendarClock} tone="amber" title={`Citas de mañana · ${citas.length}`} description="A las sin confirmar se les pide confirmación; a las confirmadas, se les recuerda. El mensaje sale solo en la mañana; puedes adelantarlo.">
+      <SectionCard title={<Titulo texto="Citas de mañana" total={citas.length} />} description="A las sin confirmar se les pide confirmación; a las confirmadas, se les recuerda. El mensaje sale solo en la mañana; puedes adelantarlo.">
         {citas.length === 0 ? (
           <EmptyState icon={CalendarClock} title="Sin citas mañana" description="No hay citas reservadas ni confirmadas para mañana." />
         ) : (
-          <ul className="divide-y divide-border">
+          <ul className="divide-y divide-border/70 border-t border-border">
             {citas.map((cita) => {
               const tutor = primero(cita.sales_companies);
               const mascota = primero(cita.mascotas);
@@ -304,14 +308,18 @@ export default async function RecordatoriosPage() {
               const plantilla: ClavePlantilla = cita.estado === "reservada" ? "cita_confirmar" : "cita_recordatorio";
               const variables = { nombre: primerNombre(nombre), hora: hora.format(new Date(cita.inicio)), profesional, motivo: cita.motivo, mascota: mascota?.nombre ?? "", clinica };
               return (
-                <li key={cita.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                  <span className="w-14 tabular-nums text-foreground">{hora.format(new Date(cita.inicio))}</span>
+                <li key={cita.id} className="flex flex-wrap items-center gap-3 px-5 py-3">
+                  <span className="w-12 text-[13px] font-semibold tabular-nums text-foreground">{hora.format(new Date(cita.inicio))}</span>
+                  <Avatar name={nombre} size="md" />
                   <div className="min-w-0 flex-1">
-                    <Link href={`/dashboard/pacientes/${cita.cuenta_id}`} className="font-medium text-foreground hover:text-primary hover:underline">
+                    <Link href={`/dashboard/pacientes/${cita.cuenta_id}`} className="block truncate font-medium text-foreground hover:text-primary hover:underline">
                       {mascota ? `${mascota.nombre} · ${nombre}` : nombre}
                     </Link>
-                    <p className="text-xs text-muted-foreground">
-                      {cita.motivo} · {profesional} · {cita.estado === "reservada" ? "sin confirmar" : "confirmada"}
+                    <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+                      <span>{cita.motivo} · {profesional}</span>
+                      <Badge tone={cita.estado === "reservada" ? "neutral" : "info"} dot className="text-xs">
+                        {cita.estado === "reservada" ? "Sin confirmar" : "Confirmada"}
+                      </Badge>
                     </p>
                   </div>
                   <Enviar cuenta={cita.cuenta_id} plantilla={plantilla} regla="cita_manana" origen={cita.id} variables={variables} ultimo={ultimo("cita_manana", cita.id)} telefono={tutor?.phone} />
@@ -332,24 +340,27 @@ export default async function RecordatoriosPage() {
       </SectionCard>
 
       {esVet && (
-        <SectionCard icon={Syringe} tone="amber" title={`Vacunas vencidas o por vencer · ${vacunas.length}`} description="Las de los próximos 30 días y las que ya vencieron. Una vez al mes por mascota, o cuando lo adelantes.">
+        <SectionCard title={<Titulo texto="Vacunas vencidas o por vencer" total={vacunas.length} />} description="Las de los próximos 30 días y las que ya vencieron. Una vez al mes por mascota, o cuando lo adelantes.">
           {vacunas.length === 0 ? (
             <EmptyState icon={Syringe} title="Vacunas al día" description="Ninguna mascota tiene la vacuna vencida ni por vencer en 30 días." />
           ) : (
-            <ul className="divide-y divide-border">
+            <ul className="divide-y divide-border/70 border-t border-border">
               {vacunas.map((mascota) => {
                 const tutor = primero(mascota.sales_companies);
                 const estado = estadoVacuna(mascota.proxima_vacuna, ahora);
                 const variables = { nombre: primerNombre(tutor?.name ?? ""), mascota: mascota.nombre, fecha: mascota.proxima_vacuna ? fecha.format(new Date(`${mascota.proxima_vacuna}T12:00:00`)) : "", vencida: estado === "vencida", clinica };
                 return (
-                  <li key={mascota.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                    <Badge tone={estado === "vencida" ? "danger" : "warning"}>{estado === "vencida" ? "Vencida" : "Por vencer"}</Badge>
+                  <li key={mascota.id} className="flex flex-wrap items-center gap-3 px-5 py-3">
+                    <span className="icon-chip size-9 rounded-lg" data-tone={estado === "vencida" ? "rose" : "amber"} aria-hidden="true">
+                      <Syringe size={16} />
+                    </span>
                     <div className="min-w-0 flex-1">
-                      <Link href={`/dashboard/pacientes/${tutor?.id ?? ""}`} className="font-medium text-foreground hover:text-primary hover:underline">
+                      <Link href={`/dashboard/pacientes/${tutor?.id ?? ""}`} className="block truncate font-medium text-foreground hover:text-primary hover:underline">
                         {mascota.nombre} · {tutor?.name ?? "—"}
                       </Link>
-                      <p className="text-xs text-muted-foreground">
-                        {mascota.especie} · vacuna {mascota.proxima_vacuna ? fecha.format(new Date(`${mascota.proxima_vacuna}T12:00:00`)) : "—"}
+                      <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+                        <span>{mascota.especie} · vacuna {mascota.proxima_vacuna ? fecha.format(new Date(`${mascota.proxima_vacuna}T12:00:00`)).replace(".", "") : "—"}</span>
+                        <Badge tone={estado === "vencida" ? "danger" : "warning"} className="text-xs">{estado === "vencida" ? "Vencida" : "Por vencer"}</Badge>
                       </p>
                     </div>
                     {tutor && <Enviar cuenta={tutor.id} plantilla="vacuna" regla="vacuna" origen={mascota.id} variables={variables} ultimo={ultimo("vacuna", mascota.id)} telefono={tutor.phone} />}
@@ -364,23 +375,24 @@ export default async function RecordatoriosPage() {
         </SectionCard>
       )}
 
-      <SectionCard icon={HandCoins} tone="green" title={`${ventas.negocios} sin respuesta hace más de 7 días · ${presupuestos.length}`} description={`${ventas.negocios} abiertos cuya próxima acción ya venció. Un mensaje a la semana hasta que respondan.`}>
+      <SectionCard title={<Titulo texto={`${ventas.negocios} sin respuesta hace más de 7 días`} total={presupuestos.length} />} description={`${ventas.negocios} abiertos cuya próxima acción ya venció. Un mensaje a la semana hasta que respondan.`}>
         {presupuestos.length === 0 ? (
           <EmptyState icon={HandCoins} title="Nada vencido" description={`Todos los ${ventas.negocios.toLowerCase()} abiertos tienen su próxima acción al día.`} />
         ) : (
-          <ul className="divide-y divide-border">
+          <ul className="divide-y divide-border/70 border-t border-border">
             {presupuestos.map((presupuesto) => {
               const cuentaDe = primero(presupuesto.sales_companies);
               const variables = { nombre: primerNombre(cuentaDe?.name ?? ""), presupuesto: presupuesto.name, monto: pesos.format(Number(presupuesto.one_time_amount ?? 0)), clinica };
               return (
-                <li key={presupuesto.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                  <Badge tone="warning">{dias(presupuesto.next_action_at as string)} días</Badge>
+                <li key={presupuesto.id} className="flex flex-wrap items-center gap-3 px-5 py-3">
+                  <Avatar name={cuentaDe?.name ?? "—"} size="md" />
                   <div className="min-w-0 flex-1">
-                    <Link href={`/dashboard/ventas/${presupuesto.id}`} className="font-medium text-foreground hover:text-primary hover:underline">
+                    <Link href={`/dashboard/ventas/${presupuesto.id}`} className="block truncate font-medium text-foreground hover:text-primary hover:underline">
                       {presupuesto.name}
                     </Link>
-                    <p className="text-xs text-muted-foreground">
-                      {cuentaDe?.name ?? "—"} · {pesos.format(Number(presupuesto.one_time_amount ?? 0))}
+                    <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+                      <span>{cuentaDe?.name ?? "—"} · {pesos.format(Number(presupuesto.one_time_amount ?? 0))}</span>
+                      <Badge tone="warning" className="text-xs">{dias(presupuesto.next_action_at as string)} días sin respuesta</Badge>
                     </p>
                   </div>
                   <Enviar cuenta={presupuesto.company_id} plantilla="presupuesto" regla="presupuesto" origen={presupuesto.id} variables={variables} ultimo={ultimo("presupuesto", presupuesto.id)} telefono={cuentaDe?.phone} />
@@ -391,21 +403,24 @@ export default async function RecordatoriosPage() {
         )}
       </SectionCard>
 
-      <SectionCard icon={UserRoundX} tone="blue" title={`${voc.titulo} que no vuelven hace más de ${at.plazoSinVenir} · ${inactivos.length}`} description={at.porQueVolver}>
+      <SectionCard title={<Titulo texto={`${voc.titulo} que no vuelven hace más de ${at.plazoSinVenir}`} total={inactivos.length} />} description={at.porQueVolver}>
         {inactivos.length === 0 ? (
           <EmptyState icon={UserRoundX} title="Nadie fuera de plazo" description="Todas las fichas con atenciones han vuelto dentro del plazo." />
         ) : (
-          <ul className="divide-y divide-border">
+          <ul className="divide-y divide-border/70 border-t border-border">
             {inactivos.map((ficha) => {
               const semanas = ficha.ultima ? Math.max(1, Math.floor((ahora.getTime() - new Date(`${ficha.ultima}T12:00:00`).getTime()) / (7 * DIA))) : null;
               const variables = { nombre: primerNombre(ficha.name), meses: Math.round(at.diasSinVenir / 30), semanas, clinica };
               return (
-                <li key={ficha.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                  <span className="w-24 text-xs text-muted-foreground">Última {ficha.ultima ? fecha.format(new Date(`${ficha.ultima}T12:00:00`)) : "—"}</span>
+                <li key={ficha.id} className="flex flex-wrap items-center gap-3 px-5 py-3">
+                  <Avatar name={ficha.name} size="md" />
                   <div className="min-w-0 flex-1">
-                    <Link href={`/dashboard/pacientes/${ficha.id}`} className="font-medium text-foreground hover:text-primary hover:underline">
+                    <Link href={`/dashboard/pacientes/${ficha.id}`} className="block truncate font-medium text-foreground hover:text-primary hover:underline">
                       {ficha.name}
                     </Link>
+                    <p className="text-xs text-muted-foreground">
+                      Última atención {ficha.ultima ? fecha.format(new Date(`${ficha.ultima}T12:00:00`)).replace(".", "") : "—"}
+                    </p>
                   </div>
                   <Enviar cuenta={ficha.id} plantilla={reglaVuelta} regla={reglaVuelta} origen={ficha.id} variables={variables} ultimo={ultimo(reglaVuelta, ficha.id)} telefono={ficha.phone} />
                 </li>
@@ -415,58 +430,70 @@ export default async function RecordatoriosPage() {
         )}
       </SectionCard>
 
-      <SectionCard icon={MessagesSquare} tone="teal" title="Lo que Atlas escribió" description="Los últimos 14 días, del más reciente al más antiguo. Lo fallido se puede reintentar; lo programado, cancelar.">
+      <SectionCard title="Lo que Atlas escribió" description="Los últimos 14 días, del más reciente al más antiguo. Lo fallido se puede reintentar; lo programado, cancelar.">
         {mensajes.length === 0 ? (
           <EmptyState icon={MessagesSquare} title="Todavía no sale nada" description="Los mensajes aparecen acá en cuanto una regla los programa o alguien los envía." />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                  <th className="h-10 px-4 font-medium">Cuándo</th>
-                  <th className="h-10 px-4 font-medium">Para</th>
-                  <th className="h-10 px-4 font-medium">Motivo</th>
-                  <th className="h-10 px-4 font-medium">Mensaje</th>
-                  <th className="h-10 px-4 font-medium">Estado</th>
-                  <th className="h-10 px-4 font-medium text-right">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/70">
+            <Table>
+              <Thead>
+                <Th>Cuándo</Th>
+                <Th>Para</Th>
+                <Th>Motivo</Th>
+                <Th>Mensaje</Th>
+                <Th>Estado</Th>
+                <Th align="right">
+                  <span className="sr-only">Acciones</span>
+                </Th>
+              </Thead>
+              <Tbody>
                 {mensajes.slice(0, 80).map((mensaje) => {
                   const etiqueta = ETIQUETA_ESTADO_MENSAJE[mensaje.estado];
                   const cuerpo = mensaje.cuerpo ?? renderizarPlantilla(mensaje.plantilla, mensaje.variables ?? {});
+                  const instante = new Date(mensaje.enviado_at ?? mensaje.programado_para);
+                  const destinatario = mensaje.nombre_destinatario ?? mensaje.destinatario;
                   return (
-                    <tr key={mensaje.id} className="align-top">
-                      <td className="px-4 py-3 text-muted-foreground">{fechaHora.format(new Date(mensaje.enviado_at ?? mensaje.programado_para))}</td>
-                      <td className="px-4 py-3">
-                        {mensaje.cuenta_id ? (
-                          <Link href={`/dashboard/pacientes/${mensaje.cuenta_id}`} className="font-medium text-foreground hover:text-primary hover:underline">
-                            {mensaje.nombre_destinatario ?? mensaje.destinatario}
-                          </Link>
-                        ) : (
-                          mensaje.nombre_destinatario ?? mensaje.destinatario
-                        )}
-                        <p className="text-xs text-muted-foreground">{mensaje.destinatario}</p>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {ETIQUETA_REGLA[mensaje.regla] ?? PLANTILLAS[mensaje.plantilla as ClavePlantilla]?.nombre ?? mensaje.regla}
-                        <p className="text-xs">{mensaje.canal === "correo" ? "correo" : "WhatsApp"}</p>
-                      </td>
-                      <td className="max-w-md px-4 py-3 text-muted-foreground">
-                        <p className="line-clamp-2" title={cuerpo}>
+                    <Tr key={mensaje.id} className="align-top">
+                      <Td className="whitespace-nowrap">
+                        <span className="block text-foreground">{soloDia.format(instante).replace(".", "")}</span>
+                        <span className="block text-xs tabular-nums text-muted-foreground">{hora.format(instante)}</span>
+                      </Td>
+                      <Td>
+                        <span className="flex min-w-0 items-center gap-2.5">
+                          <Avatar name={destinatario} size="sm" />
+                          <span className="min-w-0">
+                            {mensaje.cuenta_id ? (
+                              <Link href={`/dashboard/pacientes/${mensaje.cuenta_id}`} className="block truncate font-medium text-foreground hover:text-primary hover:underline">
+                                {destinatario}
+                              </Link>
+                            ) : (
+                              <span className="block truncate font-medium text-foreground">{destinatario}</span>
+                            )}
+                            <span className="block text-xs text-muted-foreground">{mensaje.destinatario}</span>
+                          </span>
+                        </span>
+                      </Td>
+                      <Td>
+                        <span className="block text-foreground">
+                          {ETIQUETA_REGLA[mensaje.regla] ?? PLANTILLAS[mensaje.plantilla as ClavePlantilla]?.nombre ?? mensaje.regla}
+                        </span>
+                        <span className="block text-xs text-muted-foreground">{mensaje.canal === "correo" ? "Correo" : "WhatsApp"}</span>
+                      </Td>
+                      <Td className="max-w-md">
+                        <p className="line-clamp-2 text-muted-foreground" title={cuerpo}>
                           {cuerpo}
                         </p>
                         {mensaje.error && (
-                          <p className="text-xs text-danger" title={mensaje.error}>
+                          <p className="mt-0.5 text-xs text-danger" title={mensaje.error}>
                             {errorLegible(mensaje.error, mensaje.canal, esAdmin)}
                           </p>
                         )}
-                      </td>
-                      <td className="px-4 py-3">
+                      </Td>
+                      <Td>
                         <Badge tone={etiqueta.tone}>{etiqueta.label}</Badge>
-                        {mensaje.proveedor === "simulado" && <p className="text-xs text-muted-foreground">simulado</p>}
-                      </td>
-                      <td className="px-4 py-3">
+                        {mensaje.proveedor === "simulado" && <span className="mt-0.5 block text-xs text-muted-foreground">Simulado</span>}
+                      </Td>
+                      <Td>
                         <div className="flex justify-end gap-1.5">
                           {mensaje.estado === "fallido" && (
                             <ActionForm action={reintentarMensaje} success="Mensaje reintentado">
@@ -481,12 +508,12 @@ export default async function RecordatoriosPage() {
                             </ActionForm>
                           )}
                         </div>
-                      </td>
-                    </tr>
+                      </Td>
+                    </Tr>
                   );
                 })}
-              </tbody>
-            </table>
+              </Tbody>
+            </Table>
           </div>
         )}
       </SectionCard>

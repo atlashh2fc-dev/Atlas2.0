@@ -11,6 +11,7 @@ import { UserPasswordDialog } from "@/components/user-password-dialog";
 import {
   ActionForm,
   ActionSubmit,
+  Avatar,
   Badge,
   ConfirmDialog,
   DataTable,
@@ -93,15 +94,15 @@ export function UsersTable({
         header: "Usuario",
         value: (row) => row.full_name,
         cell: (row) => {
-          const { icon: RoleIcon, tone } = ROLE_CHIP[row.role];
           return (
             <span className="flex items-start gap-3">
-              <span
-                className={`icon-chip mt-0.5 size-8 rounded-full ${row.active ? "" : "opacity-50"}`}
-                data-tone={tone}
-                aria-hidden="true"
-              >
-                <RoleIcon size={15} />
+              {/* La persona con su avatar; el punto dice si la cuenta está activa. */}
+              <span className={`relative mt-0.5 ${row.active ? "" : "opacity-50"}`}>
+                <Avatar name={row.full_name} size="md" />
+                <span
+                  aria-hidden="true"
+                  className={`absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-[var(--surface)] ${row.active ? "bg-success" : "bg-muted-foreground/50"}`}
+                />
               </span>
               <span className="block min-w-0 space-y-2">
                 <span className="block">
@@ -123,7 +124,17 @@ export function UsersTable({
         id: "rol",
         header: "Rol",
         value: (row) => ROLE_LABEL[row.role],
-        cell: (row) => <Badge tone="neutral">{ROLE_LABEL[row.role]}</Badge>,
+        cell: (row) => {
+          const { icon: RoleIcon, tone } = ROLE_CHIP[row.role];
+          return (
+            <span className="flex items-center gap-2 whitespace-nowrap text-foreground">
+              <span className="icon-chip size-6 rounded-md" data-tone={tone} aria-hidden="true">
+                <RoleIcon size={13} />
+              </span>
+              {ROLE_LABEL[row.role]}
+            </span>
+          );
+        },
       },
       {
         id: "equipo",
@@ -152,7 +163,8 @@ export function UsersTable({
         value: (row) => (row.active ? "Activo" : "Inactivo"),
         cell: (row) => (
           <span className="block space-y-2">
-            <Badge tone={row.active ? "success" : "danger"}>{row.active ? "Activo" : "Inactivo"}</Badge>
+            {/* Inactivo no es un error: va en gris, sin pedir atención. */}
+            <Badge tone={row.active ? "success" : "neutral"} dot>{row.active ? "Activo" : "Inactivo"}</Badge>
             <ActionForm
               action={toggleUserActive}
               success={row.active ? "Usuario desactivado" : "Usuario activado"}
@@ -184,16 +196,25 @@ export function UsersTable({
         cell: (row) =>
           row.role === "agente" ? (
             <span className="block space-y-2">
-              <span className="flex max-w-56 flex-wrap gap-x-3 gap-y-1">
-                {row.campaign_ids.map((campaignId) => (
-                  <Badge key={campaignId} tone="info">
-                    {campaignNameById.get(campaignId) ?? "Campaña"}
-                  </Badge>
-                ))}
-                {row.campaign_ids.length === 0 && (
-                  <span className="text-xs text-muted-foreground">Sin campañas</span>
-                )}
-              </span>
+              {/* Las campañas como texto corrido: una ficha por campaña llenaba
+                  la celda de etiquetas. */}
+              {row.campaign_ids.length === 0 ? (
+                <span className="block text-xs text-muted-foreground">Sin campañas</span>
+              ) : (
+                <span
+                  className="block max-w-56 text-[13px] text-foreground"
+                  title={row.campaign_ids.map((id) => campaignNameById.get(id) ?? "Campaña").join(", ")}
+                >
+                  <span className="line-clamp-2">
+                    {row.campaign_ids.slice(0, 2).map((id) => campaignNameById.get(id) ?? "Campaña").join(", ")}
+                  </span>
+                  {row.campaign_ids.length > 2 && (
+                    <span className="mt-0.5 inline-block rounded-md bg-surface-muted px-1.5 text-[11px] font-semibold text-muted-foreground">
+                      +{row.campaign_ids.length - 2}
+                    </span>
+                  )}
+                </span>
+              )}
               <AgentCampaignsDialog
                 agent={{ id: row.id, fullName: row.full_name, email: row.email }}
                 campaignIds={row.campaign_ids}

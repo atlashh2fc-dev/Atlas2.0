@@ -1,12 +1,12 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
-import Link from "next/link";
-import { ArrowLeft, Play, Square } from "lucide-react";
+import { Bot, Play, Square } from "lucide-react";
 import { toggleCampaignActive } from "@/app/actions/campaigns";
 import { setDialerCampaignActive } from "@/app/actions/dialer-config";
-import type { AiVoiceCampaignConfig, DialerCampaignConfig } from "@/lib/types";
-import { ActionForm, ActionSubmit, Badge, NavTabs, PageHeader } from "@/components/ui";
+import { DIAL_MODES, type AiVoiceCampaignConfig, type DialerCampaignConfig } from "@/lib/types";
+import { ActionForm, ActionSubmit, Badge, NavTabs } from "@/components/ui";
+import { CabeceraDeEntidad, Migas } from "../../_diseno";
 
 /**
  * Detalle de campaña en pestañas. Antes era una sola página de 500 líneas con
@@ -38,30 +38,37 @@ export default async function CampaignDetailLayout({
 
   return (
     <div className="space-y-5">
-      <Link
-        href="/dashboard/admin/campanas"
-        className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary"
-      >
-        <ArrowLeft size={13} />
-        Campañas
-      </Link>
+      <Migas items={[{ label: "Campañas", href: "/dashboard/admin/campanas" }, { label: campaign.name }]} />
 
-      <PageHeader
-        title={campaign.name}
-        description={campaign.description ?? undefined}
-        className="border-b-0 pb-0"
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge tone={campaign.is_active ? "success" : "danger"}>
+      <CabeceraDeEntidad
+        nombre={campaign.name}
+        icon={aiVoice ? Bot : undefined}
+        apagada={!campaign.is_active}
+        descripcion={campaign.description ?? undefined}
+        meta={
+          <>
+            <Badge tone={campaign.is_active ? "success" : "neutral"}>
               {campaign.is_active ? "Campaña activa" : "Campaña inactiva"}
             </Badge>
-
-            {aiVoice && (
-              <Badge tone={aiVoice.is_active ? "success" : "danger"}>
+            {aiVoice ? (
+              <Badge tone={aiVoice.is_active ? "success" : "neutral"}>
                 {aiVoice.is_active ? "IA en ejecución" : "IA detenida"}
               </Badge>
+            ) : dialer ? (
+              <Badge tone={!usesSiptel ? "warning" : dialer.is_active ? "success" : "neutral"}>
+                {!usesSiptel
+                  ? "Ruta por revisar"
+                  : `${dialer.is_active ? "Discando" : "Discador detenido"} · ${
+                      DIAL_MODES.find((mode) => mode.value === dialer.dial_mode)?.label ?? dialer.dial_mode
+                    }`}
+              </Badge>
+            ) : (
+              <Badge>Discador sin configurar</Badge>
             )}
-
+          </>
+        }
+        acciones={
+          <>
             {dialer && !aiVoice && usesSiptel && (
               <ActionForm
                 action={setDialerCampaignActive}
@@ -82,8 +89,7 @@ export default async function CampaignDetailLayout({
                 <input type="hidden" name="desired_active" value={String(!dialer.is_active)} />
                 {/* Secundario: el primario de la vista es el «Guardar» de cada pestaña. */}
                 <ActionSubmit
-                  variant={dialer.is_active ? "danger" : "secondary"}
-                  size="sm"
+                  variant="secondary"
                   pendingLabel={dialer.is_active ? "Deteniendo…" : "Iniciando…"}
                   title={
                     dialer.is_active
@@ -92,9 +98,9 @@ export default async function CampaignDetailLayout({
                   }
                 >
                   {dialer.is_active ? (
-                    <Square className="h-3.5 w-3.5" fill="currentColor" />
+                    <Square className="h-3 w-3 text-danger" fill="currentColor" />
                   ) : (
-                    <Play className="h-3.5 w-3.5" fill="currentColor" />
+                    <Play className="h-3 w-3 text-success" fill="currentColor" />
                   )}
                   {dialer.is_active ? "Detener discado" : "Iniciar discado"}
                 </ActionSubmit>
@@ -102,7 +108,6 @@ export default async function CampaignDetailLayout({
             )}
 
             {/* Apagar la campaña completa va aparte del discador y pide confirmar. */}
-            <span aria-hidden="true" className="mx-1 h-5 w-px bg-border" />
             <ActionForm
               action={toggleCampaignActive}
               success={campaign.is_active ? "Campaña deshabilitada" : "Campaña habilitada"}
@@ -120,11 +125,11 @@ export default async function CampaignDetailLayout({
             >
               <input type="hidden" name="campaign_id" value={id} />
               <input type="hidden" name="active" value={String(campaign.is_active)} />
-              <ActionSubmit variant="ghost" size="sm" pendingLabel="Guardando…">
+              <ActionSubmit variant="ghost" pendingLabel="Guardando…">
                 {campaign.is_active ? "Deshabilitar" : "Habilitar"}
               </ActionSubmit>
             </ActionForm>
-          </div>
+          </>
         }
       />
 

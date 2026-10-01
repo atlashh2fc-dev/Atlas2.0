@@ -4,7 +4,8 @@ import { requireProfile } from "@/lib/auth";
 import { searchSaleValidations, type SaleValidationRow, type SaleValidationStatus } from "@/app/actions/validacion-ventas";
 import { SaleValidationsTable } from "@/components/sale-validations-table";
 import { formatUf } from "@/lib/sale-validation-format";
-import { Callout, MetricCard, SectionCard } from "@/components/ui";
+import { KpiStrip, KpiStripItem } from "@/components/report-kit";
+import { Avatar, Callout, SectionCard } from "@/components/ui";
 import { ValidacionVentasHeader } from "../header";
 import {
   SaleFilters,
@@ -82,6 +83,8 @@ export default async function VentasValidadasPage({ searchParams }: { searchPara
     return map;
   }, new Map<string, { ventas: number; uf: number }>())].sort((a, b) => b[1].uf - a[1].uf || b[1].ventas - a[1].ventas);
 
+  const maxUf = Math.max(0, ...byAgent.map(([, totals]) => totals.uf));
+
   const thisMonth = monthRange(null);
   const lastMonth = monthRange(null, -1);
   const estadoLabel = ESTADOS.find((estado) => estado.value === status)!.label.toLowerCase();
@@ -110,43 +113,52 @@ export default async function VentasValidadasPage({ searchParams }: { searchPara
 
       {loadError && <Callout tone="danger">{loadError}</Callout>}
 
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <MetricCard
+      <KpiStrip columns={4}>
+        <KpiStripItem
           label={`Ventas ${estadoLabel}`}
           value={rows.length.toLocaleString("es-CL")}
-          hint={
+          icon={BadgeCheck}
+          detail={
             range.periodo
               ? "Vendidas en el período, aunque se hayan cargado o aprobado después"
               : filtered
                 ? "Con los filtros aplicados"
                 : "Todo el historial"
           }
-          icon={BadgeCheck}
-          iconTone="green"
         />
-        <MetricCard label="UF mensual" value={formatUf(totalUf)} hint="Suma de las ventas encontradas" icon={Coins} iconTone="green" />
-        <MetricCard label="UF promedio por venta" value={formatUf(rows.length ? totalUf / rows.length : null)} icon={Calculator} iconTone="violet" />
-        <MetricCard
+        <KpiStripItem label="UF mensual" value={formatUf(totalUf)} icon={Coins} detail="Suma de las ventas encontradas" />
+        <KpiStripItem label="UF promedio por venta" value={formatUf(rows.length ? totalUf / rows.length : null)} icon={Calculator} />
+        <KpiStripItem
           label="Ejecutivos"
           value={byAgent.length.toLocaleString("es-CL")}
-          hint={byAgent[0] ? `Lidera ${byAgent[0][0]}` : undefined}
           icon={Users}
-          iconTone="blue"
+          detail={byAgent[0] ? `Lidera ${byAgent[0][0]}` : undefined}
         />
-      </section>
+      </KpiStrip>
 
       {byAgent.length > 1 && (
-        <SectionCard title="Por ejecutivo" description="Ventas y UF de lo encontrado, de mayor a menor." icon={Users} tone="blue">
-          <ul className="grid gap-x-6 gap-y-1 px-4 py-3 text-sm sm:grid-cols-2 xl:grid-cols-3">
-            {byAgent.map(([name, totals]) => (
-              <li key={name} className="flex items-baseline justify-between gap-3 border-b border-border/60 py-1.5">
-                <span className="truncate">{name}</span>
-                <span className="shrink-0 tabular-nums text-muted-foreground">
-                  {totals.ventas} · <span className="font-medium text-foreground">{formatUf(totals.uf)}</span>
-                </span>
+        <SectionCard title="Por ejecutivo" description="Ventas y UF de lo encontrado, de mayor a menor.">
+          {/* Ranking compacto: avatar, barra de UF contra el líder y las cifras. */}
+          <ol className="grid border-t border-border sm:grid-cols-2 xl:grid-cols-3">
+            {byAgent.map(([name, totals], index) => (
+              <li key={name} className="flex items-center gap-3 border-b border-border/70 px-5 py-2.5">
+                <span className="w-4 shrink-0 text-right text-[11px] font-semibold tabular-nums text-muted-foreground">{index + 1}</span>
+                <Avatar name={name} size="sm" tone={name === "Sin ejecutivo" ? "slate" : undefined} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-medium text-foreground" title={name}>{name}</p>
+                  <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-surface-muted" aria-hidden="true">
+                    <div className="h-full rounded-full bg-primary/70" style={{ width: `${maxUf > 0 ? (totals.uf / maxUf) * 100 : 0}%` }} />
+                  </div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="text-[13px] font-semibold tabular-nums text-foreground">{formatUf(totals.uf)}</p>
+                  <p className="text-[11px] tabular-nums text-muted-foreground">
+                    {totals.ventas} {totals.ventas === 1 ? "venta" : "ventas"}
+                  </p>
+                </div>
               </li>
             ))}
-          </ul>
+          </ol>
         </SectionCard>
       )}
 

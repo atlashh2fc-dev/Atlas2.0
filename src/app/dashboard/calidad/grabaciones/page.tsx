@@ -78,61 +78,68 @@ export default async function GrabacionesPage({
       {requestedRange.notice && <Callout tone="warning">{requestedRange.notice}</Callout>}
 
       <FilterBar storageKey="calidad-grabaciones" applyLabel="Buscar grabaciones">
-        <Field label="RUT" className="min-w-56 flex-1">
+        <Field label="RUT" hideLabel className="min-w-56 flex-1">
           <span className="relative block">
             <Search
               size={15}
               className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
             />
-            <Input name="rut" defaultValue={filters.rut} placeholder="12.345.678-9" className="pl-8" />
+            <Input name="rut" defaultValue={filters.rut} placeholder="Buscar por RUT (12.345.678-9)" className="pl-8" />
           </span>
         </Field>
 
-        <Field label="Campaña" className="w-52">
+        <Field label="Campaña" hideLabel className="w-52">
           <Select name="campaign" defaultValue={filters.campaign}>
-            <option value="">Todas</option>
+            <option value="">Todas las campañas</option>
             {campaignOptions.map((campaign) => (
               <option key={campaign.id} value={campaign.id}>{campaign.name}</option>
             ))}
           </Select>
         </Field>
 
-        <Field label="Ejecutivo" className="w-52">
+        <Field label="Ejecutivo" hideLabel className="w-52">
           <Select name="agent" defaultValue={filters.agent}>
-            <option value="">Todos</option>
+            <option value="">Todos los ejecutivos</option>
             {agentOptions.map((agent) => (
               <option key={agent.id} value={agent.id}>{agent.full_name}</option>
             ))}
           </Select>
         </Field>
 
-        <Field label="Desde" className="w-40">
-          <Input name="from" type="date" defaultValue={filters.from} max={filters.to} />
-        </Field>
-
-        <Field label="Hasta" className="w-40">
-          <Input name="to" type="date" defaultValue={filters.to} min={filters.from} />
-        </Field>
+        {/* Rango de fechas en un solo control: desde → hasta. */}
+        <span className="flex items-center gap-1.5">
+          <Field label="Desde" hideLabel className="w-36">
+            <Input name="from" type="date" defaultValue={filters.from} max={filters.to} />
+          </Field>
+          <span aria-hidden="true" className="text-xs text-muted-foreground">→</span>
+          <Field label="Hasta" hideLabel className="w-36">
+            <Input name="to" type="date" defaultValue={filters.to} min={filters.from} />
+          </Field>
+        </span>
       </FilterBar>
 
-      <Callout tone="info">
-        Atlas selecciona automáticamente ventas o rechazos de más de 2 minutos con audio íntegro. En cualquier otra grabación disponible puedes usar “Transcribir igual”; “Evaluar script” prepara el texto y muestra el apego a la pauta en un solo paso.
-      </Callout>
       {!mercuryConfigured && (
         <Callout tone="warning">
           La pauta de Secretaría Virtual ya está cargada, pero la evaluación automática del script todavía no está activada. Puedes escuchar y transcribir; para evaluar, pídele a soporte que la active.
         </Callout>
       )}
 
-      <section aria-labelledby="quality-recordings-title">
-        <div className="mb-3">
-          <h2 id="quality-recordings-title" className="flex items-center gap-2 text-sm font-semibold text-foreground">
-            <Headphones size={16} className="text-muted-foreground" aria-hidden="true" />
-            Grabaciones post-llamada
-          </h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {recordings.total.toLocaleString("es-CL")} grabación{recordings.total === 1 ? "" : "es"} encontrada{recordings.total === 1 ? "" : "s"}
-          </p>
+      <section aria-labelledby="quality-recordings-title" className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
+          <div className="min-w-0">
+            <h2 id="quality-recordings-title" className="flex items-center gap-2 text-[15px] font-semibold tracking-tight text-foreground">
+              <span className="icon-chip size-7 rounded-lg" data-tone="violet" aria-hidden="true">
+                <Headphones size={14} />
+              </span>
+              Grabaciones post-llamada
+              <span className="rounded-md bg-surface-muted px-1.5 text-[11px] font-semibold tabular-nums text-muted-foreground">
+                {recordings.total.toLocaleString("es-CL")}
+              </span>
+            </h2>
+            <p className="mt-1.5 max-w-3xl text-xs leading-relaxed text-muted-foreground">
+              Atlas selecciona solo las ventas o rechazos de más de 2 minutos con audio íntegro. En cualquier otra grabación puedes usar «Transcribir igual»; «Evaluar script» prepara el texto y puntúa el apego a la pauta en un solo paso.
+            </p>
+          </div>
         </div>
 
         <QualityRecordingsTable {...recordings} />

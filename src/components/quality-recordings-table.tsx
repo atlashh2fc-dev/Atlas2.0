@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Badge, DataTable, type Column } from "@/components/ui";
+import { Avatar, Badge, DataTable, type Column } from "@/components/ui";
 import { RecordingAudioPlayer } from "@/components/recording-audio-player";
 import { RecordingQualityEvaluationControl } from "@/components/recording-quality-evaluation-control";
 import { RecordingTranscriptionControl } from "@/components/recording-transcription-control";
@@ -11,16 +11,26 @@ import {
   qualityTypificationLabel,
 } from "@/lib/quality-recording-labels";
 
+/** "24 may · 09:27" en hora de Chile: el día manda, la hora acompaña. */
 function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("es-CL", {
-    timeZone: "America/Santiago",
-    year: "2-digit",
-    month: "2-digit",
-    day: "2-digit",
+  const date = new Date(value);
+  const day = date
+    .toLocaleDateString("es-CL", { day: "numeric", month: "short", timeZone: "America/Santiago" })
+    .replace(".", "");
+  const time = date.toLocaleTimeString("es-CL", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
-  }).format(new Date(value)).replace(",", "");
+    timeZone: "America/Santiago",
+  });
+  return `${day} · ${time}`;
+}
+
+/** Las tipificaciones llegan en mayúsculas desde el flujo; se leen mejor en tipo oración. */
+function sentenceCase(value: string) {
+  if (value !== value.toUpperCase()) return value;
+  const lower = value.toLocaleLowerCase("es-CL");
+  return lower.charAt(0).toLocaleUpperCase("es-CL") + lower.slice(1);
 }
 
 function formatDuration(seconds: number | null) {
@@ -60,52 +70,105 @@ function disconnectPartyLabel(row: QualityRecordingRow) {
   return row.endedAt ? "No informado" : "En curso";
 }
 
+function integrityLabel(row: QualityRecordingRow) {
+  const integrity = classifyRecordingIntegrity(row);
+  if (integrity === "complete") return "Completa";
+  if (integrity === "incomplete") return "Incompleta";
+  if (integrity === "recording") return "En curso";
+  return "No verificable";
+}
+
+function transcriptionLabel(row: QualityRecordingRow) {
+  return row.transcriptionStatus === "completed" ? "Completada"
+    : row.transcriptionStatus === "processing" ? "Procesando"
+      : row.transcriptionStatus === "failed" ? "Con error" : "Pendiente";
+}
+
+/** "24 may" y "09:27" por separado, para la celda de dos líneas. */
+function dayAndTime(value: string) {
+  const [day, time] = formatDateTime(value).split(" · ");
+  return { day, time };
+}
+
+/*
+ * Columnas al estilo de Gong/Chorus: cada fila es una llamada con quién la
+ * hizo (avatar), con quién, cómo terminó, el audio y el puntaje. Se conservan
+ * las nueve columnas y sus valores de exportación (los fija
+ * tests/quality-recordings-table.test.ts); lo que cambia es cómo se ve cada celda.
+ */
 const columns: Column<QualityRecordingRow>[] = [
   {
     id: "startedAt",
     header: "Fecha y hora",
-    className: "w-[11%]",
+    className: "w-[8%]",
     value: (row) => row.startedAt,
-    cell: (row) => <span className="text-foreground">{formatDateTime(row.startedAt)}</span>,
+    cell: (row) => {
+      const { day, time } = dayAndTime(row.startedAt);
+      return (
+        <span className="block whitespace-nowrap">
+          <span className="block text-foreground">{day}</span>
+          <span className="block text-xs tabular-nums text-muted-foreground">{time}</span>
+        </span>
+      );
+    },
   },
   {
     id: "campaign",
     header: "Campaña",
-    className: "w-[8%]",
+    className: "w-[10%]",
     value: (row) => row.campaignName,
-    cell: (row) => <span className="font-medium text-foreground">{row.campaignName}</span>,
+    cell: (row) => (
+      <span className="flex min-w-0 items-center gap-2">
+        <Avatar name={row.campaignName} shape="square" size="xs" />
+        <span className="min-w-0 truncate text-foreground" title={row.campaignName}>{row.campaignName}</span>
+      </span>
+    ),
   },
-  { id: "agent", header: "Ejecutivo", value: (row) => row.agentName, className: "w-[8%]" },
+  {
+    id: "agent",
+    header: "Ejecutivo",
+    className: "w-[11%]",
+    value: (row) => row.agentName,
+    cell: (row) => (
+      <span className="flex min-w-0 items-center gap-2">
+        <Avatar name={row.agentName} size="sm" />
+        <span className="min-w-0 truncate font-medium text-foreground" title={row.agentName}>{row.agentName}</span>
+      </span>
+    ),
+  },
   {
     id: "typification",
     header: "Tipificación",
-    className: "w-[12%]",
+    className: "w-[11%]",
     value: qualityTypificationLabel,
-    cell: (row) =>
-      row.typification ? (
-        <span className="block min-w-0 whitespace-normal font-medium text-foreground">
-          {qualityTypificationLabel(row)}
-        </span>
-      ) : (
-        <span className="whitespace-nowrap text-muted-foreground">{qualityTypificationLabel(row)}</span>
-      ),
+    cell: (row) => (
+      <span
+        className={
+          row.typification
+            ? "block min-w-0 whitespace-normal font-medium text-foreground"
+            : "block min-w-0 whitespace-normal text-muted-foreground"
+        }
+      >
+        {sentenceCase(qualityTypificationLabel(row))}
+      </span>
+    ),
   },
   {
     id: "client",
     header: "Cliente / RUT",
-    className: "w-[16%]",
+    className: "w-[13%]",
     value: (row) => `${row.leadName} ${row.rut}`,
     cell: (row) => (
-      <span>
-        <span className="block text-foreground">{row.leadName}</span>
-        <span className="block text-xs text-muted-foreground">{row.rut}</span>
+      <span className="block min-w-0">
+        <span className="block truncate text-foreground" title={row.leadName}>{row.leadName}</span>
+        <span className="block text-xs tabular-nums text-muted-foreground">{row.rut}</span>
       </span>
     ),
   },
   {
     id: "disconnectParty",
     header: "Lado que finalizó",
-    className: "w-[9%]",
+    className: "w-[8%]",
     tooltip: "Lado técnico informado por AgentComplete. El motor también correlaciona por extensión cuando Asterisk omite los IDs; no prueba intención humana.",
     value: disconnectPartyLabel,
     cell: (row) => {
@@ -116,7 +179,7 @@ const columns: Column<QualityRecordingRow>[] = [
         label: "No determinado",
         tone: "neutral" as const,
       };
-      return <Badge tone={party.tone}>{party.label}</Badge>;
+      return party.tone === "neutral" ? <span className="text-foreground">{party.label}</span> : <Badge tone={party.tone}>{party.label}</Badge>;
     },
   },
   {
@@ -124,13 +187,7 @@ const columns: Column<QualityRecordingRow>[] = [
     header: "Integridad",
     className: "w-[8%]",
     tooltip: "Compara la duración del archivo con TalkTime de Asterisk; si falta, usa el tramo bridgeado durable. Tolerancia: 2 segundos.",
-    value: (row) => {
-      const integrity = classifyRecordingIntegrity(row);
-      if (integrity === "complete") return "Completa";
-      if (integrity === "incomplete") return "Incompleta";
-      if (integrity === "recording") return "En curso";
-      return "No verificable";
-    },
+    value: integrityLabel,
     cell: (row) => {
       const integrity = classifyRecordingIntegrity(row);
       if (integrity === "complete") {
@@ -157,7 +214,7 @@ const columns: Column<QualityRecordingRow>[] = [
   {
     id: "recording",
     header: "Grabación",
-    className: "w-[12%]",
+    className: "w-[16%]",
     value: (row) => `${formatDuration(row.durationSeconds)} · ${(row.codec ?? "audio").toUpperCase()} · ${formatSize(row.sizeBytes)} · ${STATUS[row.status]?.label ?? row.status}`,
     exportValues: (row) => ({
       "Duración": row.durationSeconds,
@@ -168,34 +225,30 @@ const columns: Column<QualityRecordingRow>[] = [
     cell: (row) => {
       const status = STATUS[row.status] ?? { label: row.status, tone: "neutral" as const };
       return (
-        <div className="space-y-1.5">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="font-medium text-foreground">{formatDuration(row.durationSeconds)}</span>
-            <span className="text-[11px] text-muted-foreground">
-              {(row.codec ?? "audio").toUpperCase()} · {formatSize(row.sizeBytes)}
-            </span>
-            <Badge tone={status.tone}>{status.label}</Badge>
-          </div>
+        <div className="min-w-0 space-y-1">
           <RecordingAudioPlayer recordingId={row.id} playable={row.status === "ready"} compact />
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+            <span className="font-medium tabular-nums text-foreground">{formatDuration(row.durationSeconds)}</span>
+            <span>{(row.codec ?? "audio").toUpperCase()} · {formatSize(row.sizeBytes)}</span>
+            {row.status !== "ready" && <Badge tone={status.tone}>{status.label}</Badge>}
+          </p>
         </div>
       );
     },
   },
   {
     id: "qualityActions",
-    header: "Calidad y texto",
-    className: "w-[16%]",
+    header: "Calidad",
+    className: "w-[15%]",
     tooltip: "Transcribe si hace falta y puntúa el apego al guion vigente con Mercury 2; requiere revisión humana.",
     value: (row) => `${row.evaluationScore ?? "Pendiente"} · ${row.transcriptionStatus ?? "Pendiente"}`,
     exportValues: (row) => ({
       "Apego al script": row.evaluationScore,
-      "Transcripción": row.transcriptionStatus === "completed" ? "Completada"
-        : row.transcriptionStatus === "processing" ? "Procesando"
-          : row.transcriptionStatus === "failed" ? "Con error" : "Pendiente",
+      "Transcripción": transcriptionLabel(row),
     }),
     sortable: false,
     cell: (row) => (
-      <div className="grid gap-1.5">
+      <div className="grid min-w-0 gap-1">
         <RecordingQualityEvaluationControl
           recordingId={row.id}
           campaignName={row.campaignName}

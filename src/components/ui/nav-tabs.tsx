@@ -28,7 +28,7 @@ export function NavTabs({ tabs, className }: { tabs: NavTabItem[]; className?: s
   const activeHref = exacta?.href ?? matches.sort((a, b) => b.href.length - a.href.length)[0]?.href;
 
   return (
-    <div className={cn("-mt-1 flex flex-wrap items-center gap-x-5 border-b border-border", className)}>
+    <div className={cn("-mt-1 flex items-center gap-1 overflow-x-auto border-b border-border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden", className)}>
       {tabs.map((tab) => {
         const active = tab.href === activeHref;
         return (
@@ -37,19 +37,18 @@ export function NavTabs({ tabs, className }: { tabs: NavTabItem[]; className?: s
             href={tab.href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "-mb-px inline-flex items-center whitespace-nowrap border-b-2 py-2.5 text-sm font-medium transition-colors",
-              active
-                ? "border-foreground text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
+              "relative -mb-px inline-flex h-10 items-center gap-2 whitespace-nowrap px-2.5 text-[13px] font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+              active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
             )}
           >
             {tab.label}
             {tab.badge ? (
-              <span className="ml-1.5 text-xs font-semibold tabular-nums text-primary">
+              <span className="rounded-md bg-primary/15 px-1.5 py-px text-[11px] font-semibold tabular-nums text-primary">
                 <span className="sr-only">, pendientes: </span>
-                {tab.badge}
+                {tab.badge.toLocaleString("es-CL")}
               </span>
             ) : null}
+            <span aria-hidden="true" className={cn("absolute inset-x-2 bottom-0 h-0.5 rounded-full", active ? "bg-primary" : "bg-transparent")} />
           </Link>
         );
       })}

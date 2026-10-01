@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, ExternalLink, X } from "lucide-react";
+import { Check, CheckCircle2, Clock, ExternalLink, X, XCircle } from "lucide-react";
 import {
   resolveQuotation,
   type QuotationCampaign,
@@ -11,8 +11,9 @@ import {
   type QuotationRow,
   type QuotationState,
 } from "@/app/actions/cotizaciones";
-import { Badge, Button, DataTable, Field, Select, SlideOver, useToast, type BadgeTone, type Column } from "@/components/ui";
+import { Avatar, Button, DataTable, Field, Select, SlideOver, useToast, type BadgeTone, type Column } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { dateTimeLabel, dayLabel } from "@/components/record-kit";
 
 /**
  * Cotizaciones enviadas del ejecutivo. Cada una se marca vendida o no vendida
@@ -20,10 +21,10 @@ import { cn } from "@/lib/utils";
  * venta va a Validación de ventas como cualquier otra; la RPC valida que el
  * registro sea del ejecutivo y que el motivo sea del flujo de la campaña.
  */
-const STATE_BADGE: Record<QuotationState, { tone: BadgeTone; label: string }> = {
-  pendiente: { tone: "warning", label: "Pendiente" },
-  vendida: { tone: "success", label: "Vendida" },
-  no_vendida: { tone: "neutral", label: "No vendida" },
+const STATE_BADGE: Record<QuotationState, { tone: BadgeTone; label: string; chip: string; icon: typeof Clock }> = {
+  pendiente: { tone: "warning", label: "Pendiente", chip: "amber", icon: Clock },
+  vendida: { tone: "success", label: "Vendida", chip: "green", icon: CheckCircle2 },
+  no_vendida: { tone: "neutral", label: "No vendida", chip: "slate", icon: XCircle },
 };
 
 const VALIDATION_LABEL: Record<NonNullable<QuotationRow["validationStatus"]>, string> = {
@@ -47,19 +48,8 @@ const FILTERS: { value: QuotationState | "todas"; label: string }[] = [
   { value: "todas", label: "Todas" },
 ];
 
-const dateTime = new Intl.DateTimeFormat("es-CL", {
-  timeZone: "America/Santiago",
-  day: "2-digit",
-  month: "short",
-  hour: "2-digit",
-  minute: "2-digit",
-});
-const dateOnly = new Intl.DateTimeFormat("es-CL", {
-  timeZone: "America/Santiago",
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-});
+/** "24 may · 09:27" en hora de Chile, igual que el resto de la ficha. */
+const dateTime = { format: (date: Date) => dateTimeLabel(date.toISOString()) };
 
 function daysSince(iso: string) {
   return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000));
@@ -149,12 +139,15 @@ export function AgentQuotationsTable({ rows, campaigns }: { rows: QuotationRow[]
       value: (row) => row.leadName,
       exportValues: (row) => ({ Cliente: row.leadName, RUT: row.leadRut, Teléfono: row.leadPhone, Correo: row.leadEmail }),
       cell: (row) => (
-        <Link href={`/dashboard/leads/${row.leadId}`} className="min-w-0">
-          <span className="block max-w-72 truncate font-medium text-foreground hover:underline">
-            {row.leadName ?? "Registro sin nombre"}
-          </span>
-          <span className="block text-xs text-muted-foreground">
-            {[row.leadRut, row.leadPhone].filter(Boolean).join(" · ") || "—"}
+        <Link href={`/dashboard/leads/${row.leadId}`} className="group flex min-w-0 items-center gap-3">
+          <Avatar name={row.leadName} seed={row.leadRut ?? row.leadName} size="md" shape="square" />
+          <span className="min-w-0">
+            <span className="block max-w-72 truncate font-medium text-foreground group-hover:text-primary">
+              {row.leadName ?? "Registro sin nombre"}
+            </span>
+            <span className="block text-xs tabular-nums text-muted-foreground">
+              {[row.leadRut, row.leadPhone].filter(Boolean).join(" · ") || "—"}
+            </span>
           </span>
         </Link>
       ),
@@ -165,6 +158,17 @@ export function AgentQuotationsTable({ rows, campaigns }: { rows: QuotationRow[]
             id: "campana",
             header: "Campaña",
             value: (row: QuotationRow) => (row.campaignId ? campaignById.get(row.campaignId)?.name ?? null : null),
+            cell: (row: QuotationRow) => {
+              const name = row.campaignId ? campaignById.get(row.campaignId)?.name ?? null : null;
+              return name ? (
+                <span className="flex min-w-0 items-center gap-2">
+                  <Avatar name={name} size="xs" shape="square" />
+                  <span className="truncate text-foreground">{name}</span>
+                </span>
+              ) : (
+                <span className="text-muted-foreground/60">—</span>
+              );
+            },
           },
         ]
       : []),
@@ -174,10 +178,10 @@ export function AgentQuotationsTable({ rows, campaigns }: { rows: QuotationRow[]
       value: (row) => row.quotedAt,
       exportValues: (row) => ({ "Fecha cotización": dateTime.format(new Date(row.quotedAt)), "Nota cotización": row.quoteNotes }),
       cell: (row) => (
-        <span className="whitespace-nowrap text-sm">
-          {dateOnly.format(new Date(row.quotedAt))}
+        <span className="block whitespace-nowrap" title={dateTimeLabel(row.quotedAt)}>
+          <span className="block text-foreground">{dayLabel(row.quotedAt)}</span>
           <span className="block text-xs text-muted-foreground">
-            {daysSince(row.quotedAt) === 0 ? "hoy" : `hace ${daysSince(row.quotedAt)} d`}
+            {daysSince(row.quotedAt) === 0 ? "Hoy" : daysSince(row.quotedAt) === 1 ? "Ayer" : `Hace ${daysSince(row.quotedAt)} días`}
           </span>
         </span>
       ),
@@ -198,20 +202,29 @@ export function AgentQuotationsTable({ rows, campaigns }: { rows: QuotationRow[]
       header: "Estado",
       value: (row) => STATE_BADGE[row.state].label,
       exportValues: (row) => ({ Estado: STATE_BADGE[row.state].label, Detalle: stateDetail(row) }),
-      cell: (row) => (
-        <span className="block">
-          <Badge tone={STATE_BADGE[row.state].tone}>{STATE_BADGE[row.state].label}</Badge>
-          <span
-            className={cn(
-              "mt-0.5 block text-xs",
-              row.validationStatus === "rechazada" ? "text-danger" : "text-muted-foreground"
-            )}
-            title={row.validationNote ?? undefined}
-          >
-            {stateDetail(row)}
+      cell: (row) => {
+        const state = STATE_BADGE[row.state];
+        const Icon = state.icon;
+        return (
+          <span className="flex items-center gap-2.5">
+            <span className="icon-chip size-7 rounded-lg" data-tone={state.chip} aria-hidden="true">
+              <Icon size={14} />
+            </span>
+            <span className="min-w-0">
+              <span className="block font-medium text-foreground">{state.label}</span>
+              <span
+                className={cn(
+                  "block max-w-[15rem] truncate text-xs",
+                  row.validationStatus === "rechazada" ? "text-danger" : "text-muted-foreground"
+                )}
+                title={row.validationNote ?? stateDetail(row) ?? undefined}
+              >
+                {stateDetail(row)}
+              </span>
+            </span>
           </span>
-        </span>
-      ),
+        );
+      },
     },
     {
       id: "acciones",
@@ -247,31 +260,43 @@ export function AgentQuotationsTable({ rows, campaigns }: { rows: QuotationRow[]
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label="Filtrar cotizaciones por estado">
-        {FILTERS.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            role="tab"
-            aria-selected={filter === option.value}
-            onClick={() => setFilter(option.value)}
-            className={cn(
-              "inline-flex h-8 items-center rounded-lg px-2.5 text-[13px] font-medium transition-colors",
-              filter === option.value
-                ? "bg-surface text-foreground shadow-sm ring-1 ring-border"
-                : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"
-            )}
-          >
-            {option.label}
-            <span className="ml-1.5 text-xs font-semibold tabular-nums text-muted-foreground">{counts[option.value].toLocaleString("es-CL")}</span>
-          </button>
-        ))}
-      </div>
-
       <DataTable
         rows={visible}
         columns={columns}
         getRowId={(row) => row.leadId}
+        toolbar={
+          // Vistas pegadas a la tabla que filtran, con su conteo en caja suave.
+          <div role="tablist" aria-label="Filtrar cotizaciones por estado" className="-mb-px flex min-w-0 items-stretch gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {FILTERS.map((option) => {
+              const active = filter === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setFilter(option.value)}
+                  className={cn(
+                    "relative inline-flex h-11 shrink-0 items-center gap-2 px-2.5 text-[13px] font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                    active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {option.label}
+                  <span
+                    className={cn(
+                      "rounded-md px-1.5 py-px text-[11px] font-semibold tabular-nums",
+                      active ? "bg-foreground/[0.08] text-foreground" : "bg-surface-muted text-muted-foreground",
+                      option.value === "pendiente" && counts.pendiente > 0 && "text-warning"
+                    )}
+                  >
+                    {counts[option.value].toLocaleString("es-CL")}
+                  </span>
+                  <span aria-hidden="true" className={cn("absolute inset-x-2 bottom-0 h-0.5 rounded-full", active ? "bg-primary" : "bg-transparent")} />
+                </button>
+              );
+            })}
+          </div>
+        }
         storageKey="mis-cotizaciones"
         exportFilename="mis-cotizaciones"
         emptyTitle={filter === "pendiente" ? "No tienes cotizaciones pendientes" : "No hay cotizaciones en este estado"}
@@ -310,18 +335,17 @@ export function AgentQuotationsTable({ rows, campaigns }: { rows: QuotationRow[]
       >
         {draft && (
           <div className="space-y-4 text-sm">
-            <div
-              className={cn(
-                "rounded-lg border border-border border-l-2 bg-surface-muted px-3 py-2",
-                draft.result === "vendida" ? "border-l-success" : "border-l-danger"
-              )}
-            >
-              <p className="font-medium">{draft.row.leadName ?? "Registro sin nombre"}</p>
-              <p className="text-xs text-muted-foreground">
-                Cotizada el {dateTime.format(new Date(draft.row.quotedAt))}
-                {draft.row.leadEmail ? ` · ${draft.row.leadEmail}` : ""}
-              </p>
-              {draft.row.quoteNotes && <p className="mt-1 whitespace-pre-wrap text-xs">{draft.row.quoteNotes}</p>}
+            {/* Identidad del cliente, igual que en la tabla: avatar y dos líneas. */}
+            <div className="flex items-start gap-3 border-b border-border pb-4">
+              <Avatar name={draft.row.leadName} seed={draft.row.leadRut ?? draft.row.leadName} size="md" shape="square" />
+              <div className="min-w-0">
+                <p className="font-medium text-foreground">{draft.row.leadName ?? "Registro sin nombre"}</p>
+                <p className="text-xs text-muted-foreground">
+                  Cotizada el {dateTime.format(new Date(draft.row.quotedAt))}
+                  {draft.row.leadEmail ? ` · ${draft.row.leadEmail}` : ""}
+                </p>
+                {draft.row.quoteNotes && <p className="mt-1.5 whitespace-pre-wrap text-xs text-muted-foreground">{draft.row.quoteNotes}</p>}
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-1.5" role="radiogroup" aria-label="Resultado">

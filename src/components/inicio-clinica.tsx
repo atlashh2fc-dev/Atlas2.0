@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { BadgeCheck, CalendarClock, CalendarX2, ChartColumn, CheckCheck, HandCoins, Hourglass, Megaphone, MessageCircle, Percent, PhoneCall, Plus, UserPlus, UserRound } from "lucide-react";
+import { BadgeCheck, CalendarClock, CalendarX2, ChartColumn, CheckCheck, ChevronRight, HandCoins, MessageCircle, Percent, PhoneCall, Plus, Sun, UserPlus } from "lucide-react";
 
-import { Badge, Callout, EmptyState, MetricCard, PageHeader, SectionCard, buttonClasses } from "@/components/ui";
+import { Avatar, Badge, Callout, EmptyState, PageHeader, SectionCard, Table, Tbody, Td, Th, Thead, Tr, buttonClasses } from "@/components/ui";
+import { KpiStrip, KpiStripItem } from "@/components/report-kit";
 import { ATENCION_POR_EDICION, PACIENTES_POR_EDICION, VENTAS_POR_EDICION, type Clinica } from "@/lib/ediciones";
 import { ETIQUETA_ESTADO, ocupaHorario, primero as primeroDe, type Cita } from "@/lib/citas";
 import { REPORT_TIME_ZONE } from "@/lib/report-range";
@@ -51,22 +52,6 @@ function inicioDeHoyEnChile(ahora: Date): Date {
   const mediodia = new Date(`${partes}T12:00:00Z`);
   const desfase = mediodia.getTime() - new Date(mediodia.toLocaleString("en-US", { timeZone: REPORT_TIME_ZONE })).getTime();
   return new Date(new Date(`${partes}T00:00:00Z`).getTime() + desfase);
-}
-
-/** Cifra en baldosa, como en Operación: el borde izquierdo y el número toman el color del estado. */
-function Baldosa({ label, valor, tono = "default" }: { label: string; valor: number; tono?: "default" | "warn" | "good" }) {
-  const estilo =
-    tono === "warn"
-      ? { borde: "border-l-warning", cifra: "text-warning" }
-      : tono === "good"
-        ? { borde: "border-l-success", cifra: "text-success" }
-        : { borde: "border-l-border-strong", cifra: "text-foreground" };
-  return (
-    <div className={`rounded-lg border border-border border-l-2 bg-background px-3 py-2.5 ${estilo.borde}`}>
-      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
-      <dd className={`mt-1 text-2xl font-semibold tracking-tight tabular-nums ${estilo.cifra}`}>{valor.toLocaleString("es-CL")}</dd>
-    </div>
-  );
 }
 
 /** Las alertas de la clínica: 7, 15 y 30 días sin respuesta. */
@@ -214,22 +199,38 @@ export async function InicioClinica({
   const negocioMinuscula = voc.negocio.toLowerCase();
   const negociosMinuscula = voc.negocios.toLowerCase();
 
+  // La agenda del día por profesional, como la vista de día de Jane o
+  // Doctoralia: una columna por profesional con sus bloques en orden.
+  const porProfesionalHoy = new Map<string, { id: string; nombre: string; color: string | undefined; citas: typeof citasActivas }>();
+  for (const cita of citasActivas) {
+    const profesional = primeroDe(cita.profesionales);
+    const llave = cita.profesional_id ?? "sin";
+    const grupo = porProfesionalHoy.get(llave) ?? { id: llave, nombre: profesional?.nombre ?? atencion.profesional, color: profesional?.color, citas: [] };
+    grupo.citas.push(cita);
+    porProfesionalHoy.set(llave, grupo);
+  }
+  const columnasAgenda = [...porProfesionalHoy.values()];
+  const POR_COLUMNA = 6;
+  const ocultas = columnasAgenda.reduce((total, columna) => total + Math.max(0, columna.citas.length - POR_COLUMNA), 0);
+  const gridAgenda = columnasAgenda.length >= 3 ? "lg:grid-cols-3" : columnasAgenda.length === 2 ? "md:grid-cols-2" : "";
+
   return (
     <div className="space-y-5">
       <PageHeader
         title={`Hola, ${primerNombre}`}
+        icon={Sun}
         description={`${empresa ?? (edicion === "barber" ? "Tu barbería" : "Tu clínica")} · ${fechaLarga.format(ahora)}${soloMios ? ` · tus ${genteDeLaFicha}` : ""}`}
         actions={
           abreFichas ? (
             <div className="flex flex-wrap gap-2">
-              <Link href="/dashboard/citas" className={buttonClasses()}>
-                <Plus size={16} aria-hidden="true" /> Nueva {atencion.cita}
+              <Link href="/dashboard/pacientes" className={buttonClasses({ variant: "secondary" })}>
+                <UserPlus size={16} aria-hidden="true" /> {PACIENTES_POR_EDICION[edicion].titulo}
               </Link>
               <Link href="/dashboard/ventas" className={buttonClasses({ variant: "secondary" })}>
                 {voc.nuevo}
               </Link>
-              <Link href="/dashboard/pacientes" className={buttonClasses({ variant: "secondary" })}>
-                <UserPlus size={16} aria-hidden="true" /> {PACIENTES_POR_EDICION[edicion].titulo}
+              <Link href="/dashboard/citas" className={buttonClasses()}>
+                <Plus size={16} aria-hidden="true" /> Nueva {atencion.cita}
               </Link>
             </div>
           ) : undefined
@@ -242,142 +243,179 @@ export async function InicioClinica({
         </div>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard
+      <KpiStrip columns={4}>
+        <KpiStripItem
           label="En juego"
           value={pesos.format(enJuego)}
-          hint={`${abiertos.length} ${abiertos.length === 1 ? `${negocioMinuscula} abierto` : `${negociosMinuscula} abiertos`}`}
-          href={abreFichas ? "/dashboard/ventas" : undefined}
-          hrefLabel={abreFichas ? `Ver ${negociosMinuscula}` : undefined}
           icon={HandCoins}
-          iconTone="green"
+          detail={`${abiertos.length} ${abiertos.length === 1 ? `${negocioMinuscula} abierto` : `${negociosMinuscula} abiertos`}`}
+          href={abreFichas ? "/dashboard/ventas" : undefined}
         />
-        <MetricCard
+        <KpiStripItem
           label="Aceptado este mes"
           value={pesos.format(montoMes)}
-          hint={`${aceptadosMes.length} ${aceptadosMes.length === 1 ? "aceptado" : "aceptados"}`}
-          tone={montoMes > 0 ? "good" : "default"}
           icon={BadgeCheck}
-          iconTone="green"
+          tone={montoMes > 0 ? "good" : "default"}
+          detail={`${aceptadosMes.length} ${aceptadosMes.length === 1 ? "aceptado" : "aceptados"}`}
         />
-        <MetricCard
+        <KpiStripItem
           label="Tasa de aceptación"
           value={tasa === null ? "Sin datos" : `${tasa}%`}
-          hint={`${ganados90} de ${cerrados90.length} decididos en 90 días`}
-          progress={tasa ?? undefined}
-          tone={tasa === null ? "default" : tasa >= 60 ? "good" : "warn"}
-          tooltip={`De los ${negociosMinuscula} que se aceptaron o rechazaron en los últimos 90 días, cuántos se aceptaron.`}
           icon={Percent}
-          iconTone="violet"
+          definition={{ text: `De los ${negociosMinuscula} que se aceptaron o rechazaron en los últimos 90 días, cuántos se aceptaron.` }}
+          tone={tasa === null ? "default" : tasa >= 60 ? "good" : "warn"}
+          detail={`${ganados90} de ${cerrados90.length} decididos en 90 días`}
+          progress={tasa ?? undefined}
         />
-        <MetricCard
+        <KpiStripItem
           label="Para llamar hoy"
-          value={paraHoy.length}
-          hint={vencidos > 0 ? `${vencidos} ya vencidos` : "al día"}
-          tone={vencidos > 0 ? "warn" : "good"}
+          value={paraHoy.length.toLocaleString("es-CL")}
           icon={PhoneCall}
-          iconTone="primary"
+          tone={vencidos > 0 ? "warn" : "default"}
+          detail={vencidos > 0 ? `${vencidos} ya vencidos` : "Al día"}
         />
-      </div>
+      </KpiStrip>
+
+      <SectionCard
+        title={
+          <span className="flex items-center gap-2">
+            Agenda de hoy
+            <span className="rounded-md bg-surface-muted px-1.5 py-px text-[11px] font-semibold tabular-nums text-muted-foreground">
+              {citasActivas.length}
+            </span>
+          </span>
+        }
+        description={`${citasSinConfirmar ? `${citasSinConfirmar} sin confirmar · ` : ""}${citasEnSala ? `${citasEnSala} en sala · ` : ""}${pesos.format(porCobrar)} por cobrar en total`}
+        actions={
+          abreFichas ? (
+            <Link href="/dashboard/citas" className={buttonClasses({ variant: "ghost", size: "sm" })}>
+              Abrir agenda <ChevronRight size={14} aria-hidden="true" />
+            </Link>
+          ) : undefined
+        }
+      >
+        {citasActivas.length === 0 ? (
+          <EmptyState
+            icon={CalendarX2}
+            title={`Sin ${atencion.citas} hoy`}
+            description={abreFichas ? "Agenda la primera desde la agenda." : `Cuando haya ${atencion.citas} para hoy aparecen acá.`}
+          />
+        ) : (
+          <div className={`grid gap-px border-t border-border bg-border ${gridAgenda}`}>
+            {columnasAgenda.map((columna) => (
+              <div key={columna.id} className="bg-surface">
+                <div className="flex items-center gap-2.5 px-4 pb-2 pt-3">
+                  <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: columna.color }} aria-hidden="true" />
+                  <p className="min-w-0 flex-1 truncate text-[13px] font-semibold text-foreground">{columna.nombre}</p>
+                  <span className="text-xs tabular-nums text-muted-foreground">
+                    {columna.citas.length} {columna.citas.length === 1 ? atencion.cita : atencion.citas}
+                  </span>
+                </div>
+                <ol className="space-y-1.5 px-3 pb-3">
+                  {columna.citas.slice(0, POR_COLUMNA).map((cita) => {
+                    const tutor = primeroDe(cita.sales_companies)?.name ?? "—";
+                    const mascota = primeroDe(cita.mascotas);
+                    const etiqueta = ETIQUETA_ESTADO[cita.estado];
+                    const esProxima = proximaCita?.id === cita.id;
+                    const titulo = mascota ? `${mascota.nombre} · ${tutor}` : tutor;
+                    const bloque = (
+                      <>
+                        <span className="w-11 shrink-0 pt-px text-[13px] font-semibold tabular-nums text-foreground">
+                          {hora.format(new Date(cita.inicio))}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[13px] font-medium text-foreground">{titulo}</span>
+                          <span className="block truncate text-xs text-muted-foreground">{cita.motivo}</span>
+                        </span>
+                        <span className="flex shrink-0 flex-col items-end gap-0.5">
+                          <Badge tone={etiqueta.tone}>{etiqueta.label}</Badge>
+                          {esProxima && <span className="text-[11px] font-medium text-primary">Próxima</span>}
+                        </span>
+                      </>
+                    );
+                    // El bloque toma un tinte suave del color del profesional, como un calendario.
+                    const estilo = { backgroundColor: `color-mix(in srgb, ${columna.color ?? "var(--primary)"} ${esProxima ? 14 : 7}%, transparent)` };
+                    return (
+                      <li key={cita.id}>
+                        {abreFichas ? (
+                          <Link
+                            href={`/dashboard/pacientes/${cita.cuenta_id}`}
+                            className="flex items-start gap-3 rounded-lg px-3 py-2 transition-opacity hover:opacity-85 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            style={estilo}
+                          >
+                            {bloque}
+                          </Link>
+                        ) : (
+                          <div className="flex items-start gap-3 rounded-lg px-3 py-2" style={estilo}>
+                            {bloque}
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ol>
+              </div>
+            ))}
+          </div>
+        )}
+        {ocultas > 0 && (
+          <p className="border-t border-border px-5 py-2.5 text-xs text-muted-foreground">
+            {abreFichas ? (
+              <Link href="/dashboard/citas" className="font-medium text-primary hover:underline">
+                Ver las {citasActivas.length} {atencion.citas} en la agenda
+              </Link>
+            ) : (
+              `Y ${ocultas} ${atencion.citas} más hoy.`
+            )}
+          </p>
+        )}
+      </SectionCard>
 
       <div className="grid gap-4 xl:grid-cols-3">
         <SectionCard
-          className="xl:col-span-3"
-          icon={CalendarClock}
-          tone="amber"
-          title={`Agenda de hoy · ${citasActivas.length}`}
-          description={`${citasSinConfirmar ? `${citasSinConfirmar} sin confirmar · ` : ""}${citasEnSala ? `${citasEnSala} en sala · ` : ""}${pesos.format(porCobrar)} por cobrar en total`}
-        >
-          {citasActivas.length === 0 ? (
-            <EmptyState
-              icon={CalendarX2}
-              title={`Sin ${atencion.citas} hoy`}
-              description={abreFichas ? "Agenda la primera desde la agenda." : `Cuando haya ${atencion.citas} para hoy aparecen acá.`}
-            />
-          ) : (
-            <ul className="divide-y divide-border">
-              {citasActivas.slice(0, 8).map((cita) => {
-                const tutor = primeroDe(cita.sales_companies)?.name ?? "—";
-                const mascota = primeroDe(cita.mascotas);
-                const profesional = primeroDe(cita.profesionales);
-                const etiqueta = ETIQUETA_ESTADO[cita.estado];
-                return (
-                  <li key={cita.id} className={`flex items-center gap-3 px-4 py-2.5 ${proximaCita?.id === cita.id ? "bg-primary/5" : ""}`}>
-                    <span className="w-12 tabular-nums text-sm text-foreground">{hora.format(new Date(cita.inicio))}</span>
-                    <span className="h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: profesional?.color }} aria-hidden="true" />
-                    <div className="min-w-0 flex-1">
-                      {abreFichas ? (
-                        <Link href={`/dashboard/pacientes/${cita.cuenta_id}`} className="block truncate text-sm font-medium text-foreground hover:text-primary hover:underline">
-                          {mascota ? `${mascota.nombre} · ${tutor}` : tutor}
-                        </Link>
-                      ) : (
-                        <p className="truncate text-sm font-medium text-foreground">{mascota ? `${mascota.nombre} · ${tutor}` : tutor}</p>
-                      )}
-                      <p className="truncate text-xs text-muted-foreground">
-                        {cita.motivo} · {profesional?.nombre ?? ""}
-                      </p>
-                    </div>
-                    <Badge tone={etiqueta.tone}>{etiqueta.label}</Badge>
-                  </li>
-                );
-              })}
-              {citasActivas.length > 8 && (
-                <li className="px-4 py-2 text-xs text-muted-foreground">
-                  {abreFichas ? (
-                    <Link href="/dashboard/citas" className="text-primary hover:underline">
-                      Ver las {citasActivas.length} {atencion.citas} en la agenda
-                    </Link>
-                  ) : (
-                    `Y ${citasActivas.length - 8} ${atencion.citas} más hoy.`
-                  )}
-                </li>
-              )}
-            </ul>
-          )}
-        </SectionCard>
-
-        <SectionCard
           className="xl:col-span-2"
-          icon={PhoneCall}
-          tone="primary"
           title="Hay que llamar hoy"
           description={`${voc.negocios} con la próxima acción vencida o para hoy, primero los que llevan más días sin respuesta.`}
         >
           {paraHoy.length === 0 ? (
             <EmptyState icon={CheckCheck} title="Nada pendiente para hoy" description={`Todos los ${negociosMinuscula} abiertos tienen su próxima acción más adelante.`} />
           ) : (
-            <ul className="divide-y divide-border">
+            <ul className="divide-y divide-border/70 border-t border-border">
               {paraHoy.slice(0, 8).map((negocio) => {
                 const cuenta = primero(negocio.sales_companies);
                 const aviso = alerta(diasSinRespuesta(negocio));
                 const cuando = new Date(negocio.next_action_at as string);
                 const contenido = (
                   <>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-foreground">{cuenta?.name ?? "—"}</p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {negocio.name}
-                          {negocio.next_action_note ? ` · ${negocio.next_action_note}` : ""}
-                        </p>
-                      </div>
-                      <div className="hidden text-right sm:block">
-                        <p className="text-sm font-medium tabular-nums text-foreground">{pesos.format(monto(negocio))}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {cuando < hoy ? "Vencido" : `Hoy ${hora.format(cuando)}`}
-                          {negocio.owner_id && nombre.get(negocio.owner_id) ? ` · ${nombre.get(negocio.owner_id)?.split(" ")[0]}` : ""}
-                        </p>
-                      </div>
+                    <Avatar name={cuenta?.name ?? "—"} size="md" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-foreground">{cuenta?.name ?? "—"}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {negocio.name}
+                        {negocio.next_action_note ? ` · ${negocio.next_action_note}` : ""}
+                      </p>
+                    </div>
+                    <div className="hidden text-right sm:block">
+                      <p className="text-sm font-medium tabular-nums text-foreground">{pesos.format(monto(negocio))}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {cuando < hoy ? "Vencido" : `Hoy ${hora.format(cuando)}`}
+                        {negocio.owner_id && nombre.get(negocio.owner_id) ? ` · ${nombre.get(negocio.owner_id)?.split(" ")[0]}` : ""}
+                      </p>
+                    </div>
+                    <span className="w-28 shrink-0 text-right">
                       <Badge tone={aviso.tono}>{aviso.texto}</Badge>
+                    </span>
                   </>
                 );
                 return (
                   <li key={negocio.id}>
                     {abreFichas ? (
-                      <Link href={`/dashboard/ventas/${negocio.id}`} className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-muted/60">
+                      <Link href={`/dashboard/ventas/${negocio.id}`} className="group flex items-center gap-3 px-5 py-3 transition-colors hover:bg-surface-muted/55">
                         {contenido}
+                        <ChevronRight size={15} className="shrink-0 text-muted-foreground/50 group-hover:text-primary" aria-hidden="true" />
                       </Link>
                     ) : (
-                      <div className="flex items-center gap-3 px-4 py-3">{contenido}</div>
+                      <div className="flex items-center gap-3 px-5 py-3">{contenido}</div>
                     )}
                   </li>
                 );
@@ -385,11 +423,11 @@ export async function InicioClinica({
             </ul>
           )}
           {paraHoy.length > 8 && (
-            <div className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
+            <div className="border-t border-border px-5 py-2.5 text-xs text-muted-foreground">
               {abreFichas ? (
                 <>
                   Y {paraHoy.length - 8} más en{" "}
-                  <Link href="/dashboard/ventas" className="text-primary hover:underline">
+                  <Link href="/dashboard/ventas" className="font-medium text-primary hover:underline">
                     {negociosMinuscula}
                   </Link>
                   .
@@ -402,18 +440,18 @@ export async function InicioClinica({
         </SectionCard>
 
         <div className="space-y-4">
-          <SectionCard icon={Hourglass} tone="amber" title="Sin respuesta" description={`${voc.negocios} abiertos según los días desde el último contacto.`}>
-            <div className="space-y-3 px-4 py-4">
+          <SectionCard title="Sin respuesta" description={`${voc.negocios} abiertos según los días desde el último contacto.`}>
+            <div className="space-y-3.5 border-t border-border px-5 py-4">
               {tramos.map((tramo) => (
                 <div key={tramo.etiqueta}>
                   <div className="flex items-baseline justify-between text-xs">
                     <span className="text-muted-foreground">{tramo.etiqueta}</span>
                     <span className="tabular-nums text-foreground">
-                      <span className="font-semibold">{tramo.total}</span>
+                      <span className={tramo.total > 0 ? "font-semibold" : "text-muted-foreground"}>{tramo.total}</span>
                       {tramo.monto > 0 && <span className="text-muted-foreground"> · {compacto.format(tramo.monto)}</span>}
                     </span>
                   </div>
-                  <div className="mt-1 h-2 overflow-hidden rounded-full bg-surface-muted">
+                  <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-muted">
                     <div className={`h-full rounded-full ${tramo.clase}`} style={{ width: `${(tramo.total / mayorTramo) * 100}%` }} />
                   </div>
                 </div>
@@ -421,39 +459,53 @@ export async function InicioClinica({
             </div>
           </SectionCard>
 
-          <SectionCard icon={MessageCircle} tone="green" title="WhatsApp" description={`Conversaciones con ${genteDeLaFicha} que siguen abiertas.`}>
-            <div className="flex items-end gap-3 px-4 py-4">
-              <dl className="grid flex-1 grid-cols-2 gap-3">
-                <Baldosa label="Abiertas" valor={abiertas} />
-                <Baldosa label={esperando === 1 ? "Espera respuesta" : "Esperan respuesta"} valor={esperando} tono={esperando > 0 ? "warn" : "good"} />
-              </dl>
-              {leeConversaciones && (
-                <Link href={hrefConversaciones} className={buttonClasses({ variant: "secondary", size: "sm" })}>
-                  Abrir
+          <SectionCard
+            title="WhatsApp"
+            description={`Conversaciones con ${genteDeLaFicha} que siguen abiertas.`}
+            actions={
+              leeConversaciones ? (
+                <Link href={hrefConversaciones} className={buttonClasses({ variant: "ghost", size: "sm" })}>
+                  Abrir <ChevronRight size={14} aria-hidden="true" />
                 </Link>
-              )}
-            </div>
+              ) : undefined
+            }
+          >
+            <dl className="grid grid-cols-2 divide-x divide-border border-t border-border">
+              <div className="flex items-center gap-3 px-5 py-4">
+                <span className="icon-chip size-8 rounded-lg" data-tone="green" aria-hidden="true">
+                  <MessageCircle size={15} />
+                </span>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Abiertas</dt>
+                  <dd className="text-xl font-semibold tabular-nums text-foreground">{abiertas.toLocaleString("es-CL")}</dd>
+                </div>
+              </div>
+              <div className="px-5 py-4">
+                <dt className="text-xs text-muted-foreground">{esperando === 1 ? "Espera respuesta" : "Esperan respuesta"}</dt>
+                <dd className={`text-xl font-semibold tabular-nums ${esperando > 0 ? "text-warning" : "text-muted-foreground"}`}>
+                  {esperando.toLocaleString("es-CL")}
+                </dd>
+              </div>
+            </dl>
           </SectionCard>
         </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <SectionCard
-          icon={UserRound}
-          tone="blue"
           title={`Aceptación por ${atencion.profesional.toLowerCase()}`}
           description={`${voc.negocios} de cada ${atencion.profesional.toLowerCase()} y cuánto se aceptó.`}
         >
-          <TablaConversion filas={porProfesional} negocios={negociosMinuscula} />
+          <TablaConversion filas={porProfesional} negocios={negociosMinuscula} persona />
         </SectionCard>
-        <SectionCard icon={Megaphone} tone="rose" title="Por canal de origen" description={`De dónde llegan los ${genteDeLaFicha} que aceptan.`}>
+        <SectionCard title="Por canal de origen" description={`De dónde llegan los ${genteDeLaFicha} que aceptan.`}>
           <TablaConversion filas={porOrigen} negocios={negociosMinuscula} />
         </SectionCard>
       </div>
 
       <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <CalendarClock size={13} aria-hidden="true" />
-        Calculado al {ahora.toLocaleString("es-CL", { timeZone: REPORT_TIME_ZONE })} · hora de Chile
+        Calculado al {ahora.toLocaleString("es-CL", { timeZone: REPORT_TIME_ZONE, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }).replace(".", "")} · hora de Chile
       </p>
     </div>
   );
@@ -462,28 +514,34 @@ export async function InicioClinica({
 function TablaConversion({
   filas,
   negocios,
+  persona = false,
 }: {
   filas: { llave: string; total: number; ganados: number; tasa: number | null; monto: number }[];
   /** Cómo se llaman en la edición: presupuestos, planes, paquetes. */
   negocios: string;
+  /** Filas de personas (avatar redondo) o de canales (cuadrado). */
+  persona?: boolean;
 }) {
   if (filas.length === 0) return <EmptyState icon={ChartColumn} title="Sin datos todavía" description={`Aparece cuando haya ${negocios} decididos.`} />;
   return (
-    <table className="w-full text-sm">
-      <thead>
-        <tr className="border-b border-border text-left text-xs text-muted-foreground">
-          <th className="h-10 px-4 font-medium">Nombre</th>
-          <th className="h-10 px-4 text-right font-medium">Total</th>
-          <th className="h-10 px-4 text-right font-medium">Aceptación</th>
-          <th className="h-10 px-4 text-right font-medium">Aceptado</th>
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-border/70">
+    <Table>
+      <Thead>
+        <Th>Nombre</Th>
+        <Th align="right">Total</Th>
+        <Th align="right">Aceptación</Th>
+        <Th align="right">Aceptado</Th>
+      </Thead>
+      <Tbody>
         {filas.map((fila) => (
-          <tr key={fila.llave}>
-            <td className="px-4 py-3 text-foreground">{fila.llave}</td>
-            <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">{fila.total}</td>
-            <td className="px-4 py-3 text-right">
+          <Tr key={fila.llave}>
+            <Td>
+              <span className="flex min-w-0 items-center gap-2.5">
+                <Avatar name={fila.llave} size="sm" shape={persona ? "circle" : "square"} />
+                <span className="truncate font-medium text-foreground">{fila.llave}</span>
+              </span>
+            </Td>
+            <Td align="right" muted>{fila.total}</Td>
+            <Td align="right">
               {fila.tasa === null ? (
                 <span className="text-muted-foreground">—</span>
               ) : (
@@ -494,11 +552,11 @@ function TablaConversion({
                   <span className="tabular-nums text-foreground">{fila.tasa}%</span>
                 </div>
               )}
-            </td>
-            <td className="px-4 py-3 text-right font-medium tabular-nums text-foreground">{pesos.format(fila.monto)}</td>
-          </tr>
+            </Td>
+            <Td align="right" strong>{pesos.format(fila.monto)}</Td>
+          </Tr>
         ))}
-      </tbody>
-    </table>
+      </Tbody>
+    </Table>
   );
 }

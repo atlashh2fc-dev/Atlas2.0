@@ -1,9 +1,21 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CircleAlert, LoaderCircle, Play } from "lucide-react";
-import { buttonClasses } from "@/components/ui";
+import { CircleAlert, LoaderCircle, Pause, Play } from "lucide-react";
+import { cn } from "@/lib/utils";
 
+function clock(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+  const minutes = Math.floor(seconds / 60);
+  const remaining = Math.floor(seconds % 60);
+  return `${minutes}:${remaining.toString().padStart(2, "0")}`;
+}
+
+/**
+ * Reproductor de grabaciones al estilo de Gong: un botón redondo de reproducir,
+ * la línea de avance y los tiempos. El enlace firmado se pide recién al primer
+ * clic (vence rápido), y desde ahí el mismo botón pausa y reanuda.
+ */
 export function RecordingAudioPlayer({
   recordingId,
   playable,
@@ -16,7 +28,11 @@ export function RecordingAudioPlayer({
   const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [current, setCurrent] = useState(0);
+  const [duration, setDuration] = useState(0);
   const controllerRef = useRef<AbortController | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => () => controllerRef.current?.abort(), []);
 
@@ -44,53 +60,108 @@ export function RecordingAudioPlayer({
     }
   };
 
+  const toggle = () => {
+    const audio = audioRef.current;
+    if (!url || !audio) {
+      void load();
+      return;
+    }
+    if (audio.paused) void audio.play().catch(() => undefined);
+    else audio.pause();
+  };
+
   if (!playable) {
-    return <span className="text-xs text-muted-foreground">No disponible</span>;
+    return <span className="text-xs text-muted-foreground">Audio no disponible</span>;
   }
 
-  if (url) {
-    return (
-      <audio
-        controls
-        preload="metadata"
-        src={url}
-        className={compact ? "h-8 w-full min-w-0" : "h-8 w-64 max-w-full"}
-        aria-label="Reproducir grabación de llamada"
-        onError={() => {
-          setUrl(null);
-          setError("El enlace venció o el audio no está disponible. Intenta nuevamente.");
-        }}
-      />
-    );
-  }
+  const progress = duration > 0 ? Math.min(100, (current / duration) * 100) : 0;
 
   return (
     <div
-      className={compact ? "flex min-w-0 items-center" : "flex min-w-44 items-center gap-2"}
+      className={cn("flex min-w-0 items-center gap-2.5", compact ? "w-full" : "w-full max-w-sm")}
       onClick={(event) => event.stopPropagation()}
     >
       <button
         type="button"
-        onClick={load}
+        onClick={toggle}
         disabled={loading}
-        className={buttonClasses({
-          variant: "secondary",
-          size: "sm",
-          className: compact ? "w-full gap-1 px-2 text-xs leading-tight" : undefined,
-        })}
+        aria-label={playing ? "Pausar grabación" : "Reproducir grabación"}
+        title={error ?? undefined}
+        className={cn(
+          "flex shrink-0 items-center justify-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:opacity-60",
+          compact ? "size-8" : "size-10",
+          playing
+            ? "bg-primary text-primary-foreground shadow-sm hover:bg-primary-hover"
+            : "bg-primary/10 text-primary hover:bg-primary/15"
+        )}
       >
         {loading ? (
-          <LoaderCircle size={14} className="animate-spin" />
+          <LoaderCircle size={compact ? 14 : 16} className="animate-spin" aria-hidden="true" />
+        ) : playing ? (
+          <Pause size={compact ? 13 : 15} className="fill-current" aria-hidden="true" />
         ) : (
-          <Play size={14} className="fill-current text-primary" />
+          <Play size={compact ? 13 : 15} className="ml-0.5 fill-current" aria-hidden="true" />
         )}
-        {loading ? "Preparando" : "Escuchar"}
       </button>
-      {error && (
-        <span title={error} className="inline-flex items-center gap-1 text-xs text-danger">
-          <CircleAlert size={14} />
-          {!compact && "Reintentar"}
-        </span>
+
+      <div className="min-w-0 flex-1">
+        {url ? (
+          <input
+            type="range"
+            min={0}
+            max={duration || 0}
+            step={0.1}
+            value={current}
+            aria-label="Avance de la grabación"
+            onChange={(event) => {
+              const audio = audioRef.current;
+              const next = Number(event.target.value);
+              if (audio) audio.currentTime = next;
+              setCurrent(next);
+            }}
+            className="block h-1.5 w-full cursor-pointer appearance-none rounded-full bg-surface-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-moz-range-thumb]:size-3 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-primary [&::-webkit-slider-thumb]:size-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-sm"
+            style={{
+              background: `linear-gradient(90deg, var(--primary) ${progress}%, var(--surface-muted) ${progress}%)`,
+            }}
+          />
+        ) : (
+          <div className="h-1.5 rounded-full bg-surface-muted" aria-hidden="true" />
+        )}
+        <p className="mt-1 flex items-center justify-between gap-2 text-[11px] tabular-nums text-muted-foreground">
+          {error ? (
+            <span className="inline-flex min-w-0 items-center gap-1 text-danger">
+              <CircleAlert size={12} className="shrink-0" aria-hidden="true" />
+              <span className="truncate">{compact ? "Reintentar" : error}</span>
+            </span>
+          ) : (
+            <span>{url ? clock(current) : loading ? "Preparando…" : "Escuchar"}</span>
+          )}
+          {url && duration > 0 && <span>{clock(duration)}</span>}
+        </p>
+      </div>
+
+      {url && (
+        <audio
+          ref={audioRef}
+          preload="metadata"
+          autoPlay
+          src={url}
+          className="hidden"
+          aria-label="Grabación de llamada"
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
+          onEnded={() => setPlaying(false)}
+          onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
+          onDurationChange={(event) => setDuration(event.currentTarget.duration)}
+          onTimeUpdate={(event) => setCurrent(event.currentTarget.currentTime)}
+          onError={() => {
+            setUrl(null);
+            setPlaying(false);
+            setCurrent(0);
+            setDuration(0);
+            setError("El enlace venció o el audio no está disponible. Intenta nuevamente.");
+          }}
+        />
       )}
     </div>
   );

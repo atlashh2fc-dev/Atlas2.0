@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Plug } from "lucide-react";
 
 import { LogoDeIntegracion } from "@/components/logo-integracion";
-import { Badge, PageHeader, type BadgeTone } from "@/components/ui";
+import { Badge, EmptyState, PageHeader, type BadgeTone } from "@/components/ui";
+import { Conteo } from "../_diseno";
 import {
   CATEGORIAS,
   integracionesDeLaEmpresa,
@@ -42,32 +43,38 @@ export default async function IntegracionesPage() {
     <div className="space-y-6">
       <PageHeader
         title="Integraciones"
+        icon={Plug}
         description="Los sistemas con los que Atlas habla y si cada conexión está funcionando."
-        actions={
-          resumen.length > 0 && (
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-              {resumen.map(({ estado, n }) => (
+        meta={
+          resumen.length > 0
+            ? resumen.map(({ estado, n }) => (
                 <span key={estado} className="inline-flex items-center gap-1.5">
                   <Punto tone={ESTADO[estado].tone} />
                   <span className="font-semibold text-foreground">{n}</span> {n === 1 && estado === "conectado" ? "conectada" : ESTADO[estado].resumen}
                 </span>
-              ))}
-            </div>
-          )
+              ))
+            : undefined
         }
       />
 
       {integraciones.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-          Esta empresa no tiene aplicaciones que se conecten con sistemas externos.
-        </p>
+        <div className="rounded-xl border border-dashed border-border-strong bg-surface">
+          <EmptyState
+            icon={Plug}
+            title="Sin integraciones"
+            description="Esta empresa no tiene aplicaciones que se conecten con sistemas externos."
+          />
+        </div>
       ) : (
         CATEGORIAS.map((categoria) => {
           const grupo = integraciones.filter((i) => i.categoria === categoria);
           if (grupo.length === 0) return null;
           return (
             <section key={categoria} className="space-y-3">
-              <h2 className="text-xs font-medium text-muted-foreground">{categoria}</h2>
+              <h2 className="flex items-center text-sm font-semibold tracking-tight text-foreground">
+                {categoria}
+                <Conteo>{grupo.length}</Conteo>
+              </h2>
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {grupo.map((integracion) => (
                   <TarjetaDeIntegracion key={integracion.id} integracion={integracion} />

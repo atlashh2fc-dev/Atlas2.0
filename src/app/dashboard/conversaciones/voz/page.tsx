@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { AlarmClock, CalendarClock, PhoneCall, PhoneOff, UserRoundCheck } from "lucide-react";
+import { AlarmClock, CalendarClock, ChevronRight, PhoneOff, UserRoundCheck } from "lucide-react";
 
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getMyAgendaCampaignId } from "@/lib/agenda-scope";
 import { AgendaTable, type AgendaRow } from "@/components/agenda-table";
-import { Callout, EmptyState, SectionCard, StatCard, buttonClasses } from "@/components/ui";
+import { KpiStrip, KpiStripItem } from "@/components/report-kit";
+import { Avatar, Callout, EmptyState, SectionCard, buttonClasses } from "@/components/ui";
 import { getCampaignsWithChannel } from "@/lib/campaign-channels";
 import { getWorkspacePermissions } from "@/lib/workspace-permissions";
 
@@ -23,6 +24,13 @@ type LeadRow = {
   workflow_status: string | null;
   campaigns: { name: string } | { name: string }[] | null;
 };
+
+/** "VOLVER A LLAMAR" → "Volver a llamar": las tipificaciones llegan en mayúsculas desde la base. */
+function enOracion(texto: string): string {
+  if (texto !== texto.toUpperCase()) return texto;
+  const minusculas = texto.toLocaleLowerCase("es-CL");
+  return minusculas.charAt(0).toLocaleUpperCase("es-CL") + minusculas.slice(1);
+}
 
 function campaignName(value: LeadRow["campaigns"]): string {
   const embedded = Array.isArray(value) ? value[0] : value;
@@ -138,33 +146,31 @@ export default async function VoiceQueuePage() {
         </Callout>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard
+      <KpiStrip columns={3}>
+        <KpiStripItem
           label="Vencidos"
-          value={String(overdue.length)}
+          value={overdue.length.toLocaleString("es-CL")}
           icon={AlarmClock}
-          iconTone={overdue.length > 0 ? "rose" : "green"}
-          tone={overdue.length > 0 ? "danger" : "good"}
+          tone={overdue.length > 0 ? "danger" : "default"}
+          detail={overdue.length > 0 ? "Su hora ya pasó: van primero en la lista" : "Nada atrasado"}
         />
-        <StatCard
+        <KpiStripItem
           label="Agendados"
-          value={String(rows.length - overdue.length)}
+          value={(rows.length - overdue.length).toLocaleString("es-CL")}
           icon={CalendarClock}
-          iconTone="amber"
+          detail="Compromisos por venir"
         />
-        <StatCard
+        <KpiStripItem
           label="Sin trabajar"
           value={pendingTotal.toLocaleString("es-CL")}
           icon={UserRoundCheck}
-          iconTone={pendingTotal > 0 ? "amber" : "green"}
-          tone={pendingTotal > 0 ? "warn" : "good"}
+          tone={pendingTotal > 0 ? "warn" : "default"}
+          detail="Asignados sin gestión ni agenda"
         />
-      </div>
+      </KpiStrip>
 
       <SectionCard
         title="Compromisos telefónicos"
-        icon={PhoneCall}
-        tone="primary"
         description="Vencidos primero; dentro de cada grupo, el más urgente arriba."
       >
         <AgendaTable rows={ordered} />
@@ -172,8 +178,6 @@ export default async function VoiceQueuePage() {
 
       <SectionCard
         title="Asignados sin trabajar"
-        icon={UserRoundCheck}
-        tone="blue"
         description={
           pendingTotal > pending.length
             ? `Registros con teléfono que todavía no tienen gestión ni agenda. Se ven los ${pending.length} más recientes de ${pendingTotal.toLocaleString("es-CL")}.`
@@ -192,22 +196,24 @@ export default async function VoiceQueuePage() {
             description="No hay registros asignados sin trabajar en tus campañas de voz."
           />
         ) : (
-          <ul className="divide-y divide-border">
+          <ul className="divide-y divide-border/70 border-t border-border">
             {pending.map((lead) => (
               <li key={lead.id}>
                 <Link
                   href={`/dashboard/leads/${lead.id}`}
-                  className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-surface-muted"
+                  className="group flex items-center gap-3 px-5 py-3 text-sm transition-colors hover:bg-surface-muted/55"
                 >
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium text-foreground">{lead.full_name}</span>
+                  <Avatar name={lead.full_name} seed={lead.rut ?? lead.full_name} size="md" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium text-foreground group-hover:text-primary">{lead.full_name}</span>
                     <span className="block truncate text-xs text-muted-foreground">
-                      {`${lead.rut ?? lead.phone ?? "—"} · ${campaignName(lead.campaigns)}`}
+                      <span className="tabular-nums">{lead.rut ?? lead.phone ?? "—"}</span> · {campaignName(lead.campaigns)}
                     </span>
                   </span>
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {lead.tipificacion_actual ?? "Sin gestión"}
+                  <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">
+                    {lead.tipificacion_actual ? enOracion(lead.tipificacion_actual) : "Sin gestión"}
                   </span>
+                  <ChevronRight size={16} className="shrink-0 text-muted-foreground/60 transition-transform group-hover:translate-x-0.5 group-hover:text-foreground" aria-hidden="true" />
                 </Link>
               </li>
             ))}

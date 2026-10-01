@@ -2,16 +2,13 @@ import { Headset, PhoneCall } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { listAgentSipRows, setAgentExtensionActive } from "@/app/actions/agent-sip";
 import { RevealSipCredentialButton } from "@/components/reveal-sip-credential-button";
-import { ActionForm, ActionSubmit, Badge, Callout, EmptyState, PageHeader, SectionCard, type BadgeTone } from "@/components/ui";
+import { ActionForm, ActionSubmit, Avatar, Badge, Callout, EmptyState, PageHeader, SectionCard, type BadgeTone } from "@/components/ui";
 import { getAgentSipSyncHealth } from "@/lib/dialer-health";
+import { fechaLegible } from "../_diseno";
 
 function formatHealthDate(value: string | null): string {
   if (!value) return "sin una sincronización exitosa registrada";
-  return new Intl.DateTimeFormat("es-CL", {
-    dateStyle: "short",
-    timeStyle: "short",
-    timeZone: "America/Santiago",
-  }).format(new Date(value));
+  return fechaLegible(value);
 }
 
 export default async function AgentesSipPage() {
@@ -42,7 +39,8 @@ export default async function AgentesSipPage() {
   };
 
   const stateTone = (row: Awaited<ReturnType<typeof listAgentSipRows>>[number]): BadgeTone => {
-    if (!row.is_active || row.provisioning_status === "error") return "danger";
+    if (!row.is_active) return "neutral";
+    if (row.provisioning_status === "error") return "danger";
     if (row.provisioning_status === "synced") return "success";
     return "warning";
   };
@@ -59,6 +57,27 @@ export default async function AgentesSipPage() {
     <div className="space-y-6">
       <PageHeader
         title="Diagnóstico de telefonía"
+        icon={PhoneCall}
+        meta={
+          rows.length > 0 ? (
+            <>
+              <span>
+                <span className="font-semibold text-foreground">{rows.filter((row) => row.extension).length}</span> con extensión
+              </span>
+              <span>
+                <span className="font-semibold text-foreground">
+                  {rows.filter((row) => row.extension && row.is_active && row.provisioning_status === "synced").length}
+                </span>{" "}
+                operativas
+              </span>
+              {rows.some((row) => row.provisioning_status === "error") && (
+                <span className="text-danger">
+                  <span className="font-semibold">{rows.filter((row) => row.provisioning_status === "error").length}</span> con error
+                </span>
+              )}
+            </>
+          ) : undefined
+        }
         description="Atlas genera y activa la extensión cuando asignas una campaña automática. Esta pantalla no es parte del alta normal: úsala solo para revisar sincronización o resolver una contingencia."
       />
 
@@ -79,24 +98,20 @@ export default async function AgentesSipPage() {
       )}
 
       <SectionCard
-        icon={PhoneCall}
-        tone="primary"
         title="Extensiones de los ejecutivos"
-        description={syncHealthy ? "La central está confirmando las extensiones." : "La central no está confirmando las extensiones."}
-        actions={<span className={`inline-block size-2.5 rounded-full ${syncHealthy ? "bg-success" : "bg-warning"}`} aria-hidden="true" />}
+        description="Lo que hay que atender va primero: errores de aprovisionamiento y extensiones que la central aún no confirma."
+        actions={
+          <Badge tone={syncHealthy ? "success" : "warning"}>
+            {syncHealthy ? "Central sincronizada" : "Central sin confirmar"}
+          </Badge>
+        }
       >
-        <div className="divide-y divide-border">
+        <div className="divide-y divide-border/70 border-t border-border">
           {rows.length === 0 && <EmptyState icon={Headset} title="No hay ejecutivos con rol “agente”." />}
           {sortedRows.map((row) => (
-            <div key={row.profile_id} className="flex flex-wrap items-center justify-between gap-4 p-4">
+            <div key={row.profile_id} className="flex flex-wrap items-center justify-between gap-4 px-5 py-3.5">
               <div className="flex min-w-0 items-center gap-3">
-                <span
-                  className={`icon-chip size-8 rounded-full ${row.extension && row.is_active ? "" : "opacity-50"}`}
-                  data-tone="primary"
-                  aria-hidden="true"
-                >
-                  <Headset size={15} />
-                </span>
+                <Avatar name={row.full_name} size="md" className={row.extension && row.is_active ? "" : "opacity-50"} />
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-foreground">{row.full_name}</p>
                   <p className="text-xs text-muted-foreground">{row.email}</p>
@@ -106,9 +121,10 @@ export default async function AgentesSipPage() {
               <div className="flex flex-wrap items-center justify-end gap-3">
                 {row.extension ? (
                   <>
-                    <Badge tone={stateTone(row)}>
-                      Ext. {row.extension} · {stateLabel(row)}
-                    </Badge>
+                    <span className="text-right">
+                      <Badge tone={stateTone(row)}>{stateLabel(row)}</Badge>
+                      <span className="block font-mono text-[11px] text-muted-foreground">Ext. {row.extension}</span>
+                    </span>
                     {row.provisioning_status === "error" && (
                       <span className="max-w-52 text-xs text-danger">
                         {failureLabel(row.provisioning_failure_code)}
@@ -118,7 +134,7 @@ export default async function AgentesSipPage() {
                       <summary className="cursor-pointer rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                         Acciones de contingencia
                       </summary>
-                      <div className="mt-2 flex flex-wrap items-center justify-end gap-2 rounded-lg border border-border bg-background p-2">
+                      <div className="mt-2 flex flex-wrap items-center justify-end gap-2 rounded-lg bg-surface-raised p-2">
                         <RevealSipCredentialButton profileId={row.profile_id} disabled={!syncHealthy} />
                         <ActionForm
                           action={setAgentExtensionActive}

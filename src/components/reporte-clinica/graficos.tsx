@@ -194,7 +194,8 @@ export function Kpi({
   tono?: IconTone;
 }) {
   return (
-    <div className={cn("flex min-w-0 flex-col justify-between rounded-xl border border-border bg-surface px-4 pt-3 shadow-sm", puntos ? "pb-2" : "pb-3")}>
+    // Celda de una franja (el contenedor pone el borde y las líneas divisorias, como `KpiStrip`).
+    <div className={cn("flex min-w-0 flex-col justify-between bg-surface px-4 pt-3.5", puntos ? "pb-2" : "pb-3.5")}>
       <div className="flex items-start justify-between gap-2">
         <p className="flex min-w-0 items-center gap-2 text-xs font-medium text-muted-foreground">
           {icono && <ChipIcono icono={icono} tono={tono} className={destacado ? "size-7 rounded-lg" : "size-6 rounded-md"} size={destacado ? 14 : 13} />}

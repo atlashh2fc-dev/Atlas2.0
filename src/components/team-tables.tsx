@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useMemo, useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LEAD_STATUSES } from "@/lib/types";
 import { bulkAssignLeads, distributeLeads } from "@/app/actions/leads";
 import {
+  Avatar,
   Badge,
   Button,
   ConfirmDialog,
@@ -38,12 +38,44 @@ export type TeamLeadRow = {
   assigned_name: string | null;
 };
 
-/** Los ejecutivos como entidad principal del equipo, no como una columna de leads. */
+/**
+ * Los ejecutivos como entidad principal del equipo, no como una columna de
+ * leads. Cada fila abre la cartera del ejecutivo; la barra compara su cartera
+ * con la más grande del equipo para ver de un vistazo quién puede recibir más.
+ */
 export function TeamAgentsTable({ rows }: { rows: TeamAgentRow[] }) {
+  const largest = useMemo(() => Math.max(1, ...rows.map((row) => row.assigned)), [rows]);
   const columns = useMemo<Column<TeamAgentRow>[]>(
     () => [
-      { id: "ejecutivo", header: "Ejecutivo", value: (row) => row.full_name },
-      { id: "cartera", header: "Cartera asignada", align: "right", value: (row) => row.assigned },
+      {
+        id: "ejecutivo",
+        header: "Ejecutivo",
+        value: (row) => row.full_name,
+        cell: (row) => (
+          <span className="flex min-w-0 items-center gap-3">
+            <Avatar name={row.full_name} seed={row.id} size="md" />
+            <span className="min-w-0">
+              <span className="block max-w-[16rem] truncate font-medium text-foreground group-hover:text-primary">{row.full_name}</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                {row.unmanaged > 0 ? `${row.unmanaged.toLocaleString("es-CL")} sin gestionar` : "Cartera gestionada"}
+              </span>
+            </span>
+          </span>
+        ),
+      },
+      {
+        id: "cartera",
+        header: "Cartera asignada",
+        value: (row) => row.assigned,
+        cell: (row) => (
+          <span className="flex items-center gap-3">
+            <span className="w-14 text-right font-medium tabular-nums text-foreground">{row.assigned.toLocaleString("es-CL")}</span>
+            <span className="hidden h-1.5 w-28 overflow-hidden rounded-full bg-surface-muted sm:block" aria-hidden="true">
+              <span className="block h-full rounded-full bg-primary/70" style={{ width: `${(row.assigned / largest) * 100}%` }} />
+            </span>
+          </span>
+        ),
+      },
       {
         id: "sin_gestionar",
         header: "Sin gestionar",
@@ -56,6 +88,7 @@ export function TeamAgentsTable({ rows }: { rows: TeamAgentRow[] }) {
         header: "Agendas hoy",
         align: "right",
         value: (row) => row.today,
+        cell: (row) => <span className={row.today > 0 ? "text-foreground" : "text-muted-foreground"}>{row.today}</span>,
       },
       {
         id: "vencidas",
@@ -65,19 +98,8 @@ export function TeamAgentsTable({ rows }: { rows: TeamAgentRow[] }) {
         cell: (row) =>
           row.overdue > 0 ? <Badge tone="danger">{row.overdue}</Badge> : <span className="text-muted-foreground">0</span>,
       },
-      {
-        id: "detalle",
-        header: "",
-        align: "right",
-        sortable: false,
-        cell: (row) => (
-          <Link href={`/dashboard/leads?agent=${row.id}`} className="text-xs font-medium text-primary hover:underline">
-            Ver cartera
-          </Link>
-        ),
-      },
     ],
-    []
+    [largest]
   );
 
   return (
@@ -85,6 +107,8 @@ export function TeamAgentsTable({ rows }: { rows: TeamAgentRow[] }) {
       rows={rows}
       columns={columns}
       getRowId={(row) => row.id}
+      rowHref={(row) => `/dashboard/leads?agent=${row.id}`}
+      rowActionLabel={() => "Ver cartera"}
       storageKey="equipo-ejecutivos"
       exportFilename="carga-por-ejecutivo"
       emptyTitle="Sin ejecutivos en tu equipo"
@@ -129,8 +153,23 @@ export function TeamLeadsAssignment({
 
   const columns = useMemo<Column<TeamLeadRow>[]>(
     () => [
-      { id: "registro", header: "Registro", value: (row) => row.full_name },
-      { id: "rut", header: "RUT", value: (row) => row.rut ?? "", className: "text-muted-foreground" },
+      {
+        // Nombre y RUT en una celda de dos líneas; el Excel los sigue
+        // exportando en columnas separadas.
+        id: "registro",
+        header: "Registro",
+        value: (row) => row.full_name,
+        exportValues: (row) => ({ Registro: row.full_name, RUT: row.rut ?? "" }),
+        cell: (row) => (
+          <span className="flex min-w-0 items-center gap-3">
+            <Avatar name={row.full_name} seed={row.rut ?? row.full_name} size="md" shape="square" />
+            <span className="min-w-0">
+              <span className="block max-w-[18rem] truncate font-medium text-foreground group-hover:text-primary">{row.full_name}</span>
+              <span className="mt-0.5 block truncate text-xs text-muted-foreground">{row.rut ?? "Sin RUT"}</span>
+            </span>
+          </span>
+        ),
+      },
       {
         id: "estado",
         header: "Estado",
@@ -142,7 +181,14 @@ export function TeamLeadsAssignment({
         header: "Asignado a",
         value: (row) => row.assigned_name ?? "",
         cell: (row) =>
-          row.assigned_name ?? <span className="text-warning">Sin asignar</span>,
+          row.assigned_name ? (
+            <span className="flex items-center gap-2">
+              <Avatar name={row.assigned_name} size="xs" />
+              <span className="truncate text-foreground">{row.assigned_name}</span>
+            </span>
+          ) : (
+            <Badge tone="warning">Sin asignar</Badge>
+          ),
       },
     ],
     []

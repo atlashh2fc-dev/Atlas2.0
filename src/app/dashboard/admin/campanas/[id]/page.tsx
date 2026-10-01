@@ -2,7 +2,7 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { Briefcase, ClipboardCheck, Database, Mail, PhoneCall, Users, Workflow } from "lucide-react";
+import { CheckCircle2, ChevronRight, Database, Mail, PhoneCall, Sparkles, Users, Workflow } from "lucide-react";
 import { mapAtlasLeadMailCampaign, setCampaignVertical, setCampaignWorkflow } from "@/app/actions/campaigns";
 import { CAMPAIGN_VERTICALS, parseCampaignVertical } from "@/lib/campaign-vertical";
 import { CampaignDashboardSummary, type ContactabilityHour } from "@/components/campaign-dashboard-summary";
@@ -12,7 +12,8 @@ import type {
   DialerCampaignConfig,
   SecretariaVirtualChannelFunnelRow,
 } from "@/lib/types";
-import { ActionForm, ActionSubmit, Badge, Callout, Field, Input, SectionCard, Select } from "@/components/ui";
+import { ActionForm, ActionSubmit, Avatar, Badge, Callout, Field, Input, SectionCard, Select } from "@/components/ui";
+import { Grupo, PieDeFormulario } from "../../_diseno";
 import { isSecretariaVirtualAuditCampaign } from "@/lib/secretaria-virtual-quality-rubric";
 
 const DASHBOARD_WINDOW_DAYS = 30;
@@ -122,7 +123,6 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
     {
       label: "Flujo de gestión",
       icon: Workflow,
-      tone: "rose",
       detail: aiVoice ? "El guion vive en el agente ElevenLabs" : campaign.workflow_id ? "Asignado" : "Asigna el guion que verán los ejecutivos",
       done: aiVoice ? true : Boolean(campaign.workflow_id),
       href: aiVoice ? `${base}/ia` : `${base}#flujo`,
@@ -130,7 +130,6 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
     {
       label: "Ejecutivos",
       icon: Users,
-      tone: "blue",
       detail: aiVoice ? ((memberCount ?? 0) === 0 ? "No aplica · campaña solo IA" : "Retira los ejecutivos asignados") : (memberCount ?? 0) > 0 ? `${memberCount} asignados` : "Asigna al menos un ejecutivo",
       done: aiVoice ? (memberCount ?? 0) === 0 : (memberCount ?? 0) > 0,
       href: aiVoice ? `${base}/ia` : `${base}/ejecutivos`,
@@ -138,7 +137,6 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
     {
       label: "Base de registros",
       icon: Database,
-      tone: "blue",
       detail:
         (leadCount ?? 0) > 0
           ? `${(leadCount ?? 0).toLocaleString("es-CL")} registros`
@@ -149,7 +147,6 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
     {
       label: "Discador",
       icon: PhoneCall,
-      tone: "primary",
       detail: aiVoice
         ? aiVoice.is_active
           ? "Agente ElevenLabs activo"
@@ -168,15 +165,13 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
     },
   ];
   const pending = setupItems.filter((item) => !item.done).length;
+  const doneCount = setupItems.length - pending;
 
   return (
     <div className="space-y-5">
-      <Link className="inline-flex text-sm text-primary underline" href={`/dashboard/calidad/loop?campaign=${id}`}>
-        Loop IA · revisar y configurar observación
-      </Link>
+      {/* Preparación como lista de pasos (Linear, Stripe): cada fila dice qué
+          falta y lleva a donde se resuelve; la barra muestra cuánto queda. */}
       <SectionCard
-        icon={ClipboardCheck}
-        tone="rose"
         title="Preparación de la campaña"
         description="Estos cuatro puntos definen si la campaña puede operar."
         actions={
@@ -185,64 +180,157 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
           </Badge>
         }
       >
-        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="flex items-center gap-3 px-5 pb-3">
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-muted" aria-hidden="true">
+            <div
+              className={`h-full rounded-full ${pending === 0 ? "bg-success" : "bg-primary"}`}
+              style={{ width: `${Math.round((doneCount / setupItems.length) * 100)}%` }}
+            />
+          </div>
+          <span className="text-xs tabular-nums text-muted-foreground">
+            {doneCount} de {setupItems.length} listos
+          </span>
+        </div>
+        <ul className="divide-y divide-border/70 border-t border-border">
           {setupItems.map((item) => (
-            <Link
-              key={item.label}
-              href={item.href}
-              className={`rounded-lg border border-border border-l-2 bg-background p-3 transition-[border-color,box-shadow] hover:border-border-strong hover:shadow-sm ${
-                item.done ? "border-l-success" : "border-l-warning"
-              }`}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <item.icon size={16} className="mt-0.5 text-muted-foreground" aria-hidden="true" />
-                <Badge tone={item.done ? "success" : "warning"} className="text-[11px]">
-                  {item.done ? "Listo" : "Pendiente"}
-                </Badge>
-              </div>
-              <p className="mt-2 text-sm font-medium text-foreground">{item.label}</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.detail}</p>
-            </Link>
+            <li key={item.label}>
+              <Link
+                href={item.href}
+                className="group flex min-h-14 items-center gap-3 px-5 py-3 transition-colors hover:bg-surface-muted/55"
+              >
+                <span className="icon-chip size-8 rounded-lg" data-tone={item.done ? "green" : "amber"} aria-hidden="true">
+                  {item.done ? <CheckCircle2 size={15} /> : <item.icon size={15} />}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium text-foreground">{item.label}</span>
+                  <span className="block text-xs text-muted-foreground">{item.detail}</span>
+                </span>
+                <Badge tone={item.done ? "success" : "warning"}>{item.done ? "Listo" : "Pendiente"}</Badge>
+                <ChevronRight
+                  size={16}
+                  className="shrink-0 text-muted-foreground/50 transition-colors group-hover:text-foreground"
+                  aria-hidden="true"
+                />
+              </Link>
+            </li>
           ))}
+        </ul>
+      </SectionCard>
+
+      <SectionCard
+        title="Ajustes de la campaña"
+        description="El guion que siguen los ejecutivos y el vocabulario con que se mide."
+        actions={
+          <Link
+            href={`/dashboard/calidad/loop?campaign=${id}`}
+            className="inline-flex items-center gap-1.5 text-[13px] font-medium text-primary hover:underline"
+          >
+            <Sparkles size={14} aria-hidden="true" />
+            Loop IA · observación
+          </Link>
+        }
+      >
+        <div className="divide-y divide-border border-t border-border">
+          {/* El ancla #flujo (tarjeta de preparación e Inicio) va pegada al
+              grupo del flujo; antes caía sobre «Vertical de negocio». */}
+          {!aiVoice && (
+            <div id="flujo" className="scroll-mt-4">
+              <Grupo
+                titulo="Flujo de gestión"
+                descripcion="Es el guion que los ejecutivos siguen al atender los registros de esta campaña."
+                columnas={1}
+              >
+                <ActionForm action={setCampaignWorkflow} success="Flujo asignado" className="flex flex-wrap items-end gap-3">
+                  <input type="hidden" name="campaign_id" value={id} />
+                  <Field label="Flujo asignado" className="w-full max-w-72">
+                    <Select name="workflow_id" defaultValue={campaign.workflow_id ?? ""}>
+                      <option value="">Sin flujo asignado</option>
+                      {(workflows ?? []).map((workflow) => (
+                        <option key={workflow.id} value={workflow.id}>
+                          {workflow.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <ActionSubmit variant="secondary" pendingLabel="Guardando…">
+                    Guardar
+                  </ActionSubmit>
+                  <Link
+                    href={`/dashboard/admin/flujos?campaign_id=${id}`}
+                    className="pb-2 text-xs font-medium text-primary hover:underline"
+                  >
+                    Editar o crear un flujo
+                  </Link>
+                </ActionForm>
+              </Grupo>
+            </div>
+          )}
+
+          <Grupo
+            titulo="Vertical de negocio"
+            descripcion="Define el vocabulario y los KPI de la campaña: una cartera de cobranza mide recuperación, no ventas."
+            columnas={1}
+          >
+            <ActionForm action={setCampaignVertical} success="Vertical actualizado" className="flex flex-wrap items-end gap-3">
+              <input type="hidden" name="campaign_id" value={id} />
+              <Field label="Vertical" className="w-full max-w-72">
+                <Select name="vertical" defaultValue={campaignVertical}>
+                  {CAMPAIGN_VERTICALS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <ActionSubmit variant="secondary" pendingLabel="Guardando…">
+                Guardar
+              </ActionSubmit>
+            </ActionForm>
+            <p className="text-xs text-muted-foreground">
+              {CAMPAIGN_VERTICALS.find((option) => option.value === campaignVertical)?.description}
+            </p>
+          </Grupo>
         </div>
       </SectionCard>
 
       <SectionCard
-        icon={Mail}
-        tone="teal"
         title="Atlas Lead"
         description="Conecta campañas de correo existentes con esta campaña CRM mediante su clave estable. Atlas Lead conserva el envío y tracking; Atlas CRM conserva la asignación y gestión."
         actions={
           (mailCampaigns ?? []).length > 0 ? (
-            <Link href={`/dashboard/mail?campaign=${id}`} className="text-xs font-medium text-primary hover:underline">
+            <Link href={`/dashboard/mail?campaign=${id}`} className="text-[13px] font-medium text-primary hover:underline">
               Abrir señales de correo
             </Link>
           ) : undefined
         }
       >
-        <div className="space-y-4 p-4">
-          {(mailCampaigns ?? []).length > 0 && (
-            <ul className="divide-y divide-border rounded-lg border border-border bg-background">
-              {(mailCampaigns ?? []).map((mailCampaign) => (
-                <li key={mailCampaign.id} className="flex flex-wrap items-center justify-between gap-3 px-3 py-2.5">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-foreground">{mailCampaign.name}</p>
-                    <p className="mt-0.5 break-all text-xs text-muted-foreground">{mailCampaign.external_campaign_key}</p>
-                  </div>
-                  <Badge tone={mailCampaign.metadata?.readiness === "ready" ? "success" : "warning"}>
-                    {mailCampaign.metadata?.readiness === "ready" ? "Lista para recibir" : "Habilitación pendiente"}
-                  </Badge>
-                </li>
-              ))}
-            </ul>
-          )}
+        {(mailCampaigns ?? []).length > 0 && (
+          <ul className="divide-y divide-border/70 border-t border-border">
+            {(mailCampaigns ?? []).map((mailCampaign) => (
+              <li key={mailCampaign.id} className="flex flex-wrap items-center gap-3 px-5 py-3">
+                <Avatar name={mailCampaign.name} icon={Mail} size="md" shape="square" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-foreground">{mailCampaign.name}</p>
+                  <p className="mt-0.5 break-all font-mono text-[11px] text-muted-foreground">{mailCampaign.external_campaign_key}</p>
+                </div>
+                <Badge tone={mailCampaign.metadata?.readiness === "ready" ? "success" : "warning"}>
+                  {mailCampaign.metadata?.readiness === "ready" ? "Lista para recibir" : "Habilitación pendiente"}
+                </Badge>
+              </li>
+            ))}
+          </ul>
+        )}
 
-          <ActionForm
-            action={mapAtlasLeadMailCampaign}
-            success="Vínculo Atlas Lead registrado"
-            className="grid gap-3 rounded-xl border border-border bg-background p-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.8fr)_auto] xl:items-end"
+        <ActionForm
+          action={mapAtlasLeadMailCampaign}
+          success="Vínculo Atlas Lead registrado"
+          className="divide-y divide-border border-t border-border"
+        >
+          <input type="hidden" name="campaign_id" value={id} />
+          <Grupo
+            titulo="Vincular un envío"
+            descripcion="No crea una campaña CRM nueva ni envía correos. El equipo elegido recibe los contactos nuevos y la exportación queda lista después de la confirmación segura de Atlas Lead."
           >
-            <input type="hidden" name="campaign_id" value={id} />
             <Field label="Clave externa de Atlas Lead">
               <Input name="external_campaign_key" required maxLength={36} placeholder="UUID de la campaña Atlas Lead" />
             </Field>
@@ -255,75 +343,12 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
                 {routingTeams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
               </Select>
             </Field>
+          </Grupo>
+          <PieDeFormulario>
             <ActionSubmit disabled={routingTeams.length === 0} pendingLabel="Conectando…">Registrar y habilitar</ActionSubmit>
-          </ActionForm>
-          <p className="text-xs text-muted-foreground">
-            Esta acción no crea una campaña CRM nueva ni envía correos. El equipo seleccionado recibe los contactos nuevos y la exportación sólo queda lista después de la confirmación segura de Atlas Lead.
-          </p>
-        </div>
-      </SectionCard>
-
-      <SectionCard
-        icon={Briefcase}
-        tone="slate"
-        title="Vertical de negocio"
-        description="Define el vocabulario y los KPI de la campaña: una cartera de cobranza mide recuperación, no ventas."
-      >
-        <ActionForm
-          action={setCampaignVertical}
-          success="Vertical actualizado"
-          className="flex flex-wrap items-end gap-3 p-4"
-        >
-          <input type="hidden" name="campaign_id" value={id} />
-          <Field label="Vertical" className="w-72">
-            <Select name="vertical" defaultValue={campaignVertical}>
-              {CAMPAIGN_VERTICALS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <ActionSubmit pendingLabel="Guardando…">Guardar</ActionSubmit>
-          <p className="pb-2 text-xs text-muted-foreground">
-            {CAMPAIGN_VERTICALS.find((option) => option.value === campaignVertical)?.description}
-          </p>
+          </PieDeFormulario>
         </ActionForm>
       </SectionCard>
-
-      {/* El ancla #flujo (tarjeta de preparación e Inicio) va pegada a la
-          sección del flujo; antes caía sobre «Vertical de negocio». */}
-      {!aiVoice && <div id="flujo" className="scroll-mt-4"><SectionCard
-        icon={Workflow}
-        tone="rose"
-        title="Flujo de gestión"
-        description="Es el guion que los ejecutivos siguen al atender los registros de esta campaña."
-      >
-        <ActionForm
-          action={setCampaignWorkflow}
-          success="Flujo asignado"
-          className="flex flex-wrap items-end gap-3 p-4"
-        >
-          <input type="hidden" name="campaign_id" value={id} />
-          <Field label="Flujo asignado" className="w-72">
-            <Select name="workflow_id" defaultValue={campaign.workflow_id ?? ""}>
-              <option value="">Sin flujo asignado</option>
-              {(workflows ?? []).map((workflow) => (
-                <option key={workflow.id} value={workflow.id}>
-                  {workflow.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <ActionSubmit pendingLabel="Guardando…">Guardar</ActionSubmit>
-          <Link
-            href={`/dashboard/admin/flujos?campaign_id=${id}`}
-            className="pb-2 text-xs font-medium text-primary hover:underline"
-          >
-            Editar o crear un flujo
-          </Link>
-        </ActionForm>
-      </SectionCard></div>}
 
       {summaryError ? (
         <Callout tone="danger">

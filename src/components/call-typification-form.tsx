@@ -1029,7 +1029,7 @@ export function CallTypificationForm({
           </section>
 
           {showAgendaBlock && (
-            <div className="rounded-lg border border-border border-l-2 border-l-[var(--tone-amber)] bg-background p-4">
+            <div className="rounded-lg border border-border bg-surface-raised p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <CalendarClock size={16} className="text-muted-foreground" aria-hidden="true" />
@@ -1088,7 +1088,7 @@ export function CallTypificationForm({
           )}
 
           {showEquifaxBlock && (
-            <div className="rounded-lg border border-border border-l-2 border-l-[var(--tone-green)] bg-background p-4">
+            <div className="rounded-lg border border-border bg-surface-raised p-4">
               <div className="mb-3 flex items-center gap-2">
                 <BadgeDollarSign size={16} className="text-muted-foreground" aria-hidden="true" />
                 <h3 className="text-sm font-semibold text-foreground">Datos comerciales Equifax</h3>

@@ -1,3 +1,5 @@
+import { ClipboardCheck } from "lucide-react";
+
 import { NavTabs, PageHeader } from "@/components/ui";
 
 /** Encabezado compartido de la cola y del buscador de ventas validadas. */
@@ -6,6 +8,7 @@ export function ValidacionVentasHeader() {
     <>
       <PageHeader
         title="Validación de ventas"
+        icon={ClipboardCheck}
         description="Aprueba las ventas que tipifican los ejecutivos para que avancen en el CRM, o recházalas con motivo."
         className="border-b-0 pb-0"
       />

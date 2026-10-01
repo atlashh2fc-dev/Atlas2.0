@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { connection } from "next/server";
-import { ListChecks, Megaphone, MousePointerClick } from "lucide-react";
+import { ChevronRight, Megaphone, MousePointerClick } from "lucide-react";
 
 import { cancelarCampana, crearCampana, lanzarCampana } from "@/app/actions/campanas-clinica";
 import { CreatePanel } from "@/components/create-panel";
-import { ActionForm, ActionSubmit, Badge, Callout, EmptyState, Field, Input, PageHeader, SectionCard, Select } from "@/components/ui";
+import { ActionForm, ActionSubmit, Avatar, Badge, Callout, EmptyState, Field, Input, PageHeader, SectionCard, Select } from "@/components/ui";
 import { ETIQUETA_CANAL, ETIQUETA_ESTADO_CAMPANA, SEGMENTOS } from "@/lib/campanas-clinica";
 import { ZONA_CLINICA, fechaEnChile } from "@/lib/citas";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
@@ -20,18 +20,20 @@ import { createClient } from "@/lib/supabase/server";
  */
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const cuando = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+const cuando = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 
 type Campana = { id: string; nombre: string; segmento: string; parametros: Record<string, unknown>; canal: string; asunto: string | null; texto: string; programada_para: string | null; estado: string; destinatarios: number; lanzada_at: string | null; created_at: string };
 type Resultado = { origen_ref: string | null; cuenta_id: string | null; estado: string; canal: string };
 
-/** Cifra en baldosa, como en Operación: etiqueta, número y un detalle debajo. */
-function Baldosa({ label, valor, detalle }: { label: string; valor: number; detalle: string }) {
+/** Una cifra de la franja de resultados: etiqueta, número y un detalle debajo. */
+function Cifra({ label, valor, detalle }: { label: string; valor: number; detalle: string }) {
   return (
-    <div className="rounded-lg border border-border border-l-2 border-l-border-strong bg-background px-3 py-2.5">
+    <div className="bg-surface px-5 py-4">
       <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
-      <dd className="mt-1 text-2xl font-semibold tracking-tight tabular-nums text-foreground">{valor.toLocaleString("es-CL")}</dd>
-      <p className="mt-1 text-xs text-muted-foreground">{detalle}</p>
+      <dd className={`mt-2 text-[26px] font-semibold leading-none tracking-tight tabular-nums ${valor > 0 ? "text-foreground" : "text-muted-foreground"}`}>
+        {valor.toLocaleString("es-CL")}
+      </dd>
+      <p className="mt-2 text-xs text-muted-foreground">{detalle}</p>
     </div>
   );
 }
@@ -79,6 +81,7 @@ export default async function CampanasClinicaPage({ searchParams }: { searchPara
     <div className="space-y-5">
       <PageHeader
         title="Campañas"
+        icon={Megaphone}
         description={`Segmentos de ${empresa ?? (edicion === "barber" ? "la barbería" : "la clínica")}, un mensaje y una fecha. Salen por la misma cola que los recordatorios; los resultados se leen de ahí.`}
         actions={
           <CreatePanel label="Nueva campaña" title="Nueva campaña" description="Elige a quién, escribe el mensaje y decide cuándo. Antes de lanzar vas a ver cuántas fichas entran." action={crearCampana} submitLabel="Guardar borrador" successLabel="Campaña guardada">
@@ -143,25 +146,41 @@ export default async function CampanasClinicaPage({ searchParams }: { searchPara
       {error && <Callout tone="danger">No se pudieron leer las campañas. Vuelve a cargar para reintentar.</Callout>}
 
       <div className="grid gap-4 xl:grid-cols-[380px_1fr]">
-        <SectionCard icon={Megaphone} tone="rose" title={`Campañas · ${campanas.length}`} description="Las más recientes primero.">
+        <SectionCard
+          title={
+            <span className="flex items-center gap-2">
+              Campañas
+              <span className="rounded-md bg-surface-muted px-1.5 py-px text-[11px] font-semibold tabular-nums text-muted-foreground">{campanas.length}</span>
+            </span>
+          }
+          description="Las más recientes primero."
+        >
           {campanas.length === 0 ? (
             <EmptyState icon={Megaphone} title="Todavía no hay campañas" description='Crea la primera con "Nueva campaña".' />
           ) : (
-            <ul className="divide-y divide-border">
+            <ul className="divide-y divide-border/70 border-t border-border">
               {campanas.map((campana) => {
                 const etiqueta = ETIQUETA_ESTADO_CAMPANA[campana.estado] ?? ETIQUETA_ESTADO_CAMPANA.borrador;
                 const r = resumen(campana.id);
                 return (
                   <li key={campana.id}>
-                    <Link href={`/dashboard/campanas-clinica?c=${campana.id}`} className={`block px-4 py-3 transition-colors hover:bg-surface-muted/60 ${actual?.id === campana.id ? "bg-primary/5" : ""}`}>
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="truncate text-sm font-medium text-foreground">{campana.nombre}</span>
-                        <Badge tone={etiqueta.tone}>{etiqueta.label}</Badge>
+                    <Link
+                      href={`/dashboard/campanas-clinica?c=${campana.id}`}
+                      aria-current={actual?.id === campana.id ? "true" : undefined}
+                      className={`group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-muted/55 ${actual?.id === campana.id ? "bg-surface-muted/70" : ""}`}
+                    >
+                      <Avatar name={campana.nombre} shape="square" size="md" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate text-sm font-medium text-foreground">{campana.nombre}</span>
+                          <Badge tone={etiqueta.tone}>{etiqueta.label}</Badge>
+                        </div>
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                          {segmentos.find((segmento) => segmento.id === campana.segmento)?.label ?? campana.segmento}
+                          {campana.lanzada_at ? ` · ${r.total} enviados · ${r.respondidos} respondieron` : campana.programada_para ? ` · sale ${cuando.format(new Date(campana.programada_para)).replace(".", "")}` : ""}
+                        </p>
                       </div>
-                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                        {segmentos.find((segmento) => segmento.id === campana.segmento)?.label ?? campana.segmento}
-                        {campana.lanzada_at ? ` · ${r.total} enviados · ${r.respondidos} respondieron` : campana.programada_para ? ` · sale ${cuando.format(new Date(campana.programada_para))}` : ""}
-                      </p>
+                      <ChevronRight size={15} className={`shrink-0 ${actual?.id === campana.id ? "text-primary" : "text-muted-foreground/50 group-hover:text-primary"}`} aria-hidden="true" />
                     </Link>
                   </li>
                 );
@@ -171,24 +190,28 @@ export default async function CampanasClinicaPage({ searchParams }: { searchPara
         </SectionCard>
 
         {actual ? (
-          <SectionCard icon={ListChecks} tone="rose" title={actual.nombre} description={`${segmentos.find((segmento) => segmento.id === actual.segmento)?.label ?? actual.segmento} · ${ETIQUETA_CANAL[actual.canal] ?? actual.canal}${actual.programada_para ? ` · programada para ${cuando.format(new Date(actual.programada_para))}` : ""}`}>
-            <div className="space-y-4 px-4 py-4">
+          <SectionCard title={actual.nombre} description={`${segmentos.find((segmento) => segmento.id === actual.segmento)?.label ?? actual.segmento} · ${ETIQUETA_CANAL[actual.canal] ?? actual.canal}${actual.programada_para ? ` · programada para ${cuando.format(new Date(actual.programada_para))}` : ""}`}>
+            <div className="border-t border-border">
               {vistaPrevia && (
-                <dl className="grid gap-3 sm:grid-cols-3">
+                <dl className="grid gap-px border-b border-border bg-border sm:grid-cols-3">
                   {[
                     { label: actual.lanzada_at ? "Enviados" : "Entran en el segmento", valor: actual.lanzada_at ? resumen(actual.id).total : vistaPrevia.total, detalle: actual.lanzada_at ? `${resumen(actual.id).pendientes} pendientes · ${resumen(actual.id).fallidos} fallidos` : `${vistaPrevia.conCelular} con celular · ${vistaPrevia.conCorreo} con correo` },
                     { label: "Respondieron", valor: resumen(actual.id).respondidos, detalle: `${resumen(actual.id).entregados} entregados` },
                     { label: "Agendaron después", valor: agendaron, detalle: "Citas creadas tras el envío" },
                   ].map((metrica) => (
-                    <Baldosa key={metrica.label} label={metrica.label} valor={metrica.valor} detalle={metrica.detalle} />
+                    <Cifra key={metrica.label} label={metrica.label} valor={metrica.valor} detalle={metrica.detalle} />
                   ))}
                 </dl>
               )}
-              <div className="rounded-lg border border-border bg-surface-muted/40 px-4 py-3 text-sm">
-                {actual.asunto && actual.canal !== "whatsapp" && <p className="mb-1 font-medium text-foreground">{actual.asunto}</p>}
-                <p className="whitespace-pre-wrap text-foreground">{actual.texto}</p>
+              <div className="px-5 py-5">
+                <p className="mb-2 text-xs font-medium text-muted-foreground">Mensaje</p>
+                {/* Como lo verá la persona: una burbuja de chat, no un formulario. */}
+                <div className="max-w-xl rounded-2xl rounded-tl-md bg-surface-muted px-4 py-3 text-sm leading-relaxed">
+                  {actual.asunto && actual.canal !== "whatsapp" && <p className="mb-1 font-medium text-foreground">{actual.asunto}</p>}
+                  <p className="whitespace-pre-wrap text-foreground">{actual.texto}</p>
+                </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 border-t border-border bg-surface-raised px-5 py-3">
                 {(actual.estado === "borrador" || actual.estado === "programada") && !actual.lanzada_at && (
                   <ActionForm
                     action={lanzarCampana}
@@ -242,7 +265,7 @@ export default async function CampanasClinicaPage({ searchParams }: { searchPara
             </div>
           </SectionCard>
         ) : (
-          <SectionCard icon={Megaphone} tone="rose" title="Elige una campaña" description="A la izquierda están las campañas. Al crear una, verás cuántas fichas entran antes de lanzarla.">
+          <SectionCard title="Elige una campaña" description="A la izquierda están las campañas. Al crear una, verás cuántas fichas entran antes de lanzarla.">
             <EmptyState icon={MousePointerClick} title="Nada seleccionado" description="Toca una campaña para ver a quién llega y cómo le fue." />
           </SectionCard>
         )}

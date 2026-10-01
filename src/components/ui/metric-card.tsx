@@ -1,6 +1,6 @@
 import type { ComponentType, ReactNode } from "react";
 import Link from "next/link";
-import { ArrowRight, Minus, TrendingDown, TrendingUp } from "lucide-react";
+import { ArrowUpRight, Minus, TrendingDown, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { InfoTooltip } from "./info-tooltip";
 import type { MetricId } from "@/lib/metric-definitions";
@@ -13,8 +13,9 @@ export type IconTone = "primary" | "blue" | "teal" | "green" | "amber" | "violet
 
 type MetricIcon = ComponentType<{ size?: number; "aria-hidden"?: boolean | "true" }>;
 
-/** Con tono de alerta el chip toma el color del estado; si no, el propio. */
-const TONE_CHIP: Partial<Record<MetricTone, IconTone>> = { warn: "amber", danger: "rose" };
+function InlineIcon({ icon: Icon }: { icon: MetricIcon }) {
+  return <Icon size={14} aria-hidden="true" />;
+}
 
 /** Chip de icono de las tarjetas de métrica, arriba a la derecha. */
 export function MetricIconChip({ icon: Icon, tone }: { icon: MetricIcon; tone: IconTone }) {
@@ -51,16 +52,17 @@ function DeltaBadge({ delta }: { delta: MetricDelta }) {
   const format = delta.format ?? ((value: number) => `${value > 0 ? "+" : ""}${value.toLocaleString("es-CL")}`);
 
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 text-xs font-medium tabular-nums",
-        neutral ? "text-muted-foreground" : good ? "text-success" : "text-danger"
-      )}
-      title={delta.label}
-    >
-      <Icon size={13} aria-hidden="true" />
-      {format(delta.value)}
-      <span className="font-normal text-muted-foreground">{delta.label}</span>
+    <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground" title={delta.label}>
+      <span
+        className={cn(
+          "inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 font-semibold tabular-nums",
+          neutral ? "bg-surface-muted text-muted-foreground" : good ? "bg-success/12 text-success" : "bg-danger/12 text-danger"
+        )}
+      >
+        <Icon size={11} aria-hidden="true" />
+        {format(delta.value)}
+      </span>
+      {delta.label}
     </span>
   );
 }
@@ -83,7 +85,6 @@ export function MetricCard({
   target,
   progress,
   icon,
-  iconTone = "primary",
   className,
 }: {
   label: ReactNode;
@@ -99,8 +100,9 @@ export function MetricCard({
   /** Meta a alcanzar, se muestra bajo el valor. */
   target?: string;
   progress?: number;
-  /** Icono de lucide para el chip de la esquina. */
+  /** Icono de lucide junto a la etiqueta. */
   icon?: MetricIcon;
+  /** Se acepta por compatibilidad; el ícono ya no lleva chip de color. */
   iconTone?: IconTone;
   className?: string;
 }) {
@@ -111,20 +113,23 @@ export function MetricCard({
 
   const body = (
     <>
+      {/* El ícono acompaña la etiqueta, en gris: un chip de color por tarjeta
+          volvía el tablero un muestrario. El color queda para el estado. */}
       <div className="flex items-start justify-between gap-2">
-        <p className="flex items-center gap-1 text-[13px] font-medium text-muted-foreground">
+        <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          {icon && <InlineIcon icon={icon} />}
           {label ?? definition?.label}
           {(tooltip || definition) && (
             <InfoTooltip text={tooltip ?? definition!.definition} formula={definition?.formula} />
           )}
         </p>
-        {icon && <MetricIconChip icon={icon} tone={TONE_CHIP[tone] ?? iconTone} />}
+        {href && <ArrowUpRight size={14} className="shrink-0 text-muted-foreground/50 transition-colors group-hover:text-primary" aria-hidden="true" />}
       </div>
 
-      <p className={cn("mt-2 text-[28px] font-semibold leading-none tabular-nums tracking-tight", TONE_TEXT[tone])}>{value}</p>
+      <p className={cn("mt-3 text-[28px] font-semibold leading-none tabular-nums tracking-tight", TONE_TEXT[tone])}>{value}</p>
 
       {(delta || target) && (
-        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
           {delta && <DeltaBadge delta={delta} />}
           {target && <span className="text-xs text-muted-foreground">Meta {target}</span>}
         </div>
@@ -138,23 +143,18 @@ export function MetricCard({
         </div>
       )}
 
-      {href && (
-        <span className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary">
-          {hrefLabel}
-          <ArrowRight size={13} aria-hidden="true" />
-        </span>
-      )}
+      {href && <span className="sr-only">{hrefLabel}</span>}
     </>
   );
 
-  const base = "block rounded-xl border border-border bg-surface p-5 shadow-sm";
+  const base = "atlas-panel group block rounded-xl border border-border bg-surface p-5 shadow-sm";
 
   if (!href) return <div className={cn(base, className)}>{body}</div>;
 
   return (
     <Link
       href={href}
-      className={cn(base, "transition-[border-color,box-shadow] hover:border-border-strong hover:shadow-md", className)}
+      className={cn(base, "transition-[border-color,box-shadow,background-color] hover:border-border-strong hover:bg-surface-muted/40 hover:shadow-md", className)}
     >
       {body}
     </Link>

@@ -32,8 +32,11 @@ export function UserCreatePanel({ teams, empresa }: { teams: { id: string; name:
           action={createUserAccount}
           success="Usuario creado"
           onSuccess={() => setOpen(false)}
-          className="space-y-4"
+          className="space-y-6"
         >
+          {/* En dos grupos con nombre: quién es y con qué entra. */}
+          <fieldset className="space-y-4">
+            <legend className="mb-3 text-xs font-medium text-muted-foreground">Persona</legend>
           <Field label="Nombre completo">
             <Input name="full_name" required placeholder="María Fernández" data-autofocus />
           </Field>
@@ -42,6 +45,11 @@ export function UserCreatePanel({ teams, empresa }: { teams: { id: string; name:
             <Input type="email" name="email" required placeholder="maria@empresa.cl" />
           </Field>
 
+          </fieldset>
+
+          <fieldset className="space-y-4 border-t border-border pt-5">
+            <legend className="sr-only">Acceso</legend>
+            <p className="text-xs font-medium text-muted-foreground">Acceso</p>
           <Field label="Contraseña temporal">
             <Input type="text" name="password" required minLength={8} placeholder="Mínimo 8 caracteres" />
           </Field>
@@ -70,8 +78,10 @@ export function UserCreatePanel({ teams, empresa }: { teams: { id: string; name:
             </Select>
           </Field>
 
-          <label className="flex items-start gap-2 rounded-xl border border-border bg-surface-muted/40 p-3 text-sm text-foreground">
-            <input type="checkbox" name="is_demo" value="1" className="mt-0.5 accent-primary" />
+          </fieldset>
+
+          <label className="flex items-start gap-2.5 border-t border-border pt-5 text-sm text-foreground">
+            <input type="checkbox" name="is_demo" value="1" className="mt-0.5 size-4 accent-primary" />
             <span>
               Cuenta de demostración
               <span className="mt-0.5 block text-xs text-muted-foreground">

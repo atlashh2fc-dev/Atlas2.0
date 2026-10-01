@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Bookmark, RotateCcw, Star, X } from "lucide-react";
+import { Bookmark, RotateCcw, SlidersHorizontal, Star, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePersistentState } from "@/lib/persistent-state";
 import { buttonClasses } from "./button";
@@ -20,12 +20,25 @@ const NO_VIEWS: SavedView[] = [];
  */
 export function FilterBar({
   children,
+  action,
+  more,
+  moreActive = 0,
   storageKey,
   systemViews,
   applyLabel = "Filtrar",
   className,
 }: {
   children: ReactNode;
+  /** Destino del GET; por defecto la misma página. */
+  action?: string;
+  /**
+   * Filtros de uso ocasional, plegados tras "Más filtros" (Hick: siete
+   * etiquetas a la vista convertían la barra en un formulario). Siguen dentro
+   * del mismo form, así que se envían aunque estén plegados.
+   */
+  more?: ReactNode;
+  /** Cuántos de los filtros plegados están en uso; abre el panel si hay alguno. */
+  moreActive?: number;
   /** Habilita las vistas guardadas y las persiste por pantalla. */
   storageKey?: string;
   /** Vistas fijas del producto, que no se pueden borrar. */
@@ -44,6 +57,7 @@ export function FilterBar({
     NO_VIEWS
   );
   const [naming, setNaming] = useState(false);
+  const [showMore, setShowMore] = useState(moreActive > 0);
   const [name, setName] = useState("");
 
   const go = (query: string) => router.push(query ? `${pathname}?${query}` : pathname);
@@ -106,8 +120,25 @@ export function FilterBar({
         </div>
       )}
 
-      <form className="atlas-panel flex flex-wrap items-end gap-2.5 rounded-xl border border-border bg-surface p-3 shadow-sm">
+      <form action={action} className="atlas-panel flex flex-wrap items-end gap-2.5 rounded-xl border border-border bg-surface p-3 shadow-sm">
         {children}
+
+        {more && (
+          <button
+            type="button"
+            onClick={() => setShowMore((current) => !current)}
+            aria-expanded={showMore}
+            className={buttonClasses({ variant: "ghost" })}
+          >
+            <SlidersHorizontal size={15} aria-hidden="true" />
+            Más filtros
+            {moreActive > 0 && (
+              <span className="rounded-md bg-primary/15 px-1.5 py-px text-[11px] font-semibold tabular-nums text-primary">
+                {moreActive}
+              </span>
+            )}
+          </button>
+        )}
 
         <div className="ml-auto flex items-end gap-2">
           {/* Secundario: aplicar filtros no es la acción principal de ninguna vista. */}
@@ -141,6 +172,13 @@ export function FilterBar({
             </>
           )}
         </div>
+
+        {/* Plegado con `hidden`, no desmontado: los campos se envían igual. */}
+        {more && (
+          <div hidden={!showMore} className="w-full">
+            <div className="flex flex-wrap items-end gap-2.5 border-t border-border pt-3">{more}</div>
+          </div>
+        )}
 
         {naming && (
           <div className="flex w-full items-end gap-2 border-t border-border pt-3">

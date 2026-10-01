@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Suspense, useCallback, useMemo, useState, useTransition } from "react";
 import {
   Banknote,
+  ChartColumnBig,
   CalendarCheck,
   CalendarClock,
   CalendarDays,
@@ -295,6 +296,7 @@ export function TableroClinica({
       {/* Cabecera: período, comparación y descarga */}
       <PageHeader
         title="Reportes"
+        icon={ChartColumnBig}
         description="De lo general a lo particular: cuánto produjo la clínica, qué lo explica y el detalle de cada atención. Haz clic en cualquier barra para filtrar."
         actions={
           <div className="flex flex-wrap items-center gap-2">
@@ -529,13 +531,13 @@ function VistaResumen({
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="atlas-panel grid gap-px overflow-hidden rounded-xl border border-border bg-border shadow-sm sm:grid-cols-2 xl:grid-cols-4">
         <Kpi destacado icono={Banknote} tono="green" etiqueta="Producción" valor={clp.format(kpis.produccion)} anterior={clp.format(kpisAntes.produccion)} delta={variacion(kpis.produccion, kpisAntes.produccion)} puntos={chispa((a) => a.monto)} />
         <Kpi destacado icono={Stethoscope} tono="blue" etiqueta="Atenciones" valor={entero.format(kpis.atenciones)} anterior={entero.format(kpisAntes.atenciones)} delta={variacion(kpis.atenciones, kpisAntes.atenciones)} puntos={chispa(() => 1)} />
         <Kpi destacado icono={Receipt} tono="green" etiqueta="Ticket por visita" valor={kpis.ticket === null ? "—" : clp.format(kpis.ticket)} anterior={kpisAntes.ticket === null ? "—" : clp.format(kpisAntes.ticket)} delta={variacion(kpis.ticket, kpisAntes.ticket)} detalle={`${entero.format(kpis.visitas)} visitas`} />
         <Kpi destacado icono={Users} tono="blue" etiqueta={`${voc.personas} atendidos`} valor={entero.format(kpis.pacientes)} anterior={entero.format(kpisAntes.pacientes)} delta={variacion(kpis.pacientes, kpisAntes.pacientes)} puntos={pacientesPorTramo} />
       </div>
-      <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-6">
+      <div className="atlas-panel grid gap-px overflow-hidden rounded-xl border border-border bg-border shadow-sm sm:grid-cols-3 xl:grid-cols-6">
         <Kpi icono={Percent} tono="green" etiqueta="Margen" valor={formatoPct(kpis.margenPct)} delta={variacion(kpis.margenPct, kpisAntes.margenPct)} detalle={`${formatoClpCorto(kpis.margen)} sobre materiales`} />
         <Kpi icono={HandCoins} tono="green" etiqueta="Cobrado" valor={formatoPct(kpis.cobradoPct)} delta={variacion(kpis.cobradoPct, kpisAntes.cobradoPct)} detalle="de lo producido" />
         <Kpi icono={UserPlus} tono="blue" etiqueta="Primera visita" valor={entero.format(kpis.nuevos)} delta={variacion(kpis.nuevos, kpisAntes.nuevos)} detalle={`${voc.personas.toLowerCase()} nuevos`} />
@@ -909,7 +911,7 @@ function VistaAgenda({
   return (
     <div className="space-y-4">
       <AvisoNoAplica filtros={filtros} conjunto="citas" nombre="las citas" />
-      <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-6">
+      <div className="atlas-panel grid gap-px overflow-hidden rounded-xl border border-border bg-border shadow-sm sm:grid-cols-3 xl:grid-cols-6">
         <Kpi icono={CalendarDays} tono="amber" etiqueta="Citas" valor={entero.format(kpis.citas)} delta={variacion(kpis.citas, kpisAntes.citas)} anterior={entero.format(kpisAntes.citas)} />
         <Kpi icono={CheckCheck} tono="amber" etiqueta="Atendidas" valor={entero.format(kpis.atendidas)} delta={variacion(kpis.atendidas, kpisAntes.atendidas)} detalle={`${entero.format(horas)} h de sillón`} />
         <Kpi icono={CalendarCheck} tono="amber" etiqueta="Asistencia" valor={formatoPct(kpis.asistenciaPct)} delta={variacion(kpis.asistenciaPct, kpisAntes.asistenciaPct)} />
@@ -990,7 +992,7 @@ function VistaPlanes({
   return (
     <div className="space-y-4">
       <AvisoNoAplica filtros={filtros} conjunto="planes" nombre={`los ${voc.planes.toLowerCase()}`} />
-      <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-6">
+      <div className="atlas-panel grid gap-px overflow-hidden rounded-xl border border-border bg-border shadow-sm sm:grid-cols-3 xl:grid-cols-6">
         <Kpi icono={FilePlus2} tono="green" etiqueta={`${voc.planes} creados`} valor={entero.format(kpis.planesCreados)} delta={variacion(kpis.planesCreados, kpisAntes.planesCreados)} anterior={entero.format(kpisAntes.planesCreados)} />
         <Kpi icono={Banknote} tono="green" etiqueta="Valor presupuestado" valor={formatoClpCorto(kpis.valorPresupuestado)} delta={variacion(kpis.valorPresupuestado, kpisAntes.valorPresupuestado)} />
         <Kpi icono={FileCheck2} tono="green" etiqueta={voc.aceptados} valor={entero.format(kpis.planesGanados)} delta={variacion(kpis.planesGanados, kpisAntes.planesGanados)} />
@@ -1086,7 +1088,7 @@ function VistaPacientes({
   const totalRec = suma(recurrentes, (r) => r.personas);
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="atlas-panel grid gap-px overflow-hidden rounded-xl border border-border bg-border shadow-sm sm:grid-cols-2 xl:grid-cols-4">
         <Kpi icono={Users} tono="blue" etiqueta={`${voc.personas} atendidos`} valor={entero.format(kpis.pacientes)} delta={variacion(kpis.pacientes, kpisAntes.pacientes)} anterior={entero.format(kpisAntes.pacientes)} />
         <Kpi icono={UserPlus} tono="blue" etiqueta="Primera visita" valor={entero.format(kpis.nuevos)} delta={variacion(kpis.nuevos, kpisAntes.nuevos)} anterior={entero.format(kpisAntes.nuevos)} detalle="primera atención en la historia" />
         <Kpi icono={IdCard} tono="blue" etiqueta="Fichas creadas" valor={entero.format(fichasNuevas)} detalle="altas en el período" />
@@ -1128,15 +1130,18 @@ function VistaPacientes({
       </div>
       {vacunas && (
         <Panel icono={Syringe} tono="amber" titulo="Estado de vacunas hoy" descripcion="Todas las mascotas de la clínica, sin importar el período. Las vencidas y por vencer están en Recordatorios.">
-          <div className="grid gap-3 sm:grid-cols-4">
+          <div className="grid gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-4">
             {([
-              ["vencida", "Vencidas", "border-l-danger", "text-danger"],
-              ["por_vencer", "Vencen en 30 días", "border-l-warning", "text-warning"],
-              ["al_dia", "Al día", "border-l-success", "text-success"],
-              ["sin_dato", "Sin registro", "border-l-border-strong", "text-foreground"],
-            ] as const).map(([clave, etiqueta, borde, cifra]) => (
-              <div key={clave} className={cn("rounded-lg border border-l-2 border-border bg-background px-3 py-2.5", borde)}>
-                <p className="text-xs font-medium text-muted-foreground">{etiqueta}</p>
+              ["vencida", "Vencidas", "bg-danger", "text-danger"],
+              ["por_vencer", "Vencen en 30 días", "bg-warning", "text-warning"],
+              ["al_dia", "Al día", "bg-success", "text-success"],
+              ["sin_dato", "Sin registro", "bg-muted-foreground/45", "text-foreground"],
+            ] as const).map(([clave, etiqueta, punto, cifra]) => (
+              <div key={clave} className="bg-surface px-4 py-3">
+                <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                  <span aria-hidden="true" className={cn("size-1.5 rounded-full", punto)} />
+                  {etiqueta}
+                </p>
                 <p className={cn("mt-1 text-2xl font-semibold tracking-tight tabular-nums", vacunas[clave] > 0 ? cifra : "text-foreground")}>{entero.format(vacunas[clave])}</p>
               </div>
             ))}
@@ -1179,7 +1184,7 @@ function VistaCaja({
   return (
     <div className="space-y-4">
       <AvisoNoAplica filtros={filtros} conjunto="saldos" nombre="los pagos y saldos" />
-      <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-6">
+      <div className="atlas-panel grid gap-px overflow-hidden rounded-xl border border-border bg-border shadow-sm sm:grid-cols-3 xl:grid-cols-6">
         <Kpi icono={Banknote} tono="green" etiqueta="Producción" valor={formatoClpCorto(kpis.produccion)} delta={variacion(kpis.produccion, kpisAntes.produccion)} />
         <Kpi icono={HandCoins} tono="green" etiqueta="Cobrado" valor={formatoClpCorto(kpis.produccion - kpis.pendienteDelPeriodo)} detalle={`${formatoPct(kpis.cobradoPct)} de lo producido`} delta={variacion(kpis.produccion - kpis.pendienteDelPeriodo, kpisAntes.produccion - kpisAntes.pendienteDelPeriodo)} />
         <Kpi icono={Hourglass} tono="amber" etiqueta="Pendiente" valor={formatoClpCorto(kpis.pendienteDelPeriodo)} delta={variacion(kpis.pendienteDelPeriodo, kpisAntes.pendienteDelPeriodo)} inverso detalle="de lo producido en el período" />

@@ -1,9 +1,10 @@
-import { CalendarClock, CalendarX2 } from "lucide-react";
+import { CalendarCheck, CalendarClock, CalendarX2, PhoneOutgoing } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { resolveCampaignScope } from "@/lib/campaign-scope";
 import { getMyAgendaCampaignId } from "@/lib/agenda-scope";
 import { Callout, PageHeader } from "@/components/ui";
+import { KpiStrip, KpiStripItem } from "@/components/report-kit";
 import { AgendaTable, type AgendaRow } from "@/components/agenda-table";
 
 export default async function MyAgendaPage({
@@ -68,46 +69,84 @@ export default async function MyAgendaPage({
   // La vencida más reciente arriba: es la que todavía se puede recuperar.
   const overdueRows = rows.filter((row) => row.overdue).reverse();
   const overdueCount = overdueRows.length;
+  const autoCount = upcoming.filter((row) => row.auto).length;
+  // Una línea en el encabezado: el detalle del reintento vive en el sistema,
+  // no en la pantalla.
 
   return (
     <div className="space-y-5">
       <PageHeader
+        icon={CalendarCheck}
         title="Mi agenda"
         description={
           overdueCount > 0
-            ? `Tus compromisos con clientes. Tienes ${overdueCount} ${overdueCount === 1 ? "vencido" : "vencidos"} por recuperar.`
+            ? `Tus compromisos con clientes. Lo primero: ${overdueCount} ${overdueCount === 1 ? "vencido" : "vencidos"} por recuperar.`
             : "Tus compromisos con clientes, los más urgentes primero."
+        }
+        meta={
+          <span className="inline-flex items-center gap-1.5">
+            <PhoneOutgoing size={13} aria-hidden="true" />
+            Si estás Disponible, tus llamadas agendadas se marcan solas a la hora acordada; «Llamar ahora» la adelanta.
+          </span>
         }
       />
 
-      {/* Una línea: el detalle del reintento vive en el sistema, no en la pantalla. */}
-      <p className="text-sm text-muted-foreground">
-        Si estás Disponible, tus llamadas agendadas se marcan solas a la hora acordada; «Llamar ahora» la adelanta.
-      </p>
       {error ? (
         <Callout tone="danger">
           No se pudo cargar tu agenda. Actualiza la página; si sigue igual, avisa a tu supervisor.
         </Callout>
       ) : (
         <>
+          <KpiStrip columns={3}>
+            <KpiStripItem
+              label="Vencidas por recuperar"
+              icon={CalendarX2}
+              value={overdueCount.toLocaleString("es-CL")}
+              tone={overdueCount > 0 ? "danger" : "default"}
+              detail={overdueCount > 0 ? "La más reciente es la que todavía se recupera" : "Nada pendiente"}
+            />
+            <KpiStripItem
+              label="Próximas"
+              icon={CalendarClock}
+              value={upcoming.length.toLocaleString("es-CL")}
+              detail="Compromisos por venir"
+            />
+            <KpiStripItem
+              label="Las marca el discador"
+              icon={PhoneOutgoing}
+              value={autoCount.toLocaleString("es-CL")}
+              detail="Llamadas que salen solas a su hora"
+              progress={upcoming.length > 0 ? (autoCount / upcoming.length) * 100 : undefined}
+            />
+          </KpiStrip>
+
+          {/* Próximas primero: lo recién agendado no puede quedar debajo de
+              decenas de vencidas. La cifra de vencidas ya está arriba. */}
           <section className="space-y-3">
-            <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-              <CalendarClock size={16} className="text-muted-foreground" aria-hidden="true" />
-              Próximas ({upcoming.length})
-            </h2>
+            <AgendaHeading title="Próximas" count={upcoming.length} />
             <AgendaTable rows={upcoming} storageKey="agenda" />
           </section>
           {overdueCount > 0 && (
             <section className="space-y-3">
-              <h2 className="flex items-center gap-2 text-sm font-semibold text-danger">
-                <CalendarX2 size={16} aria-hidden="true" />
-                Vencidas por recuperar ({overdueCount})
-              </h2>
+              <AgendaHeading title="Vencidas por recuperar" count={overdueCount} tone="danger" />
               <AgendaTable rows={overdueRows} storageKey="agenda-vencidas" />
             </section>
           )}
         </>
       )}
     </div>
+  );
+}
+
+/** Título de tabla con su conteo en caja; la tabla trae su propia tarjeta. */
+function AgendaHeading({ title, count, tone }: { title: string; count: number; tone?: "danger" }) {
+  return (
+    <h2 className="flex items-center gap-2 px-1 text-[15px] font-semibold tracking-tight text-foreground">
+      {tone === "danger" && <span aria-hidden="true" className="size-1.5 rounded-full bg-danger" />}
+      {title}
+      <span className="rounded-md bg-surface-muted px-1.5 text-[11px] font-semibold tabular-nums text-muted-foreground">
+        {count.toLocaleString("es-CL")}
+      </span>
+    </h2>
   );
 }

@@ -1,3 +1,4 @@
+import { Activity } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { LiveMonitor } from "@/components/live-monitor";
 import { NavTabs, PageHeader } from "@/components/ui";
@@ -8,9 +9,9 @@ export default async function MonitorEnVivoPage() {
   return (
     <div className="space-y-6">
       <PageHeader
+        icon={Activity}
         title="Monitor en vivo"
         description="Estado del equipo al segundo y el embudo COPC outbound del día: recorrido, aló, titular y venta; además TMO, abandono, producción y pausas."
-        className="border-b-0 pb-0"
       />
       <NavTabs
         tabs={[

@@ -14,7 +14,7 @@ export default async function EmpresaAjustesPage({ params }: { params: Promise<{
   return (
     <div className="space-y-8">
       <section className="space-y-3">
-        <h2 className="text-base font-semibold tracking-tight text-foreground">Datos</h2>
+        <h2 className="text-[15px] font-semibold tracking-tight text-foreground">Datos</h2>
         <dl className="divide-y divide-border/70 overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
           <Dato etiqueta="Nombre" valor={empresa.nombre} />
           <Dato etiqueta="Clave" valor={empresa.slug} nota="Se usa en integraciones; no se cambia." />
@@ -24,7 +24,7 @@ export default async function EmpresaAjustesPage({ params }: { params: Promise<{
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-base font-semibold tracking-tight text-foreground">
+        <h2 className="text-[15px] font-semibold tracking-tight text-foreground">
           {empresa.activa ? "Suspender la empresa" : "Reactivar la empresa"}
         </h2>
         <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-danger/25 bg-surface px-5 py-4 shadow-sm">

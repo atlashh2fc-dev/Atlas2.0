@@ -5,8 +5,8 @@ import { ArrowUpRight, LogOut } from "lucide-react";
 
 import { signOut } from "@/app/actions/auth";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { ToastProvider } from "@/components/ui";
-import { iniciales, requirePlataforma } from "@/lib/plataforma.server";
+import { Avatar, ToastProvider } from "@/components/ui";
+import { requirePlataforma } from "@/lib/plataforma.server";
 
 export const metadata: Metadata = {
   title: "Plataforma | Atlas",
@@ -53,11 +53,8 @@ export default async function PlataformaLayout({ children }: { children: React.R
                   <LogOut size={17} />
                 </button>
               </form>
-              <span
-                className="ml-1 flex size-8 items-center justify-center rounded-full bg-foreground/[0.07] text-xs font-semibold text-foreground"
-                title={`${profile.full_name} · dueño de la plataforma`}
-              >
-                {iniciales(profile.full_name)}
+              <span className="ml-1 inline-flex" title={`${profile.full_name} · dueño de la plataforma`}>
+                <Avatar name={profile.full_name} size="sm" />
               </span>
             </div>
           </div>

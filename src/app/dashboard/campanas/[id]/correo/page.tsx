@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Inbox } from "lucide-react";
 
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -66,12 +66,13 @@ export default async function CampaignInboxPage({ params }: { params: Promise<{ 
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <Link href={`/dashboard/campanas/${id}`} className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary">
         <ArrowLeft size={13} /> {campaign.name}
       </Link>
       <PageHeader
         title={`Bandeja de entrada · ${campaign.name}`}
+        icon={Inbox}
         description="Consulta y convierte correos recibidos en registros para contacto telefónico."
       />
       <InboundMailbox

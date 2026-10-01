@@ -28,6 +28,7 @@ import {
   TableEmpty,
   Tr,
 } from "@/components/ui";
+import { Conteo } from "../_diseno";
 
 export default async function EstadosAgentePage() {
   await requireProfile(["admin"]);
@@ -37,6 +38,7 @@ export default async function EstadosAgentePage() {
     <div className="space-y-5">
       <PageHeader
         title="Estados de agente"
+        icon={Timer}
         description="El CTI tiene dos estados operativos: Disponible y AUX. Cada AUX exige un motivo concreto y saca al ejecutivo de las colas mientras esté activo."
         actions={
           <CreatePanel
@@ -72,15 +74,17 @@ export default async function EstadosAgentePage() {
       />
 
       <SectionCard
-        icon={Timer}
-        tone="amber"
-        title="Catálogo de estados"
+        title={
+          <>
+            Catálogo de estados
+            <Conteo>{reasons.length}</Conteo>
+          </>
+        }
         description="Cada estado define si el ejecutivo recibe llamadas y cómo se cuenta su tiempo en los reportes."
       >
         <Table>
           <Thead>
             <Th>Estado</Th>
-            <Th>Código</Th>
             <Th>
               <span className="inline-flex items-center gap-1">
                 En la cola
@@ -110,8 +114,13 @@ export default async function EstadosAgentePage() {
           </Thead>
           <Tbody>
             {reasons.length === 0 && (
-              <TableEmpty colSpan={7}>
-                <EmptyState icon={Timer} title="No hay motivos configurados." className="py-6" />
+              <TableEmpty colSpan={6}>
+                <EmptyState
+                  icon={Timer}
+                  title="No hay motivos configurados."
+                  description="Crea el primero con «Nuevo motivo»: aparecerá en el CTI de cada ejecutivo."
+                  className="py-6"
+                />
               </TableEmpty>
             )}
             {reasons.map((reason) => (
@@ -126,17 +135,17 @@ export default async function EstadosAgentePage() {
                     >
                       {reason.is_system ? <Cog size={15} /> : reason.is_pause ? <Coffee size={15} /> : <CircleCheck size={15} />}
                     </span>
-                    <span>
-                      {reason.is_pause && !reason.is_system ? `AUX · ${reason.label}` : reason.label}
-                      {reason.is_system && (
-                        <Badge tone="neutral" className="ml-2">
-                          Sistema
-                        </Badge>
-                      )}
+                    <span className="min-w-0">
+                      <span className="block">
+                        {reason.is_pause && !reason.is_system ? `AUX · ${reason.label}` : reason.label}
+                      </span>
+                      <span className="block font-mono text-[11px] font-normal text-muted-foreground">
+                        {reason.code}
+                        {reason.is_system ? " · sistema" : ""}
+                      </span>
                     </span>
                   </span>
                 </Td>
-                <Td muted className="font-mono text-xs">{reason.code}</Td>
                 <Td>
                   {reason.is_system ? (
                     <span className="inline-flex items-center gap-2 text-muted-foreground">
@@ -214,7 +223,7 @@ export default async function EstadosAgentePage() {
                   )}
                 </Td>
                 <Td>
-                  <Badge tone={reason.is_active ? "success" : "danger"}>
+                  <Badge tone={reason.is_active ? "success" : "neutral"}>
                     {reason.is_active ? "Activo" : "Inactivo"}
                   </Badge>
                 </Td>
@@ -229,7 +238,7 @@ export default async function EstadosAgentePage() {
                     >
                       <input type="hidden" name="id" value={reason.id} />
                       <input type="hidden" name="active" value={String(reason.is_active)} />
-                      <ActionSubmit variant="secondary" size="sm" pendingLabel="…">
+                      <ActionSubmit variant="ghost" size="sm" pendingLabel="…">
                         {reason.is_active ? "Desactivar" : "Activar"}
                       </ActionSubmit>
                     </ActionForm>

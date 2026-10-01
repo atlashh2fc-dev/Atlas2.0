@@ -1,5 +1,6 @@
 import { MoverMiembro } from "@/components/plataforma/mover-miembro";
-import { Badge, Table, TableEmpty, Tbody, Td, Th, Thead, Tr } from "@/components/ui";
+import { UsersRound } from "lucide-react";
+import { Avatar, Badge, EmptyState, Table, TableEmpty, Tbody, Td, Th, Thead, Tr } from "@/components/ui";
 import { ROLE_LABEL } from "@/lib/nav.config";
 import { haceCuanto, leerEmpresa } from "@/lib/plataforma.server";
 
@@ -32,17 +33,29 @@ export default async function EmpresaMiembrosPage({ params }: { params: Promise<
           </Thead>
           <Tbody>
             {empresa.miembros.length === 0 && (
-              <TableEmpty colSpan={5}>Sin miembros todavía. Su primer administrador se crea desde su CRM.</TableEmpty>
+              <TableEmpty colSpan={5}>
+                <EmptyState
+                  icon={UsersRound}
+                  title="Sin miembros todavía"
+                  description="Su primer administrador se crea desde su CRM, en Configuración → Usuarios."
+                  className="py-4"
+                />
+              </TableEmpty>
             )}
             {empresa.miembros.map((miembro) => (
               <Tr key={miembro.id}>
                 <Td>
-                  <p className="font-medium text-foreground">{miembro.nombre}</p>
-                  {miembro.correo && <p className="mt-0.5 text-xs text-muted-foreground">{miembro.correo}</p>}
+                  <span className="flex items-center gap-3">
+                    <Avatar name={miembro.nombre} size="md" className={miembro.activo ? "" : "opacity-50"} />
+                    <span className="min-w-0">
+                      <span className="block font-medium text-foreground">{miembro.nombre}</span>
+                      {miembro.correo && <span className="block text-xs text-muted-foreground">{miembro.correo}</span>}
+                    </span>
+                  </span>
                 </Td>
-                <Td muted>
-                  {ROLE_LABEL[miembro.rol] ?? miembro.rol}
-                  {!miembro.principal && <span className="block text-xs">Invitado de otra empresa</span>}
+                <Td>
+                  <span className="block text-foreground">{ROLE_LABEL[miembro.rol] ?? miembro.rol}</span>
+                  {!miembro.principal && <span className="block text-xs text-muted-foreground">Invitado de otra empresa</span>}
                 </Td>
                 <Td muted>{haceCuanto(miembro.ultimoIngreso)}</Td>
                 <Td>

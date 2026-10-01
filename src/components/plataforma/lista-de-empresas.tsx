@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { ChevronRight, Search } from "lucide-react";
+import { Building2, ChevronRight, Search } from "lucide-react";
 
-import { Badge } from "@/components/ui";
+import { Avatar, Badge, EmptyState } from "@/components/ui";
 import type { Edicion } from "@/lib/ediciones";
 
 export type FilaEmpresa = {
@@ -51,10 +51,12 @@ export function ListaDeEmpresas({ filas }: { filas: FilaEmpresa[] }) {
 
       <ul className="divide-y divide-border/70 overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
         {visibles.length === 0 && (
-          <li className="px-5 py-12 text-center text-sm text-muted-foreground">
-            {filas.length === 0
-              ? "Todavía no hay empresas. Crea la primera con «Nueva empresa»."
-              : `Ninguna empresa coincide con «${busqueda}».`}
+          <li>
+            <EmptyState
+              icon={filas.length === 0 ? Building2 : Search}
+              title={filas.length === 0 ? "Todavía no hay empresas" : `Ninguna empresa coincide con «${busqueda}»`}
+              description={filas.length === 0 ? "Crea la primera con «Nueva empresa»." : "Prueba con otra parte del nombre o la clave."}
+            />
           </li>
         )}
         {visibles.map((fila) => (
@@ -63,13 +65,7 @@ export function ListaDeEmpresas({ filas }: { filas: FilaEmpresa[] }) {
               href={`/plataforma/empresas/${fila.id}`}
               className="group flex items-center gap-4 px-5 py-4 transition-colors hover:bg-surface-muted/60"
             >
-              <span
-                data-edicion={fila.edicion}
-                aria-hidden="true"
-                className={`flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-sm font-semibold text-primary ${fila.activa ? "" : "opacity-50"}`}
-              >
-                {fila.iniciales}
-              </span>
+              <Avatar name={fila.nombre} seed={fila.slug} size="lg" shape="square" className={fila.activa ? "" : "opacity-50"} />
 
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-semibold text-foreground">{fila.nombre}</span>

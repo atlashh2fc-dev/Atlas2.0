@@ -1,4 +1,4 @@
-import { CalendarClock, ChevronRight, PhoneCall, Timer } from "lucide-react";
+import { CalendarClock, ChevronRight, Timer } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { upsertDialerCampaignConfig } from "@/app/actions/dialer-config";
@@ -9,6 +9,7 @@ import { FormularioConEncendido } from "../formulario-con-encendido";
 import { fetchCampaignReasonCatalog } from "@/lib/campaign-reason-catalog";
 import { shortCallDispositionOptions } from "@/lib/short-call-closure";
 import { ActionSubmit, Callout, Field, InfoTooltip, Input, SectionCard, Select } from "@/components/ui";
+import { Grupo, PieDeFormulario } from "../../../_diseno";
 
 /** Etiqueta con la explicación al lado: esta es la pantalla más técnica del producto. */
 function LabelWithHelp({ label, help }: { label: string; help: string }) {
@@ -79,15 +80,13 @@ export default async function CampaignDialerPage({ params }: { params: Promise<{
       )}
 
       <SectionCard
-        icon={PhoneCall}
-        tone="primary"
         title="Configuración de discado"
         description="Define cómo el motor maneja esta campaña. Los ejecutivos asignados en la pestaña Ejecutivos son los que se sincronizan como miembros de la cola."
       >
         <FormularioConEncendido
           action={upsertDialerCampaignConfig}
           success="Configuración de discado guardada"
-          className="space-y-5 p-4"
+          className="divide-y divide-border border-t border-border"
           toggleName="is_active"
           savedOn={config?.is_active ?? false}
           turnOn={{
@@ -108,10 +107,12 @@ export default async function CampaignDialerPage({ params }: { params: Promise<{
           <input type="hidden" name="campaign_id" value={id} />
 
           {/* Básico: lo que se ajusta en el día a día de la operación. */}
-          <fieldset className="grid gap-4 sm:grid-cols-2">
-            <legend className="mb-3 text-sm font-semibold text-foreground">Básico</legend>
-
+          <Grupo
+            titulo="Modo y ritmo"
+            descripcion="Cómo origina el motor las llamadas, cuántas lanza por ejecutivo y cuánto descansa el ejecutivo entre una y otra."
+          >
             <Field
+              className="sm:col-span-2"
               label={
                 <LabelWithHelp
                   label="Modo de discado"
@@ -143,7 +144,12 @@ export default async function CampaignDialerPage({ params }: { params: Promise<{
             >
               <Input type="number" name="wrapup_seconds" min="10" max="600" defaultValue={config?.wrapup_seconds ?? 10} />
             </Field>
+          </Grupo>
 
+          <Grupo
+            titulo="Número que ve el cliente"
+            descripcion="Debe estar habilitado en la ruta saliente. Cada intento guarda el número que se mostró, para medir la contactabilidad de cada uno."
+          >
             <Field
               label={
                 <LabelWithHelp
@@ -171,11 +177,10 @@ export default async function CampaignDialerPage({ params }: { params: Promise<{
                   rows={3}
                   placeholder={"56 9 6590 6926\n56 2 2345 6789"}
                   defaultValue={(config?.caller_ids ?? []).join("\n")}
-                  className="w-full rounded-md border border-border bg-background px-3 py-1.5 font-mono text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="w-full rounded-lg border border-border-strong/70 bg-surface px-3 py-2 font-mono text-sm text-foreground shadow-sm placeholder:text-muted-foreground/70 focus:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
                 />
                 <span className="text-xs text-muted-foreground">
                   Uno por línea, números chilenos (hasta {MAX_CALLER_IDS}). Vacío: se usa solo el identificador de arriba.
-                  Cada intento guarda el número que se mostró, para medir la contactabilidad de cada uno.
                 </span>
               </Field>
             ) : (
@@ -185,136 +190,149 @@ export default async function CampaignDialerPage({ params }: { params: Promise<{
                 </p>
               )
             )}
+          </Grupo>
 
-            <label className="flex min-h-11 items-center gap-2 text-sm text-foreground sm:col-span-2">
-              <input type="checkbox" name="is_active" value="true" defaultChecked={config?.is_active ?? false} className="accent-primary" />
+          <Grupo
+            titulo="Encendido"
+            descripcion="Guardar con esta casilla cambiada pide confirmar: es lo que empieza a marcar clientes o deja de hacerlo."
+            columnas={1}
+          >
+            <label className="flex min-h-11 items-center gap-2.5 text-sm text-foreground">
+              <input type="checkbox" name="is_active" value="true" defaultChecked={config?.is_active ?? false} className="size-4 accent-primary" />
               Campaña activa para el motor de discado
             </label>
-          </fieldset>
+          </Grupo>
 
           {/* Avanzado: lo técnico y lo que se define una vez. Se abre solo si hay algo que corregir. */}
-          <details className="group rounded-lg border border-border" open={shortCallDispositionMissing || undefined}>
-            <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-4 py-2 text-sm font-semibold text-foreground">
+          <details className="group" open={shortCallDispositionMissing || undefined}>
+            <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 px-5 py-3 text-sm font-medium text-foreground hover:bg-surface-muted/50">
               <ChevronRight size={16} className="text-muted-foreground transition-transform group-open:rotate-90" aria-hidden="true" />
               Avanzado
-              <span className="font-normal text-muted-foreground">
+              <span className="truncate font-normal text-muted-foreground">
                 · dirección, cola, reintentos, abandono, conexiones cortas y compromisos agendados
               </span>
             </summary>
 
-            <div className="grid gap-4 border-t border-border p-4 sm:grid-cols-2">
-              <Field
-                label={
-                  <LabelWithHelp
-                    label="Dirección de la campaña"
-                    help="Decide qué familia de indicadores se reporta. En saliente se miden contactabilidad, penetración de base e intentos por contacto; en entrante, nivel de servicio y espera en cola. En mixta se reportan ambas por separado, nunca promediadas."
-                  />
-                }
+            <div className="divide-y divide-border border-t border-border">
+              <Grupo
+                titulo="Dirección y ruta"
+                descripcion="Qué indicadores se reportan y por dónde salen las llamadas. Se define una vez."
               >
-                <Select name="campaign_type" defaultValue={config?.campaign_type ?? "outbound"}>
-                  <option value="outbound">Saliente · el discador origina las llamadas</option>
-                  <option value="inbound">Entrante · el cliente llama y espera en cola</option>
-                  <option value="blending">Mixta · ambas direcciones</option>
-                </Select>
-              </Field>
+                <Field
+                  className="sm:col-span-2"
+                  label={
+                    <LabelWithHelp
+                      label="Dirección de la campaña"
+                      help="Decide qué familia de indicadores se reporta. En saliente se miden contactabilidad, penetración de base e intentos por contacto; en entrante, nivel de servicio y espera en cola. En mixta se reportan ambas por separado, nunca promediadas."
+                    />
+                  }
+                >
+                  <Select name="campaign_type" defaultValue={config?.campaign_type ?? "outbound"}>
+                    <option value="outbound">Saliente · el discador origina las llamadas</option>
+                    <option value="inbound">Entrante · el cliente llama y espera en cola</option>
+                    <option value="blending">Mixta · ambas direcciones</option>
+                  </Select>
+                </Field>
 
-              <Field
-                label={
-                  <LabelWithHelp
-                    label="Nombre de la cola"
-                    help="Identificador técnico de la cola en la central telefónica. Sin espacios ni tildes. Cambiarlo en una campaña en curso deja a sus ejecutivos en una cola nueva."
-                  />
-                }
+                <Field
+                  label={
+                    <LabelWithHelp
+                      label="Nombre de la cola"
+                      help="Identificador técnico de la cola en la central telefónica. Sin espacios ni tildes. Cambiarlo en una campaña en curso deja a sus ejecutivos en una cola nueva."
+                    />
+                  }
+                >
+                  {/* Sin `required`: dentro de un <details> cerrado el navegador no puede
+                      mostrar el aviso. Siempre viene lleno y la acción lo valida igual. */}
+                  <Input type="text" name="queue_name" placeholder="campania_ventas" defaultValue={queueName} />
+                  <span className="text-xs text-muted-foreground">
+                    {config ? "Lo usa la central telefónica: déjalo como está salvo que soporte te pida cambiarlo." : "Sugerido a partir del nombre de la campaña."}
+                  </span>
+                </Field>
+
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[13px] font-medium text-foreground">
+                    <LabelWithHelp label="Ruta saliente" help="Proveedor por el que salen las llamadas de esta campaña." />
+                  </span>
+                  {/* Una sola ruta habilitada: se muestra y se envía, sin un selector de una opción. */}
+                  <input type="hidden" name="trunk_context" value="siptel" />
+                  <p className="flex h-9 items-center text-sm text-foreground">Siptel · única ruta habilitada</p>
+                </div>
+              </Grupo>
+
+              <Grupo
+                titulo="Reintentos y abandono"
+                descripcion="Cuántas veces se vuelve a marcar y cuánto espera un cliente que contestó sin ejecutivo libre."
               >
-                {/* Sin `required`: dentro de un <details> cerrado el navegador no puede
-                    mostrar el aviso. Siempre viene lleno y la acción lo valida igual. */}
-                <Input type="text" name="queue_name" placeholder="campania_ventas" defaultValue={queueName} />
-                <span className="text-xs text-muted-foreground">
-                  {config ? "Lo usa la central telefónica: déjalo como está salvo que soporte te pida cambiarlo." : "Sugerido a partir del nombre de la campaña."}
-                </span>
-              </Field>
-
-              <div className="flex flex-col gap-1.5">
-                <span className="text-[13px] font-medium text-foreground">
-                  <LabelWithHelp label="Ruta saliente" help="Proveedor por el que salen las llamadas de esta campaña." />
-                </span>
-                {/* Una sola ruta habilitada: se muestra y se envía, sin un selector de una opción. */}
-                <input type="hidden" name="trunk_context" value="siptel" />
-                <p className="flex h-9 items-center text-sm text-foreground">Siptel · única ruta habilitada</p>
-              </div>
-
-              <Field
-                label={
-                  <LabelWithHelp
-                    label="Tope de reintentos automáticos"
-                    help="Espera creciente entre reintentos: 15 minutos tras el primer no-contesta, 1 hora tras el segundo, 4 horas desde el tercero. Al llegar al tope el registro sigue disponible para gestión manual."
+                <Field
+                  label={
+                    <LabelWithHelp
+                      label="Tope de reintentos automáticos"
+                      help="Espera creciente entre reintentos: 15 minutos tras el primer no-contesta, 1 hora tras el segundo, 4 horas desde el tercero. Al llegar al tope el registro sigue disponible para gestión manual."
+                    />
+                  }
+                >
+                  <Input
+                    type="number"
+                    name="max_redial_attempts"
+                    min="0"
+                    max="20"
+                    defaultValue={config?.max_redial_attempts ?? 4}
                   />
-                }
-              >
-                <Input
-                  type="number"
-                  name="max_redial_attempts"
-                  min="0"
-                  max="20"
-                  defaultValue={config?.max_redial_attempts ?? 4}
-                />
-              </Field>
+                </Field>
 
-              <Field
-                label={
-                  <LabelWithHelp
-                    label="Espera máxima sin ejecutivo (segundos)"
-                    help="Si el cliente contesta y no hay ejecutivo libre, cuánto espera antes de que se corte. Esa llamada cuenta como abandono."
+                <Field
+                  label={
+                    <LabelWithHelp
+                      label="Espera máxima sin ejecutivo (segundos)"
+                      help="Si el cliente contesta y no hay ejecutivo libre, cuánto espera antes de que se corte. Esa llamada cuenta como abandono."
+                    />
+                  }
+                >
+                  <Input
+                    type="number"
+                    name="abandon_timeout_seconds"
+                    min="10"
+                    max="600"
+                    defaultValue={config?.abandon_timeout_seconds ?? 90}
                   />
-                }
-              >
-                <Input
-                  type="number"
-                  name="abandon_timeout_seconds"
-                  min="10"
-                  max="600"
-                  defaultValue={config?.abandon_timeout_seconds ?? 90}
-                />
-              </Field>
+                </Field>
 
-              <Field
-                label={
-                  <LabelWithHelp
-                    label="Abandono objetivo (%)"
-                    help="Solo en modo predictivo: el motor ajusta el ratio para mantener el abandono cerca de este valor, sin pasar el ratio máximo. Es porcentaje: 3 = 3 % de las llamadas contestadas que cuelgan sin ejecutiva."
+                <Field
+                  label={
+                    <LabelWithHelp
+                      label="Abandono objetivo (%)"
+                      help="Solo en modo predictivo: el motor ajusta el ratio para mantener el abandono cerca de este valor, sin pasar el ratio máximo. Es porcentaje: 3 = 3 % de las llamadas contestadas que cuelgan sin ejecutiva."
+                    />
+                  }
+                >
+                  <Input
+                    type="number"
+                    name="target_abandonment_rate"
+                    step="0.5"
+                    min="1"
+                    max="100"
+                    defaultValue={config?.target_abandonment_rate ?? 6.0}
                   />
-                }
-              >
-                <Input
-                  type="number"
-                  name="target_abandonment_rate"
-                  step="0.5"
-                  min="1"
-                  max="100"
-                  defaultValue={config?.target_abandonment_rate ?? 6.0}
-                />
-              </Field>
+                </Field>
 
-              <label className="flex min-h-11 items-center gap-2 text-sm text-foreground sm:col-span-2">
-                <input type="checkbox" name="amd_enabled" value="true" defaultChecked={config?.amd_enabled ?? false} className="accent-primary" />
-                Detectar contestador automático
-                <InfoTooltip text="Descarta las llamadas que caen en un buzón de voz, para no entregarle una grabación a un ejecutivo." />
-              </label>
+                <label className="flex min-h-11 items-center gap-2.5 text-sm text-foreground sm:col-span-2">
+                  <input type="checkbox" name="amd_enabled" value="true" defaultChecked={config?.amd_enabled ?? false} className="size-4 accent-primary" />
+                  Detectar contestador automático
+                  <InfoTooltip text="Descarta las llamadas que caen en un buzón de voz, para no entregarle una grabación a un ejecutivo." />
+                </label>
+              </Grupo>
 
               {shortCallAvailable && (
-                <>
-                  <div className="sm:col-span-2 border-t border-border pt-4">
-                    <p className="flex items-center gap-2 text-sm font-medium text-foreground">
-                      <Timer size={16} className="text-muted-foreground" aria-hidden="true" />
+                <Grupo
+                  titulo={
+                    <span className="inline-flex items-center gap-1.5">
+                      <Timer size={14} className="text-muted-foreground" aria-hidden="true" />
                       Conexiones cortas
-                    </p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      Una conexión del discador que dura menos que el umbral (buzón, centralita, cuelgan al tiro) se
-                      cierra sola con el motivo elegido al terminar la interrupción legal. El ejecutivo ve el aviso y
-                      puede cambiarla antes; si ya había armado otra tipificación, manda la suya.
-                    </p>
-                  </div>
-
+                    </span>
+                  }
+                  descripcion="Una conexión del discador que dura menos que el umbral (buzón, centralita, cuelgan al tiro) se cierra sola con el motivo elegido al terminar la interrupción legal. El ejecutivo ve el aviso y puede cambiarla antes; si ya había armado otra tipificación, manda la suya."
+                >
                   {shortCallDispositionMissing && (
                     <Callout tone="warning" className="sm:col-span-2">
                       El motivo guardado ({shortCallDisposition}) ya no está en el flujo de la campaña o pide agenda o
@@ -370,89 +388,88 @@ export default async function CampaignDialerPage({ params }: { params: Promise<{
                       </p>
                     </div>
                   )}
-                </>
+                </Grupo>
               )}
 
-              <div className="sm:col-span-2 border-t border-border pt-4">
-                <p className="flex items-center gap-2 text-sm font-medium text-foreground">
-                  <CalendarClock size={16} className="text-muted-foreground" aria-hidden="true" />
-                  Compromisos agendados
-                </p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  Cuando un ejecutivo agenda una llamada, ese compromiso es suyo. A la hora acordada el discador marca al
-                  cliente y la llamada le entra a él, nunca al resto del equipo.
-                </p>
-              </div>
-
-              <label className="flex min-h-11 items-center gap-2 text-sm text-foreground sm:col-span-2">
-                <input
-                  type="checkbox"
-                  name="personal_callback_enabled"
-                  value="true"
-                  defaultChecked={config?.personal_callback_enabled ?? true}
-                  className="accent-primary"
-                />
-                Entregar los compromisos automáticamente a su ejecutivo
-                <InfoTooltip text="Si lo desactivas, las agendas quedan solo en Mi agenda y el ejecutivo llama a mano." />
-              </label>
-
-              <Field
-                label={
-                  <LabelWithHelp
-                    label="Ventana de entrega (minutos)"
-                    help="Cuánto se sigue intentando entregar el compromiso mientras el ejecutivo no esté disponible. Pasado ese tiempo se da por vencido."
-                  />
+              <Grupo
+                titulo={
+                  <span className="inline-flex items-center gap-1.5">
+                    <CalendarClock size={14} className="text-muted-foreground" aria-hidden="true" />
+                    Compromisos agendados
+                  </span>
                 }
+                descripcion="Cuando un ejecutivo agenda una llamada, ese compromiso es suyo. A la hora acordada el discador marca al cliente y la llamada le entra a él, nunca al resto del equipo."
               >
-                <Input
-                  type="number"
-                  name="personal_callback_window_minutes"
-                  min="1"
-                  max="480"
-                  defaultValue={config?.personal_callback_window_minutes ?? 30}
-                />
-              </Field>
-
-              <Field
-                label={
-                  <LabelWithHelp
-                    label="Reintento (segundos)"
-                    help="Cada cuánto se vuelve a intentar mientras el ejecutivo esté en llamada o en pausa."
+                <label className="flex min-h-11 items-center gap-2.5 text-sm text-foreground sm:col-span-2">
+                  <input
+                    type="checkbox"
+                    name="personal_callback_enabled"
+                    value="true"
+                    defaultChecked={config?.personal_callback_enabled ?? true}
+                    className="size-4 accent-primary"
                   />
-                }
-              >
-                <Input
-                  type="number"
-                  name="personal_callback_retry_seconds"
-                  min="30"
-                  max="3600"
-                  defaultValue={config?.personal_callback_retry_seconds ?? 120}
-                />
-              </Field>
+                  Entregar los compromisos automáticamente a su ejecutivo
+                  <InfoTooltip text="Si lo desactivas, las agendas quedan solo en Mi agenda y el ejecutivo llama a mano." />
+                </label>
 
-              <Field
-                label={
-                  <LabelWithHelp
-                    label="Si vence la ventana"
-                    help="Qué pasa con el compromiso que no se pudo entregar: queda vencido en la agenda de su ejecutivo para que el supervisor decida, o se suelta al pool para que lo atienda el primero disponible."
-                  />
-                }
-                className="sm:col-span-2"
-              >
-                <Select
-                  name="personal_callback_on_expiry"
-                  defaultValue={config?.personal_callback_on_expiry ?? "keep_in_agenda"}
+                <Field
+                  label={
+                    <LabelWithHelp
+                      label="Ventana de entrega (minutos)"
+                      help="Cuánto se sigue intentando entregar el compromiso mientras el ejecutivo no esté disponible. Pasado ese tiempo se da por vencido."
+                    />
+                  }
                 >
-                  <option value="keep_in_agenda">Queda en la agenda de su ejecutivo</option>
-                  <option value="release_to_pool">Se suelta al pool de la campaña</option>
-                </Select>
-              </Field>
+                  <Input
+                    type="number"
+                    name="personal_callback_window_minutes"
+                    min="1"
+                    max="480"
+                    defaultValue={config?.personal_callback_window_minutes ?? 30}
+                  />
+                </Field>
+
+                <Field
+                  label={
+                    <LabelWithHelp
+                      label="Reintento (segundos)"
+                      help="Cada cuánto se vuelve a intentar mientras el ejecutivo esté en llamada o en pausa."
+                    />
+                  }
+                >
+                  <Input
+                    type="number"
+                    name="personal_callback_retry_seconds"
+                    min="30"
+                    max="3600"
+                    defaultValue={config?.personal_callback_retry_seconds ?? 120}
+                  />
+                </Field>
+
+                <Field
+                  label={
+                    <LabelWithHelp
+                      label="Si vence la ventana"
+                      help="Qué pasa con el compromiso que no se pudo entregar: queda vencido en la agenda de su ejecutivo para que el supervisor decida, o se suelta al pool para que lo atienda el primero disponible."
+                    />
+                  }
+                  className="sm:col-span-2"
+                >
+                  <Select
+                    name="personal_callback_on_expiry"
+                    defaultValue={config?.personal_callback_on_expiry ?? "keep_in_agenda"}
+                  >
+                    <option value="keep_in_agenda">Queda en la agenda de su ejecutivo</option>
+                    <option value="release_to_pool">Se suelta al pool de la campaña</option>
+                  </Select>
+                </Field>
+              </Grupo>
             </div>
           </details>
 
-          <div className="flex items-center gap-3">
+          <PieDeFormulario>
             <ActionSubmit pendingLabel="Guardando…">Guardar configuración</ActionSubmit>
-          </div>
+          </PieDeFormulario>
         </FormularioConEncendido>
       </SectionCard>
     </div>

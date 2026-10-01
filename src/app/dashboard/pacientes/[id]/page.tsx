@@ -2,12 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import {
+  ArrowLeft,
   CalendarClock,
-  ClipboardList,
+  ChevronRight,
   FileText,
   HandCoins,
   History,
-  IdCard,
   Mail,
   MessageCircle,
   NotebookPen,
@@ -24,16 +24,30 @@ import { CreatePanel } from "@/components/create-panel";
 import {
   ActionForm,
   ActionSubmit,
+  Avatar,
   Badge,
   EmptyState,
   Field,
   Input,
-  PageHeader,
   SectionCard,
   Select,
   buttonClasses,
   type IconTone,
 } from "@/components/ui";
+import {
+  CountBox,
+  Property,
+  PropertyGroup,
+  PropertyList,
+  PropertyPanel,
+  RecordFact,
+  RecordFacts,
+  RecordHeader,
+  Timeline,
+  TimelineItem,
+  TimelineNote,
+  sentenceCase,
+} from "@/components/record-kit";
 import { ATENCION_POR_EDICION, PACIENTES_POR_EDICION, VENTAS_POR_EDICION, clinicaDe } from "@/lib/ediciones";
 import { ETIQUETA_VACUNA, edad, estadoVacuna } from "@/lib/mascotas";
 import { denticionPorEdad, type RegistroOdontograma } from "@/lib/odontograma";
@@ -393,22 +407,28 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
     ["Ficha desde", fechaCorta((ficha.created_at as string).slice(0, 10))],
   ];
 
+  const proximoAbierto = abiertos
+    .filter((negocio) => negocio.next_action_at)
+    .sort((a, b) => String(a.next_action_at).localeCompare(String(b.next_action_at)))[0];
+  const montoAbierto = abiertos.reduce((total, negocio) => total + Number(negocio.one_time_amount ?? 0), 0);
+
   return (
-    <div className="space-y-5">
-      <PageHeader
-        title={ficha.name}
-        description={[
-          voc.singular,
-          esDental && texto("prevision"),
-          esDental && edadPaciente,
-          esBarber && ultimoServicio && `Último servicio ${fechaCorta(ultimoServicio)}`,
-          esVet && `${(mascotas ?? []).length} ${(mascotas ?? []).length === 1 ? "mascota" : "mascotas"}`,
-          abiertos.length > 0 && `${abiertos.length} ${ventas.negocio.toLowerCase()} abierto`,
-        ]
-          .filter(Boolean)
-          .join(" · ")}
+    <div className="space-y-6">
+      <Link href="/dashboard/pacientes" className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary">
+        <ArrowLeft size={13} aria-hidden="true" /> {voc.titulo}
+      </Link>
+
+      <RecordHeader
+        name={ficha.name}
+        eyebrow={[voc.singular, ficha.source ? ORIGEN[ficha.source] ?? ficha.source : null].filter(Boolean).join(" · ")}
+        identifiers={[
+          ficha.rut ? <span className="tabular-nums">{ficha.rut}</span> : null,
+          ficha.phone ? <span className="tabular-nums">{ficha.phone}</span> : null,
+          ficha.email,
+          ficha.commune,
+        ]}
         actions={
-          <div className="flex flex-wrap items-center gap-2">
+          <>
             <CreatePanel
               label={ventas.nuevo}
               title={`${ventas.nuevo} para ${ficha.name.split(" ")[0]}`}
@@ -467,13 +487,58 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
                 Ver conversación
               </Link>
             )}
-          </div>
+          </>
+        }
+        facts={
+          <RecordFacts>
+            {esDental && (
+              <RecordFact label="Previsión" detail={edadPaciente ?? undefined}>
+                {texto("prevision") ?? <span className="text-muted-foreground">Sin dato</span>}
+              </RecordFact>
+            )}
+            {esVet && (
+              <RecordFact label="Mascotas">
+                {(mascotas ?? []).length} {(mascotas ?? []).length === 1 ? "mascota" : "mascotas"}
+              </RecordFact>
+            )}
+            {esBarber && (
+              <RecordFact label="Último servicio">
+                {ultimoServicio ? fechaCorta(ultimoServicio) : <span className="text-muted-foreground">Todavía no</span>}
+              </RecordFact>
+            )}
+            <RecordFact label={esVet ? "Veterinario" : at.profesional} >
+              {texto("profesional") ? (
+                <span className="inline-flex min-w-0 items-center gap-2">
+                  <Avatar name={texto("profesional")} size="xs" />
+                  <span className="truncate">{texto("profesional")}</span>
+                </span>
+              ) : (
+                <span className="text-muted-foreground">Sin asignar</span>
+              )}
+            </RecordFact>
+            <RecordFact
+              label={`${ventas.negocios} abiertos`}
+              detail={abiertos.length > 0 ? pesos.format(montoAbierto) : undefined}
+            >
+              {abiertos.length > 0 ? abiertos.length : <span className="text-muted-foreground">Ninguno</span>}
+            </RecordFact>
+            <RecordFact
+              label="Próxima acción"
+              detail={proximoAbierto?.next_action_note ?? undefined}
+            >
+              {proximoAbierto?.next_action_at ? (
+                new Date(proximoAbierto.next_action_at) < new Date() ? (
+                  <Badge tone="danger">Vencida · {cuando.format(new Date(proximoAbierto.next_action_at)).replace(".", "")}</Badge>
+                ) : (
+                  cuando.format(new Date(proximoAbierto.next_action_at)).replace(".", "")
+                )
+              ) : (
+                <span className="text-muted-foreground">Sin agendar</span>
+              )}
+            </RecordFact>
+          </RecordFacts>
         }
       />
-
-      <Link href="/dashboard/pacientes" className="text-sm text-muted-foreground hover:text-foreground hover:underline">
-        ← Volver a {voc.titulo.toLowerCase()}
-      </Link>
 
       <InsumosProvider insumos={insumos}>
       {esVet && (
@@ -528,73 +593,97 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
       )}
       </InsumosProvider>
 
-      <div className="grid gap-4 xl:grid-cols-3">
-        <div className="space-y-4 xl:col-span-2">
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="min-w-0 space-y-5">
           {esVet && (
-            <SectionCard icon={PawPrint} tone="blue" title="Mascotas" description="El semáforo es la próxima vacuna: vencida, por vencer en 30 días o al día.">
+            <SectionCard
+              title={<span className="flex items-center gap-2">Mascotas <CountBox>{(mascotas ?? []).length}</CountBox></span>}
+              description="El semáforo es la próxima vacuna: vencida, por vencer en 30 días o al día."
+            >
               {(mascotas ?? []).length === 0 ? (
                 <EmptyState icon={PawPrint} title="Sin mascotas registradas" description="Se agregan al crear la ficha del tutor." />
               ) : (
-                <div className="grid gap-3 p-4 sm:grid-cols-2">
+                <ul className="divide-y divide-border/70 border-t border-border">
                   {(mascotas ?? []).map((mascota) => {
                     const estado = estadoVacuna(mascota.proxima_vacuna as string | null);
                     const tono = estado === "vencida" ? "danger" : estado === "por_vencer" ? "warning" : estado === "al_dia" ? "success" : "neutral";
                     return (
-                      <div key={mascota.id as string} className="rounded-xl border border-border bg-surface p-4 shadow-sm">
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <p className="text-base font-semibold text-foreground">{mascota.nombre as string}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {[mascota.especie, mascota.raza, mascota.sexo, edad(mascota.nacimiento as string | null)].filter(Boolean).join(" · ")}
-                            </p>
+                      <li key={mascota.id as string} className="flex flex-wrap items-start gap-4 px-5 py-4">
+                        <Avatar name={mascota.nombre as string} icon={PawPrint} shape="square" size="lg" />
+                        <div className="min-w-0 flex-1 space-y-2.5">
+                          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                            <div className="min-w-0">
+                              <p className="font-semibold text-foreground">{mascota.nombre as string}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {[mascota.especie, mascota.raza, mascota.sexo, edad(mascota.nacimiento as string | null)].filter(Boolean).join(" · ")}
+                              </p>
+                            </div>
+                            <Badge tone={tono}>{ETIQUETA_VACUNA[estado]}</Badge>
                           </div>
-                          <Badge tone={tono}>{ETIQUETA_VACUNA[estado]}</Badge>
+                          <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs sm:grid-cols-4">
+                            <div>
+                              <dt className="text-muted-foreground">Próxima vacuna</dt>
+                              <dd className="mt-0.5 font-medium text-foreground">{fechaCorta(mascota.proxima_vacuna as string | null)}</dd>
+                            </div>
+                            <div>
+                              <dt className="text-muted-foreground">Desparasitación</dt>
+                              <dd className="mt-0.5 text-foreground">{fechaCorta(mascota.proxima_desparasitacion as string | null)}</dd>
+                            </div>
+                            <div>
+                              <dt className="text-muted-foreground">Peso</dt>
+                              <dd className="mt-0.5 text-foreground">{mascota.peso_kg ? `${mascota.peso_kg} kg` : "—"}</dd>
+                            </div>
+                            <div>
+                              <dt className="text-muted-foreground">Esterilizado</dt>
+                              <dd className="mt-0.5 text-foreground">{mascota.esterilizado ? "Sí" : "No"}</dd>
+                            </div>
+                          </dl>
+                          <div className="flex flex-wrap gap-2">
+                            {(["vacuna", "desparasitacion"] as const).map((tipo) => (
+                              <ActionForm
+                                key={tipo}
+                                action={registrarCuidado}
+                                success={tipo === "vacuna" ? "Vacuna registrada" : "Desparasitación registrada"}
+                              >
+                                <input type="hidden" name="mascota_id" value={mascota.id as string} />
+                                <input type="hidden" name="cuenta_id" value={id} />
+                                <input type="hidden" name="tipo" value={tipo} />
+                                <ActionSubmit variant="secondary" size="sm">
+                                  <Syringe size={14} aria-hidden="true" /> {tipo === "vacuna" ? "Registrar vacuna" : "Desparasitación"}
+                                </ActionSubmit>
+                              </ActionForm>
+                            ))}
+                          </div>
                         </div>
-                        <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-                          <dt className="text-muted-foreground">Próxima vacuna</dt>
-                          <dd className="text-right font-medium text-foreground">{fechaCorta(mascota.proxima_vacuna as string | null)}</dd>
-                          <dt className="text-muted-foreground">Desparasitación</dt>
-                          <dd className="text-right text-foreground">{fechaCorta(mascota.proxima_desparasitacion as string | null)}</dd>
-                          <dt className="text-muted-foreground">Peso</dt>
-                          <dd className="text-right text-foreground">{mascota.peso_kg ? `${mascota.peso_kg} kg` : "—"}</dd>
-                          <dt className="text-muted-foreground">Esterilizado</dt>
-                          <dd className="text-right text-foreground">{mascota.esterilizado ? "Sí" : "No"}</dd>
-                        </dl>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {(["vacuna", "desparasitacion"] as const).map((tipo) => (
-                            <ActionForm
-                              key={tipo}
-                              action={registrarCuidado}
-                              success={tipo === "vacuna" ? "Vacuna registrada" : "Desparasitación registrada"}
-                            >
-                              <input type="hidden" name="mascota_id" value={mascota.id as string} />
-                              <input type="hidden" name="cuenta_id" value={id} />
-                              <input type="hidden" name="tipo" value={tipo} />
-                              <ActionSubmit variant="secondary" size="sm">
-                                <Syringe size={14} aria-hidden="true" /> {tipo === "vacuna" ? "Registrar vacuna" : "Desparasitación"}
-                              </ActionSubmit>
-                            </ActionForm>
-                          ))}
-                        </div>
-                      </div>
+                      </li>
                     );
                   })}
-                </div>
+                </ul>
               )}
             </SectionCard>
           )}
 
-          <SectionCard icon={HandCoins} tone="green" title={ventas.negocios} description={`Todo lo presupuestado a ${ficha.name.split(" ")[0]}, del más reciente al más antiguo.`}>
+          <SectionCard
+            title={<span className="flex items-center gap-2">{ventas.negocios} <CountBox>{(negocios ?? []).length}</CountBox></span>}
+            description={`Todo lo presupuestado a ${ficha.name.split(" ")[0]}, del más reciente al más antiguo.`}
+          >
             {(negocios ?? []).length === 0 ? (
               <EmptyState icon={HandCoins} title={`Sin ${ventas.negocios.toLowerCase()}`} description={`Crea el primero con "${ventas.nuevo}".`} />
             ) : (
-              <ul className="divide-y divide-border">
+              <ul className="divide-y divide-border/70 border-t border-border">
                 {(negocios ?? []).map((negocio) => {
                   const etapa = Array.isArray(negocio.sales_stages) ? negocio.sales_stages[0] : negocio.sales_stages;
                   const vencida = negocio.status === "abierta" && negocio.next_action_at && new Date(negocio.next_action_at) < new Date();
                   return (
                     <li key={negocio.id}>
-                      <Link href={`/dashboard/ventas/${negocio.id}`} className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-muted/60">
+                      <Link href={`/dashboard/ventas/${negocio.id}`} className="group flex items-center gap-3 px-5 py-3 transition-colors hover:bg-surface-muted/55">
+                        <span
+                          className="icon-chip size-9 rounded-lg"
+                          data-tone={negocio.status === "ganada" ? "green" : negocio.status === "perdida" ? "slate" : "blue"}
+                          aria-hidden="true"
+                        >
+                          <HandCoins size={16} />
+                        </span>
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-medium text-foreground">{negocio.name}</p>
                           <p className={`truncate text-xs ${vencida ? "text-danger" : "text-muted-foreground"}`}>
@@ -607,10 +696,13 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
                                 : `Aceptado${negocio.closed_at ? ` el ${cuando.format(new Date(negocio.closed_at))}` : ""}`}
                           </p>
                         </div>
-                        <p className="text-sm font-medium tabular-nums text-foreground">{pesos.format(Number(negocio.one_time_amount ?? 0))}</p>
-                        <Badge tone={negocio.status === "ganada" ? "success" : negocio.status === "perdida" ? "danger" : "info"}>
-                          {(etapa as { name?: string } | null)?.name ?? negocio.status}
-                        </Badge>
+                        <div className="shrink-0 text-right">
+                          <p className="text-sm font-semibold tabular-nums text-foreground">{pesos.format(Number(negocio.one_time_amount ?? 0))}</p>
+                          <Badge tone={negocio.status === "ganada" ? "success" : negocio.status === "perdida" ? "danger" : "info"}>
+                            {(etapa as { name?: string } | null)?.name ?? negocio.status}
+                          </Badge>
+                        </div>
+                        <ChevronRight size={15} className="shrink-0 text-muted-foreground/50 group-hover:text-primary" aria-hidden="true" />
                       </Link>
                     </li>
                   );
@@ -619,78 +711,75 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
             )}
           </SectionCard>
 
-          <SectionCard icon={History} tone="teal" title="Historia" description="Notas, llamadas, mensajes y cambios de etapa en una sola línea de tiempo.">
+          <SectionCard title="Historia" description="Notas, llamadas, mensajes y cambios de etapa en una sola línea de tiempo.">
             {eventos.length === 0 ? (
               <EmptyState icon={History} title="Sin historia todavía" description="Lo que registres aparece acá." />
             ) : (
-              <ol className="relative space-y-4 px-4 py-4">
-                {eventos.map((evento, indice) => {
-                  const Icono = ICONO[evento.tipo];
-                  const entrante = evento.tipo === "mensaje_entrante";
-                  return (
-                    <li key={`${evento.at}-${indice}`} className="flex gap-3">
-                      <span
-                        className="icon-chip size-8 rounded-full"
-                        data-tone={TONO_EVENTO[evento.tipo]}
-                        data-active={entrante ? "true" : undefined}
-                        aria-hidden="true"
-                      >
-                        <Icono size={15} aria-hidden="true" />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm text-foreground">{evento.titulo}</p>
-                        {evento.detalle && (
-                          <p className={`mt-0.5 text-sm ${evento.tipo.startsWith("mensaje") ? "rounded-lg bg-surface-muted px-3 py-2 text-foreground" : "text-muted-foreground"}`}>
-                            {evento.detalle}
-                          </p>
-                        )}
-                        <p className="mt-0.5 text-xs text-muted-foreground">
-                          {cuando.format(new Date(evento.at))}
-                          {evento.quien ? ` · ${evento.quien}` : ""}
-                        </p>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ol>
+              <Timeline className="border-t border-border px-5 pb-4 pt-5">
+                {eventos.map((evento, indice) => (
+                  <TimelineItem
+                    key={`${evento.at}-${indice}`}
+                    icon={ICONO[evento.tipo]}
+                    tone={TONO_EVENTO[evento.tipo]}
+                    title={sentenceCase(evento.titulo)}
+                    date={evento.at}
+                    author={evento.quien ?? null}
+                    authorAvatar={evento.quien ? <Avatar name={evento.quien} size="xs" /> : undefined}
+                    last={indice === eventos.length - 1}
+                  >
+                    {evento.detalle ? (
+                      evento.tipo.startsWith("mensaje") ? (
+                        <p className="max-w-prose rounded-lg bg-surface-muted px-3 py-2 text-[13px] text-foreground">{evento.detalle}</p>
+                      ) : (
+                        <TimelineNote>{evento.detalle}</TimelineNote>
+                      )
+                    ) : undefined}
+                  </TimelineItem>
+                ))}
+              </Timeline>
             )}
           </SectionCard>
         </div>
 
-        <div className="space-y-4">
-          <SectionCard icon={IdCard} tone="blue" title="Datos">
-            <dl className="divide-y divide-border text-sm">
-              {datos.map(([etiqueta, valor]) => (
-                <div key={etiqueta} className="flex justify-between gap-3 px-4 py-2">
-                  <dt className="text-muted-foreground">{etiqueta}</dt>
-                  <dd className="truncate text-right text-foreground">{valor ?? "—"}</dd>
+        <div className="space-y-5">
+          <PropertyPanel label={`Datos de ${voc.singular.toLowerCase()}`}>
+            <PropertyGroup title="Datos">
+              <PropertyList>
+                {datos.map(([etiqueta, valor]) => (
+                  <Property key={etiqueta} label={etiqueta} empty={!valor || valor === "—"}>
+                    {valor ?? "Sin dato"}
+                  </Property>
+                ))}
+              </PropertyList>
+            </PropertyGroup>
+
+            <PropertyGroup title="Registrar gestión">
+              <ActionForm action={agregarNota} success="Gestión registrada" className="space-y-3">
+                <input type="hidden" name="cuenta_id" value={id} />
+                <Field label="Tipo">
+                  <Select name="tipo" defaultValue="llamada">
+                    <option value="llamada">Llamada</option>
+                    <option value="whatsapp">WhatsApp</option>
+                    <option value="correo">Correo</option>
+                    <option value="reunion">{at.atencion}</option>
+                    <option value="nota">Nota</option>
+                  </Select>
+                </Field>
+                <Field label="Qué pasó">
+                  <Input name="nota" required placeholder={at.notaPlaceholder} />
+                </Field>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs text-muted-foreground">Queda en la historia.</p>
+                  {/* Secundario: el primario de la ficha es crear el presupuesto. */}
+                  <ActionSubmit size="sm" variant="secondary">
+                    <CalendarClock size={14} aria-hidden="true" /> Registrar
+                  </ActionSubmit>
                 </div>
-              ))}
-            </dl>
-          </SectionCard>
+              </ActionForm>
+            </PropertyGroup>
+          </PropertyPanel>
 
-          <SectionCard icon={ClipboardList} tone="teal" title="Registrar gestión" description="Queda en la historia de la ficha.">
-            <ActionForm action={agregarNota} success="Gestión registrada" className="space-y-3 px-4 py-4">
-              <input type="hidden" name="cuenta_id" value={id} />
-              <Field label="Tipo">
-                <Select name="tipo" defaultValue="llamada">
-                  <option value="llamada">Llamada</option>
-                  <option value="whatsapp">WhatsApp</option>
-                  <option value="correo">Correo</option>
-                  <option value="reunion">{at.atencion}</option>
-                  <option value="nota">Nota</option>
-                </Select>
-              </Field>
-              <Field label="Qué pasó">
-                <Input name="nota" required placeholder={at.notaPlaceholder} />
-              </Field>
-              <ActionSubmit size="sm">
-                <CalendarClock size={14} aria-hidden="true" /> Registrar
-              </ActionSubmit>
-            </ActionForm>
-          </SectionCard>
-
-          <p className="px-1 text-xs text-muted-foreground">
+          <p className="px-1 text-xs leading-relaxed text-muted-foreground">
             {esVet
               ? "La ficha clínica (anamnesis, exámenes, recetas) sigue en el software de la clínica. Atlas lleva la relación con el tutor."
               : esBarber

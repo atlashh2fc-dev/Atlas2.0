@@ -1,10 +1,11 @@
 import { connection } from "next/server";
-import { Clock, Hourglass, Percent, Trophy } from "lucide-react";
+import { Clock, Contact, Hourglass, Percent, Trophy } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { getTabs } from "@/lib/nav.config";
 import { getAgentQuotations, type QuotationCampaign, type QuotationRow } from "@/app/actions/cotizaciones";
 import { AgentQuotationsTable } from "@/components/agent-quotations-table";
-import { Callout, MetricCard, NavTabs, PageHeader } from "@/components/ui";
+import { Callout, NavTabs, PageHeader } from "@/components/ui";
+import { KpiStrip, KpiStripItem } from "@/components/report-kit";
 
 /**
  * Mis registros › Cotizaciones. Las cotizaciones enviadas del ejecutivo, con
@@ -35,6 +36,7 @@ export default async function CotizacionesPage() {
     <div className="space-y-5">
       <PageHeader
         title="Mis registros"
+        icon={Contact}
         description={`Hola, ${profile.full_name.split(" ")[0]}. Tus cotizaciones enviadas: marca las que se vendieron y las que no.`}
         className="border-b-0 pb-0"
       />
@@ -42,31 +44,37 @@ export default async function CotizacionesPage() {
 
       {loadError && <Callout tone="danger">{loadError}</Callout>}
 
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <MetricCard
+      {/* Una franja en vez de cuatro tarjetas sueltas: se lee de corrido. Lo
+          atrasado solo toma color cuando hay algo que atender. */}
+      <KpiStrip columns={4}>
+        <KpiStripItem
           label="Pendientes"
           value={pending.length.toLocaleString("es-CL")}
-          hint="Esperan respuesta del cliente"
           icon={Clock}
-          iconTone="amber"
+          detail="Esperan respuesta del cliente"
         />
-        <MetricCard
+        <KpiStripItem
           label="Sin respuesta hace más de 7 días"
           value={stale.toLocaleString("es-CL")}
-          hint={stale > 0 ? "Vale la pena volver a contactarlos" : "Nada atrasado"}
-          tone={stale > 0 ? "warn" : "good"}
           icon={Hourglass}
-          iconTone="amber"
+          tone={stale > 0 ? "warn" : "default"}
+          detail={stale > 0 ? "Vale la pena volver a contactarlos" : "Nada atrasado"}
         />
-        <MetricCard label="Vendidas" value={sold.toLocaleString("es-CL")} hint="Van a Validación de ventas" icon={Trophy} iconTone="green" />
-        <MetricCard
+        <KpiStripItem
+          label="Vendidas"
+          value={sold.toLocaleString("es-CL")}
+          icon={Trophy}
+          detail="Van a Validación de ventas"
+        />
+        <KpiStripItem
           label="Tasa de cierre"
           value={closeRate === null ? "—" : `${closeRate} %`}
-          hint={`${sold} vendidas de ${sold + lost} resueltas`}
           icon={Percent}
-          iconTone="violet"
+          progress={closeRate ?? undefined}
+          tone={closeRate !== null && closeRate > 0 ? "good" : "default"}
+          detail={`${sold} vendidas de ${sold + lost} resueltas`}
         />
-      </section>
+      </KpiStrip>
 
       <AgentQuotationsTable rows={rows} campaigns={campaigns} />
     </div>

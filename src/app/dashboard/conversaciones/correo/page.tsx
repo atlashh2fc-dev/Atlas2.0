@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ExternalLink, Inbox, Mail } from "lucide-react";
+import { ChevronRight, ClipboardCheck, ExternalLink, Inbox, Mail } from "lucide-react";
 
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -10,7 +10,7 @@ import { CorreoRegistroPanel, type CorreoEnviado, type CorreoRecibido } from "@/
 import { OPEN_CALL_FORM_ATTRIBUTE } from "@/lib/call-management-navigation";
 import { contextoDeTipificacion } from "@/lib/tipificacion-contexto.server";
 import { EsperaDelCliente, RefrescoDeBandeja, TipificarCorreo } from "@/components/puesto-correo";
-import { EmptyState, SectionCard } from "@/components/ui";
+import { Avatar, EmptyState, SectionCard, SegmentTabs, type SegmentTab } from "@/components/ui";
 import { cn } from "@/lib/utils";
 
 /**
@@ -36,6 +36,29 @@ export default async function MailAttentionPage({
 
 const SLA_POR_DEFECTO = 4 * 60 * 60;
 const cuando = new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+
+const diaChile = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Santiago" });
+const horaChile = new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", hour: "2-digit", minute: "2-digit" });
+const diaCorto = new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", day: "numeric", month: "short" });
+
+/** "09:27" si fue hoy, "Ayer" y después la fecha corta, como cualquier bandeja. */
+function horaRelativa(valor: string, ahora: Date) {
+  const fecha = new Date(valor);
+  const minutos = Math.floor((ahora.getTime() - fecha.getTime()) / 60_000);
+  if (minutos < 1) return "Ahora";
+  if (minutos < 60) return `${minutos} min`;
+  const dia = diaChile.format(fecha);
+  if (dia === diaChile.format(ahora)) return horaChile.format(fecha);
+  if (dia === diaChile.format(new Date(ahora.getTime() - 86_400_000))) return "Ayer";
+  return diaCorto.format(fecha);
+}
+
+/** "VOLVER A LLAMAR" → "Volver a llamar": lo que llega en mayúsculas desde la base. */
+function enOracion(texto: string) {
+  if (texto !== texto.toUpperCase()) return texto;
+  const minusculas = texto.toLocaleLowerCase("es-CL");
+  return minusculas.charAt(0).toLocaleUpperCase("es-CL") + minusculas.slice(1);
+}
 
 type Relacion<T> = T | T[] | null;
 function uno<T>(valor: Relacion<T>): T | null {
@@ -181,38 +204,35 @@ async function BandejaDelEjecutivo({ profileId, params }: { profileId: string; p
   } | null;
   const hrefDe = (leadId: string) => `/dashboard/conversaciones/correo?${new URLSearchParams({ vista, registro: leadId })}`;
 
+  const pestanas: SegmentTab[] = [
+    { id: "pendientes", label: "Por atender", href: "/dashboard/conversaciones/correo?vista=pendientes", count: porAtender.length },
+    { id: "atendidos", label: "Atendidos", href: "/dashboard/conversaciones/correo?vista=atendidos", count: atendidos.length },
+  ];
+  const nombreCliente = ficha?.full_name ?? elegida?.nombre ?? "";
+  const datosCliente: [string, string | null | undefined][] = [
+    ["Campaña", uno(ficha?.campaigns ?? null)?.name],
+    ["RUT", ficha?.rut],
+    ["Teléfono", ficha?.phone],
+    ["Correo", ficha?.email],
+    ["Última tipificación", ficha?.tipificacion_actual ? enOracion(ficha.tipificacion_actual) : null],
+    ["Próxima acción", ficha?.next_action_at ? cuando.format(new Date(ficha.next_action_at)) : null],
+  ];
+
   return (
     <div className="grid gap-4 lg:grid-cols-[20rem_minmax(0,1fr)] xl:grid-cols-[20rem_minmax(0,1fr)_18rem]">
       <RefrescoDeBandeja />
 
-      <nav aria-label="Conversaciones de correo" className="min-w-0 rounded-xl border border-border bg-surface shadow-sm">
-        {/* Filtro por query, con el mismo estilo que los filtros de Mis registros y WhatsApp. */}
-        <div className="flex gap-1 border-b border-border p-2">
-          {[
-            { clave: "pendientes", texto: `Por atender · ${porAtender.length}` },
-            { clave: "atendidos", texto: `Atendidos · ${atendidos.length}` },
-          ].map((opcion) => (
-            <Link
-              key={opcion.clave}
-              aria-current={vista === opcion.clave ? "page" : undefined}
-              href={`/dashboard/conversaciones/correo?vista=${opcion.clave}`}
-              className={cn(
-                "inline-flex h-8 flex-1 items-center justify-center rounded-lg px-2.5 text-[13px] font-medium transition-colors",
-                vista === opcion.clave
-                  ? "bg-surface text-foreground shadow-sm ring-1 ring-border"
-                  : "text-muted-foreground hover:bg-surface-muted hover:text-foreground",
-              )}
-            >
-              {opcion.texto}
-            </Link>
-          ))}
+      <nav aria-label="Conversaciones de correo" className="atlas-panel min-w-0 overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
+        {/* Por atender y Atendidos como pestañas pegadas a la lista. */}
+        <div className="border-b border-border px-2">
+          <SegmentTabs tabs={pestanas} activeId={vista} label="Qué conversaciones ver" />
         </div>
         {lista.length === 0 ? (
-          <p className="px-4 py-6 text-center text-sm text-muted-foreground">
+          <p className="px-4 py-10 text-center text-sm text-muted-foreground">
             {vista === "pendientes" ? "Estás al día: ningún cliente espera respuesta." : "Todavía no cierras conversaciones este mes."}
           </p>
         ) : (
-          <ul className="max-h-[calc(100dvh-16rem)] divide-y divide-border overflow-y-auto">
+          <ul className="max-h-[calc(100dvh-16rem)] overflow-y-auto">
             {lista.map((c) => {
               const activa = c.leadId === elegida?.leadId;
               return (
@@ -220,19 +240,32 @@ async function BandejaDelEjecutivo({ profileId, params }: { profileId: string; p
                   <Link
                     href={hrefDe(c.leadId)}
                     aria-current={activa ? "true" : undefined}
-                    className={cn("block px-4 py-3 transition-colors hover:bg-surface-muted", activa && "bg-primary/5 shadow-[inset_3px_0_0_var(--primary)]")}
+                    className={cn(
+                      "flex gap-3 px-3.5 py-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                      activa ? "bg-primary/[0.07]" : "hover:bg-surface-muted/60",
+                    )}
                   >
-                    <span className="flex items-baseline justify-between gap-2">
-                      <span className="truncate text-sm font-medium text-foreground">{c.nombre}</span>
-                      {c.pendientes > 1 && <span className="shrink-0 text-xs font-semibold tabular-nums text-primary">{c.pendientes}</span>}
-                    </span>
-                    <span className="mt-0.5 block truncate text-xs text-foreground/80">{c.asunto}</span>
-                    {c.vistaPrevia && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{c.vistaPrevia}</span>}
-                    <span className="mt-1 block">
-                      {c.esperaDesde ? (
-                        <EsperaDelCliente desde={c.esperaDesde} slaSegundos={c.sla} />
-                      ) : (
-                        <span className="text-xs text-muted-foreground">{cuando.format(new Date(c.ultimo))}</span>
+                    <Avatar name={c.nombre} size="md" />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-baseline justify-between gap-2">
+                        <span className={cn("truncate text-[13px] text-foreground", c.pendientes > 0 ? "font-semibold" : "font-medium")}>{c.nombre}</span>
+                        {!c.esperaDesde && (
+                          <time dateTime={c.ultimo} title={cuando.format(new Date(c.ultimo))} className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                            {horaRelativa(c.ultimo, ahora)}
+                          </time>
+                        )}
+                      </span>
+                      <span className="mt-0.5 flex items-center justify-between gap-2">
+                        <span className="truncate text-xs text-foreground/85">{c.asunto}</span>
+                        {c.pendientes > 1 && (
+                          <span className="shrink-0 rounded-md bg-primary/12 px-1.5 py-px text-[11px] font-semibold tabular-nums text-primary">{c.pendientes}</span>
+                        )}
+                      </span>
+                      {c.vistaPrevia && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{c.vistaPrevia}</span>}
+                      {c.esperaDesde && (
+                        <span className="mt-1 block">
+                          <EsperaDelCliente desde={c.esperaDesde} slaSegundos={c.sla} />
+                        </span>
                       )}
                     </span>
                   </Link>
@@ -248,21 +281,24 @@ async function BandejaDelEjecutivo({ profileId, params }: { profileId: string; p
           <div
             id="gestion-en-curso"
             {...{ [OPEN_CALL_FORM_ATTRIBUTE]: gestion.id }}
-            className="scroll-mt-4 rounded-xl border border-primary/30 bg-primary/[0.025] p-3 sm:p-5"
+            className="atlas-panel scroll-mt-4 overflow-hidden rounded-xl border border-border bg-surface shadow-sm"
           >
-            <p className="mb-3 text-sm font-medium text-foreground">
+            <p className="flex items-center gap-2 border-b border-border bg-surface-raised px-5 py-3 text-[13px] font-semibold text-foreground">
+              <ClipboardCheck size={15} className="text-primary" aria-hidden="true" />
               Tipificación de la conversación por correo
             </p>
-            <CallTypificationForm
-              key={gestion.id}
-              lead={tipificacion.lead}
-              call={gestion}
-              reasonCatalog={tipificacion.reasonCatalog}
-              equifaxCommercialFieldsEnabled={tipificacion.equifaxCommercialFieldsEnabled}
-              appointmentScheduleUrl={tipificacion.appointmentScheduleUrl}
-              agendaPolicy={tipificacion.agendaPolicy}
-              quoteClient={tipificacion.quoteClient}
-            />
+            <div className="p-3 sm:p-5">
+              <CallTypificationForm
+                key={gestion.id}
+                lead={tipificacion.lead}
+                call={gestion}
+                reasonCatalog={tipificacion.reasonCatalog}
+                equifaxCommercialFieldsEnabled={tipificacion.equifaxCommercialFieldsEnabled}
+                appointmentScheduleUrl={tipificacion.appointmentScheduleUrl}
+                agendaPolicy={tipificacion.agendaPolicy}
+                quoteClient={tipificacion.quoteClient}
+              />
+            </div>
           </div>
         )}
         {elegida ? (
@@ -278,38 +314,36 @@ async function BandejaDelEjecutivo({ profileId, params }: { profileId: string; p
       </section>
 
       {elegida && (
-        <aside aria-label="Cliente" className="min-w-0 space-y-3 lg:col-span-2 xl:col-span-1">
-          <SectionCard title={ficha?.full_name ?? elegida.nombre} icon={Mail} tone="teal">
-            <dl className="space-y-2 p-4 text-sm">
-              {[
-                ["Campaña", uno(ficha?.campaigns ?? null)?.name],
-                ["RUT", ficha?.rut],
-                ["Teléfono", ficha?.phone],
-                ["Correo", ficha?.email],
-                ["Última tipificación", ficha?.tipificacion_actual],
-                ["Próxima acción", ficha?.next_action_at ? cuando.format(new Date(ficha.next_action_at)) : null],
-              ]
-                .filter(([, valor]) => valor)
-                .map(([etiqueta, valor]) => (
-                  <div key={etiqueta as string}>
-                    <dt className="text-xs text-muted-foreground">{etiqueta}</dt>
-                    <dd className="break-words text-foreground">{valor}</dd>
-                  </div>
-                ))}
-              {ficha?.observacion_actual && (
-                <div>
-                  <dt className="text-xs text-muted-foreground">Observación</dt>
-                  <dd className="whitespace-pre-wrap break-words text-foreground">{ficha.observacion_actual}</dd>
-                </div>
-              )}
-            </dl>
-            <div className="space-y-2 border-t border-border p-4">
-              {!gestion && <TipificarCorreo leadId={elegida.leadId} pendiente={elegida.pendientes > 0} />}
-              <Link href={`/dashboard/leads/${elegida.leadId}`} className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline">
-                Abrir la ficha completa <ExternalLink size={12} aria-hidden="true" />
-              </Link>
+        <aside aria-label="Cliente" className="atlas-panel min-w-0 self-start overflow-hidden rounded-xl border border-border bg-surface shadow-sm lg:col-span-2 xl:col-span-1">
+          <div className="flex items-center gap-3 border-b border-border/70 px-4 py-4">
+            <Avatar name={nombreCliente} seed={ficha?.rut ?? nombreCliente} size="lg" />
+            <div className="min-w-0">
+              <p className="truncate text-[15px] font-semibold text-foreground">{nombreCliente}</p>
+              <p className="truncate text-xs text-muted-foreground">{ficha?.email ?? "Cliente por correo"}</p>
             </div>
-          </SectionCard>
+          </div>
+          <dl className="space-y-2.5 px-4 py-4">
+            {datosCliente
+              .filter(([, valor]) => valor)
+              .map(([etiqueta, valor]) => (
+                <div key={etiqueta} className="flex items-start justify-between gap-3 text-xs">
+                  <dt className="shrink-0 text-muted-foreground">{etiqueta}</dt>
+                  <dd className="min-w-0 break-words text-right font-medium text-foreground">{valor}</dd>
+                </div>
+              ))}
+            {ficha?.observacion_actual && (
+              <div className="pt-1 text-xs">
+                <dt className="text-muted-foreground">Observación</dt>
+                <dd className="mt-1 whitespace-pre-wrap break-words rounded-lg bg-surface-muted/60 px-3 py-2 text-foreground">{ficha.observacion_actual}</dd>
+              </div>
+            )}
+          </dl>
+          <div className="space-y-2.5 border-t border-border/70 px-4 py-4">
+            {!gestion && <TipificarCorreo leadId={elegida.leadId} pendiente={elegida.pendientes > 0} />}
+            <Link href={`/dashboard/leads/${elegida.leadId}`} className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline">
+              Abrir la ficha completa <ExternalLink size={12} aria-hidden="true" />
+            </Link>
+          </div>
         </aside>
       )}
     </div>
@@ -351,22 +385,21 @@ async function BuzonesDeSupervision() {
   if (new Set(rows.map(destino)).size === 1) redirect(destino(rows[0]));
 
   return (
-    <SectionCard title="Buzones" description="Elige el buzón que quieres revisar." icon={Inbox} tone="teal">
-      <ul className="divide-y divide-border">
+    <SectionCard title="Buzones" description="Elige el buzón que quieres revisar.">
+      <ul className="divide-y divide-border/70 border-t border-border">
         {rows.map((mailbox) => (
           <li key={mailbox.id}>
             <Link
               href={destino(mailbox)}
-              className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-surface-muted"
+              className="group flex items-center gap-3 px-5 py-3 text-sm transition-colors hover:bg-surface-muted/55"
             >
-              <span className="flex min-w-0 items-center gap-3">
-                <Mail size={16} className="flex-shrink-0 text-muted-foreground" aria-hidden="true" />
-                <span className="min-w-0">
-                  <span className="block truncate font-medium text-foreground">{mailbox.label ?? mailbox.address}</span>
-                  <span className="block truncate text-xs text-muted-foreground">{mailbox.address}</span>
-                </span>
+              <Avatar name={mailbox.label ?? mailbox.address} icon={Mail} shape="square" size="md" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-medium text-foreground group-hover:text-primary">{mailbox.label ?? mailbox.address}</span>
+                <span className="block truncate text-xs text-muted-foreground">{mailbox.address}</span>
               </span>
-              <span className="shrink-0 text-xs text-muted-foreground">{uno(mailbox.campaigns)?.name ?? "Buzón de la cuenta"}</span>
+              <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">{uno(mailbox.campaigns)?.name ?? "Buzón de la cuenta"}</span>
+              <ChevronRight size={16} className="shrink-0 text-muted-foreground/60 transition-transform group-hover:translate-x-0.5 group-hover:text-foreground" aria-hidden="true" />
             </Link>
           </li>
         ))}

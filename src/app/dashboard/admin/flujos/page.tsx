@@ -6,7 +6,8 @@ import { Workflow } from "lucide-react";
 import type { WorkflowStep, WorkflowStepBranch } from "@/lib/types";
 import { validateWorkflow, workflowStatus } from "@/lib/workflow-validation";
 import { WorkflowCreatePanel } from "@/components/workflow-create-panel";
-import { ActionForm, ActionSubmit, Badge, Callout, EmptyState, PageHeader, SectionCard, Table, Tbody, Td, Th, Thead, TableEmpty, Tr } from "@/components/ui";
+import { FlechaDeFila, Migas } from "../_diseno";
+import { ActionForm, ActionSubmit, Avatar, Badge, Callout, EmptyState, PageHeader, SectionCard, Table, Tbody, Td, Th, Thead, TableEmpty, Tr } from "@/components/ui";
 
 export default async function WorkflowsPage({
   searchParams,
@@ -58,32 +59,51 @@ export default async function WorkflowsPage({
 
   const selectedCampaign = (campaigns ?? []).find((campaign) => campaign.id === campaignId);
 
+  const list = workflows ?? [];
+  const publishedCount = list.filter((workflow) => workflow.status === "published").length;
+  const withIssues = list.filter((workflow) => workflowStatus(issuesByWorkflow.get(workflow.id) ?? []).tone !== "success").length;
+
   return (
-    <div className="space-y-6">
-      <div>
-        {selectedCampaign && (
-          <Link
-            href={`/dashboard/admin/campanas/${selectedCampaign.id}`}
-            className="mb-2 inline-block text-xs text-muted-foreground hover:text-primary"
-          >
-            ← Volver a {selectedCampaign.name}
-          </Link>
-        )}
-        <PageHeader
-          title="Flujos de gestión"
-          description="El guion que los ejecutivos siguen al gestionar un registro. Se publica solo cuando pasa la revisión."
-          className="border-b-0 pb-0"
-          actions={
-            canCreate ? (
-              <WorkflowCreatePanel
-                campaigns={campaigns ?? []}
-                selectedCampaign={selectedCampaign ?? null}
-                duplicateName={error === "duplicate-name"}
-              />
-            ) : null
-          }
+    <div className="space-y-5">
+      {selectedCampaign && (
+        <Migas
+          items={[
+            { label: selectedCampaign.name, href: `/dashboard/admin/campanas/${selectedCampaign.id}` },
+            { label: "Flujos de gestión" },
+          ]}
         />
-      </div>
+      )}
+      <PageHeader
+        title="Flujos de gestión"
+        icon={Workflow}
+        description="El guion que los ejecutivos siguen al gestionar un registro. Se publica solo cuando pasa la revisión."
+        meta={
+          list.length > 0 ? (
+            <>
+              <span>
+                <span className="font-semibold text-foreground">{list.length}</span> {list.length === 1 ? "flujo" : "flujos"}
+              </span>
+              <span>
+                <span className="font-semibold text-foreground">{publishedCount}</span> {publishedCount === 1 ? "publicado" : "publicados"}
+              </span>
+              {withIssues > 0 && (
+                <span className="text-warning">
+                  <span className="font-semibold">{withIssues}</span> por revisar
+                </span>
+              )}
+            </>
+          ) : undefined
+        }
+        actions={
+          canCreate ? (
+            <WorkflowCreatePanel
+              campaigns={campaigns ?? []}
+              selectedCampaign={selectedCampaign ?? null}
+              duplicateName={error === "duplicate-name"}
+            />
+          ) : null
+        }
+      />
 
       {workflowsError && (
         <Callout tone="danger">
@@ -91,69 +111,64 @@ export default async function WorkflowsPage({
         </Callout>
       )}
 
-      <SectionCard
-        icon={Workflow}
-        tone="rose"
-        title="Flujos"
-        description={`${(workflows ?? []).length.toLocaleString("es-CL")} ${(workflows ?? []).length === 1 ? "flujo" : "flujos"} · revisión y campañas que lo usan`}
-      >
+      <SectionCard>
+        <div className="overflow-x-auto">
         <Table>
           <Thead>
-            <Th>Nombre</Th>
-            <Th>En uso por</Th>
+            <Th>Flujo</Th>
             <Th>Revisión</Th>
+            <Th>Publicación</Th>
             <Th>Estado</Th>
-            <Th />
+            <Th>
+              <span className="sr-only">Acciones</span>
+            </Th>
           </Thead>
           <Tbody>
-            {(workflows ?? []).length === 0 && (
+            {list.length === 0 && (
               <TableEmpty colSpan={5}>
                 <EmptyState
                   icon={Workflow}
                   title="Todavía no hay flujos"
-                  description={canCreate ? "Crea el primero con el botón “Nuevo flujo”." : "Un administrador crea el flujo al configurar la campaña; desde aquí lo editas."}
+                  description={canCreate ? "Crea el primero con el botón “Nuevo flujo”, desde cero o desde una plantilla." : "Un administrador crea el flujo al configurar la campaña; desde aquí lo editas."}
                   className="py-6"
                 />
               </TableEmpty>
             )}
-            {(workflows ?? []).map((w) => {
+            {list.map((w) => {
               const status = workflowStatus(issuesByWorkflow.get(w.id) ?? []);
               const usedBy = campaignsByWorkflow.get(w.id) ?? [];
+              const href = `/dashboard/admin/flujos/${w.id}`;
               return (
                 <Tr key={w.id}>
-                  <Td strong>
-                    <div className="flex items-start gap-3">
-                      <Workflow size={16} className={`mt-0.5 flex-shrink-0 text-muted-foreground ${w.is_active ? "" : "opacity-50"}`} aria-hidden="true" />
+                  <Td className="min-w-72">
+                    <div className="flex items-center gap-3">
+                      <Avatar name={w.name} icon={Workflow} size="md" shape="square" className={w.is_active ? "" : "opacity-50"} />
                       <div className="min-w-0">
-                        <Link href={`/dashboard/admin/flujos/${w.id}`} className="hover:text-primary">
+                        <Link href={href} className="font-medium text-foreground hover:text-primary">
                           {w.name}
                         </Link>
-                        {w.description && <p className="mt-0.5 text-xs font-normal text-muted-foreground">{w.description}</p>}
+                        <p className="mt-0.5 max-w-md truncate text-xs text-muted-foreground" title={usedBy.join(", ") || undefined}>
+                          {usedBy.length > 0 ? `En uso por ${usedBy.join(", ")}` : "Ninguna campaña lo usa"}
+                          {w.description ? ` · ${w.description}` : ""}
+                        </p>
                       </div>
                     </div>
                   </Td>
-                  <Td muted>{usedBy.length > 0 ? usedBy.join(", ") : "Ninguna campaña"}</Td>
                   <Td>
-                    <Link
-                      href={`/dashboard/admin/flujos/${w.id}`}
-                      className="inline-flex flex-wrap items-center gap-1.5"
-                    >
-                      <Badge tone={w.status === "published" ? "success" : "warning"}>
-                        {w.status === "published" ? "Publicado" : "Borrador"}
-                      </Badge>
-                      <Badge
-                        tone={
-                          status.tone === "danger" ? "danger" : status.tone === "warning" ? "warning" : "success"
-                        }
-                      >
-                        {status.label}
-                      </Badge>
-                    </Link>
+                    <Badge tone={status.tone === "danger" ? "danger" : status.tone === "warning" ? "warning" : "success"}>
+                      {status.label}
+                    </Badge>
                   </Td>
                   <Td>
-                    <Badge tone={w.is_active ? "success" : "danger"}>{w.is_active ? "Activo" : "Inactivo"}</Badge>
+                    <Badge tone={w.status === "published" ? "success" : "neutral"}>
+                      {w.status === "published" ? "Publicado" : "Borrador"}
+                    </Badge>
+                  </Td>
+                  <Td>
+                    <Badge tone={w.is_active ? "success" : "neutral"}>{w.is_active ? "Activo" : "Inactivo"}</Badge>
                   </Td>
                   <Td align="right">
+                    <div className="flex items-center justify-end gap-2">
                     <ActionForm
                       action={toggleWorkflowActive}
                       success={w.is_active ? "Flujo desactivado" : "Flujo activado"}
@@ -176,18 +191,20 @@ export default async function WorkflowsPage({
                     >
                       <input type="hidden" name="workflow_id" value={w.id} />
                       <input type="hidden" name="active" value={String(w.is_active)} />
-                      <ActionSubmit variant="secondary" size="sm" pendingLabel="…">
+                      <ActionSubmit variant="ghost" size="sm" pendingLabel="…">
                         {w.is_active ? "Desactivar" : "Activar"}
                       </ActionSubmit>
                     </ActionForm>
+                    <FlechaDeFila href={href} label={`Editar ${w.name}`} />
+                    </div>
                   </Td>
                 </Tr>
               );
             })}
           </Tbody>
         </Table>
+        </div>
       </SectionCard>
-
     </div>
   );
 }

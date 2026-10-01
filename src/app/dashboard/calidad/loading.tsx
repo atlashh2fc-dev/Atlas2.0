@@ -1,15 +1,6 @@
-import { LoadingState } from "@/components/ui";
+import { PageSkeleton } from "@/components/ui";
 
-export default function CalidadLoading() {
-  return (
-    <div className="space-y-5" aria-busy="true">
-      <LoadingState
-        label="Estamos preparando las grabaciones"
-        className="rounded-xl border border-border bg-surface px-5 py-4"
-      />
-      <div className="h-16 animate-pulse rounded-xl bg-surface-muted" />
-      <div className="h-24 animate-pulse rounded-xl bg-surface-muted" />
-      <div className="h-80 animate-pulse rounded-xl bg-surface-muted" />
-    </div>
-  );
+/** Esqueleto con la forma de la página (ver PageSkeleton): sin caja de espera. */
+export default function Loading() {
+  return <PageSkeleton variant="table" label="Cargando calidad" header={false} />;
 }

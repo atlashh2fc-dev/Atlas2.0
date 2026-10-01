@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { connection } from "next/server";
-import { CalendarDays, CalendarX2, Check, CheckCheck, ChevronLeft, ChevronRight, Clock, ListChecks, Stethoscope, XCircle } from "lucide-react";
+import { CalendarDays, CalendarX2, Check, CheckCheck, ChevronLeft, ChevronRight, Clock, Stethoscope, XCircle } from "lucide-react";
 
 import { agendarCita, cambiarEstadoCita, type OpcionDeCita } from "@/app/actions/citas";
 import { CreatePanel } from "@/components/create-panel";
-import { ActionForm, ActionSubmit, Badge, Callout, EmptyState, Field, Input, PageHeader, SectionCard, Select, buttonClasses, type ConfirmOptions } from "@/components/ui";
+import { ActionForm, ActionSubmit, Avatar, Badge, Callout, EmptyState, Field, Input, PageHeader, SectionCard, Select, Table, Tbody, Td, Th, Thead, Tr, buttonClasses, type ConfirmOptions } from "@/components/ui";
 import {
   ETIQUETA_ESTADO,
   ZONA_CLINICA,
@@ -173,7 +173,18 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
     <div className="space-y-5">
       <PageHeader
         title="Agenda"
-        description={`${capitalizar(fechaLarga.format(desde))} · ${activas.length} ${activas.length === 1 ? at.cita : at.citas}${sinConfirmar ? ` · ${sinConfirmar} sin confirmar` : ""}${enSala ? ` · ${enSala} en sala` : ""}`}
+        icon={CalendarDays}
+        description={capitalizar(fechaLarga.format(desde))}
+        meta={
+          <>
+            <span>
+              <span className="font-medium text-foreground">{activas.length}</span> {activas.length === 1 ? at.cita : at.citas}
+            </span>
+            {sinConfirmar > 0 && <Badge tone="neutral">{sinConfirmar} sin confirmar</Badge>}
+            {enSala > 0 && <Badge tone="warning">{enSala} en sala</Badge>}
+            {atendidas > 0 && <Badge tone="success">{atendidas} {atendidas === 1 ? "atendida" : "atendidas"}</Badge>}
+          </>
+        }
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Link href={`/dashboard/citas?dia=${sumarDias(dia, -1)}`} className={buttonClasses({ variant: "secondary", size: "sm" })} aria-label="Día anterior">
@@ -263,8 +274,6 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
         <EmptyState icon={Stethoscope} title={`Todavía no hay ${at.profesionales.toLowerCase()}`} description={`La agenda se arma por ${at.profesional.toLowerCase()}. Registra la primera atención y aparecerá acá, o pídenos que los carguemos.`} />
       ) : (
         <SectionCard
-          icon={CalendarDays}
-          tone="amber"
           title={`Por ${at.profesional.toLowerCase()}`}
           description={`${profesionales.length} ${profesionales.length === 1 ? "agenda" : "agendas"} · ${HORA_APERTURA}:00 a ${HORA_CIERRE}:00. Lo cancelado y quien no vino quedan en gris y liberan la hora.`}
         >
@@ -326,15 +335,23 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
                             key={cita.id}
                             href={`/dashboard/pacientes/${cita.cuenta_id}`}
                             title={`${hora.format(new Date(cita.inicio))}–${hora.format(new Date(cita.fin))} · ${quien(cita)} · ${cita.motivo} · ${etiqueta.label}`}
-                            className={`absolute left-1 right-1 overflow-hidden rounded-md border text-xs leading-tight shadow-sm transition-shadow hover:shadow-md ${
+                            className={`absolute left-1 right-1 overflow-hidden rounded-lg border text-xs leading-tight transition-shadow hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                               activa ? "border-transparent text-foreground" : "border-dashed border-border bg-surface text-muted-foreground line-through opacity-70"
                             } ${cita.estado === "en_sala" ? "ring-2 ring-warning ring-offset-1" : ""}`}
-                            style={{ top: top + 1, height: alto - 2, backgroundColor: activa ? `${profesional.color}1f` : undefined, borderLeft: `3px solid ${activa ? profesional.color : "var(--border)"}` }}
+                            style={{
+                              top: top + 1,
+                              height: alto - 2,
+                              // Bloque tintado con el color del profesional, como un calendario (sin borde de acento).
+                              backgroundColor: activa ? `color-mix(in srgb, ${profesional.color} 16%, var(--surface))` : undefined,
+                            }}
                           >
                             <div className={`flex items-start gap-1 px-2 ${compacta ? "py-0.5" : "py-1"}`}>
                               <div className="min-w-0 flex-1">
-                                <p className="truncate">
-                                  <span className="font-semibold tabular-nums">{hora.format(new Date(cita.inicio))}</span> <span className="font-medium">{quien(cita)}</span>
+                                <p className="flex min-w-0 items-center gap-1.5">
+                                  {activa && <span className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: profesional.color }} aria-hidden="true" />}
+                                  <span className="truncate">
+                                    <span className="font-semibold tabular-nums">{hora.format(new Date(cita.inicio))}</span> <span className="font-medium">{quien(cita)}</span>
+                                  </span>
                                 </p>
                                 {!compacta && <p className="truncate text-muted-foreground">{cita.motivo}</p>}
                               </div>
@@ -365,58 +382,62 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       )}
 
       <SectionCard
-        icon={ListChecks}
-        tone="amber"
-        title="Citas del día"
+        title={`${capitalizar(at.citas)} del día`}
         description={`${atendidas} ${atendidas === 1 ? "atendida" : "atendidas"} de ${activas.length}. Confirmar, pasar a sala y dar por atendida se hace desde acá.`}
       >
         {citas.length === 0 ? (
-          <EmptyState icon={CalendarX2} title="Sin citas este día" description='Agenda la primera con "Nueva cita".' />
+          <EmptyState icon={CalendarX2} title={`Sin ${at.citas} este día`} description={`Agenda la primera con «Nueva ${at.cita}».`} />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                  <th className="h-10 px-4 font-medium">Hora</th>
-                  <th className="h-10 px-4 font-medium">{esVet ? "Mascota y tutor" : voc.singular}</th>
-                  <th className="h-10 px-4 font-medium">Motivo</th>
-                  <th className="h-10 px-4 font-medium">{at.profesional}</th>
-                  <th className="h-10 px-4 font-medium">Estado</th>
-                  <th className="h-10 px-4 font-medium text-right">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
+            <Table>
+              <Thead>
+                <Th>Hora</Th>
+                <Th>{esVet ? "Mascota y tutor" : voc.singular}</Th>
+                <Th>Motivo</Th>
+                <Th>{at.profesional}</Th>
+                <Th>Estado</Th>
+                <Th align="right">
+                  <span className="sr-only">Acciones</span>
+                </Th>
+              </Thead>
+              <Tbody>
                 {citas.map((cita) => {
                   const profesional = profesionales.find((candidato) => candidato.id === cita.profesional_id);
                   const etiqueta = ETIQUETA_ESTADO[cita.estado];
                   const telefono = primero(cita.sales_companies)?.phone;
                   const yaPaso = new Date(cita.inicio) <= ahora;
+                  const activa = ocupaHorario(cita.estado);
                   return (
-                    <tr key={cita.id} className={ocupaHorario(cita.estado) ? "" : "text-muted-foreground"}>
-                      <td className="px-4 py-3 tabular-nums">
-                        {hora.format(new Date(cita.inicio))}
-                        <span className="text-xs text-muted-foreground"> – {hora.format(new Date(cita.fin))}</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <Link href={`/dashboard/pacientes/${cita.cuenta_id}`} className="font-medium text-foreground hover:text-primary hover:underline">
-                          {quien(cita)}
-                        </Link>
-                        {telefono && <p className="text-xs text-muted-foreground">{telefono}</p>}
-                      </td>
-                      <td className="px-4 py-3">
-                        {cita.motivo}
-                        {cita.nota && <p className="text-xs text-muted-foreground">{cita.nota}</p>}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="inline-flex items-center gap-1.5">
-                          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: profesional?.color }} aria-hidden="true" />
+                    <Tr key={cita.id} className={activa ? "" : "text-muted-foreground"}>
+                      <Td className="whitespace-nowrap">
+                        <span className={`block font-semibold tabular-nums ${activa ? "text-foreground" : ""}`}>{hora.format(new Date(cita.inicio))}</span>
+                        <span className="block text-xs tabular-nums text-muted-foreground">hasta {hora.format(new Date(cita.fin))}</span>
+                      </Td>
+                      <Td>
+                        <span className="flex min-w-0 items-center gap-3">
+                          <Avatar name={quien(cita)} size="md" />
+                          <span className="min-w-0">
+                            <Link href={`/dashboard/pacientes/${cita.cuenta_id}`} className={`block truncate font-medium hover:text-primary hover:underline ${activa ? "text-foreground" : ""}`}>
+                              {quien(cita)}
+                            </Link>
+                            {telefono && <span className="block text-xs text-muted-foreground">{telefono}</span>}
+                          </span>
+                        </span>
+                      </Td>
+                      <Td>
+                        <span className={`block ${activa ? "text-foreground" : ""}`}>{cita.motivo}</span>
+                        {cita.nota && <span className="block text-xs text-muted-foreground">{cita.nota}</span>}
+                      </Td>
+                      <Td>
+                        <span className="inline-flex items-center gap-2 whitespace-nowrap">
+                          <span className="size-2 rounded-full" style={{ backgroundColor: profesional?.color }} aria-hidden="true" />
                           {profesional?.nombre ?? "—"}
                         </span>
-                      </td>
-                      <td className="px-4 py-3">
+                      </Td>
+                      <Td>
                         <Badge tone={etiqueta.tone}>{etiqueta.label}</Badge>
-                      </td>
-                      <td className="px-4 py-3">
+                      </Td>
+                      <Td>
                         <div className="flex flex-wrap justify-end gap-1.5">
                           {/* Acciones de fila en secundario: el único primario de la vista es «Nueva cita». */}
                           {cita.estado === "reservada" && <Accion cita={cita} estado="confirmada" label="Confirmar" dia={dia} success={`${Cita1} confirmada`} />}
@@ -444,17 +465,17 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
                             />
                           )}
                           {cita.estado === "atendida" && (
-                            <Link href={`/dashboard/pacientes/${cita.cuenta_id}`} className={buttonClasses({ variant: "secondary", size: "sm" })}>
-                              Ver ficha
+                            <Link href={`/dashboard/pacientes/${cita.cuenta_id}`} className={buttonClasses({ variant: "ghost", size: "sm" })} aria-label={`Abrir la ficha de ${quien(cita)}`}>
+                              Ficha <ChevronRight size={14} aria-hidden="true" />
                             </Link>
                           )}
                         </div>
-                      </td>
-                    </tr>
+                      </Td>
+                    </Tr>
                   );
                 })}
-              </tbody>
-            </table>
+              </Tbody>
+            </Table>
           </div>
         )}
       </SectionCard>

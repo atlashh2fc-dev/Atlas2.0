@@ -1,16 +1,6 @@
-import { LoadingState } from "@/components/ui";
+import { PageSkeleton } from "@/components/ui";
 
+/** Esqueleto con la forma de la página (ver PageSkeleton): sin caja de espera. */
 export default function Loading() {
-  return (
-    <div className="space-y-5" aria-busy="true">
-      <LoadingState label="Estamos preparando la distribución del equipo" className="rounded-xl border border-border bg-surface px-5 py-4" />
-      <div className="h-14 animate-pulse rounded-xl bg-surface-muted" />
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <div key={index} className="h-24 animate-pulse rounded-xl bg-surface-muted" />
-        ))}
-      </div>
-      <div className="h-64 animate-pulse rounded-xl bg-surface-muted" />
-    </div>
-  );
+  return <PageSkeleton variant="dashboard" label="Cargando el equipo" />;
 }

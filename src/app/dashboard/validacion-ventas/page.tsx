@@ -4,7 +4,8 @@ import { requireProfile } from "@/lib/auth";
 import { listSaleValidations, searchSaleValidations, type SaleValidationRow } from "@/app/actions/validacion-ventas";
 import { SaleValidationsTable } from "@/components/sale-validations-table";
 import { formatUf } from "@/lib/sale-validation-format";
-import { Callout, MetricCard } from "@/components/ui";
+import { KpiStrip, KpiStripItem } from "@/components/report-kit";
+import { Callout } from "@/components/ui";
 import { ValidacionVentasHeader } from "./header";
 import { SaleFilters, filterOptions, monthRange, resolveOrden, resolveRange, sortSales, type SaleFilterParams } from "./filters";
 
@@ -92,46 +93,52 @@ export default async function ValidacionVentasPage({ searchParams }: { searchPar
 
       {loadError && <Callout tone="danger">{loadError}</Callout>}
 
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <MetricCard
+      {/* Los indicadores miran toda la cola, en una franja; la tabla, lo que dejan los filtros. */}
+      <KpiStrip columns={4}>
+        <KpiStripItem
           label="Por validar"
           value={pending.length.toLocaleString("es-CL")}
-          hint="Ventas esperando tu decisión"
-          tone={pending.length > 0 ? "warn" : "good"}
           icon={ClipboardCheck}
-          iconTone="green"
+          tone={pending.length > 0 ? "warn" : "good"}
+          detail="Ventas esperando tu decisión"
         />
-        <MetricCard label="UF en juego" value={formatUf(sumUf(pending))} hint="Suma mensual de lo pendiente" icon={Coins} iconTone="green" />
-        <MetricCard
+        <KpiStripItem label="UF en juego" value={formatUf(sumUf(pending))} icon={Coins} detail="Suma mensual de lo pendiente" />
+        <KpiStripItem
           label="Esperando más de 7 días"
           value={overdue.toLocaleString("es-CL")}
-          hint={oldest ? `La más antigua, hace ${oldestDays} días` : "Nada atrasado"}
-          tone={overdue > 0 ? "danger" : "good"}
-          href={overdue > 0 ? `/dashboard/validacion-ventas?hasta=${daysAgo(8)}` : undefined}
-          hrefLabel="Ver atrasadas"
           icon={Hourglass}
-          iconTone="amber"
+          tone={overdue > 0 ? "danger" : "default"}
+          detail={oldest ? `La más antigua, hace ${oldestDays} días` : "Nada atrasado"}
+          progress={pending.length > 0 ? (overdue / pending.length) * 100 : undefined}
+          href={overdue > 0 ? `/dashboard/validacion-ventas?hasta=${daysAgo(8)}` : undefined}
         />
-        <MetricCard
+        <KpiStripItem
           label="Ventas aprobadas del mes"
           value={approvedThisMonth.length.toLocaleString("es-CL")}
-          hint={`${formatUf(sumUf(approvedThisMonth))} · vendidas este mes`}
-          href={`/dashboard/validacion-ventas/validadas?periodo=${thisMonth.periodo}`}
-          hrefLabel="Ver ventas del mes"
           icon={BadgeCheck}
-          iconTone="green"
+          detail={`${formatUf(sumUf(approvedThisMonth))} · vendidas este mes`}
+          href={`/dashboard/validacion-ventas/validadas?periodo=${thisMonth.periodo}`}
         />
-      </section>
+      </KpiStrip>
 
-      <p className="text-xs text-muted-foreground">
-        {filtered
-          ? `${rows.length.toLocaleString("es-CL")} de ${pending.length.toLocaleString("es-CL")} por validar con estos filtros · ${formatUf(sumUf(rows))}. `
-          : ""}
-        Marca varias para aprobarlas o rechazarlas de una vez. Toca la empresa para ver el detalle; también puedes ordenar
-        tocando el título de cada columna.
-      </p>
-
-      <SaleValidationsTable rows={rows} mode="cola" exportFilename="ventas-por-validar" />
+      <SaleValidationsTable
+        rows={rows}
+        mode="cola"
+        exportFilename="ventas-por-validar"
+        toolbar={
+          <p className="px-1 py-2 text-xs text-muted-foreground">
+            {filtered ? (
+              <>
+                <span className="font-medium text-foreground tabular-nums">
+                  {rows.length.toLocaleString("es-CL")} de {pending.length.toLocaleString("es-CL")}
+                </span>{" "}
+                por validar con estos filtros · {formatUf(sumUf(rows))}.{" "}
+              </>
+            ) : null}
+            Marca varias para decidir en bloque; toca la empresa para ver el detalle.
+          </p>
+        }
+      />
     </div>
   );
 }

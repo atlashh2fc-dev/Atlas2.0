@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowUpRight, Layers } from "lucide-react";
 import { notFound } from "next/navigation";
 
-import { Badge, NavTabs, PageHeader, type BadgeTone } from "@/components/ui";
+import { Badge, NavTabs, buttonClasses, type BadgeTone } from "@/components/ui";
+import { CabeceraDeEntidad, Migas } from "../../_diseno";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
@@ -39,12 +40,30 @@ export default async function ContactCenterQueueLayout({ children, params }: { c
 
   return (
     <div className="space-y-5">
-      <Link href="/dashboard/admin/colas" className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary"><ArrowLeft size={13} /> Colas y enrutamiento</Link>
-      <PageHeader
-        title={queue.name}
-        description={queue.description ?? "Cola ACD omnicanal"}
-        className="border-b-0 pb-0"
-        actions={<div className="flex flex-wrap gap-x-4 gap-y-2"><Badge tone={queue.is_active ? "success" : "danger"}>{queue.is_active ? "Cola activa" : "Cola inactiva"}</Badge>{(sources ?? []).map((source, index) => { const campaign = one(source.campaigns as Relation<{ name: string }>); return <Badge key={`${source.channel_type}-${index}`} tone={CHANNEL_TONES[source.channel_type] ?? "neutral"}>{CHANNEL_LABELS[source.channel_type] ?? source.channel_type} · {campaign?.name ?? "Sin campaña"}</Badge>; })}</div>}
+      <Migas items={[{ label: "Colas y enrutamiento", href: "/dashboard/admin/colas" }, { label: queue.name }]} />
+      <CabeceraDeEntidad
+        nombre={queue.name}
+        icon={Layers}
+        apagada={!queue.is_active}
+        descripcion={queue.description ?? "Cola ACD omnicanal"}
+        meta={
+          <>
+            <Badge tone={queue.is_active ? "success" : "neutral"}>{queue.is_active ? "Cola activa" : "Cola inactiva"}</Badge>
+            {(sources ?? []).map((source, index) => {
+              const campaign = one(source.campaigns as Relation<{ name: string }>);
+              return (
+                <Badge key={`${source.channel_type}-${index}`} tone={CHANNEL_TONES[source.channel_type] ?? "neutral"}>
+                  {CHANNEL_LABELS[source.channel_type] ?? source.channel_type} · {campaign?.name ?? "Sin campaña"}
+                </Badge>
+              );
+            })}
+          </>
+        }
+        acciones={
+          <Link href={`/dashboard/operacion?queue=${id}&channel=all`} className={buttonClasses({ variant: "secondary" })}>
+            Ver operación de la cola <ArrowUpRight size={14} aria-hidden="true" />
+          </Link>
+        }
       />
       <NavTabs tabs={[
         { label: "Resumen de configuración", href: base },

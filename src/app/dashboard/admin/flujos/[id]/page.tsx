@@ -1,13 +1,13 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
-import Link from "next/link";
 import { Workflow } from "lucide-react";
 import { WorkflowCanvas } from "@/components/workflow-canvas";
 import type { WorkflowStep, WorkflowStepBranch } from "@/lib/types";
 import { validateWorkflow, workflowStatus } from "@/lib/workflow-validation";
 import { setWorkflowStatus } from "@/app/actions/workflows";
-import { ActionForm, ActionSubmit, Badge, Callout, EmptyState, PageHeader } from "@/components/ui";
+import { ActionForm, ActionSubmit, Badge, Callout, EmptyState } from "@/components/ui";
+import { CabeceraDeEntidad, Migas } from "../../_diseno";
 
 export default async function WorkflowDetailPage({
   params,
@@ -53,47 +53,57 @@ export default async function WorkflowDetailPage({
 
   return (
     <div className="space-y-4">
-      {campaignId && (
-        <Link
-          href={`/dashboard/admin/campanas/${campaignId}`}
-          className="inline-block text-xs text-muted-foreground hover:text-primary"
-        >
-          ← Volver a la campaña y continuar su configuración
-        </Link>
-      )}
+      <Migas
+        items={[
+          campaignId
+            ? { label: "Volver a la campaña", href: `/dashboard/admin/campanas/${campaignId}` }
+            : { label: "Flujos de gestión", href: "/dashboard/admin/flujos" },
+          { label: workflow.name },
+        ]}
+      />
 
-      <PageHeader
-        title={workflow.name}
-        description={workflow.description || "Sin descripción."}
-        className="border-b-0 pb-0"
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge tone={workflow.status === "published" ? "success" : "warning"}>
+      <CabeceraDeEntidad
+        nombre={workflow.name}
+        icon={Workflow}
+        apagada={!workflow.is_active}
+        descripcion={workflow.description || "Sin descripción."}
+        meta={
+          <>
+            <Badge tone={workflow.status === "published" ? "success" : "neutral"}>
               {workflow.status === "published" ? "Publicado" : "Borrador"}
             </Badge>
             <Badge tone={status.tone === "danger" ? "danger" : status.tone === "warning" ? "warning" : "success"}>
               {status.label}
             </Badge>
-            <ActionForm
-              action={setWorkflowStatus}
-              success={workflow.status === "published" ? "Flujo devuelto a borrador" : "Flujo publicado"}
+            <span>
+              {(steps ?? []).length} {(steps ?? []).length === 1 ? "paso" : "pasos"}
+            </span>
+            <span>
+              {activeCampaigns.length > 0
+                ? `En uso por ${activeCampaigns.map((campaign) => campaign.name).join(", ")}`
+                : "Ninguna campaña activa lo usa"}
+            </span>
+          </>
+        }
+        acciones={
+          <ActionForm
+            action={setWorkflowStatus}
+            success={workflow.status === "published" ? "Flujo devuelto a borrador" : "Flujo publicado"}
+          >
+            <input type="hidden" name="workflow_id" value={id} />
+            <input type="hidden" name="status" value={workflow.status === "published" ? "draft" : "published"} />
+            <ActionSubmit
+              variant={workflow.status === "published" ? "secondary" : "primary"}
+              pendingLabel="Guardando…"
+              title={
+                workflow.status === "published"
+                  ? "Lo quita de la lista de flujos asignables a campañas. No detiene a las campañas que ya lo usan: siguen operando con cada cambio."
+                  : "Lo valida y lo deja disponible para asignarlo a campañas."
+              }
             >
-              <input type="hidden" name="workflow_id" value={id} />
-              <input type="hidden" name="status" value={workflow.status === "published" ? "draft" : "published"} />
-              <ActionSubmit
-                variant={workflow.status === "published" ? "secondary" : "primary"}
-                size="sm"
-                pendingLabel="Guardando…"
-                title={
-                  workflow.status === "published"
-                    ? "Lo quita de la lista de flujos asignables a campañas. No detiene a las campañas que ya lo usan: siguen operando con cada cambio."
-                    : "Lo valida y lo deja disponible para asignarlo a campañas."
-                }
-              >
-                {workflow.status === "published" ? "Volver a borrador" : "Publicar"}
-              </ActionSubmit>
-            </ActionForm>
-          </div>
+              {workflow.status === "published" ? "Volver a borrador" : "Publicar"}
+            </ActionSubmit>
+          </ActionForm>
         }
       />
 
@@ -112,7 +122,7 @@ export default async function WorkflowDetailPage({
       </Callout>
 
       {(steps ?? []).length === 0 ? (
-        <div className="rounded-xl border border-border bg-surface shadow-sm">
+        <div className="rounded-xl border border-dashed border-border-strong bg-surface">
           <EmptyState
             icon={Workflow}
             title="Este flujo todavía no tiene pasos."

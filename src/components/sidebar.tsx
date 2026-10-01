@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { MarcaAtlas } from "@/components/marca-atlas";
+import { Avatar } from "@/components/ui/avatar";
 import { PACIENTES_POR_EDICION, VENTAS_POR_EDICION, type Edicion } from "@/lib/ediciones";
 import type { AppModule } from "@/lib/modules";
 import type { AppRole, Profile } from "@/lib/types";
@@ -114,13 +115,6 @@ export function useNavPersonalization(profile: Profile): NavPersonalization {
   };
 }
 
-function initials(fullName: string): string {
-  const parts = fullName.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[1][0]).toUpperCase();
-}
-
 /** Dos destinos analíticos ya forman un grupo útil en la consola omnicanal. */
 function showsHeader(section: NavSection): boolean {
   return Boolean(section.label) && section.items.length >= 2;
@@ -178,10 +172,10 @@ function sectionsFor(
   }));
 }
 
-// Activo: la fila se levanta en blanco sobre el plano del menú. Sin barra de
-// color ni chip encendido: el lugar se lee por contraste, no por adorno.
-const NAV_ROW_ACTIVE = "bg-surface text-foreground shadow-sm ring-1 ring-inset ring-border";
-const NAV_ROW_IDLE = "text-muted-foreground hover:bg-foreground/[0.045] hover:text-foreground";
+// Activo: un tinte de la marca y el ícono en su color (Linear, Attio). La
+// fila levantada en blanco se leía como un botón más del menú.
+const NAV_ROW_ACTIVE = "bg-primary/[0.11] text-foreground";
+const NAV_ROW_IDLE = "text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground";
 
 const ITEM_ACTION =
   "flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/[0.07] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -227,13 +221,13 @@ function NavLink({
           active ? NAV_ROW_ACTIVE : NAV_ROW_IDLE
         }`}
       >
-        <Icon size={16} aria-hidden="true" className={`shrink-0 ${active ? "text-foreground" : "text-muted-foreground/80"}`} />
+        <Icon size={16} aria-hidden="true" className={`shrink-0 transition-colors ${active ? "text-primary" : "text-muted-foreground/75 group-hover:text-foreground"}`} />
 
         {!rail && <span className="truncate">{label}</span>}
 
         {!rail && !editing && badge !== undefined && badge > 0 && (
-          <span className="ml-auto text-xs font-semibold tabular-nums text-primary group-hover:hidden">
-            {badge}
+          <span className="ml-auto rounded-md bg-primary/15 px-1.5 py-px text-[11px] font-semibold tabular-nums text-primary group-hover:hidden">
+            {badge.toLocaleString("es-CL")}
           </span>
         )}
 
@@ -392,7 +386,7 @@ export function NavTree({
       {favorites.length > 0 && (
         <div className="mb-1">
           {!rail && (
-            <p className="px-2.5 pb-1 pt-2 text-xs font-medium text-muted-foreground/80">Favoritos</p>
+            <p className="px-2.5 pb-1.5 pt-2 text-[10.5px] font-semibold uppercase tracking-[0.07em] text-muted-foreground/60">Favoritos</p>
           )}
           <div className="space-y-0.5">
             {favorites.map((item, index) =>
@@ -421,7 +415,7 @@ export function NavTree({
                 type="button"
                 onClick={() => personalization?.toggleCollapsed(section.id)}
                 aria-expanded={!isCollapsed}
-                className="group/section flex w-full items-center gap-1.5 px-2.5 pb-1 pt-4 text-xs font-medium text-muted-foreground/80 transition-colors hover:text-foreground"
+                className="group/section flex w-full items-center gap-1.5 px-2.5 pb-1.5 pt-5 text-[10.5px] font-semibold uppercase tracking-[0.07em] text-muted-foreground/60 transition-colors hover:text-foreground"
               >
                 <span>{section.label}</span>
                 <ChevronDown size={13} className={`ml-auto opacity-0 transition group-hover/section:opacity-100 ${isCollapsed ? "-rotate-90 opacity-100" : ""}`} />
@@ -459,7 +453,7 @@ function FooterEntry({
   }`;
   const body = (
     <>
-      <Icon size={16} aria-hidden="true" className={`shrink-0 ${active ? "text-foreground" : "text-muted-foreground/80"}`} />
+      <Icon size={16} aria-hidden="true" className={`shrink-0 ${active ? "text-primary" : "text-muted-foreground/75"}`} />
       {!rail && label}
     </>
   );
@@ -545,11 +539,11 @@ export function NavFooter({
       )}
       <FooterEntry href={HELP_HREF} onClick={onNavigate} active={helpActive} rail={rail} icon={CircleHelp} label="Ayuda" />
 
-      <div className={`mt-1 flex items-center gap-2.5 border-t border-border pt-3 ${rail ? "justify-center" : "px-1"}`}>
+      <div className={`mt-2 flex items-center gap-2.5 rounded-lg border border-border bg-surface/60 p-2 ${rail ? "justify-center border-transparent bg-transparent p-0 pt-2" : ""}`}>
         <div className="relative flex-shrink-0">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-foreground/[0.07] text-xs font-semibold text-foreground">
-            {initials(profile.full_name)}
-          </div>
+          <Avatar name={profile.full_name} size="md" />
+          {/* En línea: la sesión está abierta. */}
+          <span aria-hidden="true" className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-[var(--background)] bg-success" />
         </div>
         {!rail && (
           <div className="min-w-0">
@@ -588,20 +582,22 @@ export function Sidebar({
         rail ? "w-16" : "w-64"
       }`}
     >
-      <div className={`flex h-14 items-center gap-2 ${rail ? "justify-center px-2" : "px-4"}`}>
-        <Image
-          src="/atlas-logo.png"
-          alt="Atlas"
-          width={32}
-          height={32}
-          className="size-7 flex-shrink-0 rounded-full object-contain"
-          priority
-        />
+      <div className={`flex h-14 items-center gap-2.5 border-b border-border ${rail ? "justify-center px-2" : "px-3.5"}`}>
+        <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-lg border border-border bg-surface shadow-sm">
+          <Image
+            src="/atlas-logo.png"
+            alt="Atlas"
+            width={32}
+            height={32}
+            className="size-6 rounded-full object-contain"
+            priority
+          />
+        </span>
         {!rail && (
           <>
-            <div className="leading-none">
+            <div className="min-w-0 leading-none">
               <MarcaAtlas edicion={edicion} />
-              <p className="mt-1 text-[11px] text-muted-foreground">
+              <p className="mt-1 truncate text-[11px] text-muted-foreground">
                 {workspaceLabel(profile.role, space)} · {ROLE_LABEL[profile.role]}
               </p>
             </div>

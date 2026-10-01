@@ -14,7 +14,7 @@ export function ThemeToggle() {
   }, []);
 
   if (!mounted) {
-    return <div className="h-9 w-9 rounded-lg border border-border bg-surface" />;
+    return <div className="h-9 w-9" />;
   }
 
   const isDark = resolvedTheme === "dark";
@@ -25,7 +25,7 @@ export function ThemeToggle() {
       onClick={() => setTheme(isDark ? "light" : "dark")}
       aria-label="Cambiar tema"
       title={isDark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
-      className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-foreground transition-colors hover:bg-surface-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       {isDark ? <Sun size={18} /> : <Moon size={18} />}
     </button>

@@ -10,31 +10,29 @@ import {
 import {
   CalendarRange,
   CircleCheck,
-  Headset,
   PhoneCall,
   PhoneIncoming,
   PhoneMissed,
   PhoneOff,
-  Users,
 } from "lucide-react";
 import type { AgentActivityReportRow, CallMetricsReportRow } from "@/lib/types";
 import {
+  Avatar,
   Button,
   Callout,
-  Card,
   DataTable,
   Field,
   InfoTooltip,
   LoadingState,
-  MetricCard,
-  SectionCard,
   Select,
   type Column,
 } from "@/components/ui";
+import { KpiStrip, KpiStripItem } from "@/components/report-kit";
 import { formatReportRangeLabel, resolveReportRange, toDateInput } from "@/lib/report-range";
 import {
   CAMPAIGN_DIRECTION_LABELS,
   metricAppliesTo,
+  metricDefinition,
   type CampaignDirection,
   type MetricId,
 } from "@/lib/metric-definitions";
@@ -42,10 +40,45 @@ import type { ReportCampaign } from "@/app/actions/dialer-reports";
 
 const ABANDON_ALERT_RATE = 6;
 
+/** "24 may 2026": días del reporte (vienen como fecha calendario, sin hora). */
 function formatDate(value: string): string {
   const date = new Date(`${value}T00:00:00`);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("es-CL", { day: "2-digit", month: "2-digit", year: "numeric" });
+  return date.toLocaleDateString("es-CL", { day: "numeric", month: "short", year: "numeric" }).replace(".", "");
+}
+
+/** Día de la semana para la segunda línea de la celda de fecha. */
+function formatWeekday(value: string): string {
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return "";
+  const weekday = date.toLocaleDateString("es-CL", { weekday: "long" });
+  return weekday.charAt(0).toUpperCase() + weekday.slice(1);
+}
+
+/** Porcentaje con una barra fina debajo: ocupación y adherencia se leen de un vistazo. */
+function PercentBar({ value }: { value: number | null | undefined }) {
+  if (value == null || Number.isNaN(value)) return <span className="text-muted-foreground">—</span>;
+  return (
+    <span className="ml-auto block w-20">
+      <span className="block font-medium tabular-nums text-foreground">{formatPercent(value)}</span>
+      <span className="mt-1 block h-1 overflow-hidden rounded-full bg-surface-muted" aria-hidden="true">
+        <span className="block h-full rounded-full bg-primary" style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
+      </span>
+    </span>
+  );
+}
+
+/** Título de bloque sobre una tabla, sin tarjeta extra: la tabla ya es la tarjeta. */
+function BlockHeading({ title, description, hint }: { title: string; description: string; hint?: string }) {
+  return (
+    <div className="mb-3">
+      <h2 className="flex items-center gap-1.5 text-[15px] font-semibold tracking-tight text-foreground">
+        {title}
+        {hint && <InfoTooltip text={hint} />}
+      </h2>
+      <p className="mt-0.5 text-[13px] text-muted-foreground">{description}</p>
+    </div>
+  );
 }
 
 function formatSeconds(totalSeconds: number | null | undefined): string {
@@ -132,10 +165,46 @@ export function DialerReports() {
   );
   const abandonRate = totals.answered > 0 ? (totals.abandoned / totals.answered) * 100 : null;
 
+  // Serie diaria para las curvas de la franja (las filas vienen por día y campaña).
+  const daily = useMemo(() => {
+    const byDay = new Map<string, { attempts: number; answered: number; completed: number; noAnswer: number; abandoned: number }>();
+    for (const row of callMetrics) {
+      const day = byDay.get(row.report_date) ?? { attempts: 0, answered: 0, completed: 0, noAnswer: 0, abandoned: 0 };
+      day.attempts += row.total_attempts;
+      day.answered += row.answered;
+      day.completed += row.completed;
+      day.noAnswer += row.no_answer;
+      day.abandoned += row.abandoned;
+      byDay.set(row.report_date, day);
+    }
+    return [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, value]) => value);
+  }, [callMetrics]);
+  const abandonDefinition = metricDefinition("abandono");
+
   const metricColumns = useMemo<Column<CallMetricsReportRow>[]>(() => {
     const columns: Column<CallMetricsReportRow>[] = [
-      { id: "fecha", header: "Fecha", value: (row) => row.report_date, cell: (row) => formatDate(row.report_date) },
-      { id: "campana", header: "Campaña", value: (row) => row.campaign_name },
+      {
+        id: "fecha",
+        header: "Fecha",
+        value: (row) => row.report_date,
+        cell: (row) => (
+          <span className="block whitespace-nowrap">
+            <span className="block text-foreground">{formatDate(row.report_date)}</span>
+            <span className="block text-xs text-muted-foreground">{formatWeekday(row.report_date)}</span>
+          </span>
+        ),
+      },
+      {
+        id: "campana",
+        header: "Campaña",
+        value: (row) => row.campaign_name,
+        cell: (row) => (
+          <span className="flex min-w-0 items-center gap-2.5">
+            <Avatar name={row.campaign_name} shape="square" size="sm" />
+            <span className="truncate font-medium text-foreground">{row.campaign_name}</span>
+          </span>
+        ),
+      },
       { id: "intentos", header: "Intentos", align: "right", value: (row) => row.total_attempts },
       { id: "contestadas", header: "Contestadas", align: "right", value: (row) => row.answered },
       { id: "completadas", header: "Completadas", align: "right", value: (row) => row.completed },
@@ -201,7 +270,17 @@ export function DialerReports() {
 
   const activityColumns = useMemo<Column<AgentActivityReportRow>[]>(
     () => [
-      { id: "agente", header: "Ejecutivo", value: (row) => row.full_name },
+      {
+        id: "agente",
+        header: "Ejecutivo",
+        value: (row) => row.full_name,
+        cell: (row) => (
+          <span className="flex min-w-0 items-center gap-2.5">
+            <Avatar name={row.full_name} size="sm" />
+            <span className="truncate font-medium text-foreground">{row.full_name}</span>
+          </span>
+        ),
+      },
       { id: "llamadas", header: "Llamadas", align: "right", value: (row) => row.calls_handled },
       {
         id: "talk",
@@ -239,7 +318,7 @@ export function DialerReports() {
         align: "right",
         metric: "ocupacion",
         value: (row) => row.occupancy_rate,
-        cell: (row) => formatPercent(row.occupancy_rate),
+        cell: (row) => <PercentBar value={row.occupancy_rate} />,
       },
       {
         id: "jornada",
@@ -301,7 +380,7 @@ export function DialerReports() {
         align: "right",
         metric: "adherencia",
         value: (row) => row.adherence_rate,
-        cell: (row) => formatPercent(row.adherence_rate),
+        cell: (row) => <PercentBar value={row.adherence_rate} />,
       },
     ],
     []
@@ -309,16 +388,18 @@ export function DialerReports() {
 
   return (
     <div className="space-y-6">
-      <Card className="flex flex-wrap items-end gap-3">
+      <div className="atlas-panel flex flex-wrap items-center gap-x-5 gap-y-3 rounded-xl border border-border bg-surface p-3 shadow-sm">
         <div className="flex items-center gap-2.5">
-          <CalendarRange size={16} className="text-muted-foreground" aria-hidden="true" />
-          <div className="flex flex-col gap-0.5">
-            <span className="text-xs font-medium text-muted-foreground">Período analizado</span>
+          <span className="icon-chip size-8 rounded-lg" data-tone="primary" aria-hidden="true">
+            <CalendarRange size={15} />
+          </span>
+          <div className="flex flex-col">
+            <span className="text-[11px] text-muted-foreground">Período analizado</span>
             <span className="text-sm font-semibold text-foreground">{formatReportRangeLabel(range)}</span>
           </div>
         </div>
 
-        <Field label="Campaña" className="w-auto">
+        <Field label="Campaña" hideLabel className="w-full sm:w-72">
           <Select
             value={campaignId}
             onChange={(event) => {
@@ -326,7 +407,7 @@ export function DialerReports() {
               setCampaignId(event.target.value);
             }}
           >
-            <option value="">Todas</option>
+            <option value="">Todas las campañas</option>
             {campaigns.map((campaign) => (
               <option key={campaign.id} value={campaign.id}>
                 {campaign.name} · {CAMPAIGN_DIRECTION_LABELS[campaign.direction]}
@@ -336,16 +417,13 @@ export function DialerReports() {
         </Field>
 
         {selectedCampaign && (
-          <div className="flex flex-col gap-0.5">
-            <span className="text-xs font-medium text-muted-foreground">Dirección</span>
-            <span className="text-sm font-semibold text-foreground">
-              {CAMPAIGN_DIRECTION_LABELS[selectedCampaign.direction]}
-            </span>
-          </div>
+          <span className="text-xs text-muted-foreground">
+            Dirección <span className="font-medium text-foreground">{CAMPAIGN_DIRECTION_LABELS[selectedCampaign.direction]}</span>
+          </span>
         )}
 
-        {loading && <LoadingState label="Actualizando el reporte" compact />}
-      </Card>
+        {loading && <LoadingState label="Actualizando el reporte" compact className="ml-auto" />}
+      </div>
 
       {direction === "outbound" && (
         <Callout tone="info">
@@ -364,75 +442,89 @@ export function DialerReports() {
         </Callout>
       )}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-        <MetricCard label="Intentos" value={totals.total_attempts.toLocaleString("es-CL")} icon={PhoneCall} iconTone="primary" />
-        <MetricCard label="Contestadas" value={totals.answered.toLocaleString("es-CL")} tone="good" icon={PhoneIncoming} iconTone="green" />
-        <MetricCard label="Completadas" value={totals.completed.toLocaleString("es-CL")} icon={CircleCheck} iconTone="green" />
-        <MetricCard label="No contesta" value={totals.no_answer.toLocaleString("es-CL")} icon={PhoneMissed} iconTone="amber" />
-        <MetricCard
-          label="Abandono"
-          metric="abandono"
-          value={abandonRate != null ? formatPercent(abandonRate) : "—"}
-          hint={`${totals.abandoned.toLocaleString("es-CL")} llamadas`}
-          target={`≤ ${ABANDON_ALERT_RATE}%`}
-          tone={abandonRate != null && abandonRate > ABANDON_ALERT_RATE ? "danger" : "good"}
-          icon={PhoneOff}
-          iconTone="rose"
+      <KpiStrip>
+        <KpiStripItem
+          label="Intentos"
+          value={totals.total_attempts.toLocaleString("es-CL")}
+          icon={PhoneCall}
+          trend={daily.map((day) => day.attempts)}
         />
-      </div>
+        <KpiStripItem
+          label="Contestadas"
+          value={totals.answered.toLocaleString("es-CL")}
+          icon={PhoneIncoming}
+          detail={
+            totals.total_attempts > 0
+              ? `${formatPercent((totals.answered / totals.total_attempts) * 100)} de los intentos`
+              : undefined
+          }
+          trend={daily.map((day) => day.answered)}
+        />
+        <KpiStripItem
+          label="Completadas"
+          value={totals.completed.toLocaleString("es-CL")}
+          icon={CircleCheck}
+          trend={daily.map((day) => day.completed)}
+        />
+        <KpiStripItem
+          label="No contesta"
+          value={totals.no_answer.toLocaleString("es-CL")}
+          icon={PhoneMissed}
+          trend={daily.map((day) => day.noAnswer)}
+        />
+        <KpiStripItem
+          label="Abandono"
+          value={abandonRate != null ? formatPercent(abandonRate) : "—"}
+          icon={PhoneOff}
+          definition={{ text: abandonDefinition.definition, formula: abandonDefinition.formula }}
+          tone={abandonRate != null && abandonRate > ABANDON_ALERT_RATE ? "danger" : "default"}
+          detail={`${totals.abandoned.toLocaleString("es-CL")} llamadas · meta ≤ ${ABANDON_ALERT_RATE}%`}
+          trend={daily.map((day) => (day.answered > 0 ? (day.abandoned / day.answered) * 100 : 0))}
+        />
+      </KpiStrip>
 
-      <SectionCard
-        title="Métricas de llamadas"
-        icon={Headset}
-        tone="primary"
-        description={`Por día y campaña · ${formatDate(from)} a ${formatDate(to)}${
-          selectedCampaignName ? ` · ${selectedCampaignName}` : ""
-        }`}
-      >
-        <div className="p-4">
-          <DataTable
-            rows={callMetrics}
-            columns={metricColumns}
-            getRowId={(row) => `${row.report_date}-${row.campaign_id}`}
-            storageKey="reportes-discador-llamadas"
-            exportFilename="metricas-de-llamadas"
-            loading={loading}
-            loadingLabel="Estamos calculando las métricas de llamadas"
-            emptyTitle="Sin llamadas en el rango seleccionado"
-            emptyDescription="Prueba con otro período o revisa que la campaña haya tenido discado activo."
-          />
-        </div>
-      </SectionCard>
+      <section>
+        <BlockHeading
+          title="Métricas de llamadas"
+          description={`Por día y campaña · ${formatDate(from)} a ${formatDate(to)}${
+            selectedCampaignName ? ` · ${selectedCampaignName}` : ""
+          }`}
+        />
+        <DataTable
+          rows={callMetrics}
+          columns={metricColumns}
+          getRowId={(row) => `${row.report_date}-${row.campaign_id}`}
+          storageKey="reportes-discador-llamadas"
+          exportFilename="metricas-de-llamadas"
+          loading={loading}
+          loadingLabel="Estamos calculando las métricas de llamadas"
+          emptyTitle="Sin llamadas en el rango seleccionado"
+          emptyDescription="Prueba con otro período o revisa que la campaña haya tenido discado activo."
+        />
+      </section>
 
-      <SectionCard
-        title={
-          <span className="inline-flex items-center gap-1.5">
-            Actividad por ejecutivo
-            <InfoTooltip text="La jornada se calcula sólo con horarios laborales explícitos. Disponible, AUX y Desconectado se recortan a esos horarios; fuera de jornada no suman. Al filtrar una campaña, estas columnas quedan vacías porque el tiempo operativo no se atribuye a una sola campaña." />
-          </span>
-        }
-        description={
-          selectedCampaignName
-            ? `${selectedCampaignName} · solo métricas de llamada: el tiempo de jornada no es atribuible a una campaña`
-            : "Todas las campañas · jornada completa"
-        }
-        icon={Users}
-        tone="blue"
-      >
-        <div className="p-4">
-          <DataTable
-            rows={agentActivity}
-            columns={activityColumns}
-            getRowId={(row) => row.profile_id}
-            storageKey="reportes-discador-agentes"
-            exportFilename="actividad-por-ejecutivo"
-            loading={loading}
-            loadingLabel="Estamos preparando la actividad del equipo"
-            emptyTitle="Sin actividad en el rango seleccionado"
-            emptyDescription="No hay sesiones de ejecutivos registradas en estas fechas."
-          />
-        </div>
-      </SectionCard>
+      <section>
+        <BlockHeading
+          title="Actividad por ejecutivo"
+          hint="La jornada se calcula sólo con horarios laborales explícitos. Disponible, AUX y Desconectado se recortan a esos horarios; fuera de jornada no suman. Al filtrar una campaña, estas columnas quedan vacías porque el tiempo operativo no se atribuye a una sola campaña."
+          description={
+            selectedCampaignName
+              ? `${selectedCampaignName} · solo métricas de llamada: el tiempo de jornada no es atribuible a una campaña`
+              : "Todas las campañas · jornada completa"
+          }
+        />
+        <DataTable
+          rows={agentActivity}
+          columns={activityColumns}
+          getRowId={(row) => row.profile_id}
+          storageKey="reportes-discador-agentes"
+          exportFilename="actividad-por-ejecutivo"
+          loading={loading}
+          loadingLabel="Estamos preparando la actividad del equipo"
+          emptyTitle="Sin actividad en el rango seleccionado"
+          emptyDescription="No hay sesiones de ejecutivos registradas en estas fechas."
+        />
+      </section>
     </div>
   );
 }

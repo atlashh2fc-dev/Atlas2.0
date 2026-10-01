@@ -93,7 +93,11 @@ export default async function DashboardLayout({
           )}
           {/* La llamada en curso, fija sobre el contenido (la dibuja el teléfono). */}
           <div id="cti-callbar-slot" className="empty:hidden" />
-          <main className="flex-1 overflow-y-auto p-5">{children}</main>
+          {/* El contenido se centra con un ancho máximo: en pantallas grandes
+              las tablas de 1.900 px se leían como una planilla. */}
+          <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
+            <div className="mx-auto w-full max-w-[1600px]">{children}</div>
+          </main>
         </div>
         {canAttendCustomers && <CtiBar profile={profile} />}
       </div>

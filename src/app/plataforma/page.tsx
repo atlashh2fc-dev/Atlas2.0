@@ -1,4 +1,5 @@
 import { connection } from "next/server";
+import { Building2 } from "lucide-react";
 
 import { crearEmpresa } from "@/app/actions/organizaciones";
 import { CreatePanel } from "@/components/create-panel";
@@ -22,6 +23,7 @@ export default async function PlataformaEmpresasPage() {
     <div className="space-y-6">
       <PageHeader
         title="Empresas"
+        icon={Building2}
         description={`${activas} ${activas === 1 ? "empresa activa" : "empresas activas"}. Cada una es un cliente de Atlas con su propia gente y su propia operación; Altius incluida.`}
         actions={
           <CreatePanel

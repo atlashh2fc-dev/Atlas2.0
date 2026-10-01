@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, BarChart3, Bot, ChevronRight, Mail, Phone, Users } from "lucide-react";
+import { ArrowLeft, BarChart3, Bot, ChevronRight, Inbox, Mail, Megaphone, Phone, Users } from "lucide-react";
 
 import { requireProfile } from "@/lib/auth";
 import { campaignCapabilityKey } from "@/lib/campaign-capabilities";
 import { createClient } from "@/lib/supabase/server";
-import { Badge, Card, PageHeader, type SectionTone } from "@/components/ui";
+import { Badge, PageHeader, SectionCard, type SectionTone } from "@/components/ui";
 
 type Capability = {
   title: string;
@@ -104,7 +104,7 @@ export default async function OperationalCampaignPage({ params }: { params: Prom
       title: "Bandeja de entrada",
       description: "Convierte correos recibidos en registros para contacto telefónico.",
       href: `/dashboard/campanas/${id}/correo`,
-      icon: Mail,
+      icon: Inbox,
       tone: "teal",
       badge: mailboxResult.data?.[0]?.address,
     });
@@ -125,29 +125,48 @@ export default async function OperationalCampaignPage({ params }: { params: Prom
       </Link>
       <PageHeader
         title={campaign.name}
+        icon={Megaphone}
         description={campaign.description ?? "Operación y canales disponibles para esta campaña."}
-        actions={<Badge tone={campaign.is_active ? "success" : "danger"}>{campaign.is_active ? "Activa" : "Inactiva"}</Badge>}
+        meta={
+          <>
+            <Badge tone={campaign.is_active ? "success" : "danger"}>{campaign.is_active ? "Activa" : "Inactiva"}</Badge>
+            <span>
+              <span className="font-medium text-foreground">{(leadResult.count ?? 0).toLocaleString("es-CL")}</span> registros
+            </span>
+          </>
+        }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {capabilities.map(({ title, description, href, icon: Icon, tone, badge }) => (
-          <Link key={title} href={href} className="group">
-            <Card className="flex h-full items-start gap-4 transition-[border-color,box-shadow] group-hover:border-border-strong group-hover:shadow-md">
-              <span className="icon-chip h-10 w-10 shrink-0 rounded-lg" data-tone={tone} aria-hidden="true">
-                <Icon size={19} />
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <h2 className="font-semibold text-foreground group-hover:text-primary">{title}</h2>
-                  <ChevronRight className="ml-auto shrink-0 text-muted-foreground group-hover:text-primary" size={16} />
+      <SectionCard title="Qué puedes hacer en esta campaña" description="Cada canal habilitado abre su propia vista, ya filtrada por la campaña.">
+        <ul className="divide-y divide-border/70 border-t border-border">
+          {capabilities.map(({ title, description, href, icon: Icon, tone, badge }) => (
+            <li key={title}>
+              <Link
+                href={href}
+                className="group flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-surface-muted/55 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              >
+                <span className="icon-chip size-9 rounded-lg" data-tone={tone} aria-hidden="true">
+                  <Icon size={17} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-foreground">{title}</p>
+                  <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{description}</p>
                 </div>
-                <p className="mt-1 text-sm leading-5 text-muted-foreground">{description}</p>
-                {badge && <Badge className="mt-3 max-w-full truncate" tone="neutral">{badge}</Badge>}
-              </div>
-            </Card>
-          </Link>
-        ))}
-      </div>
+                {badge && (
+                  <span className="hidden max-w-56 truncate text-right text-xs text-muted-foreground sm:block" title={badge}>
+                    {badge}
+                  </span>
+                )}
+                <ChevronRight
+                  className="shrink-0 text-muted-foreground/50 transition-colors group-hover:text-primary"
+                  size={16}
+                  aria-hidden="true"
+                />
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </SectionCard>
     </div>
   );
 }

@@ -1,12 +1,12 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CalendarClock, Check, ExternalLink, X } from "lucide-react";
 import { resolveSales, setSaleDate, type SaleValidationRow, type SaleValidationStatus } from "@/app/actions/validacion-ventas";
 import { formatUf } from "@/lib/sale-validation-format";
-import { Badge, Button, DataTable, Input, SlideOver, useToast, type BadgeTone, type BulkAction, type Column } from "@/components/ui";
+import { Avatar, Badge, Button, DataTable, Input, SlideOver, useToast, type BadgeTone, type BulkAction, type Column } from "@/components/ui";
 
 /**
  * Tabla de la validación de ventas: la cola (por validar) y el buscador de
@@ -57,11 +57,14 @@ export function SaleValidationsTable({
   rows,
   mode,
   exportFilename,
+  toolbar,
 }: {
   rows: SaleValidationRow[];
   /** `cola`: pendientes, con decisión por fila y en bloque. `buscador`: ventas ya decididas. */
   mode: "cola" | "buscador";
   exportFilename: string;
+  /** Línea de contexto en la barra de la tabla (cuántas con los filtros, cómo se usa). */
+  toolbar?: ReactNode;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -135,28 +138,46 @@ export function SaleValidationsTable({
         value: (row) => row.leadName,
         exportValues: (row) => ({ Empresa: row.leadName, RUT: row.leadRut, Teléfono: row.leadPhone }),
         cell: (row) => (
-          <button type="button" onClick={() => setDetail(row)} className="min-w-0 text-left">
-            <span className="block max-w-72 truncate font-medium text-foreground hover:underline">
-              {row.leadName ?? "Registro sin nombre"}
+          <button type="button" onClick={() => setDetail(row)} className="group/empresa flex min-w-0 items-center gap-3 text-left">
+            <Avatar name={row.leadName} seed={row.leadRut ?? row.leadName} shape="square" size="md" />
+            <span className="min-w-0">
+              <span className="block max-w-72 truncate font-medium text-foreground group-hover/empresa:text-primary">
+                {row.leadName ?? "Registro sin nombre"}
+              </span>
+              <span className="block text-xs tabular-nums text-muted-foreground">{row.leadRut ?? row.leadPhone ?? "—"}</span>
             </span>
-            <span className="block text-xs text-muted-foreground">{row.leadRut ?? row.leadPhone ?? "—"}</span>
           </button>
         ),
       },
-      { id: "ejecutivo", header: "Ejecutivo", value: (row) => row.agentName },
+      {
+        id: "ejecutivo",
+        header: "Ejecutivo",
+        value: (row) => row.agentName,
+        cell: (row) =>
+          row.agentName ? (
+            <span className="flex max-w-48 items-center gap-2">
+              <Avatar name={row.agentName} size="xs" />
+              <span className="truncate text-foreground">{row.agentName}</span>
+            </span>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          ),
+      },
       {
         id: "productos",
         header: "Productos",
         value: (row) => row.products.join(", "),
         sortable: false,
         cell: (row) =>
+          // Texto corrido, no una fila de fichas: el primero y cuántos más.
           row.products.length > 0 ? (
-            <span className="flex max-w-64 flex-wrap gap-1">
-              {row.products.map((product) => (
-                <Badge key={product} tone="info">
-                  {product}
-                </Badge>
-              ))}
+            <span className="block max-w-64 truncate text-foreground" title={row.products.join(", ")}>
+              {row.products[0]}
+              {row.products.length > 1 && (
+                <span className="ml-1.5 rounded-md bg-surface-muted px-1.5 py-px text-[11px] font-semibold tabular-nums text-muted-foreground">
+                  +{row.products.length - 1}
+                </span>
+              )}
             </span>
           ) : (
             <span className="text-xs text-warning">Sin productos</span>
@@ -232,16 +253,17 @@ export function SaleValidationsTable({
           <span className="flex justify-end gap-1.5">
             <Button
               size="sm"
-              variant="secondary"
+              variant="ghost"
               onClick={() => openDecision({ rows: [row], decision: "aprobada" })}
               aria-label={`Aprobar venta de ${row.leadName ?? "registro"}`}
             >
-              <Check size={14} aria-hidden />
+              <Check size={14} aria-hidden className="text-success" />
               Aprobar
             </Button>
             <Button
               size="sm"
               variant="ghost"
+              title="Rechazar"
               onClick={() => openDecision({ rows: [row], decision: "rechazada" })}
               aria-label={`Rechazar venta de ${row.leadName ?? "registro"}`}
             >
@@ -274,6 +296,7 @@ export function SaleValidationsTable({
         selectable
         bulkActions={bulkActions}
         storageKey={mode === "cola" ? "validacion-ventas-cola" : "validacion-ventas-buscador"}
+        toolbar={toolbar}
         exportFilename={exportFilename}
         emptyTitle={mode === "cola" ? "No hay ventas por validar" : "No hay ventas con esos filtros"}
         emptyDescription={
@@ -318,8 +341,9 @@ export function SaleValidationsTable({
           <div className="space-y-5 text-sm">
             <div className="flex items-center justify-between gap-2">
               <Badge tone={STATUS_BADGE[detail.status].tone}>{STATUS_BADGE[detail.status].label}</Badge>
-              <span className="rounded-lg border border-border border-l-2 border-l-success bg-background px-3 py-1 text-lg font-semibold tabular-nums text-foreground">
-                {formatUf(detail.ufAmount)}
+              <span className="text-right">
+                <span className="block text-[11px] text-muted-foreground">UF mensual</span>
+                <span className="block text-xl font-semibold tabular-nums tracking-tight text-foreground">{formatUf(detail.ufAmount)}</span>
               </span>
             </div>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
@@ -334,8 +358,9 @@ export function SaleValidationsTable({
               </Item>
             </dl>
             {detail.managementChannel && (
-              <div className="flex items-start justify-between gap-3 rounded-lg border border-border border-l-2 border-l-warning bg-surface-muted/40 px-3 py-2">
-                <p className="text-xs text-muted-foreground">
+              <div className="flex items-start justify-between gap-3 rounded-lg bg-surface-muted/60 px-3 py-2.5">
+                <p className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <span aria-hidden="true" className="mt-1 size-1.5 shrink-0 rounded-full bg-warning" />
                   Registrada sin llamada: su fecha es la del registro. Si la venta fue antes, fecharla la lleva a ese
                   período en esta vista y en el reporte.
                 </p>
@@ -351,22 +376,22 @@ export function SaleValidationsTable({
             )}
             <div>
               <p className="mb-1.5 text-xs font-medium text-muted-foreground">Productos</p>
-              <div className="flex flex-wrap gap-1.5">
-                {detail.products.length > 0 ? (
-                  detail.products.map((product) => (
-                    <Badge key={product} tone="info">
+              {detail.products.length > 0 ? (
+                <ul className="divide-y divide-border/70 rounded-lg border border-border">
+                  {detail.products.map((product) => (
+                    <li key={product} className="px-3 py-2 text-foreground">
                       {product}
-                    </Badge>
-                  ))
-                ) : (
-                  <span className="text-xs text-warning">El ejecutivo no registró productos.</span>
-                )}
-              </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <span className="text-xs text-warning">El ejecutivo no registró productos.</span>
+              )}
             </div>
             {detail.agentNotes && (
               <div>
                 <p className="mb-1.5 text-xs font-medium text-muted-foreground">Observación del ejecutivo</p>
-                <p className="whitespace-pre-wrap rounded-lg border border-border bg-surface-muted px-3 py-2">{detail.agentNotes}</p>
+                <p className="whitespace-pre-wrap rounded-lg bg-surface-muted/60 px-3 py-2.5">{detail.agentNotes}</p>
               </div>
             )}
             {detail.decidedAt && (
@@ -409,10 +434,12 @@ export function SaleValidationsTable({
       >
         {decision && (
           <div className="space-y-4 text-sm">
-            <div
-              className={`rounded-lg border border-border border-l-2 bg-surface-muted px-3 py-2 ${decision.decision === "aprobada" ? "border-l-success" : "border-l-danger"}`}
-            >
-              <p className="font-medium">
+            <div className="rounded-lg bg-surface-muted/60 px-3 py-2.5">
+              <p className="flex items-center gap-2 font-medium">
+                <span
+                  aria-hidden="true"
+                  className={`size-1.5 shrink-0 rounded-full ${decision.decision === "aprobada" ? "bg-success" : "bg-danger"}`}
+                />
                 {decision.rows.length} {decision.rows.length === 1 ? "venta" : "ventas"} · {formatUf(decisionUf)}
               </p>
               <ul className="mt-1 max-h-40 space-y-0.5 overflow-y-auto text-xs text-muted-foreground">

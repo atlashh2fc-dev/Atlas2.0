@@ -14,8 +14,9 @@ import type { AppModule } from "@/lib/modules";
 export function WorkspaceContext({ role }: { role: Profile["role"] }) {
   const pathname = usePathname();
   return (
-    <span className="hidden text-sm font-medium text-foreground md:block">
+    <span className="hidden items-center gap-2 whitespace-nowrap text-[13px] font-medium text-foreground lg:flex">
       {workspaceLabel(role, spaceForPath(pathname, role))}
+      <span aria-hidden="true" className="h-4 w-px bg-border" />
     </span>
   );
 }

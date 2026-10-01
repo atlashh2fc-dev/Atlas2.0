@@ -8,6 +8,7 @@ import {
   CheckCheck,
   ClipboardList,
   Database,
+  Eye,
   History,
   Inbox,
   Megaphone,
@@ -17,7 +18,6 @@ import {
   UserRound,
   XCircle,
 } from "lucide-react";
-import type { SectionTone } from "@/components/ui/card";
 
 import {
   assignWhatsAppConversation,
@@ -34,11 +34,14 @@ import { CierreAtencionCampos } from "./cierre-atencion-campos";
 import {
   ActionForm,
   ActionSubmit,
+  Avatar,
   Badge,
   Callout,
   EmptyState,
+  SegmentTabs,
   Select,
   buttonClasses,
+  type SegmentTab,
 } from "@/components/ui";
 import { requireProfile } from "@/lib/auth";
 import { puedeLeerConversaciones } from "@/lib/modules.server";
@@ -155,16 +158,50 @@ function one<T>(value: Relation<T>): T | null {
   return Array.isArray(value) ? (value[0] ?? null) : value;
 }
 
+const ZONA_CHILE = "America/Santiago";
+/** YYYY-MM-DD en hora Chile: sirve para comparar días sin pelear con UTC. */
+const diaChile = new Intl.DateTimeFormat("en-CA", { timeZone: ZONA_CHILE });
+const horaChile = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CHILE, hour: "2-digit", minute: "2-digit" });
+const diaCorto = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CHILE, day: "numeric", month: "short" });
+const diaLargo = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CHILE, weekday: "long", day: "numeric", month: "long" });
+
 function formatDateTime(value: string | null | undefined) {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
   return date.toLocaleString("es-CL", {
+    timeZone: ZONA_CHILE,
     day: "2-digit",
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+/**
+ * Hora de la lista de hilos, como en Front o Intercom: "Ahora", "12 min",
+ * "09:27" si fue hoy, "Ayer" y después la fecha corta.
+ */
+function horaRelativa(value: string, ahora: Date) {
+  const fecha = new Date(value);
+  if (Number.isNaN(fecha.getTime())) return "—";
+  const minutos = Math.floor((ahora.getTime() - fecha.getTime()) / 60_000);
+  if (minutos < 1) return "Ahora";
+  if (minutos < 60) return `${minutos} min`;
+  const dia = diaChile.format(fecha);
+  if (dia === diaChile.format(ahora)) return horaChile.format(fecha);
+  if (dia === diaChile.format(new Date(ahora.getTime() - 86_400_000))) return "Ayer";
+  return diaCorto.format(fecha);
+}
+
+/** Separador de día del hilo: "Hoy", "Ayer" o "Lunes 24 de mayo". */
+function etiquetaDelDia(value: string, ahora: Date) {
+  const fecha = new Date(value);
+  const dia = diaChile.format(fecha);
+  if (dia === diaChile.format(ahora)) return "Hoy";
+  if (dia === diaChile.format(new Date(ahora.getTime() - 86_400_000))) return "Ayer";
+  const texto = diaLargo.format(fecha);
+  return texto.charAt(0).toUpperCase() + texto.slice(1);
 }
 
 function messageStatus(status: string) {
@@ -187,6 +224,13 @@ function conversationLabel(status: ConversationStatus) {
     : status === "pending"
       ? "Pendiente"
       : "Cerrada";
+}
+
+/** "VOLVER A LLAMAR" → "Volver a llamar": lo que llega en mayúsculas desde la base. */
+function enOracion(texto: string) {
+  if (texto !== texto.toUpperCase()) return texto;
+  const minusculas = texto.toLocaleLowerCase("es-CL");
+  return minusculas.charAt(0).toLocaleUpperCase("es-CL") + minusculas.slice(1);
 }
 
 function sourceLabel(source: LeadTimelineItem["source"]) {
@@ -247,15 +291,14 @@ function ContextSection({
 }: {
   title: string;
   icon?: ComponentType<{ size?: number }>;
-  tone?: SectionTone;
   children: ReactNode;
 }) {
   return (
-    <section className="border-b border-border p-4 last:border-b-0">
-      <h3 className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+    <section className="border-b border-border/70 px-4 py-4 last:border-b-0">
+      <h3 className="flex items-center gap-2 text-xs font-semibold text-foreground">
         {Icon && (
-          <span className="inline-flex" aria-hidden="true">
-            <Icon size={16} />
+          <span className="inline-flex text-muted-foreground" aria-hidden="true">
+            <Icon size={14} />
           </span>
         )}
         {title}
@@ -446,12 +489,36 @@ export default async function WhatsAppInboxPage({
     )
     .slice(0, 10);
 
+  // El corte de "hoy" y "ayer" es el instante de la petición, en hora Chile.
+  const ahora = new Date();
+  const estados: SegmentTab[] = (["open", "pending", "closed", "all"] as const).map((value) => ({
+    id: value,
+    label:
+      value === "open"
+        ? "Abiertas"
+        : value === "pending"
+          ? "Pendientes"
+          : value === "closed"
+            ? "Cerradas"
+            : "Todas",
+    href: conversationsHref({ status: value, campaign: campaignFilter, queue: queueFilter }),
+  }));
+  // Separadores de día en el hilo: la hora de cada burbuja ya no repite la fecha.
+  const mensajesPorDia: { dia: string; etiqueta: string; mensajes: Message[] }[] = [];
+  for (const message of messages) {
+    const instante = message.provider_timestamp ?? message.created_at;
+    const dia = diaChile.format(new Date(instante));
+    const ultimo = mensajesPorDia[mensajesPorDia.length - 1];
+    if (ultimo && ultimo.dia === dia) ultimo.mensajes.push(message);
+    else mensajesPorDia.push({ dia, etiqueta: etiquetaDelDia(instante, ahora), mensajes: [message] });
+  }
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {permissions.canAttendCustomers && (
         <WhatsAppAutoRefresh conversationId={selectedId} />
       )}
-      <p className="text-sm text-muted-foreground">
+      <p className="text-[13px] text-muted-foreground">
         {permissions.canAttendCustomers
           ? "Atiende únicamente las conversaciones asignadas a ti. Cada gestión conserva campaña, registro e historial."
           : "Consulta autorizada por selección explícita. Supervisar no responde al cliente ni marca mensajes como leídos."}
@@ -465,36 +532,13 @@ export default async function WhatsAppInboxPage({
       ) : (
         <div className="grid min-h-[32rem] overflow-hidden rounded-xl border border-border bg-surface shadow-sm lg:h-[calc(100dvh-12rem)] lg:min-h-0 lg:grid-cols-[20rem_minmax(0,1fr)] xl:grid-cols-[20rem_minmax(28rem,1fr)_19rem]">
           <aside className="border-b border-border lg:flex lg:min-h-0 lg:flex-col lg:border-b-0 lg:border-r">
-            <div className="flex gap-1 border-b border-border p-3">
-              {(["open", "pending", "closed", "all"] as const).map((value) => (
-                <Link
-                  key={value}
-                  href={conversationsHref({
-                    status: value,
-                    campaign: campaignFilter,
-                    queue: queueFilter,
-                  })}
-                  aria-current={status === value ? "page" : undefined}
-                  // Filtro por query: mismo estilo que Correo y Mis registros.
-                  className={`inline-flex h-8 flex-1 items-center justify-center rounded-lg px-2 text-[13px] font-medium transition-colors ${
-                    status === value
-                      ? "bg-surface text-foreground shadow-sm ring-1 ring-border"
-                      : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"
-                  }`}
-                >
-                  {value === "open"
-                    ? "Abiertas"
-                    : value === "pending"
-                      ? "Pendientes"
-                      : value === "closed"
-                        ? "Cerradas"
-                        : "Todas"}
-                </Link>
-              ))}
+            {/* Estado como pestañas subrayadas pegadas a la lista (Front, Intercom). */}
+            <div className="border-b border-border px-2">
+              <SegmentTabs tabs={estados} activeId={status} label="Estado de las conversaciones" />
             </div>
 
             <form
-              className="grid grid-cols-2 gap-2 border-b border-border p-3"
+              className="flex items-center gap-1.5 border-b border-border px-3 py-2.5"
               action={attentionChannelHref("whatsapp")}
             >
               <input type="hidden" name="status" value={status} />
@@ -506,7 +550,7 @@ export default async function WhatsAppInboxPage({
                 aria-label="Campaña"
                 defaultValue={campaignFilter ?? ""}
                 fieldSize="sm"
-                className="col-span-2"
+                className="min-w-0 flex-1"
               >
                 <option value="">Todas las campañas</option>
                 {campaigns.map((item) => (
@@ -519,14 +563,16 @@ export default async function WhatsAppInboxPage({
                 type="submit"
                 className={buttonClasses({ variant: "secondary", size: "sm" })}
               >
-                Aplicar filtros
+                Filtrar
               </button>
-              <Link
-                href={conversationsHref({ status })}
-                className={buttonClasses({ variant: "ghost", size: "sm" })}
-              >
-                Limpiar
-              </Link>
+              {(campaignFilter || queueFilter) && (
+                <Link
+                  href={conversationsHref({ status })}
+                  className={buttonClasses({ variant: "ghost", size: "sm" })}
+                >
+                  Limpiar
+                </Link>
+              )}
             </form>
 
             <div className="overflow-y-auto lg:min-h-0 lg:flex-1">
@@ -534,57 +580,81 @@ export default async function WhatsAppInboxPage({
                 <EmptyState
                   icon={Inbox}
                   title="No hay conversaciones en esta vista."
+                  description={status === "open" ? "Cuando un cliente escriba, aparece acá." : "Prueba con otro estado o con todas las campañas."}
                   className="py-10"
                 />
               ) : (
-                conversations.map((conversation) => {
-                  const itemCampaign = one(conversation.campaigns);
-                  const itemAssigned = one(conversation.profiles);
-                  return (
-                    <Link
-                      key={conversation.id}
-                      href={conversationsHref({
-                        status,
-                        campaign: campaignFilter,
-                        queue: queueFilter,
-                        conversation: conversation.id,
-                      })}
-                      className={cn(
-                        "block border-b border-border p-4 transition-colors hover:bg-surface-muted",
-                        selectedId === conversation.id &&
-                          "bg-surface-muted shadow-[inset_3px_0_0_var(--tone-green)]",
-                      )}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-foreground">
-                            {nombreDelContacto(conversation)}
-                          </p>
-                          <p className="mt-1 flex items-center gap-1.5 truncate text-xs text-muted-foreground">
-                            <LogoDeIntegracion logo={canalDeMensajeria(conversation.canal)} pequeno />
-                            {NOMBRE_DEL_CANAL[canalDeMensajeria(conversation.canal)]}
-                          </p>
-                        </div>
-                        {conversation.unread_count > 0 && (
-                          <span className="text-xs font-semibold tabular-nums text-primary">
-                            {conversation.unread_count}
+                <ul>
+                  {conversations.map((conversation) => {
+                    const itemCampaign = one(conversation.campaigns);
+                    const itemAssigned = one(conversation.profiles);
+                    const activa = selectedId === conversation.id;
+                    const sinLeer = conversation.unread_count > 0;
+                    const nombre = nombreDelContacto(conversation);
+                    return (
+                      <li key={conversation.id}>
+                        <Link
+                          href={conversationsHref({
+                            status,
+                            campaign: campaignFilter,
+                            queue: queueFilter,
+                            conversation: conversation.id,
+                          })}
+                          aria-current={activa ? "true" : undefined}
+                          className={cn(
+                            "flex gap-3 px-3.5 py-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                            activa ? "bg-primary/[0.07]" : "hover:bg-surface-muted/60",
+                          )}
+                        >
+                          <span className="relative shrink-0">
+                            <Avatar name={nombre} seed={conversation.contact_phone ?? nombre} size="md" />
+                            {/* La red por la que escribió, sobre el avatar. */}
+                            <span className="absolute -bottom-1 -right-1 origin-bottom-right scale-[0.8] rounded-md ring-2 ring-surface">
+                              <LogoDeIntegracion logo={canalDeMensajeria(conversation.canal)} pequeno />
+                            </span>
                           </span>
-                        )}
-                      </div>
-                      <p className="mt-2 truncate text-xs font-medium text-foreground">
-                        {itemCampaign?.name ?? "Sin campaña"}
-                      </p>
-                      <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                        <span className="truncate">
-                          {itemAssigned?.full_name ?? "Sin asignar"}
-                        </span>
-                        <span className="whitespace-nowrap">
-                          {formatDateTime(conversation.last_message_at)}
-                        </span>
-                      </div>
-                    </Link>
-                  );
-                })
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-baseline justify-between gap-2">
+                              <span className={cn("truncate text-[13px] text-foreground", sinLeer ? "font-semibold" : "font-medium")}>
+                                {nombre}
+                              </span>
+                              <time
+                                dateTime={conversation.last_message_at}
+                                title={formatDateTime(conversation.last_message_at)}
+                                className={cn("shrink-0 text-[11px] tabular-nums", sinLeer ? "font-semibold text-primary" : "text-muted-foreground")}
+                              >
+                                {horaRelativa(conversation.last_message_at, ahora)}
+                              </time>
+                            </span>
+                            <span className="mt-0.5 flex items-center justify-between gap-2">
+                              <span className={cn("truncate text-xs", sinLeer ? "text-foreground" : "text-muted-foreground")}>
+                                {itemCampaign?.name ?? "Sin campaña"}
+                              </span>
+                              {sinLeer && (
+                                <span className="shrink-0 rounded-md bg-primary/12 px-1.5 py-px text-[11px] font-semibold tabular-nums text-primary">
+                                  {conversation.unread_count}
+                                </span>
+                              )}
+                            </span>
+                            <span className="mt-0.5 flex items-center gap-1.5 truncate text-[11px] text-muted-foreground">
+                              {itemAssigned ? (
+                                <>
+                                  <Avatar name={itemAssigned.full_name} size="xs" />
+                                  <span className="truncate">{itemAssigned.full_name}</span>
+                                </>
+                              ) : (
+                                <span>Sin asignar</span>
+                              )}
+                              {conversation.status !== "open" && (
+                                <span className="ml-auto shrink-0">{conversationLabel(conversation.status)}</span>
+                              )}
+                            </span>
+                          </span>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
             </div>
           </aside>
@@ -602,18 +672,19 @@ export default async function WhatsAppInboxPage({
               />
             ) : (
               <>
-                <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border bg-surface-muted/40 p-4">
-                  <div className="flex min-w-0 items-start gap-3">
-                    <LogoDeIntegracion logo={canalDeMensajeria(selected.canal)} className="mt-0.5 size-9 rounded-lg" />
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="relative shrink-0">
+                      <Avatar name={nombreDelContacto(selected)} seed={selected.contact_phone ?? nombreDelContacto(selected)} size="md" />
+                      <span className="absolute -bottom-1 -right-1 origin-bottom-right scale-[0.8] rounded-md ring-2 ring-surface">
+                        <LogoDeIntegracion logo={canalDeMensajeria(selected.canal)} pequeno />
+                      </span>
+                    </span>
                     <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h2 className="text-base font-semibold text-foreground">
+                      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
+                        <h2 className="truncate text-[15px] font-semibold text-foreground">
                           {nombreDelContacto(selected)}
                         </h2>
-                        <Badge tone="success">{NOMBRE_DEL_CANAL[canalDeMensajeria(selected.canal)]}</Badge>
-                        <Badge tone="neutral">
-                          {campaign?.name ?? "Sin campaña"}
-                        </Badge>
                         <Badge
                           tone={
                             selected.status === "closed"
@@ -622,15 +693,20 @@ export default async function WhatsAppInboxPage({
                                 ? "warning"
                                 : "success"
                           }
+                          dot
                         >
                           {conversationLabel(selected.status)}
                         </Badge>
                       </div>
-                      {selected.contact_phone && (
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          {selected.contact_phone}
-                        </p>
-                      )}
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        {[
+                          selected.contact_phone,
+                          NOMBRE_DEL_CANAL[canalDeMensajeria(selected.canal)],
+                          campaign?.name ?? "Sin campaña",
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
                     </div>
                   </div>
                   <Link
@@ -644,7 +720,7 @@ export default async function WhatsAppInboxPage({
                   </Link>
                 </div>
 
-                <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-background p-4">
+                <div className="min-h-0 flex-1 overflow-y-auto bg-background px-4 py-5 sm:px-6">
                   {messageError ? (
                     <Callout tone="warning">
                       No fue posible cargar el historial. No se puede confirmar
@@ -655,86 +731,107 @@ export default async function WhatsAppInboxPage({
                       Aún no hay mensajes guardados.
                     </p>
                   ) : (
-                    messages.map((message) => {
-                      const sender = one(message.profiles);
-                      const outbound = message.direction === "outbound";
-                      return (
-                        <div
-                          key={message.id}
-                          className={cn(
-                            "flex",
-                            outbound ? "justify-end" : "justify-start",
-                          )}
-                        >
-                          <div
-                            className={cn(
-                              "max-w-[80%] rounded-2xl border px-3 py-2 text-sm text-foreground shadow-sm",
-                              outbound
-                                ? "rounded-br-md border-primary/30 bg-primary/15"
-                                : "rounded-bl-md border-border bg-surface-muted",
-                            )}
-                          >
-                            {(message.message_type === "image" ||
-                              message.message_type === "audio") && (
-                              <WhatsAppMessageMedia
-                                messageId={message.id}
-                                messageType={message.message_type}
-                                mimeType={message.media_mime_type}
-                                fileName={message.media_file_name}
-                              />
-                            )}
-                            {message.text_body &&
-                              message.message_type !== "audio" && (
-                                <p className="whitespace-pre-wrap break-words">
-                                  {message.text_body}
-                                </p>
-                              )}
-                            {!message.text_body &&
-                              message.message_type !== "image" &&
-                              message.message_type !== "audio" && (
-                                <p className="whitespace-pre-wrap break-words">
-                                  [{message.message_type}]
-                                </p>
-                              )}
-                            <div
-                              className={cn(
-                                "mt-1 flex items-center justify-end gap-1 text-xs text-muted-foreground",
-                              )}
-                            >
-                              {outbound &&
-                                isMercuryMessage(message.provider_payload) && (
-                                  <span>Mercury IA ·</span>
-                                )}
-                              {outbound &&
-                                !isMercuryMessage(message.provider_payload) &&
-                                sender?.full_name && (
-                                  <span>{sender.full_name} ·</span>
-                                )}
-                              <span>
-                                {formatDateTime(
-                                  message.provider_timestamp ??
-                                    message.created_at,
-                                )}
-                              </span>
-                              <span>· {messageStatus(message.status)}</span>
-                            </div>
-                            {message.error_message && (
-                              <p className="mt-1 text-xs text-danger">
-                                {message.error_message}
-                              </p>
-                            )}
+                    <div className="space-y-5">
+                      {mensajesPorDia.map((grupo) => (
+                        <div key={grupo.dia} className="space-y-1.5">
+                          <div className="flex items-center gap-3 py-1" role="separator" aria-label={grupo.etiqueta}>
+                            <span className="h-px flex-1 bg-border" aria-hidden="true" />
+                            <span className="text-[11px] font-medium text-muted-foreground">{grupo.etiqueta}</span>
+                            <span className="h-px flex-1 bg-border" aria-hidden="true" />
                           </div>
+                          {grupo.mensajes.map((message) => {
+                            const sender = one(message.profiles);
+                            const outbound = message.direction === "outbound";
+                            const fallo = message.status === "failed";
+                            return (
+                              <div
+                                key={message.id}
+                                className={cn(
+                                  "flex flex-col",
+                                  outbound ? "items-end" : "items-start",
+                                )}
+                              >
+                                {/* Burbujas limpias: la del cliente sobre superficie, la nuestra
+                                    en el tono de la marca. Sin borde de color ni sombra pesada. */}
+                                <div
+                                  className={cn(
+                                    "max-w-[78%] rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed text-foreground",
+                                    outbound
+                                      ? "rounded-br-md bg-primary/[0.13]"
+                                      : "rounded-bl-md border border-border bg-surface shadow-sm",
+                                    fallo && "ring-1 ring-danger/40",
+                                  )}
+                                >
+                                  {(message.message_type === "image" ||
+                                    message.message_type === "audio") && (
+                                    <WhatsAppMessageMedia
+                                      messageId={message.id}
+                                      messageType={message.message_type}
+                                      mimeType={message.media_mime_type}
+                                      fileName={message.media_file_name}
+                                    />
+                                  )}
+                                  {message.text_body &&
+                                    message.message_type !== "audio" && (
+                                      <p className="whitespace-pre-wrap break-words">
+                                        {message.text_body}
+                                      </p>
+                                    )}
+                                  {!message.text_body &&
+                                    message.message_type !== "image" &&
+                                    message.message_type !== "audio" && (
+                                      <p className="whitespace-pre-wrap break-words italic text-muted-foreground">
+                                        [{message.message_type}]
+                                      </p>
+                                    )}
+                                  <p className="mt-0.5 flex items-center justify-end gap-1 text-[11px] text-muted-foreground">
+                                    {outbound &&
+                                      isMercuryMessage(message.provider_payload) && (
+                                        <span className="inline-flex items-center gap-1">
+                                          <Bot size={11} aria-hidden="true" /> Mercury IA ·
+                                        </span>
+                                      )}
+                                    {outbound &&
+                                      !isMercuryMessage(message.provider_payload) &&
+                                      sender?.full_name && (
+                                        <span>{sender.full_name} ·</span>
+                                      )}
+                                    <time
+                                      dateTime={message.provider_timestamp ?? message.created_at}
+                                      title={formatDateTime(message.provider_timestamp ?? message.created_at)}
+                                      className="tabular-nums"
+                                    >
+                                      {horaChile.format(new Date(message.provider_timestamp ?? message.created_at))}
+                                    </time>
+                                    {outbound && (
+                                      <span className={cn("inline-flex items-center gap-0.5", fallo && "font-medium text-danger", message.status === "read" && "text-primary")}>
+                                        · {message.status === "read" || message.status === "delivered" ? <CheckCheck size={12} aria-hidden="true" /> : null}
+                                        {messageStatus(message.status)}
+                                      </span>
+                                    )}
+                                  </p>
+                                </div>
+                                {message.error_message && (
+                                  <p className="mt-1 max-w-[78%] text-[11px] text-danger">
+                                    {message.error_message}
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
-                      );
-                    })
+                      ))}
+                    </div>
                   )}
                 </div>
 
+                {/* Compositor pegado abajo: el hilo hace scroll, el editor no se mueve. */}
                 {permissions.canAttendCustomers ? (
-                  <div className="border-t border-border bg-surface p-4">
+                  <div className="border-t border-border bg-surface px-4 py-3">
                     {!humanAttentionReady ? (
-                      <div className="mb-3 flex flex-col gap-3 rounded-lg border border-border bg-surface-muted p-3 sm:flex-row sm:items-center sm:justify-between">
-                        <p className="text-xs text-muted-foreground">
+                      <div className="mb-3 flex flex-col gap-3 rounded-lg bg-surface-muted/70 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="flex items-start gap-2 text-xs text-muted-foreground">
+                          <Bot size={14} className="mt-px shrink-0" aria-hidden="true" />
                           {automationError
                             ? "No fue posible verificar el modo de atención. Actualiza antes de responder."
                             : "La IA está atendiendo este hilo. Puedes tomar la atención ahora; la IA dejará de responder y se habilitará el editor."}
@@ -754,7 +851,8 @@ export default async function WhatsAppInboxPage({
                       </div>
                     ) : (
                       channel?.status !== "active" && (
-                        <p className="mb-2 text-xs text-warning">
+                        <p className="mb-2 flex items-center gap-2 text-xs text-warning">
+                          <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-warning" />
                           El historial ya queda centralizado; falta terminar la
                           autorización del canal para responder desde Atlas.
                         </p>
@@ -768,7 +866,8 @@ export default async function WhatsAppInboxPage({
                     )}
                   </div>
                 ) : (
-                  <div className="border-t border-border bg-surface-muted px-4 py-3 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-2 border-t border-border bg-surface-raised px-4 py-3 text-xs text-muted-foreground">
+                    <Eye size={14} aria-hidden="true" />
                     Consulta de supervisión · Sin permisos de respuesta ni
                     cierre comercial.
                   </div>
@@ -781,12 +880,10 @@ export default async function WhatsAppInboxPage({
             <aside className="border-t border-border bg-surface lg:col-span-2 xl:col-span-1 xl:min-h-0 xl:overflow-y-auto xl:border-l xl:border-t-0">
               {/* El cierre va primero: es lo que el ejecutivo hace al terminar
                   cada atención, y antes quedaba bajo cuatro secciones. */}
-              <ContextSection title="Cierre de atención" icon={CheckCheck} tone="green">
+              <ContextSection title="Cierre de atención" icon={CheckCheck}>
                 {selected.status === "closed" ? (
-                  <div className="rounded-lg border border-border border-l-2 border-l-success bg-surface-muted p-3">
-                    <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                      <CheckCheck size={14} className="text-success" /> Atención cerrada
-                    </p>
+                  <div className="rounded-lg bg-surface-muted/60 px-3 py-2.5">
+                    <Badge tone="success">Atención cerrada</Badge>
                     <p className="mt-1 text-xs text-foreground">
                       {closureReason?.label ?? "Tipificación registrada"}
                     </p>
@@ -833,7 +930,7 @@ export default async function WhatsAppInboxPage({
                 )}
               </ContextSection>
 
-              <ContextSection title="Contexto comercial" icon={Megaphone} tone="rose">
+              <ContextSection title="Contexto comercial" icon={Megaphone}>
                 <ContextRow label="Campaña">
                   {campaign?.name ?? "Sin campaña"}
                 </ContextRow>
@@ -858,9 +955,12 @@ export default async function WhatsAppInboxPage({
                   </Link>
                 )}
                 {(referralHeadline || referralBody) && (
-                  <div className="rounded-lg border border-border border-l-2 border-l-[var(--tone-rose)] bg-surface-muted p-3">
-                    <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                      <Megaphone size={13} className="text-[var(--tone-rose)]" /> Origen Meta Ads
+                  <div className="rounded-lg bg-surface-muted/60 px-3 py-2.5">
+                    <p className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                      <span className="icon-chip size-5 rounded-md" data-tone="rose" aria-hidden="true">
+                        <Megaphone size={11} />
+                      </span>
+                      Origen Meta Ads
                     </p>
                     {referralHeadline && (
                       <p className="mt-1 text-xs font-medium text-foreground">
@@ -876,7 +976,7 @@ export default async function WhatsAppInboxPage({
                 )}
               </ContextSection>
 
-              <ContextSection title="Registro 360" icon={UserRound} tone="blue">
+              <ContextSection title="Registro 360" icon={UserRound}>
                 <ContextRow label="Contacto">
                   {lead?.full_name ?? selected.contact_name ?? "—"}
                 </ContextRow>
@@ -889,14 +989,14 @@ export default async function WhatsAppInboxPage({
                   {lead?.status ? (LEAD_STATUS_LABEL.get(lead.status) ?? fieldLabel(lead.status)) : "—"}
                 </ContextRow>
                 <ContextRow label="Tipificación">
-                  {lead?.tipificacion_actual ?? "Sin tipificar"}
+                  {lead?.tipificacion_actual ? enOracion(lead.tipificacion_actual) : "Sin tipificar"}
                 </ContextRow>
                 <ContextRow label="Próxima acción">
                   {formatDateTime(lead?.next_action_at)}
                 </ContextRow>
               </ContextSection>
 
-              <ContextSection title="Gestión" icon={ClipboardList} tone="blue">
+              <ContextSection title="Gestión" icon={ClipboardList}>
                 <ContextRow label="Responsable">
                   {assigned?.full_name ?? "Sin asignar"}
                 </ContextRow>
@@ -1010,8 +1110,8 @@ export default async function WhatsAppInboxPage({
                 )}
               </ContextSection>
 
-              <ContextSection title="Asistente IA" icon={Bot} tone="violet">
-                <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface-muted p-2.5">
+              <ContextSection title="Asistente IA" icon={Bot}>
+                <div className="flex items-center justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-2">
                     <Bot size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
                     <div className="min-w-0">
@@ -1054,11 +1154,8 @@ export default async function WhatsAppInboxPage({
                   </Badge>
                 </div>
                 {selected.ai_state === "handoff" && handoffEvent && (
-                  <div className="rounded-lg border border-warning/30 border-l-2 border-l-warning bg-warning-bg p-3">
-                    <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                      <UserRound size={14} />{" "}
-                      {handoffKindLabel(handoffEvent.metadata?.kind)}
-                    </p>
+                  <div className="rounded-lg bg-surface-muted/60 px-3 py-2.5">
+                    <Badge tone="warning">{handoffKindLabel(handoffEvent.metadata?.kind)}</Badge>
                     {handoffEvent.note && (
                       <p className="mt-1 text-xs text-foreground">
                         {handoffEvent.note}
@@ -1082,7 +1179,7 @@ export default async function WhatsAppInboxPage({
               </ContextSection>
 
               {dynamicData.length > 0 && (
-                <ContextSection title="Datos de campaña" icon={Database} tone="rose">
+                <ContextSection title="Datos de campaña" icon={Database}>
                   {dynamicData.map(([key, value]) => (
                     <ContextRow key={key} label={fieldLabel(key)}>
                       {String(value)}
@@ -1091,13 +1188,13 @@ export default async function WhatsAppInboxPage({
                 </ContextSection>
               )}
 
-              <ContextSection title="Actividad omnicanal" icon={History} tone="teal">
+              <ContextSection title="Actividad omnicanal" icon={History}>
                 {(lead360?.timeline ?? []).slice(0, 4).map((item) => {
                   const Icon = item.source === "call" ? Phone : MessageSquare;
                   return (
                     <div
                       key={`${item.source}-${item.id}`}
-                      className="flex gap-2.5 rounded-lg border border-border bg-surface-muted p-2.5"
+                      className="flex gap-2.5"
                     >
                       <span
                         className="icon-chip size-7 rounded-lg"
@@ -1108,7 +1205,7 @@ export default async function WhatsAppInboxPage({
                       </span>
                       <div className="min-w-0">
                         <p className="truncate text-xs font-medium text-foreground">
-                          {item.title || sourceLabel(item.source)}
+                          {item.title ? enOracion(item.title) : sourceLabel(item.source)}
                         </p>
                         <p className="mt-0.5 text-[11px] text-muted-foreground">
                           {item.agent_name} · {formatDateTime(item.occurred_at)}

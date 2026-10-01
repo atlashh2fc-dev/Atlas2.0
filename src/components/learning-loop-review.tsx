@@ -30,9 +30,11 @@ export function LearningLoopReview({ runId, version }: { runId: string; version:
       </Select></Field>
     </div>
     <Field label="Motivo de la revisión"><Input name="note" minLength={3} maxLength={1000} required disabled={pending} placeholder="Qué es correcto, qué falta o por qué se rechaza" /></Field>
-    <p className="text-xs text-muted-foreground">Confirmar hechos permite reutilizarlos en interacciones posteriores autorizadas. Aceptar la recomendación no agenda ni origina un contacto.</p>
-    <Button type="submit" disabled={pending}>{pending ? "Guardando…" : version ? "Guardar nueva revisión" : "Guardar revisión"}</Button>
-    {message && <p role="status" className="rounded-lg border border-border bg-surface-muted/50 px-3 py-2 text-sm">{message}</p>}
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+      <p className="max-w-xl text-xs text-muted-foreground">Confirmar hechos permite reutilizarlos en interacciones posteriores autorizadas. Aceptar la recomendación no agenda ni origina un contacto.</p>
+      <Button type="submit" disabled={pending}>{pending ? "Guardando…" : version ? "Guardar nueva revisión" : "Guardar revisión"}</Button>
+    </div>
+    {message && <p role="status" className="text-sm text-muted-foreground">{message}</p>}
   </form>;
 }
 
@@ -56,7 +58,7 @@ export function LearningLoopConfig({ campaignId, mode, dailyLimit }: { campaignI
         <option value="off">Apagado</option><option value="shadow">Observación</option>
       </Select></Field>
       <Field label="Máximo de intentos IA por día UTC"><Input name="dailyLimit" type="number" min={1} max={100} defaultValue={dailyLimit} required disabled={pending} /></Field>
-      <Button type="submit" disabled={pending}>Guardar configuración</Button>
+      <Button type="submit" variant="secondary" disabled={pending}>Guardar configuración</Button>
     </div>
     <p className="text-xs text-muted-foreground">Activar observación autoriza análisis con el proveedor configurado, incluidos reintentos dentro del límite. No autoriza llamadas ni mensajes.</p>
     {message && <Callout>{message}</Callout>}

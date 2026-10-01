@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { headers } from "next/headers";
 import { connection } from "next/server";
-import { Inbox, Mail, MessageCircle, MessagesSquare, Send, UserRound } from "lucide-react";
+import { Inbox, Mail, MessageCircle, MessagesSquare, Send } from "lucide-react";
 
 import { marcarConversacionLeida, responderConversacion, responderCorreo } from "@/app/actions/conversaciones-clinica";
 import { WhatsAppAutoRefresh } from "@/components/whatsapp-auto-refresh";
-import { Badge, Callout, EmptyState, Input, PageHeader, SectionCard, SubmitButton, buttonClasses } from "@/components/ui";
+import { Avatar, Callout, EmptyState, PageHeader, SubmitButton, buttonClasses } from "@/components/ui";
 import { ZONA_CLINICA } from "@/lib/citas";
 import { ATENCION_POR_EDICION, PACIENTES_POR_EDICION, clinicaDe } from "@/lib/ediciones";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
@@ -27,6 +27,17 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const pesos = new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 });
 const cuando = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 const horaCorta = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, hour: "2-digit", minute: "2-digit" });
+const diaClinica = new Intl.DateTimeFormat("en-CA", { timeZone: ZONA_CLINICA });
+const diaCorto = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, day: "numeric", month: "short" });
+
+/** "09:27" si fue hoy, "Ayer" y después la fecha corta. Antes era solo la hora, aunque fuera de la semana pasada. */
+function horaRelativa(valor: string, ahora: Date) {
+  const fecha = new Date(valor);
+  const dia = diaClinica.format(fecha);
+  if (dia === diaClinica.format(ahora)) return horaCorta.format(fecha);
+  if (dia === diaClinica.format(new Date(ahora.getTime() - 86_400_000))) return "Ayer";
+  return diaCorto.format(fecha);
+}
 
 type Conversacion = {
   id: string;
@@ -147,12 +158,51 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
   const canalActivo = canal?.status === "active";
   const nombreDe = (conversacion: Conversacion) => primero(conversacion.sales_companies)?.name ?? conversacion.contact_name ?? conversacion.contact_phone;
 
+  const ahora = new Date();
+  // Correo y WhatsApp en una sola lista, como en Front: lo más reciente arriba.
+  const filas = [
+    ...hilosCorreo.map((hilo) => ({
+      clave: `correo-${hilo.company_id}`,
+      canal: "correo" as const,
+      href: `/dashboard/mensajes?e=${hilo.company_id}`,
+      nombre: hilo.nombre,
+      linea: hilo.asunto || hilo.direccion,
+      ultimo: hilo.ultimo,
+      sinLeer: hilo.sinLeer,
+      activa: hiloActual?.company_id === hilo.company_id,
+    })),
+    ...conversaciones.map((conversacion) => {
+      const ultimo = ultimoPor.get(conversacion.id);
+      return {
+        clave: conversacion.id,
+        canal: "whatsapp" as const,
+        href: `/dashboard/mensajes?c=${conversacion.id}`,
+        nombre: nombreDe(conversacion),
+        linea: ultimo ? `${ultimo.direction === "outbound" ? "Tú: " : ""}${ultimo.text_body ?? `[${ultimo.message_type}]`}` : conversacion.contact_phone,
+        ultimo: conversacion.last_message_at,
+        sinLeer: conversacion.unread_count,
+        activa: conversacion.id === actual?.id,
+      };
+    }),
+  ].sort((a, b) => b.ultimo.localeCompare(a.ultimo));
+
   return (
     <div className="space-y-5">
       <WhatsAppAutoRefresh conversationId={actual?.id ?? null} />
       <PageHeader
         title="Conversaciones"
-        description={`WhatsApp de ${empresa ?? lugar}${canal?.display_phone_number ? ` · ${canal.display_phone_number}` : ""}. ${sinLeer ? `${sinLeer} sin leer.` : "Todo leído."} Lo que Atlas manda y lo que responden, en el mismo hilo.`}
+        icon={MessagesSquare}
+        description={`WhatsApp de ${empresa ?? lugar}${canal?.display_phone_number ? ` · ${canal.display_phone_number}` : ""}. Lo que Atlas manda y lo que responden, en el mismo hilo.`}
+        meta={
+          <>
+            <span>
+              <span className="font-medium tabular-nums text-foreground">{sinLeer.toLocaleString("es-CL")}</span> WhatsApp sin leer
+            </span>
+            <span>
+              <span className="font-medium tabular-nums text-foreground">{correoSinLeer.toLocaleString("es-CL")}</span> correos sin leer
+            </span>
+          </>
+        }
       />
 
       {!canalActivo && (
@@ -164,76 +214,67 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
 
       {error && <Callout tone="danger">No se pudieron leer las conversaciones. Vuelve a cargar para reintentar.</Callout>}
 
-      <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
-        <SectionCard icon={MessagesSquare} tone="teal" title={`Conversaciones · ${conversaciones.length + hilosCorreo.length}`} description={`WhatsApp y correo, las más recientes primero.${correoSinLeer ? ` ${correoSinLeer} correos sin leer.` : ""}`}>
-          {hilosCorreo.length > 0 && (
-            <ul className="divide-y divide-border border-b border-border">
-              {hilosCorreo.map((hilo) => (
-                <li key={`correo-${hilo.company_id}`}>
-                  <Link href={`/dashboard/mensajes?e=${hilo.company_id}`} className={`block px-4 py-3 transition-colors hover:bg-surface-muted/60 ${hiloActual?.company_id === hilo.company_id ? "bg-primary/5" : ""}`}>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className={`flex min-w-0 items-center gap-1.5 truncate text-sm ${hilo.sinLeer > 0 ? "font-semibold" : "font-medium"} text-foreground`}>
-                        <span className="icon-chip size-6 rounded-md" data-tone="teal" aria-hidden="true">
-                          <Mail size={12} />
+      <div className="grid overflow-hidden rounded-xl border border-border bg-surface shadow-sm lg:h-[calc(100dvh-14rem)] lg:min-h-[32rem] lg:grid-cols-[22rem_minmax(0,1fr)]">
+        <nav aria-label="Conversaciones" className="border-b border-border lg:flex lg:min-h-0 lg:flex-col lg:border-b-0 lg:border-r">
+          <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+            <p className="text-[13px] font-semibold text-foreground">Bandeja</p>
+            <span className="rounded-md bg-surface-muted px-1.5 py-px text-[11px] font-semibold tabular-nums text-muted-foreground">{filas.length}</span>
+          </div>
+          {filas.length === 0 ? (
+            <EmptyState icon={Inbox} title="Todavía nadie escribe" description={`Cuando Atlas mande un recordatorio o alguien escriba al WhatsApp de ${lugar}, aparece acá.`} />
+          ) : (
+            <ul className="max-h-[60vh] overflow-y-auto lg:max-h-none lg:min-h-0 lg:flex-1">
+              {filas.map((fila) => (
+                <li key={fila.clave}>
+                  <Link
+                    href={fila.href}
+                    aria-current={fila.activa ? "true" : undefined}
+                    className={`flex gap-3 px-3.5 py-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${fila.activa ? "bg-primary/[0.07]" : "hover:bg-surface-muted/60"}`}
+                  >
+                    <span className="relative shrink-0">
+                      <Avatar name={fila.nombre} size="md" />
+                      {/* El canal, sobre el avatar: correo o WhatsApp. */}
+                      <span className="absolute -bottom-1 -right-1 rounded-md bg-surface ring-2 ring-surface" title={fila.canal === "correo" ? "Correo" : "WhatsApp"}>
+                        <span className="icon-chip size-[18px] rounded-md" data-tone={fila.canal === "correo" ? "teal" : "green"}>
+                          {fila.canal === "correo" ? <Mail size={10} aria-hidden="true" /> : <MessageCircle size={10} aria-hidden="true" />}
                         </span>
-                        <span className="truncate">{hilo.nombre}</span>
+                        <span className="sr-only">{fila.canal === "correo" ? "Correo" : "WhatsApp"}</span>
                       </span>
-                      <span className="flex-shrink-0 text-xs text-muted-foreground">{horaCorta.format(new Date(hilo.ultimo))}</span>
-                    </div>
-                    <div className="mt-0.5 flex items-center justify-between gap-2">
-                      <p className="truncate text-xs text-muted-foreground">{hilo.asunto || hilo.direccion}</p>
-                      {hilo.sinLeer > 0 && <span className="text-xs font-semibold tabular-nums text-primary">{hilo.sinLeer}</span>}
-                    </div>
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-baseline justify-between gap-2">
+                        <span className={`truncate text-[13px] text-foreground ${fila.sinLeer > 0 ? "font-semibold" : "font-medium"}`}>{fila.nombre}</span>
+                        <time dateTime={fila.ultimo} title={cuando.format(new Date(fila.ultimo))} className={`shrink-0 text-[11px] tabular-nums ${fila.sinLeer > 0 ? "font-semibold text-primary" : "text-muted-foreground"}`}>
+                          {horaRelativa(fila.ultimo, ahora)}
+                        </time>
+                      </span>
+                      <span className="mt-0.5 flex items-center justify-between gap-2">
+                        <span className={`truncate text-xs ${fila.sinLeer > 0 ? "text-foreground" : "text-muted-foreground"}`}>{fila.linea}</span>
+                        {fila.sinLeer > 0 && (
+                          <span className="shrink-0 rounded-md bg-primary/12 px-1.5 py-px text-[11px] font-semibold tabular-nums text-primary">{fila.sinLeer}</span>
+                        )}
+                      </span>
+                    </span>
                   </Link>
                 </li>
               ))}
             </ul>
           )}
-          {conversaciones.length === 0 && hilosCorreo.length === 0 ? (
-            <EmptyState icon={Inbox} title="Todavía nadie escribe" description={`Cuando Atlas mande un recordatorio o alguien escriba al WhatsApp de ${lugar}, aparece acá.`} />
-          ) : (
-            <ul className="divide-y divide-border">
-              {conversaciones.map((conversacion) => {
-                const ultimo = ultimoPor.get(conversacion.id);
-                const activa = conversacion.id === actual?.id;
-                return (
-                  <li key={conversacion.id}>
-                    <Link href={`/dashboard/mensajes?c=${conversacion.id}`} className={`block px-4 py-3 transition-colors hover:bg-surface-muted/60 ${activa ? "bg-primary/5" : ""}`}>
-                      <div className="flex items-center justify-between gap-2">
-                        <span className={`flex min-w-0 items-center gap-1.5 truncate text-sm ${conversacion.unread_count > 0 ? "font-semibold text-foreground" : "font-medium text-foreground"}`}>
-                          <span className="icon-chip size-6 rounded-md" data-tone="green" aria-hidden="true">
-                            <MessageCircle size={12} />
-                          </span>
-                          <span className="truncate">{nombreDe(conversacion)}</span>
-                        </span>
-                        <span className="flex-shrink-0 text-xs text-muted-foreground">{horaCorta.format(new Date(conversacion.last_message_at))}</span>
-                      </div>
-                      <div className="mt-0.5 flex items-center justify-between gap-2">
-                        <p className="truncate text-xs text-muted-foreground">
-                          {ultimo ? `${ultimo.direction === "outbound" ? "Tú: " : ""}${ultimo.text_body ?? `[${ultimo.message_type}]`}` : conversacion.contact_phone}
-                        </p>
-                        {conversacion.unread_count > 0 && <span className="text-xs font-semibold tabular-nums text-primary">{conversacion.unread_count}</span>}
-                      </div>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </SectionCard>
+        </nav>
 
         {hiloActual ? (
-          <SectionCard icon={Mail} tone="teal" title={hiloActual.nombre} description={`${hiloActual.direccion} · correo${buzon ? ` · desde ${buzon.address}` : ` · ${lugar} todavía no tiene buzón: los envíos se simulan en la demostración`}`}>
-            <div className="flex max-h-[60vh] flex-col gap-3 overflow-y-auto px-4 py-3">
+          <section aria-label={`Correo con ${hiloActual.nombre}`} className="flex min-h-0 flex-col">
+            <Cabecera nombre={hiloActual.nombre} detalle={`${hiloActual.direccion} · correo${buzon ? ` · desde ${buzon.address}` : ` · ${lugar} todavía no tiene buzón: los envíos se simulan en la demostración`}`} />
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-background px-4 py-5 sm:px-6 lg:max-h-none max-h-[60vh]">
               {[...hiloActual.entrantes.map((correo) => ({ id: correo.id, saliente: false, cuando: correo.received_at, asunto: correo.subject, texto: correo.body_text, estado: "", messageId: correo.message_id })),
                 ...hiloActual.salientes.map((correo) => ({ id: correo.id, saliente: true, cuando: correo.enviado_at ?? correo.created_at, asunto: correo.asunto ?? "", texto: correo.cuerpo ?? "", estado: correo.proveedor === "simulado" ? "simulado" : correo.estado, messageId: null }))]
                 .sort((a, b) => a.cuando.localeCompare(b.cuando))
                 .map((correo) => (
                   <div key={correo.id} className={`flex ${correo.saliente ? "justify-end" : "justify-start"}`}>
-                    <div className={`max-w-[85%] rounded-2xl border px-3 py-2 text-sm text-foreground shadow-sm ${correo.saliente ? "rounded-br-md border-primary/30 bg-primary/15" : "rounded-bl-md border-border bg-surface-muted"}`}>
-                      {correo.asunto && <p className="font-medium">{correo.asunto}</p>}
+                    <div className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed text-foreground ${correo.saliente ? "rounded-br-md bg-primary/[0.13]" : "rounded-bl-md border border-border bg-surface shadow-sm"}`}>
+                      {correo.asunto && <p className="font-semibold">{correo.asunto}</p>}
                       <p className="whitespace-pre-wrap">{correo.texto.length > 1500 ? `${correo.texto.slice(0, 1500)}…` : correo.texto}</p>
-                      <p className="mt-1 text-[11px] text-muted-foreground">
+                      <p className="mt-1 text-right text-[11px] text-muted-foreground">
                         {cuando.format(new Date(correo.cuando))}
                         {correo.estado ? ` · ${correo.estado}` : ""}
                       </p>
@@ -241,36 +282,41 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
                   </div>
                 ))}
             </div>
-            <form action={responderCorreo} className="space-y-2 border-t border-border px-4 py-3">
+            <form action={responderCorreo} className="space-y-2 border-t border-border bg-surface px-4 py-3">
               <input type="hidden" name="cuenta_id" value={hiloActual.company_id} />
               <input type="hidden" name="in_reply_to" value={hiloActual.entrantes[0]?.message_id ?? ""} />
-              <Input
-                name="asunto"
-                defaultValue={hiloActual.asunto ? (hiloActual.asunto.toLowerCase().startsWith("re:") ? hiloActual.asunto : `Re: ${hiloActual.asunto}`) : ""}
-                placeholder="Asunto"
-                maxLength={300}
-              />
-              <div className="flex items-end gap-2">
-                <textarea name="texto" required rows={3} maxLength={5000} placeholder={`Responder a ${hiloActual.nombre.split(" ")[0]}…`} className="min-h-[60px] flex-1 resize-y rounded-lg border border-border-strong/70 bg-surface px-3 py-2 text-sm text-foreground shadow-sm placeholder:text-muted-foreground/70 focus:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30" />
-                <SubmitButton pendingLabel="Enviando…">
-                  <Send size={16} aria-hidden="true" /> Enviar
-                </SubmitButton>
+              <div className="rounded-xl border border-border-strong/70 bg-surface shadow-sm focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/30">
+                <input
+                  name="asunto"
+                  defaultValue={hiloActual.asunto ? (hiloActual.asunto.toLowerCase().startsWith("re:") ? hiloActual.asunto : `Re: ${hiloActual.asunto}`) : ""}
+                  placeholder="Asunto"
+                  maxLength={300}
+                  aria-label="Asunto"
+                  className="block w-full border-0 border-b border-border/70 bg-transparent px-3.5 py-2.5 text-[13px] font-medium text-foreground placeholder:text-muted-foreground focus:outline-none"
+                />
+                <textarea name="texto" required rows={3} maxLength={5000} aria-label="Respuesta" placeholder={`Responder a ${hiloActual.nombre.split(" ")[0]}…`} className="block min-h-[72px] w-full resize-y border-0 bg-transparent px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none" />
+                <div className="flex justify-end px-1.5 pb-1.5">
+                  <SubmitButton size="sm" pendingLabel="Enviando…">
+                    <Send size={14} aria-hidden="true" /> Enviar
+                  </SubmitButton>
+                </div>
               </div>
             </form>
-          </SectionCard>
+          </section>
         ) : actual ? (
-          <div className="grid gap-4 lg:grid-cols-[1fr_260px]">
-            <SectionCard icon={MessageCircle} tone="green" title={nombreDe(actual)} description={`${actual.contact_phone}${actual.last_inbound_at ? ` · última respuesta ${cuando.format(new Date(actual.last_inbound_at))}` : " · todavía no responde"}`}>
-              <div className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto px-4 py-3">
-                {hilo.length === 0 && <p className="text-sm text-muted-foreground">Sin mensajes todavía.</p>}
+          <div className="grid min-h-0 xl:grid-cols-[minmax(0,1fr)_17rem]">
+            <section aria-label={`WhatsApp con ${nombreDe(actual)}`} className="flex min-h-0 flex-col">
+              <Cabecera nombre={nombreDe(actual)} detalle={`${actual.contact_phone}${actual.last_inbound_at ? ` · última respuesta ${cuando.format(new Date(actual.last_inbound_at))}` : " · todavía no responde"}`} />
+              <div className="max-h-[60vh] min-h-0 flex-1 space-y-1.5 overflow-y-auto bg-background px-4 py-5 sm:px-6 lg:max-h-none">
+                {hilo.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">Sin mensajes todavía.</p>}
                 {hilo.map((mensaje) => {
                   const saliente = mensaje.direction === "outbound";
                   const simulado = mensaje.provider_payload?.provider === "simulado";
                   return (
                     <div key={mensaje.id} className={`flex ${saliente ? "justify-end" : "justify-start"}`}>
-                      <div className={`max-w-[80%] rounded-2xl border px-3 py-2 text-sm text-foreground shadow-sm ${saliente ? "rounded-br-md border-primary/30 bg-primary/15" : "rounded-bl-md border-border bg-surface-muted"}`}>
+                      <div className={`max-w-[78%] rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed text-foreground ${saliente ? "rounded-br-md bg-primary/[0.13]" : "rounded-bl-md border border-border bg-surface shadow-sm"}`}>
                         <p className="whitespace-pre-wrap">{mensaje.text_body ?? `[${mensaje.message_type}]`}</p>
-                        <p className="mt-1 text-[11px] text-muted-foreground">
+                        <p className="mt-0.5 text-right text-[11px] text-muted-foreground">
                           {cuando.format(new Date(mensaje.provider_timestamp ?? mensaje.created_at))}
                           {saliente && ESTADO_MENSAJE[mensaje.status] ? ` · ${ESTADO_MENSAJE[mensaje.status]}` : ""}
                           {simulado ? " · simulado" : ""}
@@ -280,74 +326,104 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
                   );
                 })}
               </div>
-              <form action={responderConversacion} className="flex items-end gap-2 border-t border-border px-4 py-3">
+              {/* Compositor pegado abajo, en un solo bloque con el botón. */}
+              <form action={responderConversacion} className="border-t border-border bg-surface px-4 py-3">
                 <input type="hidden" name="conversation_id" value={actual.id} />
-                <textarea
-                  name="cuerpo"
-                  required
-                  rows={2}
-                  maxLength={4096}
-                  placeholder={`Escríbele a ${nombreDe(actual).split(" ")[0]}…`}
-                  className="min-h-[44px] flex-1 resize-y rounded-lg border border-border-strong/70 bg-surface px-3 py-2 text-sm text-foreground shadow-sm placeholder:text-muted-foreground/70 focus:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
-                />
-                <SubmitButton pendingLabel="Enviando…">
-                  <Send size={16} aria-hidden="true" /> Enviar
-                </SubmitButton>
+                <div className="rounded-xl border border-border-strong/70 bg-surface shadow-sm focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/30">
+                  <textarea
+                    name="cuerpo"
+                    required
+                    rows={2}
+                    maxLength={4096}
+                    aria-label="Mensaje"
+                    placeholder={`Escríbele a ${nombreDe(actual).split(" ")[0]}…`}
+                    className="block min-h-[52px] w-full resize-y border-0 bg-transparent px-3.5 pb-1 pt-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+                  />
+                  <div className="flex justify-end px-1.5 pb-1.5">
+                    <SubmitButton size="sm" pendingLabel="Enviando…">
+                      <Send size={14} aria-hidden="true" /> Enviar
+                    </SubmitButton>
+                  </div>
+                </div>
               </form>
-            </SectionCard>
+            </section>
 
-            <SectionCard icon={UserRound} tone="blue" title={voc.singular}>
-              <div className="space-y-3 px-4 py-3 text-sm">
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground">Ficha</p>
-                  <Link href={`/dashboard/pacientes/${actual.company_id}`} className="font-medium text-foreground hover:text-primary hover:underline">
+            <aside aria-label={voc.singular} className="border-t border-border xl:min-h-0 xl:overflow-y-auto xl:border-l xl:border-t-0">
+              <div className="flex items-center gap-3 border-b border-border/70 px-4 py-4">
+                <Avatar name={nombreDe(actual)} size="lg" />
+                <div className="min-w-0">
+                  <Link href={`/dashboard/pacientes/${actual.company_id}`} className="block truncate text-[15px] font-semibold text-foreground hover:text-primary">
                     {nombreDe(actual)}
                   </Link>
-                  <p className="text-muted-foreground">{primero(actual.sales_companies)?.phone ?? actual.contact_phone}</p>
-                  {primero(actual.sales_companies)?.email && <p className="truncate text-muted-foreground">{primero(actual.sales_companies)?.email}</p>}
+                  <p className="truncate text-xs text-muted-foreground">{voc.singular}</p>
+                </div>
+              </div>
+              <dl className="space-y-2.5 px-4 py-4 text-xs">
+                <div className="flex items-start justify-between gap-3">
+                  <dt className="text-muted-foreground">Teléfono</dt>
+                  <dd className="text-right font-medium tabular-nums text-foreground">{primero(actual.sales_companies)?.phone ?? actual.contact_phone}</dd>
+                </div>
+                {primero(actual.sales_companies)?.email && (
+                  <div className="flex items-start justify-between gap-3">
+                    <dt className="text-muted-foreground">Correo</dt>
+                    <dd className="min-w-0 truncate text-right font-medium text-foreground">{primero(actual.sales_companies)?.email}</dd>
+                  </div>
+                )}
+                <div className="flex items-start justify-between gap-3">
+                  <dt className="text-muted-foreground">Por cobrar</dt>
+                  <dd className={`text-right font-medium tabular-nums ${ficha.saldo > 0 ? "text-foreground" : "text-muted-foreground"}`}>{pesos.format(ficha.saldo)}</dd>
                 </div>
                 {esVet && (
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground">Mascotas</p>
+                  <div className="pt-1">
+                    <dt className="text-muted-foreground">Mascotas</dt>
                     {ficha.mascotas.length === 0 ? (
-                      <p className="text-muted-foreground">Sin mascotas registradas</p>
+                      <dd className="mt-1 text-muted-foreground">Sin mascotas registradas</dd>
                     ) : (
-                      <div className="mt-1 flex flex-wrap gap-1">
+                      <dd className="mt-1.5 space-y-1.5">
                         {ficha.mascotas.map((mascota) => (
-                          <Badge key={mascota.nombre} tone="neutral">
-                            {mascota.nombre} · {mascota.especie.toLowerCase()}
-                          </Badge>
+                          <span key={mascota.nombre} className="flex items-center gap-2 text-foreground">
+                            <Avatar name={mascota.nombre} size="xs" />
+                            <span className="truncate">{mascota.nombre}</span>
+                            <span className="text-muted-foreground">· {mascota.especie.toLowerCase()}</span>
+                          </span>
                         ))}
-                      </div>
+                      </dd>
                     )}
                   </div>
                 )}
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground">Por cobrar</p>
-                  <p className={`tabular-nums ${ficha.saldo > 0 ? "text-foreground" : "text-muted-foreground"}`}>{pesos.format(ficha.saldo)}</p>
-                </div>
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  <Link href="/dashboard/citas" className={buttonClasses({ variant: "secondary", size: "sm" })}>
-                    Agendar
-                  </Link>
-                  <Link href={`/dashboard/pacientes/${actual.company_id}`} className={buttonClasses({ variant: "secondary", size: "sm" })}>
-                    Ver ficha
-                  </Link>
-                  {actual.unread_count > 0 && (
-                    <form action={marcarConversacionLeida}>
-                      <input type="hidden" name="conversation_id" value={actual.id} />
-                      <SubmitButton variant="ghost" size="sm" pendingLabel="…">Marcar leída</SubmitButton>
-                    </form>
-                  )}
-                </div>
+              </dl>
+              <div className="flex flex-wrap gap-1.5 border-t border-border/70 px-4 py-4">
+                <Link href="/dashboard/citas" className={buttonClasses({ variant: "secondary", size: "sm" })}>
+                  Agendar
+                </Link>
+                <Link href={`/dashboard/pacientes/${actual.company_id}`} className={buttonClasses({ variant: "ghost", size: "sm" })}>
+                  Ver ficha
+                </Link>
+                {actual.unread_count > 0 && (
+                  <form action={marcarConversacionLeida}>
+                    <input type="hidden" name="conversation_id" value={actual.id} />
+                    <SubmitButton variant="ghost" size="sm" pendingLabel="…">Marcar leída</SubmitButton>
+                  </form>
+                )}
               </div>
-            </SectionCard>
+            </aside>
           </div>
         ) : (
-          <SectionCard icon={MessagesSquare} tone="teal" title="Elige una conversación" description="A la izquierda están las más recientes. Lo que Atlas envió y lo que respondieron va en el mismo hilo.">
-            <EmptyState icon={MessagesSquare} title="Nada seleccionado" description="Toca una conversación para leerla y responder desde acá." />
-          </SectionCard>
+          <EmptyState icon={MessagesSquare} title="Elige una conversación" description="A la izquierda están las más recientes. Lo que Atlas envió y lo que respondieron va en el mismo hilo." />
         )}
+      </div>
+    </div>
+  );
+}
+
+/** Quién es y por dónde: nombre con avatar y una línea de contexto. */
+function Cabecera({ nombre, detalle }: { nombre: string; detalle: string }) {
+  return (
+    <div className="flex items-center gap-3 border-b border-border px-4 py-3">
+      <Avatar name={nombre} size="md" />
+      <div className="min-w-0">
+        <h2 className="truncate text-[15px] font-semibold text-foreground">{nombre}</h2>
+        <p className="truncate text-xs text-muted-foreground">{detalle}</p>
       </div>
     </div>
   );

@@ -5,7 +5,8 @@ import { CalendarCheck, Copy, HandCoins, Link2, MessageCircle, Receipt, Wallet }
 
 import { enviarMensaje } from "@/app/actions/mensajes";
 import { cobrarEnLinea, registrarPago } from "@/app/actions/pagos";
-import { ActionForm, ActionSubmit, Badge, Callout, EmptyState, Input, MetricCard, NavTabs, PageHeader, SectionCard, Select, buttonClasses } from "@/components/ui";
+import { ActionForm, ActionSubmit, Avatar, Badge, Callout, EmptyState, Input, NavTabs, PageHeader, SectionCard, Select, Table, Tbody, Td, Th, Thead, Tr, buttonClasses } from "@/components/ui";
+import { KpiStrip, KpiStripItem } from "@/components/report-kit";
 import { ZONA_CLINICA, fechaEnChile } from "@/lib/citas";
 import { PACIENTES_POR_EDICION, VENTAS_POR_EDICION, clinicaDe } from "@/lib/ediciones";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
@@ -25,7 +26,8 @@ import { createClient } from "@/lib/supabase/server";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const pesos = new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 });
 const fecha = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, day: "2-digit", month: "short" });
-const fechaHora = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+const hora = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+const dia = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, day: "numeric", month: "short" });
 
 type Pendiente = { id: string; cuenta_id: string; descripcion: string; precio: number | null; fecha: string; sales_companies: { name: string; phone: string | null } | { name: string; phone: string | null }[] | null };
 type Pago = { id: string; cuenta_id: string; monto: number; medio: MedioDePago; estado: EstadoPago; referencia: string | null; pagado_at: string | null; created_at: string; sales_companies: { name: string; phone: string | null } | { name: string; phone: string | null }[] | null };
@@ -103,7 +105,7 @@ export default async function CajaPage({ searchParams }: { searchParams: Promise
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Caja" description={`Lo pendiente de pago, ficha por ficha. En el mesón o en línea con ${pasarela.etiqueta}.`} />
+      <PageHeader title="Caja" icon={Wallet} description={`Lo pendiente de pago, ficha por ficha. En el mesón o en línea con ${pasarela.etiqueta}.`} />
       <NavTabs
         tabs={[
           { label: "Por cobrar", href: "/dashboard/caja" },
@@ -139,35 +141,32 @@ export default async function CajaPage({ searchParams }: { searchParams: Promise
         </Callout>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard
+      <KpiStrip columns={4}>
+        <KpiStripItem
           label="Por cobrar"
           value={pesos.format(totalPorCobrar)}
-          hint={`${saldos.length} ${saldos.length === 1 ? "ficha con saldo" : "fichas con saldo"}`}
           icon={Wallet}
-          iconTone="amber"
+          tone={totalPorCobrar > 0 ? "warn" : "default"}
+          detail={`${saldos.length} ${saldos.length === 1 ? "ficha con saldo" : "fichas con saldo"}`}
         />
-        <MetricCard label="Cobrado hoy" value={pesos.format(cobradoHoy)} hint="Pagos recibidos hoy" icon={HandCoins} iconTone="green" />
-        <MetricCard
+        <KpiStripItem label="Cobrado hoy" value={pesos.format(cobradoHoy)} icon={HandCoins} tone={cobradoHoy > 0 ? "good" : "default"} detail="Pagos recibidos hoy" />
+        <KpiStripItem
           label="Cobrado este mes"
           value={pesos.format(cobradoMes)}
-          hint={`${cobrados.length} ${cobrados.length === 1 ? "pago" : "pagos"} desde el 1`}
           icon={CalendarCheck}
-          iconTone="green"
+          detail={`${cobrados.length} ${cobrados.length === 1 ? "pago" : "pagos"} desde el 1`}
+          progress={cobradoMes + totalPorCobrar > 0 ? (cobradoMes / (cobradoMes + totalPorCobrar)) * 100 : undefined}
         />
-        <MetricCard
+        <KpiStripItem
           label="En línea pendientes"
           value={String(enLineaPendientes)}
-          hint="Enlaces enviados sin pagar"
           icon={Link2}
-          iconTone="teal"
           tone={enLineaPendientes > 0 ? "warn" : "default"}
+          detail="Enlaces enviados sin pagar"
         />
-      </div>
+      </KpiStrip>
 
       <SectionCard
-        icon={Wallet}
-        tone="green"
         title="Por cobrar"
         description={`Cada fila es un ${voc.singular.toLowerCase()} con atenciones sin pagar. Cobrar en el mesón las deja al día; el enlace las deja al día cuando la persona paga.`}
       >
@@ -177,32 +176,35 @@ export default async function CajaPage({ searchParams }: { searchParams: Promise
           <EmptyState icon={Wallet} title="Nada por cobrar" description="Todas las atenciones registradas están pagadas." />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                  <th className="h-10 px-4 font-medium">{voc.singular}</th>
-                  <th className="h-10 px-4 font-medium">Atenciones</th>
-                  <th className="h-10 px-4 font-medium text-right">Saldo</th>
-                  <th className="h-10 px-4 font-medium">Cobrar</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
+            <Table>
+              <Thead>
+                <Th>{voc.singular}</Th>
+                <Th>Atenciones</Th>
+                <Th align="right">Saldo</Th>
+                <Th>Cobrar</Th>
+              </Thead>
+              <Tbody>
                 {saldos.map(([cuentaId, cuenta]) => (
-                  <tr key={cuentaId} className="align-top">
-                    <td className="px-4 py-3">
-                      <Link href={`/dashboard/pacientes/${cuentaId}`} className="font-medium text-foreground hover:text-primary hover:underline">
-                        {cuenta.nombre}
-                      </Link>
-                      {cuenta.telefono && <p className="text-xs text-muted-foreground">{cuenta.telefono}</p>}
-                    </td>
-                    <td className="max-w-xs px-4 py-3 text-muted-foreground">
-                      <p className="truncate">{cuenta.lineas.map((linea) => linea.descripcion).join(" · ")}</p>
-                      <p className="text-xs">
-                        {cuenta.lineas.length} {cuenta.lineas.length === 1 ? "atención" : "atenciones"} · desde {fecha.format(new Date(`${cuenta.lineas[0].fecha}T12:00:00`))}
-                      </p>
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-foreground">{pesos.format(cuenta.total)}</td>
-                    <td className="px-4 py-3">
+                  <Tr key={cuentaId} className="align-top">
+                    <Td>
+                      <span className="flex min-w-0 items-center gap-3">
+                        <Avatar name={cuenta.nombre} size="md" />
+                        <span className="min-w-0">
+                          <Link href={`/dashboard/pacientes/${cuentaId}`} className="block truncate font-medium text-foreground hover:text-primary hover:underline">
+                            {cuenta.nombre}
+                          </Link>
+                          {cuenta.telefono && <span className="block text-xs tabular-nums text-muted-foreground">{cuenta.telefono}</span>}
+                        </span>
+                      </span>
+                    </Td>
+                    <Td className="max-w-xs">
+                      <span className="block truncate text-foreground">{cuenta.lineas.map((linea) => linea.descripcion).join(" · ")}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {cuenta.lineas.length} {cuenta.lineas.length === 1 ? "atención" : "atenciones"} · desde {fecha.format(new Date(`${cuenta.lineas[0].fecha}T12:00:00`)).replace(".", "")}
+                      </span>
+                    </Td>
+                    <Td align="right" className="whitespace-nowrap text-[15px] font-semibold text-foreground">{pesos.format(cuenta.total)}</Td>
+                    <Td>
                       <div className="flex flex-col gap-2">
                         <ActionForm action={registrarPago} success={`Pago de ${cuenta.nombre} registrado`} className="flex flex-wrap items-center gap-1.5">
                           <input type="hidden" name="cuenta_id" value={cuentaId} />
@@ -237,59 +239,66 @@ export default async function CajaPage({ searchParams }: { searchParams: Promise
                           </ActionForm>
                         </div>
                       </div>
-                    </td>
-                  </tr>
+                    </Td>
+                  </Tr>
                 ))}
-              </tbody>
-            </table>
+              </Tbody>
+            </Table>
           </div>
         )}
       </SectionCard>
 
-      <SectionCard icon={Receipt} tone="green" title="Pagos del mes" description="Todo lo cobrado y lo que está en camino, del más reciente al más antiguo.">
+      <SectionCard title="Pagos del mes" description="Todo lo cobrado y lo que está en camino, del más reciente al más antiguo.">
         {pagos.length === 0 ? (
           <EmptyState icon={Receipt} title="Sin pagos este mes" description="Aparecen acá al cobrar en el mesón o cuando alguien paga un enlace." />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                  <th className="h-10 px-4 font-medium">Cuándo</th>
-                  <th className="h-10 px-4 font-medium">{voc.singular}</th>
-                  <th className="h-10 px-4 font-medium">Medio</th>
-                  <th className="h-10 px-4 font-medium">Referencia</th>
-                  <th className="h-10 px-4 font-medium">Estado</th>
-                  <th className="h-10 px-4 font-medium text-right">Monto</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
+            <Table>
+              <Thead>
+                <Th>Cuándo</Th>
+                <Th>{voc.singular}</Th>
+                <Th>Medio</Th>
+                <Th>Estado</Th>
+                <Th align="right">Monto</Th>
+              </Thead>
+              <Tbody>
                 {pagos.slice(0, 60).map((pago) => {
                   const etiqueta = ETIQUETA_ESTADO_PAGO[pago.estado];
+                  const instante = new Date(pago.pagado_at ?? pago.created_at);
+                  const nombre = primero(pago.sales_companies)?.name ?? "—";
                   return (
-                    <tr key={pago.id}>
-                      <td className="px-4 py-3 text-muted-foreground">{fechaHora.format(new Date(pago.pagado_at ?? pago.created_at))}</td>
-                      <td className="px-4 py-3">
-                        <Link href={`/dashboard/pacientes/${pago.cuenta_id}`} className="font-medium text-foreground hover:text-primary hover:underline">
-                          {primero(pago.sales_companies)?.name ?? "—"}
-                        </Link>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">{ETIQUETA_MEDIO[pago.medio] ?? pago.medio}</td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {pago.referencia ?? (pago.estado === "pendiente" ? (
-                          <Link href={`/dashboard/caja?enlace=${pago.id}`} className="text-primary hover:underline">
-                            Ver enlace
+                    <Tr key={pago.id}>
+                      <Td className="whitespace-nowrap">
+                        <span className="block text-foreground">{dia.format(instante).replace(".", "")}</span>
+                        <span className="block text-xs tabular-nums text-muted-foreground">{hora.format(instante)}</span>
+                      </Td>
+                      <Td>
+                        <span className="flex min-w-0 items-center gap-2.5">
+                          <Avatar name={nombre} size="sm" />
+                          <Link href={`/dashboard/pacientes/${pago.cuenta_id}`} className="truncate font-medium text-foreground hover:text-primary hover:underline">
+                            {nombre}
                           </Link>
-                        ) : "—")}
-                      </td>
-                      <td className="px-4 py-3">
+                        </span>
+                      </Td>
+                      <Td>
+                        <span className="block text-foreground">{ETIQUETA_MEDIO[pago.medio] ?? pago.medio}</span>
+                        <span className="block text-xs text-muted-foreground">
+                          {pago.referencia ?? (pago.estado === "pendiente" ? (
+                            <Link href={`/dashboard/caja?enlace=${pago.id}`} className="font-medium text-primary hover:underline">
+                              Ver enlace
+                            </Link>
+                          ) : "Sin referencia")}
+                        </span>
+                      </Td>
+                      <Td>
                         <Badge tone={etiqueta.tone}>{etiqueta.label}</Badge>
-                      </td>
-                      <td className="px-4 py-3 text-right tabular-nums text-foreground">{pesos.format(Number(pago.monto))}</td>
-                    </tr>
+                      </Td>
+                      <Td align="right" className="whitespace-nowrap font-semibold text-foreground">{pesos.format(Number(pago.monto))}</Td>
+                    </Tr>
                   );
                 })}
-              </tbody>
-            </table>
+              </Tbody>
+            </Table>
           </div>
         )}
       </SectionCard>

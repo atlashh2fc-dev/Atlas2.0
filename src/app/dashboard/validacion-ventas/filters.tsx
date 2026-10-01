@@ -148,15 +148,67 @@ export function SaleFilters({
   const to = periodo ? null : isoDate(params.hasta);
   const rangeLabel = dateField ? "Fecha" : dateLabel;
   return (
-    <FilterBar storageKey={storageKey} applyLabel="Buscar" systemViews={systemViews}>
-      <Field label="Buscar" className="min-w-64 flex-1">
+    <FilterBar
+      storageKey={storageKey}
+      applyLabel="Buscar"
+      systemViews={systemViews}
+      moreActive={[params.producto, periodo, from, to, dateField && dateField !== "venta" ? dateField : null, params.orden ?? null].filter(Boolean).length}
+      more={
+        <>
+          <Field label="Producto" className="w-48">
+            <Select name="producto" defaultValue={params.producto ?? ""}>
+              <option value="">Todos</option>
+              {products.map((product) => (
+                <option key={product} value={product}>
+                  {product}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Período de la venta" className="w-44">
+            <Select name="periodo" defaultValue={periodo ?? ""}>
+              <option value="">Cualquiera</option>
+              {periodOptions().map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          {dateField && (
+            <Field label="El rango mira" className="w-40">
+              <Select name="fecha" defaultValue={dateField}>
+                <option value="venta">Fecha de venta</option>
+                <option value="decision">Fecha de decisión</option>
+              </Select>
+            </Field>
+          )}
+          <Field label={`${rangeLabel} desde`} className="w-40">
+            <Input name="desde" type="date" defaultValue={from ?? ""} max={to ?? undefined} />
+          </Field>
+          <Field label="Hasta" className="w-40">
+            <Input name="hasta" type="date" defaultValue={to ?? ""} min={from ?? undefined} />
+          </Field>
+          <Field label="Ordenar" className="w-48">
+            <Select name="orden" defaultValue={orden}>
+              {Object.entries(ORDENES).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </>
+      }
+    >
+      <Field label="Buscar" hideLabel className="min-w-64 flex-1">
         <span className="relative block">
           <Search size={15} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input name="q" defaultValue={params.q ?? ""} placeholder="Empresa, RUT, teléfono, ejecutivo o producto" className="pl-8" />
+          <Input name="q" defaultValue={params.q ?? ""} placeholder="Buscar empresa, RUT, teléfono, ejecutivo o producto" className="pl-8" />
         </span>
       </Field>
       {statusOptions && (
-        <Field label="Estado" className="w-36">
+        <Field label="Estado" hideLabel className="w-40">
           <Select name="estado" defaultValue={status}>
             {statusOptions.map((option) => (
               <option key={option.value} value={option.value}>
@@ -166,55 +218,12 @@ export function SaleFilters({
           </Select>
         </Field>
       )}
-      <Field label="Ejecutivo" className="w-52">
+      <Field label="Ejecutivo" hideLabel className="w-52">
         <Select name="ejecutivo" defaultValue={params.ejecutivo ?? ""}>
-          <option value="">Todos</option>
+          <option value="">Todos los ejecutivos</option>
           {agents.map((agent) => (
             <option key={agent} value={agent}>
               {agent}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      <Field label="Producto" className="w-48">
-        <Select name="producto" defaultValue={params.producto ?? ""}>
-          <option value="">Todos</option>
-          {products.map((product) => (
-            <option key={product} value={product}>
-              {product}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      <Field label="Período de la venta" className="w-44">
-        <Select name="periodo" defaultValue={periodo ?? ""}>
-          <option value="">Cualquiera</option>
-          {periodOptions().map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      {dateField && (
-        <Field label="El rango mira" className="w-40">
-          <Select name="fecha" defaultValue={dateField}>
-            <option value="venta">Fecha de venta</option>
-            <option value="decision">Fecha de decisión</option>
-          </Select>
-        </Field>
-      )}
-      <Field label={`${rangeLabel} desde`} className="w-40">
-        <Input name="desde" type="date" defaultValue={from ?? ""} max={to ?? undefined} />
-      </Field>
-      <Field label="Hasta" className="w-40">
-        <Input name="hasta" type="date" defaultValue={to ?? ""} min={from ?? undefined} />
-      </Field>
-      <Field label="Ordenar" className="w-48">
-        <Select name="orden" defaultValue={orden}>
-          {Object.entries(ORDENES).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
             </option>
           ))}
         </Select>

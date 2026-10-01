@@ -87,11 +87,12 @@ export function WhatsAppComposer({
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
+  // Un solo bloque al estilo Intercom: el texto arriba y, abajo, adjuntar,
+  // emoji y enviar en la misma barra. El editor no cambia de tamaño al enviar.
   return (
     <ActionForm
       action={submitMessage}
       success={attachment ? "Adjunto enviado" : "Mensaje enviado"}
-      className="flex items-end gap-2"
       onSuccess={clearComposer}
     >
       <input type="hidden" name="conversation_id" value={conversationId} />
@@ -104,12 +105,12 @@ export function WhatsAppComposer({
         onChange={(event) => setAttachment(event.target.files?.[0] ?? null)}
         aria-label="Adjuntar imagen o audio"
       />
-      <div className="relative min-w-0 flex-1 rounded-lg border border-border bg-background shadow-sm focus-within:ring-2 focus-within:ring-ring">
+      <div className="relative rounded-xl border border-border-strong/70 bg-surface shadow-sm transition-shadow focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/30">
         {attachment && (
-          <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+          <div className="flex items-center gap-2.5 border-b border-border px-3 py-2">
             {previewUrl && attachment.type.startsWith("image/") ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={previewUrl} alt="Vista previa" className="h-12 w-12 rounded object-cover" />
+              <img src={previewUrl} alt="Vista previa" className="h-12 w-12 rounded-md object-cover" />
             ) : previewUrl ? (
               <audio
                 controls
@@ -139,45 +140,7 @@ export function WhatsAppComposer({
             </Button>
           </div>
         )}
-        <div className="flex items-end">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={disabled}
-            aria-label="Adjuntar imagen o audio"
-            onClick={() => fileInputRef.current?.click()}
-            className="mb-1 ml-1 shrink-0 px-2 text-muted-foreground"
-          >
-            <Paperclip size={18} />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={disabled}
-            aria-label="Agregar emoji"
-            aria-expanded={showEmojis}
-            onClick={() => setShowEmojis((visible) => !visible)}
-            className="mb-1 ml-1 shrink-0 px-2 text-muted-foreground"
-          >
-            <SmilePlus size={18} />
-          </Button>
-        {showEmojis && (
-          <div className="absolute bottom-[calc(100%+0.5rem)] left-0 z-20 grid w-56 grid-cols-8 gap-1 rounded-lg border border-border bg-surface-solid p-2 shadow-lg">
-            {EMOJIS.map((emoji) => (
-              <button
-                key={emoji}
-                type="button"
-                onClick={() => insertEmoji(emoji)}
-                className="rounded p-1 text-lg leading-none hover:bg-surface-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                {emoji}
-              </button>
-            ))}
-          </div>
-        )}
-          <textarea
+        <textarea
           ref={textareaRef}
           name="body"
           rows={2}
@@ -194,13 +157,54 @@ export function WhatsAppComposer({
           }}
           placeholder={attachment?.type.startsWith("audio/") ? "El audio se enviará sin texto adjunto" : attachment ? "Agrega un texto opcional a la imagen…" : "Escribe una respuesta…"}
           aria-label="Mensaje de WhatsApp"
-          className="min-h-16 min-w-0 flex-1 resize-none border-0 bg-transparent px-2 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-60"
-          />
+          className="block max-h-48 min-h-14 w-full resize-none border-0 bg-transparent px-3.5 pb-1 pt-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-60"
+        />
+        <div className="flex items-center gap-0.5 px-1.5 pb-1.5">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={disabled}
+            aria-label="Adjuntar imagen o audio"
+            title="Adjuntar imagen o audio"
+            onClick={() => fileInputRef.current?.click()}
+            className="shrink-0 px-2 text-muted-foreground"
+          >
+            <Paperclip size={17} />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={disabled}
+            aria-label="Agregar emoji"
+            title="Agregar emoji"
+            aria-expanded={showEmojis}
+            onClick={() => setShowEmojis((visible) => !visible)}
+            className="shrink-0 px-2 text-muted-foreground"
+          >
+            <SmilePlus size={17} />
+          </Button>
+          {showEmojis && (
+            <div className="absolute bottom-[calc(100%+0.5rem)] left-0 z-20 grid w-56 grid-cols-8 gap-1 rounded-lg border border-border bg-surface-solid p-2 shadow-lg">
+              {EMOJIS.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  onClick={() => insertEmoji(emoji)}
+                  className="rounded p-1 text-lg leading-none hover:bg-surface-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          )}
+          <span className="ml-auto hidden pr-2 text-[11px] text-muted-foreground sm:inline">Enter envía · Shift + Enter, nueva línea</span>
+          <ActionSubmit size="sm" disabled={disabled || (!body.trim() && !attachment)} pendingLabel={attachment ? "Subiendo…" : "Enviando…"} className="ml-auto sm:ml-0">
+            {attachment?.type.startsWith("image/") ? <ImageIcon size={14} /> : <Send size={14} />} Enviar
+          </ActionSubmit>
         </div>
       </div>
-      <ActionSubmit disabled={disabled || (!body.trim() && !attachment)} pendingLabel={attachment ? "Subiendo…" : "Enviando…"}>
-        {attachment?.type.startsWith("image/") ? <ImageIcon size={15} /> : <Send size={15} />} Enviar
-      </ActionSubmit>
     </ActionForm>
   );
 }

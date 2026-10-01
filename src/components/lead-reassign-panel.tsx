@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { UserRoundCog } from "lucide-react";
 import { assignLead } from "@/app/actions/admin";
-import { ActionForm, ActionSubmit, Button, Field, Select, SlideOver, buttonClasses } from "@/components/ui";
+import { ActionForm, ActionSubmit, Avatar, Button, Field, Select, SlideOver, buttonClasses } from "@/components/ui";
 
 type AgentOption = { id: string; full_name: string };
 
@@ -35,8 +35,8 @@ export function LeadReassignPanel({
 
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className={buttonClasses({ variant: "secondary" })}>
-        <UserRoundCog size={15} aria-hidden="true" />
+      <button type="button" onClick={() => setOpen(true)} className={buttonClasses({ size: "sm", variant: "secondary" })}>
+        <UserRoundCog size={14} aria-hidden="true" />
         Reasignar
       </button>
 
@@ -54,14 +54,21 @@ export function LeadReassignPanel({
         >
           <input type="hidden" name="lead_id" value={leadId} />
 
-          <dl className="grid grid-cols-2 gap-3 rounded-md border border-border bg-surface-muted/40 p-3 text-sm">
-            <div>
+          {/* Quién lo tiene hoy, con su avatar: lo mismo que se ve en la ficha. */}
+          <dl className="grid grid-cols-2 gap-4 border-y border-border py-3 text-sm">
+            <div className="min-w-0">
               <dt className="text-xs text-muted-foreground">Ejecutivo actual</dt>
-              <dd className="font-medium">{currentAgentName ?? "Sin asignar"}</dd>
+              <dd className="mt-1 flex min-w-0 items-center gap-2 font-medium text-foreground">
+                <Avatar name={currentAgentName} size="xs" />
+                <span className="truncate">{currentAgentName ?? "Sin asignar"}</span>
+              </dd>
             </div>
-            <div>
+            <div className="min-w-0">
               <dt className="text-xs text-muted-foreground">Equipo</dt>
-              <dd className="font-medium">{teamName ?? "Sin equipo"}</dd>
+              <dd className="mt-1 flex min-w-0 items-center gap-2 font-medium text-foreground">
+                <Avatar name={teamName} size="xs" shape="square" />
+                <span className="truncate">{teamName ?? "Sin equipo"}</span>
+              </dd>
             </div>
           </dl>
 

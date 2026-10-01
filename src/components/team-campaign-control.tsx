@@ -9,7 +9,7 @@ import {
   setAgentCampaignPriorities,
   type AgentCampaignBoardRow,
 } from "@/app/actions/campaign-control";
-import { Badge, Button, Select, Table, TableEmpty, Tbody, Td, Th, Thead, Tr, actionErrorMessage, useToast } from "@/components/ui";
+import { Avatar, Badge, Button, Select, Table, TableEmpty, Tbody, Td, Th, Thead, Tr, actionErrorMessage, useToast } from "@/components/ui";
 
 const TIME_FORMAT = new Intl.DateTimeFormat("es-CL", {
   timeZone: "America/Santiago",
@@ -20,25 +20,32 @@ const TIME_FORMAT = new Intl.DateTimeFormat("es-CL", {
 function currentLabel(row: AgentCampaignBoardRow, viewerId: string) {
   if (!row.active_campaign_id) return <Badge tone="warning">Sin campaña</Badge>;
   const since = row.changed_at ? ` · ${TIME_FORMAT.format(new Date(row.changed_at))}` : "";
+  // Campaña con su avatar y, debajo, de dónde salió: fijada (candado) o
+  // elegida. Texto gris, sin cápsula: el candado ya dice lo importante.
+  let origin;
   if (row.locked) {
     const who = row.assigned_by === viewerId ? "ti" : row.assigned_by_name ?? "otro supervisor";
-    return (
-      <span className="flex flex-col gap-1">
-        <span className="font-medium">{row.active_campaign_name}</span>
-        <Badge tone="info" className="w-fit gap-1">
-          <Lock size={11} /> Fijada por {who}
-          {since}
-        </Badge>
+    origin = (
+      <span className="inline-flex items-center gap-1">
+        <Lock size={11} className="text-primary" aria-hidden="true" /> Fijada por {who}
+        {since}
       </span>
+    );
+  } else {
+    origin = (
+      <>
+        {row.source === "prioridad" ? "Por prioridad" : "Elegida por el ejecutivo"}
+        {since}
+      </>
     );
   }
   return (
-    <span className="flex flex-col gap-1">
-      <span className="font-medium">{row.active_campaign_name}</span>
-      <Badge tone="neutral" className="w-fit">
-        {row.source === "prioridad" ? "Por prioridad" : "Elegida por el ejecutivo"}
-        {since}
-      </Badge>
+    <span className="flex min-w-0 items-center gap-2.5">
+      <Avatar name={row.active_campaign_name} seed={row.active_campaign_id} size="sm" shape="square" />
+      <span className="min-w-0">
+        <span className="block truncate font-medium text-foreground">{row.active_campaign_name}</span>
+        <span className="mt-0.5 block text-xs text-muted-foreground">{origin}</span>
+      </span>
     </span>
   );
 }
@@ -104,11 +111,14 @@ export function TeamCampaignControl({
           const selected = target[row.profile_id] ?? row.active_campaign_id ?? row.campaigns[0]?.campaign_id ?? "";
           return (
             <Tr key={row.profile_id}>
-              <Td strong>
-                <span className="flex flex-col">
-                  {row.full_name}
-                  <span className="text-xs font-normal text-muted-foreground">
-                    {[row.team_name, row.extension ? `Anexo ${row.extension}` : "Sin anexo"].filter(Boolean).join(" · ")}
+              <Td>
+                <span className="flex min-w-0 items-center gap-3">
+                  <Avatar name={row.full_name} seed={row.profile_id} size="md" />
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium text-foreground">{row.full_name}</span>
+                    <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                      {[row.team_name, row.extension ? `Anexo ${row.extension}` : "Sin anexo"].filter(Boolean).join(" · ")}
+                    </span>
                   </span>
                 </span>
               </Td>
@@ -121,12 +131,12 @@ export function TeamCampaignControl({
                     {row.campaigns.map((campaign, index) => (
                       <li key={campaign.campaign_id} className="flex items-center gap-1 text-xs">
                         <span
-                          className={`w-4 text-xs font-semibold tabular-nums ${index === 0 ? "text-primary" : "text-muted-foreground"}`}
+                          className={`flex size-5 shrink-0 items-center justify-center rounded-md text-[11px] font-semibold tabular-nums ${index === 0 ? "bg-primary/12 text-primary" : "bg-surface-muted text-muted-foreground"}`}
                           aria-label={`Prioridad ${index + 1}`}
                         >
                           {index + 1}
                         </span>
-                        <span className="flex-1">{campaign.name}</span>
+                        <span className={`min-w-0 flex-1 truncate pl-1 ${index === 0 ? "font-medium text-foreground" : "text-muted-foreground"}`}>{campaign.name}</span>
                         <button
                           type="button"
                           aria-label={`Subir prioridad de ${campaign.name}`}

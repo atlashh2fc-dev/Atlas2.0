@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ArrowLeft, UserPlus } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { ManualLeadRecordForm } from "@/components/manual-lead-record-form";
@@ -62,9 +63,11 @@ export default async function NewLeadRecordPage() {
     <div className="space-y-6">
       <PageHeader
         title="Ingresar fuera de base"
+        icon={UserPlus}
         description="Agrega a la campaña un cliente que no venía en la carga. Si el RUT ya está en esa base, se abre su ficha en vez de duplicarlo."
         actions={
-          <Link href="/dashboard/leads" className={buttonClasses({ variant: "secondary" })}>
+          <Link href="/dashboard/leads" className={buttonClasses({ variant: "ghost", size: "sm" })}>
+            <ArrowLeft size={14} aria-hidden="true" />
             Volver a registros
           </Link>
         }

@@ -1,4 +1,4 @@
-import { CheckCircle2, CircleAlert, MessageCircle, Send, Smartphone, Webhook, type LucideIcon } from "lucide-react";
+import { ChevronRight, Send, Smartphone, Webhook } from "lucide-react";
 
 import { saveWhatsAppChannelConfig } from "@/app/actions/whatsapp";
 import { ConectarWhatsAppMeta } from "@/components/conectar-whatsapp-meta";
@@ -6,7 +6,8 @@ import { registroDeMeta } from "@/lib/meta-registro";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { isWhatsAppProviderConfigured, whatsappProvider } from "@/lib/whatsapp-provider";
-import { ActionForm, ActionSubmit, Badge, Field, Input, SectionCard, Select } from "@/components/ui";
+import { ActionForm, ActionSubmit, Badge, Callout, Field, Input, SectionCard, Select } from "@/components/ui";
+import { FranjaDeEstado, Grupo, PieDeFormulario, fechaLegible } from "../../_diseno";
 import { BotonCopiar } from "./boton-copiar";
 
 const META_WEBHOOK_URL = "https://atlascrm.geimser.cl/api/integrations/meta/whatsapp/webhook";
@@ -30,7 +31,7 @@ type Channel = {
 
 function formatDateTime(value: string | null) {
   return value
-    ? new Date(value).toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short" })
+    ? fechaLegible(value)
     : "Aún no recibido";
 }
 
@@ -67,54 +68,57 @@ export default async function WhatsAppIntegrationPage() {
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-4 xl:grid-cols-3">
-        <StatusCard
-          icon={Smartphone}
-          label="Número corporativo"
-          value={channel?.display_phone_number ?? "Sin conectar"}
-          ok={Boolean(channel)}
-          detail={channel ? (channel.coexistencia ? "También sigue en la app del teléfono" : `Phone ID ${channel.phone_number_id}`) : "Conéctalo con el botón de abajo"}
-        />
-        <StatusCard
-          icon={Webhook}
-          label="Webhook de Atlas"
-          value={channel?.last_error ? "Con error" : ready ? "Conectado" : "Pendiente"}
-          ok={ready && !channel?.last_error}
-          detail={`Último evento: ${formatDateTime(channel?.last_webhook_at ?? null)}`}
-          error={
-            channel?.last_error
-              ? {
-                  resumen: `${provider === "ycloud" ? "YCloud" : "Meta"} informó un error en la última conexión. Vuelve a conectar el número; si sigue, avisa a soporte.`,
-                  detalle: channel.last_error,
-                }
-              : null
-          }
-        />
-        <StatusCard
-          icon={Send}
-          label="Salida desde el CRM"
-          value={providerConfigured ? "Habilitada" : "Pendiente"}
-          ok={providerConfigured}
-          detail={providerConfigured ? `Proveedor ${provider === "ycloud" ? "YCloud" : "Meta"}` : "Falta completar credenciales"}
-        />
-      </div>
+      <FranjaDeEstado
+        celdas={[
+          {
+            label: "Número corporativo",
+            icon: Smartphone,
+            value: channel?.display_phone_number ?? "Sin conectar",
+            tone: channel ? "success" : "warning",
+            detail: channel ? (channel.coexistencia ? "También sigue en la app del teléfono" : `Phone ID ${channel.phone_number_id}`) : "Conéctalo con el botón de abajo",
+          },
+          {
+            label: "Webhook de Atlas",
+            icon: Webhook,
+            value: channel?.last_error ? "Con error" : ready ? "Conectado" : "Pendiente",
+            tone: channel?.last_error ? "danger" : ready ? "success" : "warning",
+            detail: `Último evento: ${formatDateTime(channel?.last_webhook_at ?? null)}`,
+          },
+          {
+            label: "Salida desde el CRM",
+            icon: Send,
+            value: providerConfigured ? "Habilitada" : "Pendiente",
+            tone: providerConfigured ? "success" : "warning",
+            detail: providerConfigured ? `Proveedor ${provider === "ycloud" ? "YCloud" : "Meta"}` : "Falta completar credenciales",
+          },
+        ]}
+      />
+
+      {/* Lo que reportó el proveedor va pegado al estado, no al final de la página. */}
+      {channel?.last_error && (
+        <Callout tone="danger">
+          <p className="font-medium">
+            {provider === "ycloud" ? "YCloud" : "Meta"} informó un error en la última conexión.
+          </p>
+          <p className="mt-0.5">Vuelve a conectar el número; si sigue, avisa a soporte.</p>
+          <p className="mt-2 break-words text-xs opacity-80">Detalle del proveedor: {channel.last_error}</p>
+        </Callout>
+      )}
 
       {porVencer && (
-        <p className="rounded-lg border border-warning/40 bg-warning-bg p-3 text-sm text-foreground">
+        <Callout tone="warning">
           {diasParaVencer !== null && diasParaVencer < 0
             ? "El acceso de Meta a este número venció: los mensajes dejaron de entrar. Vuelve a conectarlo abajo."
             : `El acceso de Meta a este número vence en ${diasParaVencer} ${diasParaVencer === 1 ? "día" : "días"}. Vuelve a conectarlo abajo para que no se corte.`}
-        </p>
+        </Callout>
       )}
 
       {(!ready || porVencer) && (
         <SectionCard
-          icon={Smartphone}
-          tone="teal"
           title="Conectar tu WhatsApp Business"
           description="Inicias sesión con tu Facebook, eliges el WhatsApp Business de la empresa y escaneas un código con el teléfono. El número sigue en la app y Atlas ve lo que envías y recibes."
         >
-          <div className="p-4">
+          <div className="border-t border-border px-5 py-4">
             {registro.listo && registro.configId ? (
               <ConectarWhatsAppMeta appId={registro.appId} configId={registro.configId} version={registro.version} />
             ) : (
@@ -127,78 +131,86 @@ export default async function WhatsAppIntegrationPage() {
         </SectionCard>
       )}
 
-      <details className="group rounded-xl border border-border bg-surface shadow-sm" open={Boolean(channel) || undefined}>
-        <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-foreground">
-          {channel ? "Datos del canal" : "Configuración manual (avanzado)"}
+      <details className="group atlas-panel overflow-hidden rounded-xl border border-border bg-surface shadow-sm" open={Boolean(channel) || undefined}>
+        <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 px-5 py-3 hover:bg-surface-muted/50">
+          <ChevronRight size={16} className="shrink-0 text-muted-foreground transition-transform group-open:rotate-90" aria-hidden="true" />
+          <span className="min-w-0">
+            <span className="block text-[15px] font-semibold tracking-tight text-foreground">
+              {channel ? "Canal y campaña de destino" : "Configuración manual (avanzado)"}
+            </span>
+            <span className="block text-[13px] text-muted-foreground">
+              Los mensajes que te lleguen crean o reutilizan un lead en la campaña elegida. Las claves del proveedor no se guardan en la base.
+            </span>
+          </span>
         </summary>
-      <SectionCard
-        icon={MessageCircle}
-        tone="green"
-        title="Canal y campaña de destino"
-        description="Los mensajes que te lleguen crean o reutilizan un lead en la campaña elegida. Las claves del proveedor no se guardan en la base."
-      >
         <ActionForm
           action={saveWhatsAppChannelConfig}
           success="Canal de WhatsApp guardado"
-          className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3"
+          className="divide-y divide-border border-t border-border"
         >
-          <Field label="Cómo se conecta" className="md:col-span-2 xl:col-span-3">
-            <Select name="provider" defaultValue={provider}>
-              <option value="meta">Meta</option>
-              <option value="ycloud">YCloud</option>
-            </Select>
-          </Field>
-          <Field label="Cuenta de WhatsApp (WABA ID)">
-            <Input name="waba_id" defaultValue={channel?.waba_id ?? ""} inputMode="numeric" placeholder="1111675941525164" required />
-          </Field>
-          <Field label="Identificador del número (Phone Number ID)">
-            <Input name="phone_number_id" defaultValue={channel?.phone_number_id ?? ""} inputMode="numeric" placeholder="1245124622024399" required />
-          </Field>
-          <Field label="Número visible">
-            <Input name="display_phone_number" defaultValue={channel?.display_phone_number ?? ""} placeholder="+56 9 1234 5678" required />
-          </Field>
-          <Field label="Nombre del negocio">
-            <Input name="business_name" defaultValue={channel?.business_name ?? ""} placeholder="Altius Ignite" required />
-          </Field>
-          <Field label="Portfolio comercial de Meta (opcional)">
-            <Input name="meta_business_id" defaultValue={channel?.meta_business_id ?? ""} inputMode="numeric" />
-          </Field>
-          <Field label="Cuenta publicitaria (opcional)">
-            <Input name="meta_ad_account_id" defaultValue={channel?.meta_ad_account_id ?? ""} inputMode="numeric" />
-          </Field>
-          <Field label="Campaña para los mensajes que te lleguen (opcional)" className="md:col-span-2 xl:col-span-3">
-            <Select name="campaign_id" defaultValue={route?.campaign_id ?? ""}>
-              <option value="">Ninguna por ahora</option>
-              {(campaigns ?? []).map((campaign) => (
-                <option key={campaign.id} value={campaign.id}>
-                  {campaign.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <div className="md:col-span-2 xl:col-span-3">
+          <Grupo titulo="Proveedor" descripcion="Por dónde entra y sale WhatsApp: directo con Meta o a través de YCloud." columnas={1}>
+            <Field label="Cómo se conecta" className="max-w-sm">
+              <Select name="provider" defaultValue={provider}>
+                <option value="meta">Meta</option>
+                <option value="ycloud">YCloud</option>
+              </Select>
+            </Field>
+          </Grupo>
+          <Grupo titulo="Número" descripcion="Los identificadores que entrega Meta para la cuenta y el número de WhatsApp Business.">
+            <Field label="Cuenta de WhatsApp (WABA ID)">
+              <Input name="waba_id" defaultValue={channel?.waba_id ?? ""} inputMode="numeric" placeholder="1111675941525164" required />
+            </Field>
+            <Field label="Identificador del número (Phone Number ID)">
+              <Input name="phone_number_id" defaultValue={channel?.phone_number_id ?? ""} inputMode="numeric" placeholder="1245124622024399" required />
+            </Field>
+            <Field label="Número visible">
+              <Input name="display_phone_number" defaultValue={channel?.display_phone_number ?? ""} placeholder="+56 9 1234 5678" required />
+            </Field>
+            <Field label="Nombre del negocio">
+              <Input name="business_name" defaultValue={channel?.business_name ?? ""} placeholder="Altius Ignite" required />
+            </Field>
+          </Grupo>
+          <Grupo titulo="Meta Business (opcional)" descripcion="Solo si quieres ligar el canal al portfolio comercial y a la cuenta publicitaria.">
+            <Field label="Portfolio comercial de Meta">
+              <Input name="meta_business_id" defaultValue={channel?.meta_business_id ?? ""} inputMode="numeric" />
+            </Field>
+            <Field label="Cuenta publicitaria">
+              <Input name="meta_ad_account_id" defaultValue={channel?.meta_ad_account_id ?? ""} inputMode="numeric" />
+            </Field>
+          </Grupo>
+          <Grupo titulo="Campaña de destino" descripcion="Donde entran los contactos nuevos que escriben al número." columnas={1}>
+            <Field label="Campaña para los mensajes que te lleguen (opcional)" className="max-w-md">
+              <Select name="campaign_id" defaultValue={route?.campaign_id ?? ""}>
+                <option value="">Ninguna por ahora</option>
+                {(campaigns ?? []).map((campaign) => (
+                  <option key={campaign.id} value={campaign.id}>
+                    {campaign.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </Grupo>
+          <PieDeFormulario>
             <ActionSubmit pendingLabel="Guardando…">Guardar configuración</ActionSubmit>
-          </div>
+          </PieDeFormulario>
         </ActionForm>
-      </SectionCard>
-
       </details>
 
       <SectionCard
-        icon={Webhook}
-        tone="slate"
         title="Webhook del proveedor"
         description="La suscripción debe incluir mensajes entrantes, estados y ecos enviados desde el celular."
       >
-        <div className="space-y-4 p-4">
-        <div className="rounded-lg border border-border bg-background p-3">
-          <p className="text-xs font-medium text-muted-foreground">URL de devolución de llamada</p>
-          <div className="mt-1 flex items-center gap-2">
-            <code className="min-w-0 flex-1 truncate text-sm text-foreground">{webhookUrl}</code>
+        <div className="divide-y divide-border/70 border-t border-border">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-5 py-3">
+          <p className="w-48 shrink-0 text-[13px] text-muted-foreground">URL de devolución de llamada</p>
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <code className="min-w-0 flex-1 truncate font-mono text-[13px] text-foreground">{webhookUrl}</code>
             <BotonCopiar texto={webhookUrl} etiqueta="URL del webhook" />
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-5 py-3">
+          <p className="w-48 shrink-0 text-[13px] text-muted-foreground">Credenciales del servidor</p>
+          <div className="flex flex-wrap gap-x-5 gap-y-1.5">
           {provider === "ycloud" ? (
             <>
               <Badge tone={hasYCloudWebhookSecret ? "success" : "warning"}>Firma de YCloud</Badge>
@@ -211,54 +223,10 @@ export default async function WhatsAppIntegrationPage() {
               <Badge tone={hasAccessToken ? "success" : "warning"}>Acceso Cloud API</Badge>
             </>
           )}
+          </div>
         </div>
         </div>
       </SectionCard>
-    </div>
-  );
-}
-
-/** Baldosa de estado: el borde izquierdo y el ícono de estado dicen si está listo. */
-function StatusCard({
-  icon: KindIcon,
-  label,
-  value,
-  detail,
-  ok,
-  error = null,
-}: {
-  icon: LucideIcon;
-  label: string;
-  value: string;
-  detail: string;
-  ok: boolean;
-  /** Lo que reportó el proveedor, junto al estado y no al final de la página. */
-  error?: { resumen: string; detalle: string } | null;
-}) {
-  const StateIcon = ok ? CheckCircle2 : CircleAlert;
-  return (
-    <div
-      className={`rounded-xl border border-border border-l-2 bg-surface p-4 shadow-sm ${ok ? "border-l-success" : error ? "border-l-danger" : "border-l-warning"}`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3">
-          <span className="icon-chip size-8 rounded-lg" data-tone="green" aria-hidden="true">
-            <KindIcon size={16} />
-          </span>
-          <div className="min-w-0">
-            <p className="text-xs font-medium text-muted-foreground">{label}</p>
-            <p className="mt-1 text-lg font-semibold tracking-tight text-foreground">{value}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
-            {error && (
-              <div className="mt-2 space-y-1">
-                <p className="text-xs text-danger">{error.resumen}</p>
-                <p className="break-words text-[11px] text-muted-foreground">Detalle del proveedor: {error.detalle}</p>
-              </div>
-            )}
-          </div>
-        </div>
-        <StateIcon size={18} className={ok ? "text-success" : error ? "text-danger" : "text-warning"} aria-hidden="true" />
-      </div>
     </div>
   );
 }

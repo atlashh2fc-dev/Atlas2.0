@@ -116,22 +116,22 @@ export function RecordingTranscriptionControl({
   return (
     <>
       {status === "completed" ? (
-        <Button type="button" variant="secondary" size="sm" onClick={view} disabled={loading} className={compact ? "w-full gap-1 px-2 text-xs leading-tight" : undefined}>
+        <Button type="button" variant="ghost" size="sm" onClick={view} disabled={loading} className={compact ? "w-full justify-start gap-1.5 px-1.5 text-xs leading-tight" : undefined}>
           {loading ? <LoaderCircle size={14} className="animate-spin" /> : <FileText size={14} />}
-          Ver texto
+          Ver transcripción
         </Button>
       ) : status === "processing" || loading ? (
-        <Badge tone="info" className={compact ? "w-full justify-center" : undefined}>
-          <LoaderCircle size={13} className="animate-spin" />
-          Procesando
+        <Badge tone="info" dot={false} className={compact ? "px-1.5 py-1" : undefined}>
+          <LoaderCircle size={13} className="animate-spin text-primary" />
+          Transcribiendo
         </Badge>
       ) : (
         <Button
           type="button"
-          variant="secondary"
+          variant="ghost"
           size="sm"
           onClick={transcribe}
-          className={compact ? "w-full gap-1 px-2 text-xs leading-tight" : undefined}
+          className={compact ? "w-full justify-start gap-1.5 px-1.5 text-xs leading-tight" : undefined}
           title={!eligible ? `Fuera de la selección automática: ${eligibilityLabel}` : undefined}
         >
           {status === "failed" ? <RotateCcw size={14} /> : <WandSparkles size={14} />}
@@ -143,7 +143,7 @@ export function RecordingTranscriptionControl({
         open={open}
         onClose={() => setOpen(false)}
         title="Transcripción de la llamada"
-        description="Generada con Groq Whisper Large V3. El resultado de apego se abre desde la columna “Apego al script”."
+        description="Generada con Groq Whisper Large V3. El apego al guion se abre desde el puntaje de calidad."
         width="lg"
       >
         {loading && !transcription?.text ? (
@@ -153,16 +153,16 @@ export function RecordingTranscriptionControl({
           </div>
         ) : transcription?.text ? (
           <div className="space-y-5">
-            <div className="flex flex-wrap gap-2">
+            <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
               <Badge tone="success">Completada</Badge>
-              {transcription.languageCode && <Badge tone="neutral">Idioma: {transcription.languageCode}</Badge>}
-            </div>
+              {transcription.languageCode && <span>Idioma: {transcription.languageCode}</span>}
+            </p>
 
             {transcription.segments && transcription.segments.length > 0 ? (
               <div className="space-y-3">
                 {transcription.segments.map((segment, index) => (
-                  <div key={`${segment.start ?? index}-${index}`} className="grid grid-cols-[3.5rem_1fr] gap-3">
-                    <span className="h-fit rounded-md border border-border bg-surface-muted/60 px-1.5 py-0.5 text-center text-[11px] font-medium tabular-nums text-muted-foreground">
+                  <div key={`${segment.start ?? index}-${index}`} className="grid grid-cols-[3rem_1fr] gap-3">
+                    <span className="pt-0.5 text-right text-[11px] font-medium tabular-nums text-muted-foreground">
                       {formatTimestamp(segment.start)}
                     </span>
                     <p className="text-sm leading-6 text-foreground">{segment.text?.trim()}</p>

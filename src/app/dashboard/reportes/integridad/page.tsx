@@ -2,7 +2,8 @@ import { requireProfile } from "@/lib/auth";
 import { getManagementIntegrityReport } from "@/app/actions/management-integrity";
 import { ManagementIntegrityTables } from "@/components/management-integrity-tables";
 import { ClipboardList, Flag, PhoneOff, ShieldCheck, Timer, Zap } from "lucide-react";
-import { Callout, MetricCard } from "@/components/ui";
+import { Callout } from "@/components/ui";
+import { KpiStrip, KpiStripItem } from "@/components/report-kit";
 import { resolveCampaignScope } from "@/lib/campaign-scope";
 import { formatReportRangeLabel, resolveReportRange } from "@/lib/report-range";
 
@@ -27,13 +28,12 @@ export default async function ReportesIntegridadPage({
 
   return (
     <div className="space-y-6">
-      <p className="text-sm text-muted-foreground">
-        {`Señales de tipificación automatizada · ${formatReportRangeLabel(range)}`}
-      </p>
-
       <Callout tone="info" className="flex gap-3">
-        <ShieldCheck size={16} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <p>
+        <span className="icon-chip size-7 rounded-lg" data-tone="primary" aria-hidden="true">
+          <ShieldCheck size={14} />
+        </span>
+        <p className="leading-relaxed">
+        <span className="font-medium">Señales de tipificación automatizada.</span>{" "}
         Estas señales las produce el servidor —duración real de la gestión, eventos de conexión del
         discador y cadencia entre cierres—, así que una extensión del navegador no puede falsearlas.
         Son indicios para investigar, no una acusación: una llamada que no contestan se tipifica
@@ -44,41 +44,40 @@ export default async function ReportesIntegridadPage({
         </p>
       </Callout>
 
-      <section className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-        <MetricCard
+      <KpiStrip title="Señales del período" meta={formatReportRangeLabel(range)}>
+        <KpiStripItem
           label="Gestiones del período"
           value={totals.gestiones.toLocaleString("es-CL")}
           icon={ClipboardList}
-          iconTone="violet"
         />
-        <MetricCard
+        <KpiStripItem
           label="Marcadas"
           value={totals.sospechosas.toLocaleString("es-CL")}
-          hint={`${suspiciousRate.toFixed(1)}% del total`}
-          tone={suspiciousRate > 20 ? "danger" : "default"}
           icon={Flag}
-          iconTone="violet"
+          detail={`${suspiciousRate.toFixed(1)}% del total`}
+          tone={suspiciousRate > 20 ? "danger" : totals.sospechosas > 0 ? "warn" : "default"}
+          progress={suspiciousRate}
         />
-        <MetricCard
+        <KpiStripItem
           label={`Cierres bajo ${thresholds.fast_close_seconds}s`}
           value={totals.cierres_instantaneos.toLocaleString("es-CL")}
           icon={Timer}
-          iconTone="amber"
+          tone={totals.cierres_instantaneos > 0 ? "warn" : "default"}
         />
-        <MetricCard
+        <KpiStripItem
           label="Contacto sin llamada"
           value={totals.contactos_sin_respaldo.toLocaleString("es-CL")}
-          tone={totals.contactos_sin_respaldo > 0 ? "danger" : "default"}
           icon={PhoneOff}
-          iconTone="primary"
+          detail="El indicio más fuerte"
+          tone={totals.contactos_sin_respaldo > 0 ? "danger" : "default"}
         />
-        <MetricCard
+        <KpiStripItem
           label={`Cierres a menos de ${thresholds.burst_seconds}s`}
           value={totals.rafagas.toLocaleString("es-CL")}
           icon={Zap}
-          iconTone="amber"
+          tone={totals.rafagas > 0 ? "warn" : "default"}
         />
-      </section>
+      </KpiStrip>
 
       <ManagementIntegrityTables agents={report.agents} detail={report.detail} />
     </div>

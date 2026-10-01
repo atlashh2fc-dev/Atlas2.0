@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { createWorkflow, createWorkflowFromTemplate } from "@/app/actions/workflows";
 import { WORKFLOW_TEMPLATES } from "@/lib/workflow-templates";
-import { Button, Field, Input, SlideOver, Select, SubmitButton, buttonClasses } from "@/components/ui";
+import { Avatar, Button, Field, Input, SlideOver, Select, SubmitButton, buttonClasses } from "@/components/ui";
 
 /**
  * Crear flujo desde el panel lateral: desde cero o desde una plantilla. Antes
@@ -64,8 +64,11 @@ export function WorkflowCreatePanel({
             {selectedCampaign ? (
               <>
                 <input type="hidden" name="campaign_id" value={selectedCampaign.id} />
-                <p className="rounded-lg border border-border border-l-2 border-l-[var(--tone-rose)] bg-background px-3 py-2 text-sm text-foreground">
-                  Se conectará a <span className="font-medium">{selectedCampaign.name}</span>.
+                <p className="flex items-center gap-2.5 rounded-lg bg-surface-muted px-3 py-2 text-sm text-foreground">
+                  <Avatar name={selectedCampaign.name} size="xs" shape="square" />
+                  <span>
+                    Se conectará a <span className="font-medium">{selectedCampaign.name}</span>.
+                  </span>
                 </p>
               </>
             ) : (
@@ -104,7 +107,7 @@ export function WorkflowCreatePanel({
               <form
                 key={template.id}
                 action={createWorkflowFromTemplate}
-                className="flex flex-col rounded-xl border border-border bg-background p-3 transition-colors hover:border-border-strong"
+                className="flex flex-col rounded-xl border border-border bg-surface p-3 transition-colors hover:border-border-strong"
               >
                 <input type="hidden" name="template_id" value={template.id} />
                 <span className="text-lg leading-none" aria-hidden="true">

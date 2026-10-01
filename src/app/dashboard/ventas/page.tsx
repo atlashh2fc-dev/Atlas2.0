@@ -1,18 +1,18 @@
 import Link from "next/link";
 import { connection } from "next/server";
-import { BadgeDollarSign, Briefcase, CalendarClock, Filter, Trophy } from "lucide-react";
+import { AlertTriangle, BadgeDollarSign, Briefcase, CalendarClock, ChevronRight, Trophy } from "lucide-react";
 
 import { NuevoNegocio } from "@/components/nuevo-negocio";
 import { VistaSegmentada } from "@/components/vista-segmentada";
+import { KpiStrip, KpiStripItem } from "@/components/report-kit";
 import {
+  Avatar,
   Badge,
   EmptyState,
-  MetricCard,
   NavTabs,
   PageHeader,
   SectionCard,
   Table,
-  TableEmpty,
   Tbody,
   Td,
   Th,
@@ -37,7 +37,7 @@ const pesos = new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP
 function formatoMonto(numero: number): string {
   return numero > 0 ? pesos.format(numero) : "Por definir";
 }
-const fecha = new Intl.DateTimeFormat("es-CL", { day: "2-digit", month: "short" });
+const fecha = new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", day: "2-digit", month: "short" });
 
 /**
  * Embudo de ventas.
@@ -108,6 +108,7 @@ export default async function VentasPage() {
     <div className="space-y-5">
       <PageHeader
         title={voc.titulo}
+        icon={Briefcase}
         description={enVentas ? "Cómo van tus negocios: en qué etapa está cada uno y qué toca hacer." : voc.descripcion}
         actions={<NuevoNegocio voc={voc} />}
       />
@@ -118,66 +119,77 @@ export default async function VentasPage() {
         </>
       )}
 
-      {/* Las métricas usan la tarjeta del estándar, igual que el resto de los tableros. */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        <MetricCard
+      {/* Una franja de indicadores, igual que Reportes: se lee como resumen. */}
+      <KpiStrip columns={3}>
+        <KpiStripItem
           label="En juego"
           value={pesos.format(mensualAbierto)}
-          hint={`${abiertas.length} ${abiertas.length === 1 ? `${voc.negocio.toLowerCase()} abierto` : `${voc.negocios.toLowerCase()} abiertos`}`}
-          tooltip={`Suma del monto ${mensual ? "mensual " : ""}de los ${voc.negocios.toLowerCase()} que siguen abiertos.`}
           icon={BadgeDollarSign}
-          iconTone="green"
+          definition={{ text: `Suma del monto ${mensual ? "mensual " : ""}de los ${voc.negocios.toLowerCase()} que siguen abiertos.` }}
+          detail={`${abiertas.length} ${abiertas.length === 1 ? `${voc.negocio.toLowerCase()} abierto` : `${voc.negocios.toLowerCase()} abiertos`}`}
         />
-        <MetricCard
+        <KpiStripItem
           label={mensual ? "Ganado" : "Aceptado"}
           value={pesos.format(mensualGanado)}
-          hint={`${ganadas.length} ${ganadas.length === 1 ? `${voc.negocio.toLowerCase()} cerrado` : `${voc.negocios.toLowerCase()} cerrados`}`}
-          tone={mensualGanado > 0 ? "good" : "default"}
-          tooltip={`Monto ${mensual ? "mensual " : ""}ya comprometido por los ${voc.negocios.toLowerCase()} ganados.`}
           icon={Trophy}
-          iconTone="green"
+          tone={mensualGanado > 0 ? "good" : "default"}
+          definition={{ text: `Monto ${mensual ? "mensual " : ""}ya comprometido por los ${voc.negocios.toLowerCase()} ganados.` }}
+          detail={`${ganadas.length} ${ganadas.length === 1 ? `${voc.negocio.toLowerCase()} cerrado` : `${voc.negocios.toLowerCase()} cerrados`}`}
         />
-        <MetricCard
+        <KpiStripItem
           label="Para hoy"
-          value={vencidas.length}
-          hint={`de ${abiertas.length} ${abiertas.length === 1 ? "abierto" : "abiertos"}`}
-          tone={vencidas.length > 0 ? "warn" : "good"}
-          tooltip={`${voc.negocios} cuya próxima acción ya venció.`}
+          value={vencidas.length.toLocaleString("es-CL")}
           icon={CalendarClock}
-          iconTone="amber"
+          tone={vencidas.length > 0 ? "warn" : "default"}
+          definition={{ text: `${voc.negocios} cuya próxima acción ya venció.` }}
+          detail={`de ${abiertas.length} ${abiertas.length === 1 ? "abierto" : "abiertos"}`}
+          progress={abiertas.length > 0 ? (vencidas.length / abiertas.length) * 100 : undefined}
         />
-      </div>
+      </KpiStrip>
 
       {/* En Center el tablero ya es el embudo: repetirlo acá es ruido. */}
       {!enVentas && (
-        <SectionCard title="Embudo" description="Cuánto hay en cada etapa, solo negocios abiertos." icon={Filter} tone="rose">
-          <div className="grid gap-3 px-5 py-4 sm:grid-cols-2 lg:grid-cols-5">
+        <SectionCard title="Embudo" description="Cuánto hay en cada etapa, solo negocios abiertos.">
+          <ol className="grid gap-px border-t border-border bg-border sm:grid-cols-2 lg:grid-cols-5">
             {listaEtapas
               .filter((etapa) => !etapa.is_won && !etapa.is_lost)
-              .map((etapa) => {
+              .map((etapa, indice) => {
                 const casilla = porEtapa.get(etapa.id);
+                const total = casilla?.total ?? 0;
                 return (
-                  <div
-                    key={etapa.id}
-                    className={`rounded-lg border border-border border-l-2 bg-background px-3 py-2.5 ${(casilla?.total ?? 0) > 0 ? "border-l-[var(--tone-rose)]" : "border-l-border-strong"}`}
-                  >
-                    <p className="text-xs font-medium text-muted-foreground">{etapa.name}</p>
-                    <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-foreground">
-                      {casilla?.total ?? 0}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
+                  <li key={etapa.id} className="flex flex-col gap-1.5 bg-surface px-4 py-3.5">
+                    <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                      <span className="flex size-5 items-center justify-center rounded-md bg-surface-muted text-[10px] font-semibold tabular-nums text-muted-foreground">
+                        {indice + 1}
+                      </span>
+                      <span className="truncate">{etapa.name}</span>
+                    </span>
+                    <span className={`text-2xl font-semibold leading-none tracking-tight tabular-nums ${total > 0 ? "text-foreground" : "text-muted-foreground/60"}`}>
+                      {total}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
                       {(casilla?.monto ?? 0) > 0
                         ? `${pesos.format(casilla?.monto ?? 0)}${mensual ? "/mes" : ""}`
-                        : "sin monto todavía"}
-                    </p>
-                  </div>
+                        : "Sin monto todavía"}
+                    </span>
+                  </li>
                 );
               })}
-          </div>
+          </ol>
         </SectionCard>
       )}
 
-      <SectionCard title={voc.negocios} description="Ordenados por la próxima acción: primero lo vencido." icon={Briefcase} tone="green">
+      <SectionCard
+        title={voc.negocios}
+        description="Ordenados por la próxima acción: primero lo vencido."
+        actions={
+          listaOportunidades.length > 0 ? (
+            <span className="rounded-md bg-surface-muted px-1.5 py-px text-[11px] font-semibold tabular-nums text-muted-foreground">
+              {listaOportunidades.length.toLocaleString("es-CL")}
+            </span>
+          ) : undefined
+        }
+      >
         {listaOportunidades.length === 0 ? (
           <EmptyState
             icon={Briefcase}
@@ -185,55 +197,74 @@ export default async function VentasPage() {
             description="Crea la primera con el botón de arriba, o deja que llegue desde una campaña."
           />
         ) : (
-          <Table>
-            <Thead>
-              <Th>{voc.cuenta}</Th>
-              <Th>{voc.negocio}</Th>
-              <Th>Etapa</Th>
-              <Th>{mensual ? "Mensual" : "Monto"}</Th>
-              <Th>Próxima acción</Th>
-            </Thead>
-            <Tbody>
-              {listaOportunidades.length === 0 && (
-                <TableEmpty colSpan={5}>Sin {voc.negocios.toLowerCase()}.</TableEmpty>
-              )}
-              {listaOportunidades.map((negocio) => {
-                const vencida =
-                  negocio.status === "abierta" && negocio.next_action_at && negocio.next_action_at <= ahora;
-                return (
-                  <Tr key={negocio.id}>
-                    <Td className="font-medium text-foreground">
-                      <Link className="hover:underline" href={`/dashboard/ventas/${negocio.id}`}>
-                        {nombreEmpresa(negocio)}
-                      </Link>
-                    </Td>
-                    <Td className="text-muted-foreground">{negocio.name}</Td>
-                    <Td>
-                      <Badge
-                        tone={
-                          negocio.status === "ganada"
-                            ? "success"
-                            : negocio.status === "perdida"
-                              ? "danger"
-                              : "neutral"
-                        }
-                      >
-                        {etapaDe(negocio)}
-                      </Badge>
-                    </Td>
-                    <Td className={montoDe(negocio) > 0 ? undefined : "text-muted-foreground"}>
-                      {formatoMonto(montoDe(negocio))}
-                    </Td>
-                    <Td className={vencida ? "text-danger" : "text-muted-foreground"}>
-                      {negocio.next_action_at
-                        ? `${fecha.format(new Date(negocio.next_action_at))}${negocio.next_action_note ? ` · ${negocio.next_action_note}` : ""}`
-                        : "Sin agendar"}
-                    </Td>
-                  </Tr>
-                );
-              })}
-            </Tbody>
-          </Table>
+          <div className="overflow-x-auto">
+            <Table>
+              <Thead>
+                <Th>{voc.cuenta}</Th>
+                <Th>Etapa</Th>
+                <Th align="right">{mensual ? "Mensual" : "Monto"}</Th>
+                <Th>Próxima acción</Th>
+                <Th className="w-10"><span className="sr-only">Abrir</span></Th>
+              </Thead>
+              <Tbody>
+                {listaOportunidades.map((negocio) => {
+                  const vencida =
+                    negocio.status === "abierta" && negocio.next_action_at && negocio.next_action_at <= ahora;
+                  const href = `/dashboard/ventas/${negocio.id}`;
+                  return (
+                    <Tr key={negocio.id}>
+                      <Td>
+                        {/* Dos líneas por celda: la cuenta y, debajo, el negocio. */}
+                        <Link href={href} className="flex min-w-0 items-center gap-3">
+                          <Avatar name={nombreEmpresa(negocio)} shape="square" size="md" />
+                          <span className="min-w-0">
+                            <span className="block max-w-72 truncate font-medium text-foreground group-hover:text-primary">{nombreEmpresa(negocio)}</span>
+                            <span className="block max-w-72 truncate text-xs text-muted-foreground">{negocio.name}</span>
+                          </span>
+                        </Link>
+                      </Td>
+                      <Td>
+                        <Badge
+                          tone={
+                            negocio.status === "ganada"
+                              ? "success"
+                              : negocio.status === "perdida"
+                                ? "danger"
+                                : "info"
+                          }
+                        >
+                          {etapaDe(negocio)}
+                        </Badge>
+                      </Td>
+                      <Td align="right" className={montoDe(negocio) > 0 ? "font-medium text-foreground" : "text-muted-foreground"}>
+                        {formatoMonto(montoDe(negocio))}
+                      </Td>
+                      <Td>
+                        {negocio.next_action_at ? (
+                          <span className="block min-w-0">
+                            <span className={`inline-flex items-center gap-1.5 whitespace-nowrap ${vencida ? "font-medium text-danger" : "text-foreground"}`}>
+                              {vencida && <AlertTriangle size={12} aria-hidden="true" />}
+                              {fecha.format(new Date(negocio.next_action_at))}
+                            </span>
+                            {negocio.next_action_note && (
+                              <span className="block max-w-64 truncate text-xs text-muted-foreground">{negocio.next_action_note}</span>
+                            )}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">Sin agendar</span>
+                        )}
+                      </Td>
+                      <Td className="w-10 pr-3">
+                        <Link href={href} aria-label={`Abrir ${nombreEmpresa(negocio)}`} className="flex justify-end">
+                          <ChevronRight size={16} className="text-muted-foreground/60 transition-transform group-hover:translate-x-0.5 group-hover:text-foreground" aria-hidden="true" />
+                        </Link>
+                      </Td>
+                    </Tr>
+                  );
+                })}
+              </Tbody>
+            </Table>
+          </div>
         )}
       </SectionCard>
     </div>

@@ -1,3 +1,4 @@
+import { Headphones } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { requireModule } from "@/lib/modules.server";
 import { getTabs } from "@/lib/nav.config";
@@ -11,6 +12,7 @@ export default async function CalidadLayout({ children }: { children: React.Reac
     <div className="space-y-5">
       <PageHeader
         title="Calidad"
+        icon={Headphones}
         description="Revisa grabaciones, transcripciones y resultados del control de calidad."
         className="border-b-0 pb-0"
       />

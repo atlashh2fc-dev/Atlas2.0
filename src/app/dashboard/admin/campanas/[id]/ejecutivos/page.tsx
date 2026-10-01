@@ -1,4 +1,4 @@
-import { Clock, Headset, UserPlus, Users, X } from "lucide-react";
+import { Clock, Users, X } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -9,7 +9,8 @@ import {
   setCampaignAgentManualDial,
   setCampaignManualDialForAll,
 } from "@/app/actions/campaigns";
-import { ActionForm, ActionSubmit, Badge, EmptyState, SectionCard } from "@/components/ui";
+import { ActionForm, ActionSubmit, Avatar, Badge, EmptyState, SectionCard } from "@/components/ui";
+import { Conteo, PieDeFormulario } from "../../../_diseno";
 
 type CampaignAgentSchedule = {
   id: string;
@@ -62,13 +63,16 @@ export default async function CampaignAgentsPage({ params }: { params: Promise<{
   return (
     <div className="space-y-5">
       <SectionCard
-        icon={Users}
-        tone="blue"
-        title={`Ejecutivos asignados (${(members ?? []).length})`}
+        title={
+          <>
+            Ejecutivos asignados
+            <Conteo>{(members ?? []).length}</Conteo>
+          </>
+        }
         description="Al asignar un ejecutivo, Atlas habilita por detrás su extensión, campaña activa y colas vinculadas. El permiso híbrido solo agrega llamadas manuales seguras."
       >
         {(members ?? []).length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 border-b border-border p-4">
+          <div className="flex flex-wrap items-center gap-2 border-y border-border bg-surface-raised px-5 py-2.5">
             <span className="mr-auto text-xs text-muted-foreground">
               Puedes habilitar algunos ejecutivos o todos.
             </span>
@@ -91,7 +95,8 @@ export default async function CampaignAgentsPage({ params }: { params: Promise<{
             <EmptyState
               icon={Users}
               title="Sin ejecutivos asignados."
-              description="La campaña no puede operar hasta que tenga al menos uno."
+              description="La campaña no puede operar hasta que tenga al menos uno. Agrégalos abajo."
+              className="border-t border-border"
             />
           )}
 
@@ -104,12 +109,10 @@ export default async function CampaignAgentsPage({ params }: { params: Promise<{
             const memberSchedules = schedulesByMembership.get(member.id) ?? [];
 
             return (
-              <div key={member.id} className="p-4">
+              <div key={member.id} className="px-5 py-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-start gap-3">
-                    <span className="icon-chip mt-0.5 size-8 rounded-full" data-tone="blue" aria-hidden="true">
-                      <Headset size={15} />
-                    </span>
+                    <Avatar name={profile?.full_name} size="md" className="mt-0.5" />
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-foreground">{profile?.full_name ?? "—"}</p>
                       <p className="text-xs text-muted-foreground">{profile?.email ?? "—"}</p>
@@ -152,7 +155,7 @@ export default async function CampaignAgentsPage({ params }: { params: Promise<{
                   </div>
                 </div>
 
-                <div className="mt-2 flex flex-wrap items-center gap-2 pl-11">
+                <div className="mt-2 flex flex-wrap items-center gap-2 pl-12">
                   {memberSchedules.map((schedule) => {
                     const days = schedule.days_of_week.map((day) => DAY_LABELS[day]).join(" · ");
                     const range = `${schedule.start_time.slice(0, 5)}–${schedule.end_time.slice(0, 5)}`;
@@ -188,14 +191,14 @@ export default async function CampaignAgentsPage({ params }: { params: Promise<{
                   )}
                 </div>
 
-                <details className="mt-2 pl-11">
+                <details className="mt-2 pl-12">
                   <summary className="cursor-pointer text-xs font-medium text-primary">
                     Agregar horario especial (opcional)
                   </summary>
                   <ActionForm
                     action={addCampaignAgentSchedule}
                     success="Horario agregado"
-                    className="mt-2 flex flex-wrap items-end gap-2 rounded-lg border border-border bg-background p-2"
+                    className="mt-2 flex flex-wrap items-end gap-3 rounded-lg bg-surface-raised px-3 py-2.5"
                   >
                     <input type="hidden" name="campaign_id" value={id} />
                     <input type="hidden" name="membership_id" value={member.id} />
@@ -240,8 +243,6 @@ export default async function CampaignAgentsPage({ params }: { params: Promise<{
       </SectionCard>
 
       <SectionCard
-        icon={UserPlus}
-        tone="blue"
         title="Agregar ejecutivos"
         description={
           availableAgents.length > 0
@@ -249,19 +250,20 @@ export default async function CampaignAgentsPage({ params }: { params: Promise<{
             : "Todos los ejecutivos activos ya están en esta campaña."
         }
       >
-        <ActionForm action={addCampaignAgent} success="Ejecutivos agregados" className="p-4">
+        <ActionForm action={addCampaignAgent} success="Ejecutivos agregados" className="border-t border-border">
           <input type="hidden" name="campaign_id" value={id} />
-          {/* Tarjetas con casilla, como en Miembros de la cola: el multiselect
+          {/* Lista con casilla, como en Miembros de la cola: el multiselect
               nativo exigía Ctrl/Cmd + clic y un clic suelto borraba la selección. */}
           {availableAgents.length > 0 && (
-            <fieldset className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            <fieldset className="grid gap-x-2 gap-y-0.5 px-3 py-3 sm:grid-cols-2 xl:grid-cols-3">
               <legend className="sr-only">Ejecutivos disponibles</legend>
               {availableAgents.map((agent) => (
                 <label
                   key={agent.id}
-                  className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-border bg-background p-3 transition-colors hover:border-border-strong has-[:checked]:border-primary has-[:checked]:bg-primary/5"
+                  className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-surface-muted/70 has-[:checked]:bg-primary/[0.06]"
                 >
-                  <input type="checkbox" name="profile_ids" value={agent.id} className="accent-primary" />
+                  <input type="checkbox" name="profile_ids" value={agent.id} className="size-4 accent-primary" />
+                  <Avatar name={agent.full_name} size="sm" />
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-medium text-foreground">{agent.full_name}</span>
                     <span className="block truncate text-xs text-muted-foreground">{agent.email}</span>
@@ -270,9 +272,11 @@ export default async function CampaignAgentsPage({ params }: { params: Promise<{
               ))}
             </fieldset>
           )}
-          <ActionSubmit className="mt-4" disabled={availableAgents.length === 0} pendingLabel="Agregando…">
-            Agregar seleccionados
-          </ActionSubmit>
+          <PieDeFormulario>
+            <ActionSubmit disabled={availableAgents.length === 0} pendingLabel="Agregando…">
+              Agregar seleccionados
+            </ActionSubmit>
+          </PieDeFormulario>
         </ActionForm>
       </SectionCard>
     </div>

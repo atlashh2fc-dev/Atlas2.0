@@ -1,7 +1,27 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
-import { ArrowRightLeft, Building2, ClipboardList, FileText, History, Mail, MessageCircle, Send, Signpost, UserRound } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRightLeft,
+  ArrowUpRight,
+  Building2,
+  CalendarClock,
+  CheckCircle2,
+  FileText,
+  Flag,
+  History,
+  ListTodo,
+  Mail,
+  MessageCircle,
+  PhoneCall,
+  Send,
+  Signpost,
+  StickyNote,
+  UserRound,
+  Users,
+  XCircle,
+} from "lucide-react";
 
 import { moverEtapa, registrarGestion } from "@/app/actions/ventas";
 import { cerrarNegocio, escribirAlNegocio, fijarProximaAccion } from "@/app/actions/pipeline";
@@ -10,21 +30,34 @@ import { MailThreadPanel, type LeadMailMessage, type LeadMailReplyCommand } from
 import {
   ActionForm,
   ActionSubmit,
+  Avatar,
   Badge,
   buttonClasses,
+  Callout,
+  EmptyState,
   Field,
   Input,
-  PageHeader,
   SectionCard,
   Select,
-  Table,
-  TableEmpty,
-  Tbody,
-  Td,
-  Th,
-  Thead,
-  Tr,
 } from "@/components/ui";
+import {
+  CountBox,
+  Property,
+  PropertyGroup,
+  PropertyList,
+  RecordFact,
+  RecordFacts,
+  RecordHeader,
+  StateChip,
+  Timeline,
+  TimelineItem,
+  TimelineNote,
+  dateTimeLabel,
+  dayLabel,
+  relativeLabel,
+  sentenceCase,
+  type ChipTone,
+} from "@/components/record-kit";
 import { requireProfile } from "@/lib/auth";
 import { VENTAS_POR_EDICION } from "@/lib/ediciones";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
@@ -52,13 +85,6 @@ function detallePersona(metadata: unknown): { etiqueta: string; valor: string }[
   }
   return filas;
 }
-const cuando = new Intl.DateTimeFormat("es-CL", {
-  day: "2-digit",
-  month: "short",
-  hour: "2-digit",
-  minute: "2-digit",
-});
-
 const ETIQUETA_GESTION: Record<string, string> = {
   llamada: "Llamada",
   correo: "Correo",
@@ -67,6 +93,17 @@ const ETIQUETA_GESTION: Record<string, string> = {
   nota: "Nota",
   tarea: "Tarea",
   etapa: "Embudo",
+};
+
+/** Ícono y tono de cada tipo de gestión en la línea de tiempo. */
+const TIPO_GESTION: Record<string, { icon: typeof PhoneCall; tone: ChipTone }> = {
+  llamada: { icon: PhoneCall, tone: "primary" },
+  correo: { icon: Mail, tone: "teal" },
+  whatsapp: { icon: MessageCircle, tone: "green" },
+  reunion: { icon: Users, tone: "violet" },
+  nota: { icon: StickyNote, tone: "slate" },
+  tarea: { icon: ListTodo, tone: "amber" },
+  etapa: { icon: ArrowRightLeft, tone: "blue" },
 };
 
 /** Supabase entrega las relaciones como arreglo; acá siempre es una sola fila. */
@@ -145,190 +182,345 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
   const telefono = (contacto?.phone ?? empresa?.phone ?? "").replace(/\D/g, "");
   const whatsapp = telefono.length >= 11 ? telefono : null;
 
+  // Estado del negocio con ícono en chip: ganado, perdido o en curso.
+  const estado =
+    negocio.status === "ganada"
+      ? { icon: CheckCircle2, tone: "green" as const, danger: false }
+      : negocio.status === "perdida"
+        ? { icon: XCircle, tone: "rose" as const, danger: true }
+        : { icon: Signpost, tone: "primary" as const, danger: false };
+  const proximaVencida = negocio.next_action_at ? new Date(negocio.next_action_at).getTime() <= new Date().getTime() : false;
+  const listaGestiones = gestiones ?? [];
+
   return (
-    <div className="space-y-5">
-      <PageHeader
-        title={empresa?.name ?? voc.negocio}
-        description={`${negocio.name} · ${formatoMonto(monto, mensual)}`}
+    <div className="space-y-6">
+      <Link
+        href="/dashboard/ventas"
+        className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary"
+      >
+        <ArrowLeft size={13} aria-hidden="true" />
+        Volver a {voc.negocios.toLowerCase()}
+      </Link>
+
+      <RecordHeader
+        name={empresa?.name ?? voc.negocio}
+        seed={empresa?.rut ?? empresa?.name ?? negocio.name}
+        eyebrow={negocio.name}
+        identifiers={[
+          empresa?.rut ? <span className="tabular-nums">RUT {empresa.rut}</span> : null,
+          empresa?.industry ?? null,
+          empresa?.commune ?? null,
+        ]}
         actions={
-          <div className="flex flex-wrap items-center gap-2">
-            {(correo || whatsapp) && (
-              <a className={buttonClasses({ variant: "secondary", size: "sm" })} href="#escribir">
-                Escribir desde Atlas
-              </a>
-            )}
+          <>
             {leadId && (
               <Link className={buttonClasses({ variant: "ghost", size: "sm" })} href={`/dashboard/leads/${leadId}`}>
                 Ver registro
+                <ArrowUpRight size={13} aria-hidden="true" />
               </Link>
             )}
-            <Link
-              className="text-sm text-muted-foreground hover:text-foreground hover:underline"
-              href="/dashboard/ventas"
+            {(correo || whatsapp) && (
+              <a className={buttonClasses({ variant: "secondary", size: "sm" })} href="#escribir">
+                <Send size={13} aria-hidden="true" />
+                Escribir desde Atlas
+              </a>
+            )}
+          </>
+        }
+        facts={
+          <RecordFacts>
+            <RecordFact label="Etapa" detail={negocio.source ? `Origen: ${negocio.source}` : undefined}>
+              <StateChip icon={estado.icon} tone={estado.tone} label={etapaActual?.name ?? "Sin etapa"} danger={estado.danger} />
+            </RecordFact>
+            <RecordFact label={mensual ? "Monto mensual" : "Monto"}>
+              <span className={monto > 0 ? "tabular-nums" : "text-muted-foreground"}>{formatoMonto(monto, mensual)}</span>
+            </RecordFact>
+            <RecordFact
+              label="Próxima acción"
+              detail={negocio.next_action_at ? negocio.next_action_note ?? dateTimeLabel(negocio.next_action_at) : "Nada agendado"}
             >
-              Volver a {voc.negocios.toLowerCase()}
-            </Link>
-          </div>
+              {negocio.next_action_at ? (
+                <span className={proximaVencida && abierto ? "text-danger" : undefined} title={dateTimeLabel(negocio.next_action_at)}>
+                  {proximaVencida && abierto ? "Vencida · " : ""}
+                  {relativeLabel(negocio.next_action_at)}
+                </span>
+              ) : (
+                <span className="text-muted-foreground">Sin agendar</span>
+              )}
+            </RecordFact>
+            <RecordFact label="Cierre estimado">
+              {negocio.expected_close_date ? (
+                // Es una fecha sin hora: al mediodía no se corre de día por la zona.
+                dayLabel(`${String(negocio.expected_close_date).slice(0, 10)}T12:00:00Z`)
+              ) : (
+                <span className="text-muted-foreground">Sin fecha</span>
+              )}
+            </RecordFact>
+            <RecordFact label="Actividad" detail={listaGestiones[0] ? `Última ${relativeLabel(listaGestiones[0].occurred_at).toLocaleLowerCase("es-CL")}` : undefined}>
+              <span className="tabular-nums">
+                {listaGestiones.length} {listaGestiones.length === 1 ? "gestión" : "gestiones"}
+              </span>
+            </RecordFact>
+          </RecordFacts>
         }
       />
 
-      <div className="grid gap-3 lg:grid-cols-3">
-        <SectionCard title="Estado" description={`En qué va ${mensual ? "el negocio" : `el ${voc.negocio.toLowerCase()}`}.`} icon={Signpost} tone="green">
-          <div className="space-y-2 px-5 py-4 text-sm">
-            <p>
-              <Badge tone={negocio.status === "ganada" ? "success" : negocio.status === "perdida" ? "danger" : "neutral"}>
-                {etapaActual?.name ?? "Sin etapa"}
-              </Badge>
-            </p>
-            <p className="text-muted-foreground">
-              Próxima acción:{" "}
-              {negocio.next_action_at
-                ? `${cuando.format(new Date(negocio.next_action_at))}${negocio.next_action_note ? ` · ${negocio.next_action_note}` : ""}`
-                : "sin agendar"}
-            </p>
-            {negocio.expected_close_date && (
-              <p className="text-muted-foreground">Cierre estimado: {negocio.expected_close_date}</p>
-            )}
-            {negocio.source && <p className="text-muted-foreground">Origen: {negocio.source}</p>}
-            {negocio.lost_reason && <p className="text-danger">Motivo de pérdida: {negocio.lost_reason}</p>}
-          </div>
-        </SectionCard>
+      {negocio.lost_reason && <Callout tone="danger">Motivo de pérdida: {negocio.lost_reason}</Callout>}
 
-        <SectionCard title={voc.cuenta} description="Con quién se está hablando." icon={Building2} tone="blue">
-          <div className="space-y-1 px-5 py-4 text-sm text-muted-foreground">
-            <p className="font-medium text-foreground">{empresa?.name}</p>
-            {empresa?.rut && <p>RUT {empresa.rut}</p>}
-            {voc.personas && (contacto?.phone ?? empresa?.phone) && <p>{contacto?.phone ?? empresa?.phone}</p>}
-            {voc.personas && (contacto?.email ?? empresa?.email) && <p>{contacto?.email ?? empresa?.email}</p>}
-            {empresa?.industry && <p>{empresa.industry}</p>}
-            {empresa?.commune && <p>{empresa.commune}</p>}
-            {empresa?.website && (
-              <p>
-                <a className="hover:underline" href={empresa.website} target="_blank" rel="noopener noreferrer">
-                  {empresa.website}
-                </a>
-              </p>
-            )}
-          </div>
-        </SectionCard>
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]">
+        <div className="min-w-0 space-y-5">
+          <SectionCard title="Registrar gestión" description="Con fecha futura queda como la próxima acción.">
+            <ActionForm action={registrarGestion} success="Gestión registrada">
+              <input type="hidden" name="oportunidad_id" value={negocio.id} />
+              <div className="flex flex-wrap items-end gap-3 border-t border-border px-5 py-4">
+                <Field label="Tipo">
+                  <Select name="tipo" defaultValue="llamada">
+                    <option value="llamada">Llamada</option>
+                    <option value="correo">Correo</option>
+                    <option value="whatsapp">WhatsApp</option>
+                    <option value="reunion">Reunión</option>
+                    <option value="nota">Nota</option>
+                    <option value="tarea">Tarea</option>
+                  </Select>
+                </Field>
+                <Field label="Qué pasó o qué hay que hacer" className="min-w-[14rem] flex-1">
+                  <Input name="asunto" required placeholder="Le envié la propuesta" />
+                </Field>
+                <Field label="Cuándo (opcional)">
+                  <Input name="vence" type="datetime-local" />
+                </Field>
+                {/* La acción principal de la ficha: el resto de los botones son secundarios. */}
+                <ActionSubmit pendingLabel="Registrando…">Registrar</ActionSubmit>
+              </div>
+            </ActionForm>
+          </SectionCard>
 
-        {voc.personas ? (
-          <SectionCard title="Ficha" description="Lo que la clínica sabe de este caso." icon={FileText} tone="blue">
-            {detalle.length > 0 ? (
-              <dl className="space-y-1 px-5 py-4 text-sm">
-                {detalle.map((fila) => (
-                  <div key={fila.etiqueta} className="flex gap-2">
-                    <dt className="text-muted-foreground">{fila.etiqueta}:</dt>
-                    <dd className="font-medium text-foreground">{fila.valor}</dd>
-                  </div>
-                ))}
-              </dl>
+          <SectionCard
+            title="Historia"
+            description={`Todo lo que pasó con ${mensual ? "este negocio" : `este ${voc.negocio.toLowerCase()}`}.`}
+            actions={<CountBox>{listaGestiones.length}</CountBox>}
+          >
+            {listaGestiones.length === 0 ? (
+              <EmptyState
+                icon={History}
+                title="Sin gestiones todavía"
+                description="Registra la primera arriba: queda acá con su fecha y, si es futura, como próxima acción."
+                className="border-t border-border py-10"
+              />
             ) : (
-              <p className="px-5 py-4 text-sm text-muted-foreground">Sin datos adicionales.</p>
+              <Timeline className="border-t border-border px-5 py-5">
+                {listaGestiones.map((gestion, index) => {
+                  const tipo = TIPO_GESTION[gestion.kind] ?? { icon: StickyNote, tone: "slate" as const };
+                  return (
+                    <TimelineItem
+                      key={gestion.id}
+                      icon={tipo.icon}
+                      tone={tipo.tone}
+                      title={gestion.subject ?? "—"}
+                      date={gestion.due_at ?? gestion.occurred_at}
+                      meta={
+                        <>
+                          <span>{ETIQUETA_GESTION[gestion.kind] ?? gestion.kind}</span>
+                          {!gestion.done && (
+                            <>
+                              <span aria-hidden="true">·</span>
+                              <Badge tone="warning">Pendiente</Badge>
+                            </>
+                          )}
+                        </>
+                      }
+                      last={index === listaGestiones.length - 1}
+                    >
+                      {gestion.body && <TimelineNote>{gestion.body}</TimelineNote>}
+                    </TimelineItem>
+                  );
+                })}
+              </Timeline>
             )}
           </SectionCard>
-        ) : (
-        <SectionCard title="Contacto" description="Quién decide o responde." icon={UserRound} tone="blue">
-          {contacto ? (
-            <div className="space-y-1 px-5 py-4 text-sm text-muted-foreground">
-              <p className="font-medium text-foreground">{contacto.full_name}</p>
-              {contacto.role_title && <p>{contacto.role_title}</p>}
-              {contacto.email && <p>{contacto.email}</p>}
-              {contacto.phone && <p>{contacto.phone}</p>}
-            </div>
-          ) : (
-            <p className="px-5 py-4 text-sm text-muted-foreground">Sin contacto registrado.</p>
-          )}
-        </SectionCard>
-        )}
-      </div>
 
-      {abierto && (
-        <SectionCard title={mensual ? "Mover el negocio" : `Mover el ${voc.negocio.toLowerCase()}`} description="Cada movimiento queda registrado en la historia." icon={ArrowRightLeft} tone="green">
-          <ActionForm action={moverEtapa} success="Etapa actualizada">
-            <input type="hidden" name="oportunidad_id" value={negocio.id} />
-            <div className="flex flex-wrap items-end gap-3 px-5 py-4">
-              <Field label="Etapa">
-                <Select name="etapa" defaultValue={etapaActual?.key ?? ""}>
-                  {(etapas ?? []).map((etapa) => (
-                    <option key={etapa.key} value={etapa.key}>
-                      {etapa.name}
-                    </option>
-                  ))}
+          <div id="escribir" className="scroll-mt-4" />
+          <SectionCard
+            title="Escribir desde Atlas"
+            description="Correo al contacto del negocio por el puente con Atlas Lead; WhatsApp si la empresa tiene el canal. Queda en la historia y con su estado."
+          >
+            <ActionForm action={escribirAlNegocio} success="Mensaje enviado; queda en la historia del negocio" className="space-y-3 border-t border-border px-5 py-4">
+              <input type="hidden" name="oportunidad_id" value={negocio.id} />
+              <input type="hidden" name="cuenta_id" value={empresa?.id ?? ""} />
+              <div className="flex flex-wrap gap-2">
+                <Select name="canal" defaultValue="correo" aria-label="Canal" className="w-40">
+                  <option value="correo">Correo{(empresa?.email ?? contacto?.email) ? ` · ${empresa?.email ?? contacto?.email}` : " · sin correo"}</option>
+                  <option value="whatsapp">WhatsApp{(empresa?.phone ?? contacto?.phone) ? ` · ${empresa?.phone ?? contacto?.phone}` : " · sin celular"}</option>
                 </Select>
-              </Field>
-              <Field label="Nota (motivo si se pierde)">
-                <Input name="nota" placeholder="Pidió esperar al próximo trimestre" />
-              </Field>
-              <ActionSubmit variant="secondary" pendingLabel="Actualizando…">Actualizar</ActionSubmit>
-            </div>
-          </ActionForm>
-        </SectionCard>
-      )}
+                <Input name="asunto" placeholder="Asunto (correo)" className="flex-1" defaultValue={`Sobre ${negocio.name}`} />
+              </div>
+              <textarea name="texto" required rows={4} maxLength={5000} placeholder={`Hola ${contacto?.full_name?.split(" ")[0] ?? ""}, …`} className="w-full rounded-lg border border-border-strong/70 bg-surface px-3 py-2 text-sm text-foreground shadow-sm placeholder:text-muted-foreground/70 focus:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30" />
+              <div className="flex justify-end">
+                <ActionSubmit variant="secondary" pendingLabel="Enviando…">Enviar</ActionSubmit>
+              </div>
+            </ActionForm>
+            {mensajesEnviados.length > 0 && (
+              <ul className="divide-y divide-border border-t border-border">
+                {mensajesEnviados.map((mensaje) => {
+                  const etiqueta = ETIQUETA_ESTADO_MENSAJE[mensaje.estado as EstadoMensaje] ?? ETIQUETA_ESTADO_MENSAJE.programado;
+                  const esCorreo = mensaje.canal === "correo";
+                  return (
+                    <li key={mensaje.id} className="flex items-start gap-3 px-5 py-3 text-sm">
+                      <span className="icon-chip mt-0.5 size-7 rounded-lg" data-tone={esCorreo ? "teal" : "green"} aria-hidden="true">
+                        {esCorreo ? <Mail size={13} /> : <MessageCircle size={13} />}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium text-foreground">{mensaje.asunto ?? mensaje.cuerpo ?? ""}</p>
+                        <p className="text-xs text-muted-foreground" title={dateTimeLabel(mensaje.created_at)}>
+                          {esCorreo ? "Correo" : "WhatsApp"} · {relativeLabel(mensaje.created_at)}
+                        </p>
+                        {mensaje.error && <p className="mt-0.5 text-xs text-danger">{mensaje.error}</p>}
+                      </div>
+                      <Badge tone={etiqueta.tone}>{etiqueta.label}</Badge>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </SectionCard>
 
-      <SectionCard title="Registrar gestión" description="Con fecha futura queda como la próxima acción." icon={ClipboardList} tone="amber">
-        <ActionForm action={registrarGestion} success="Gestión registrada">
-          <input type="hidden" name="oportunidad_id" value={negocio.id} />
-          <div className="flex flex-wrap items-end gap-3 px-5 py-4">
-            <Field label="Tipo">
-              <Select name="tipo" defaultValue="llamada">
-                <option value="llamada">Llamada</option>
-                <option value="correo">Correo</option>
-                <option value="whatsapp">WhatsApp</option>
-                <option value="reunion">Reunión</option>
-                <option value="nota">Nota</option>
-                <option value="tarea">Tarea</option>
-              </Select>
-            </Field>
-            <Field label="Qué pasó o qué hay que hacer">
-              <Input name="asunto" required placeholder="Le envié la propuesta" />
-            </Field>
-            <Field label="Cuándo (opcional)">
-              <Input name="vence" type="datetime-local" />
-            </Field>
-            {/* La acción principal de la ficha: el resto de los botones son secundarios. */}
-            <ActionSubmit pendingLabel="Registrando…">Registrar</ActionSubmit>
-          </div>
-        </ActionForm>
-      </SectionCard>
+          {leadId && senales.length > 0 && (
+            <SectionCard
+              title="Señales de la campaña de correo"
+              description="Lo que llegó desde Atlas Lead: aperturas, clics y respuestas de esta persona."
+              actions={<CountBox>{senales.length}</CountBox>}
+            >
+              <ul className="divide-y divide-border border-t border-border">
+                {senales.slice(0, 12).map((senal) => {
+                  const fecha = senal.occurred_at ?? senal.created_at;
+                  const fuente = primero(senal.integration_sources)?.name ?? null;
+                  return (
+                    <li key={senal.id} className="flex items-center gap-3 px-5 py-2.5 text-sm">
+                      <span className="icon-chip size-6 rounded-md" data-tone="teal" aria-hidden="true">
+                        <Mail size={12} />
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-foreground">
+                        {sentenceCase(senal.event_type.replace(/[._]/g, " "))}
+                        {fuente && <span className="text-muted-foreground"> · {fuente}</span>}
+                      </span>
+                      <time className="shrink-0 text-xs tabular-nums text-muted-foreground" title={dateTimeLabel(fecha)}>
+                        {relativeLabel(fecha)}
+                      </time>
+                    </li>
+                  );
+                })}
+              </ul>
+            </SectionCard>
+          )}
 
-      <div id="escribir" />
-      <SectionCard title="Escribir desde Atlas" description="Correo al contacto del negocio por el puente con Atlas Lead; WhatsApp si la empresa tiene el canal. Queda en la historia y con su estado." icon={Send} tone="teal">
-        <div className="grid gap-4 px-4 py-4 lg:grid-cols-[1fr_320px]">
-          <ActionForm action={escribirAlNegocio} success="Mensaje enviado; queda en la historia del negocio" className="space-y-2">
-            <input type="hidden" name="oportunidad_id" value={negocio.id} />
-            <input type="hidden" name="cuenta_id" value={empresa?.id ?? ""} />
-            <div className="flex flex-wrap gap-2">
-              <Select name="canal" defaultValue="correo" aria-label="Canal" className="w-40">
-                <option value="correo">Correo{(empresa?.email ?? contacto?.email) ? ` · ${empresa?.email ?? contacto?.email}` : " · sin correo"}</option>
-                <option value="whatsapp">WhatsApp{(empresa?.phone ?? contacto?.phone) ? ` · ${empresa?.phone ?? contacto?.phone}` : " · sin celular"}</option>
-              </Select>
-              <Input name="asunto" placeholder="Asunto (correo)" className="flex-1" defaultValue={`Sobre ${negocio.name}`} />
-            </div>
-            <textarea name="texto" required rows={4} maxLength={5000} placeholder={`Hola ${contacto?.full_name?.split(" ")[0] ?? ""}, …`} className="w-full rounded-lg border border-border-strong/70 bg-surface px-3 py-2 text-sm text-foreground shadow-sm placeholder:text-muted-foreground/70 focus:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30" />
-            <ActionSubmit variant="secondary" pendingLabel="Enviando…">Enviar</ActionSubmit>
-          </ActionForm>
-          <div className="space-y-3">
-            <ActionForm action={fijarProximaAccion} success="Próxima acción fijada" className="space-y-2 rounded-lg border border-border border-l-2 border-l-warning bg-surface-muted/40 p-3">
-              <p className="text-xs font-medium text-muted-foreground">Próxima acción</p>
+          {leadId && hiloCampana.length > 0 && (
+            <MailThreadPanel leadId={leadId} messages={hiloCampana} commands={comandosCampana} canReply={false} />
+          )}
+        </div>
+
+        <aside
+          aria-label={`Datos del ${voc.negocio.toLowerCase()}`}
+          className="atlas-panel divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface shadow-sm"
+        >
+          <PropertyGroup icon={Building2} title={voc.cuenta}>
+            <PropertyList>
+              <Property label="Nombre">{empresa?.name ?? "—"}</Property>
+              {empresa?.rut && <Property label="RUT"><span className="tabular-nums">{empresa.rut}</span></Property>}
+              {voc.personas && (contacto?.phone ?? empresa?.phone) && (
+                <Property label="Teléfono"><span className="tabular-nums">{contacto?.phone ?? empresa?.phone}</span></Property>
+              )}
+              {voc.personas && (contacto?.email ?? empresa?.email) && (
+                <Property label="Correo"><span className="break-all">{contacto?.email ?? empresa?.email}</span></Property>
+              )}
+              {empresa?.industry && <Property label="Rubro">{empresa.industry}</Property>}
+              {empresa?.commune && <Property label="Comuna">{empresa.commune}</Property>}
+              {empresa?.website && (
+                <Property label="Sitio">
+                  <a className="break-all text-foreground hover:text-primary hover:underline" href={empresa.website} target="_blank" rel="noopener noreferrer">
+                    {empresa.website.replace(/^https?:\/\//, "")}
+                  </a>
+                </Property>
+              )}
+            </PropertyList>
+          </PropertyGroup>
+
+          {voc.personas ? (
+            <PropertyGroup icon={FileText} title="Ficha">
+              {detalle.length > 0 ? (
+                <PropertyList>
+                  {detalle.map((fila) => (
+                    <Property key={fila.etiqueta} label={fila.etiqueta}>{fila.valor}</Property>
+                  ))}
+                </PropertyList>
+              ) : (
+                <p className="text-[13px] text-muted-foreground">Sin datos adicionales.</p>
+              )}
+            </PropertyGroup>
+          ) : (
+            <PropertyGroup icon={UserRound} title="Contacto">
+              {contacto ? (
+                <div className="flex items-start gap-2.5 text-[13px]">
+                  <Avatar name={contacto.full_name} size="sm" />
+                  <div className="min-w-0">
+                    <p className="font-medium text-foreground">{contacto.full_name}</p>
+                    {contacto.role_title && <p className="text-xs text-muted-foreground">{contacto.role_title}</p>}
+                    {contacto.email && <p className="mt-1 break-all text-foreground">{contacto.email}</p>}
+                    {contacto.phone && <p className="tabular-nums text-foreground">{contacto.phone}</p>}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-[13px] text-muted-foreground">Sin contacto registrado.</p>
+              )}
+            </PropertyGroup>
+          )}
+
+          {abierto && (
+            <PropertyGroup icon={ArrowRightLeft} title={mensual ? "Mover el negocio" : `Mover el ${voc.negocio.toLowerCase()}`}>
+              <ActionForm action={moverEtapa} success="Etapa actualizada" className="space-y-2.5">
+                <input type="hidden" name="oportunidad_id" value={negocio.id} />
+                <Field label="Etapa">
+                  <Select name="etapa" defaultValue={etapaActual?.key ?? ""}>
+                    {(etapas ?? []).map((etapa) => (
+                      <option key={etapa.key} value={etapa.key}>
+                        {etapa.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Nota (motivo si se pierde)">
+                  <Input name="nota" placeholder="Pidió esperar al próximo trimestre" />
+                </Field>
+                <p className="text-xs text-muted-foreground">Cada movimiento queda registrado en la historia.</p>
+                <ActionSubmit size="sm" variant="secondary" pendingLabel="Actualizando…">Actualizar</ActionSubmit>
+              </ActionForm>
+            </PropertyGroup>
+          )}
+
+          <PropertyGroup icon={CalendarClock} title="Próxima acción">
+            <ActionForm action={fijarProximaAccion} success="Próxima acción fijada" className="space-y-2">
               <input type="hidden" name="oportunidad_id" value={negocio.id} />
               <div className="flex gap-2">
-                <Input type="date" name="fecha" required className="flex-1" />
-                <Input type="time" name="hora" defaultValue="09:00" className="w-28" />
+                <Input type="date" name="fecha" required className="flex-1" aria-label="Fecha" />
+                <Input type="time" name="hora" defaultValue="09:00" className="w-28" aria-label="Hora" />
               </div>
-              <Input name="nota" placeholder="Qué toca hacer" defaultValue={negocio.next_action_note ?? ""} />
+              <Input name="nota" placeholder="Qué toca hacer" defaultValue={negocio.next_action_note ?? ""} aria-label="Qué toca hacer" />
               <ActionSubmit size="sm" variant="secondary" pendingLabel="Fijando…">Fijar</ActionSubmit>
             </ActionForm>
-            {negocio.status === "abierta" && (
-              // Dos formularios: ActionForm arma el FormData sin el botón que lo
-              // envió, así que «resultado» va oculto en cada uno. Perdido pide
-              // confirmar y queda separado de Ganado.
-              <div className="space-y-2 rounded-lg border border-border border-l-2 border-l-success bg-surface-muted/40 p-3">
-                <p className="text-xs font-medium text-muted-foreground">Cerrar</p>
+          </PropertyGroup>
+
+          {negocio.status === "abierta" && (
+            // Dos formularios: ActionForm arma el FormData sin el botón que lo
+            // envió, así que «resultado» va oculto en cada uno. Perdido pide
+            // confirmar y queda separado de Ganado, al final de la columna.
+            <PropertyGroup icon={Flag} title="Cerrar">
+              <div className="space-y-3">
                 <ActionForm action={cerrarNegocio} success="Negocio cerrado como ganado">
                   <input type="hidden" name="oportunidad_id" value={negocio.id} />
                   <input type="hidden" name="resultado" value="ganado" />
-                  <ActionSubmit size="sm" variant="secondary" pendingLabel="Cerrando…">Ganado</ActionSubmit>
+                  <ActionSubmit size="sm" variant="secondary" pendingLabel="Cerrando…">
+                    <CheckCircle2 size={13} aria-hidden="true" />
+                    Ganado
+                  </ActionSubmit>
                 </ActionForm>
                 <ActionForm
                   action={cerrarNegocio}
@@ -347,76 +539,10 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
                   <ActionSubmit size="sm" variant="danger" pendingLabel="Cerrando…">Perdido</ActionSubmit>
                 </ActionForm>
               </div>
-            )}
-          </div>
-        </div>
-        {mensajesEnviados.length > 0 && (
-          <ul className="divide-y divide-border border-t border-border">
-            {mensajesEnviados.map((mensaje) => {
-              const etiqueta = ETIQUETA_ESTADO_MENSAJE[mensaje.estado as EstadoMensaje] ?? ETIQUETA_ESTADO_MENSAJE.programado;
-              return (
-                <li key={mensaje.id} className="flex items-center gap-3 px-4 py-2 text-sm">
-                  <span className="inline-flex w-28 shrink-0 items-center gap-2 text-xs text-muted-foreground">
-                    {mensaje.canal === "correo" ? <Mail size={16} aria-hidden="true" /> : <MessageCircle size={16} aria-hidden="true" />}
-                    {mensaje.canal === "correo" ? "Correo" : "WhatsApp"}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-foreground">{mensaje.asunto ?? mensaje.cuerpo ?? ""}</span>
-                  <Badge tone={etiqueta.tone}>{etiqueta.label}</Badge>
-                  {mensaje.error && <span className="text-xs text-danger">{mensaje.error}</span>}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </SectionCard>
-
-      {leadId && (hiloCampana.length > 0 || senales.length > 0) && (
-        <SectionCard title="Correo de campaña" description="Lo que Atlas Lead le mandó a esta persona y lo que respondió, más las señales que llegaron (aperturas, clics, respuestas)." icon={Mail} tone="teal">
-          <div className="space-y-4 px-4 py-4">
-            {senales.length > 0 && (
-              <ul className="flex flex-wrap gap-1.5">
-                {senales.slice(0, 12).map((senal) => (
-                  <li key={senal.id}>
-                    <Badge tone="neutral">
-                      {senal.event_type.replace(/_/g, " ")} · {new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(senal.occurred_at ?? senal.created_at))}
-                    </Badge>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {hiloCampana.length > 0 && <MailThreadPanel leadId={leadId} messages={hiloCampana} commands={comandosCampana} canReply={false} />}
-          </div>
-        </SectionCard>
-      )}
-
-      <SectionCard title="Historia" description={`Todo lo que pasó con ${mensual ? "este negocio" : `este ${voc.negocio.toLowerCase()}`}.`} icon={History} tone="violet">
-        <Table>
-          <Thead>
-            <Th>Cuándo</Th>
-            <Th>Tipo</Th>
-            <Th>Detalle</Th>
-            <Th>Estado</Th>
-          </Thead>
-          <Tbody>
-            {(gestiones ?? []).length === 0 && <TableEmpty colSpan={4}>Sin gestiones todavía.</TableEmpty>}
-            {(gestiones ?? []).map((gestion) => (
-              <Tr key={gestion.id}>
-                <Td className="whitespace-nowrap text-muted-foreground">
-                  {cuando.format(new Date(gestion.due_at ?? gestion.occurred_at))}
-                </Td>
-                <Td>{ETIQUETA_GESTION[gestion.kind] ?? gestion.kind}</Td>
-                <Td>
-                  <span className="text-foreground">{gestion.subject ?? "—"}</span>
-                  {gestion.body && <span className="block text-xs text-muted-foreground">{gestion.body}</span>}
-                </Td>
-                <Td>
-                  <Badge tone={gestion.done ? "neutral" : "warning"}>{gestion.done ? "Hecho" : "Pendiente"}</Badge>
-                </Td>
-              </Tr>
-            ))}
-          </Tbody>
-        </Table>
-      </SectionCard>
+            </PropertyGroup>
+          )}
+        </aside>
+      </div>
     </div>
   );
 }

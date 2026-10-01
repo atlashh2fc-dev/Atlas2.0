@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { ArrowUpRight, Radio, SlidersHorizontal, Users } from "lucide-react";
+import { Radio, Users } from "lucide-react";
 import { notFound } from "next/navigation";
 
 import {
+  Avatar,
   Badge,
   Callout,
   EmptyState,
@@ -19,6 +20,7 @@ import {
 } from "@/components/ui";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { FranjaDeEstado } from "../../_diseno";
 
 type Relation<T> = T | T[] | null;
 type Source = {
@@ -57,9 +59,6 @@ const CHANNEL_TONES: Record<string, BadgeTone> = {
   whatsapp: "success",
 };
 
-/** Baldosa de regla: como las cifras de Operación, con el estado en el borde izquierdo. */
-const RULE_TILE = "rounded-lg border border-border border-l-2 bg-background px-3 py-2.5";
-const RULE_LABEL = "text-xs font-medium text-muted-foreground";
 
 export default async function ContactCenterQueuePage({
   params,
@@ -122,80 +121,52 @@ export default async function ContactCenterQueuePage({
 
   return (
     <div className="space-y-5">
-      <Callout tone="info">
-        Este espacio configura la cola. La carga, los equipos y las excepciones
-        se consultan en Operación, sin abrir conversaciones ni asumir atención.
-        <Link
-          href={`/dashboard/operacion?queue=${id}&channel=all`}
-          className={buttonClasses({
-            variant: "secondary",
-            size: "sm",
-            className: "mt-3",
-          })}
-        >
-          Ver operación de cola <ArrowUpRight size={13} />
+      <p className="text-[13px] text-muted-foreground">
+        Este espacio configura la cola. La carga, los equipos y las excepciones se consultan en{" "}
+        <Link href={`/dashboard/operacion?queue=${id}&channel=all`} className="font-medium text-primary hover:underline">
+          Operación
         </Link>
-      </Callout>
+        , sin abrir conversaciones ni asumir atención.
+      </p>
 
-      <SectionCard
-        icon={SlidersHorizontal}
-        tone="rose"
-        title="Reglas configuradas"
-        description="Valores administrativos; no son mediciones de ocupación, disponibilidad ni cumplimiento de SLA."
-        actions={
-          <Link
-            href={`${base}/enrutamiento`}
-            className={buttonClasses({ variant: "secondary", size: "sm" })}
-          >
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-[15px] font-semibold tracking-tight text-foreground">Reglas configuradas</h2>
+            <p className="mt-0.5 text-[13px] text-muted-foreground">
+              Valores administrativos; no son mediciones de ocupación, disponibilidad ni cumplimiento de SLA.
+            </p>
+          </div>
+          <Link href={`${base}/enrutamiento`} className={buttonClasses({ variant: "secondary", size: "sm" })}>
             Editar enrutamiento
           </Link>
-        }
-      >
-        <dl className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
-          <div className={`${RULE_TILE} ${queue.is_active ? "border-l-success" : "border-l-warning"}`}>
-            <dt className={RULE_LABEL}>Estado de cola</dt>
-            <dd className="mt-2">
-              <Badge tone={queue.is_active ? "neutral" : "warning"}>
-                {queue.is_active ? "Activa" : "Inactiva"}
-              </Badge>
-            </dd>
-          </div>
-          <div className={`${RULE_TILE} border-l-border-strong`}>
-            <dt className={RULE_LABEL}>
-              Estrategia de asignación
-            </dt>
-            <dd className="mt-2 text-base font-semibold tracking-tight">
-              {queue.routing_mode === "manual" ? "Manual" : "Menor carga"}
-            </dd>
-          </div>
-          <div className={`${RULE_TILE} border-l-border-strong`}>
-            <dt className={RULE_LABEL}>
-              Límite configurado por agente
-            </dt>
-            <dd className="mt-2 text-base font-semibold tracking-tight tabular-nums">
-              {queue.max_concurrent_per_agent ?? "Sin límite de cola"}
-            </dd>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Un límite individual puede sobrescribirlo.
-            </p>
-          </div>
-          <div className={`${RULE_TILE} border-l-border-strong`}>
-            <dt className={RULE_LABEL}>
-              Objetivo de respuesta configurado
-            </dt>
-            <dd className="mt-2 text-base font-semibold tracking-tight tabular-nums">
-              {Math.round(queue.service_level_seconds / 60)} min
-            </dd>
-            <p className="mt-1 text-xs text-muted-foreground">
-              No representa un SLA medido.
-            </p>
-          </div>
-        </dl>
-      </SectionCard>
+        </div>
+        <FranjaDeEstado
+          celdas={[
+            {
+              label: "Estado de cola",
+              value: queue.is_active ? "Activa" : "Inactiva",
+              tone: queue.is_active ? "success" : "warning",
+            },
+            {
+              label: "Estrategia de asignación",
+              value: queue.routing_mode === "manual" ? "Manual" : "Menor carga",
+            },
+            {
+              label: "Límite configurado por agente",
+              value: queue.max_concurrent_per_agent ?? "Sin límite de cola",
+              detail: "Un límite individual puede sobrescribirlo.",
+            },
+            {
+              label: "Objetivo de respuesta configurado",
+              value: `${Math.round(queue.service_level_seconds / 60)} min`,
+              detail: "No representa un SLA medido.",
+            },
+          ]}
+        />
+      </section>
 
       <SectionCard
-        icon={Radio}
-        tone="teal"
         title="Fuentes y canales"
         description="Relación entre campañas, canales y esta cola; incluye fuentes inactivas para revisar su configuración."
         actions={
@@ -246,12 +217,12 @@ export default async function ContactCenterQueuePage({
                         {source.campaign_id ? (
                           <Link
                             href={`/dashboard/admin/campanas/${source.campaign_id}`}
-                            className="font-medium text-primary hover:underline"
+                            className="font-medium text-foreground hover:text-primary"
                           >
                             {one(source.campaigns)?.name ?? "Abrir campaña"}
                           </Link>
                         ) : (
-                          "Sin campaña"
+                          <span className="text-muted-foreground">Sin campaña</span>
                         )}
                       </Td>
                       <Td>
@@ -288,8 +259,6 @@ export default async function ContactCenterQueuePage({
       </SectionCard>
 
       <SectionCard
-        icon={Users}
-        tone="blue"
         title="Membresía ACD de WhatsApp"
         description="Este roster gobierna el enrutamiento automático de WhatsApp. Voz y correo usan los ejecutivos habilitados en su campaña."
         actions={
@@ -328,8 +297,13 @@ export default async function ContactCenterQueuePage({
                   const profile = one(member.profiles);
                   return (
                     <Tr key={member.profile_id}>
-                      <Td strong>
-                        {profile?.full_name ?? "Usuario no disponible"}
+                      <Td>
+                        <span className="flex items-center gap-2.5">
+                          <Avatar name={profile?.full_name} size="sm" />
+                          <span className="font-medium text-foreground">
+                            {profile?.full_name ?? "Usuario no disponible"}
+                          </span>
+                        </span>
                       </Td>
                       <Td>
                         <Badge tone={member.is_active ? "success" : "neutral"}>
@@ -338,7 +312,7 @@ export default async function ContactCenterQueuePage({
                       </Td>
                       <Td>
                         {profile ? (
-                          <Badge tone={profile.active ? "success" : "danger"}>
+                          <Badge tone={profile.active ? "success" : "neutral"}>
                             {profile.active ? "Habilitada" : "Deshabilitada"}
                           </Badge>
                         ) : (

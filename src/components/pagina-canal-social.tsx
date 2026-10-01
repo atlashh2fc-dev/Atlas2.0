@@ -1,4 +1,4 @@
-import { CheckCircle2, CircleAlert, Link2, MessagesSquare, Pause, Play, Target, UserRound, type LucideIcon } from "lucide-react";
+import { MessagesSquare, Pause, Play, Target, UserRound } from "lucide-react";
 
 import { guardarCampanaDelCanalSocial, pausarCanalSocial } from "@/app/actions/mensajeria-social";
 import { ConectarCanalSocial } from "@/components/conectar-canal-social";
@@ -8,6 +8,7 @@ import { NOMBRE_DEL_CANAL, type CanalSocial } from "@/lib/mensajeria-social";
 import { mensajeriaDeMeta } from "@/lib/meta-mensajeria";
 import { haceCuanto } from "@/lib/prospeccion";
 import { createClient } from "@/lib/supabase/server";
+import { FranjaDeEstado } from "@/app/dashboard/admin/_diseno";
 
 type Canal = {
   id: string;
@@ -57,46 +58,44 @@ export async function PaginaDeCanalSocial({ canal }: { canal: CanalSocial }) {
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-4 xl:grid-cols-3">
-        <Estado
-          icon={UserRound}
-          label={canal === "instagram" ? "Cuenta de Instagram" : "Página de Facebook"}
-          value={actual?.cuenta ?? actual?.business_name ?? "Sin conectar"}
-          ok={Boolean(actual) && !pausado}
-          detail={!actual ? "Conéctala con el botón de abajo" : pausado ? "En pausa: los mensajes no entran a Atlas" : "Conectada desde Atlas"}
-        />
-        <Estado
-          icon={MessagesSquare}
-          label="Mensajes"
-          value={actual?.last_webhook_at ? "Llegando" : "Aún no llega ninguno"}
-          ok={Boolean(actual?.last_webhook_at) && !actual?.last_error}
-          detail={
-            actual?.last_error
+      <FranjaDeEstado
+        celdas={[
+          {
+            label: canal === "instagram" ? "Cuenta de Instagram" : "Página de Facebook",
+            icon: UserRound,
+            value: actual?.cuenta ?? actual?.business_name ?? "Sin conectar",
+            tone: Boolean(actual) && !pausado ? "success" : "warning",
+            detail: !actual ? "Conéctala con el botón de abajo" : pausado ? "En pausa: los mensajes no entran a Atlas" : "Conectada desde Atlas",
+          },
+          {
+            label: "Mensajes",
+            icon: MessagesSquare,
+            value: actual?.last_webhook_at ? "Llegando" : "Aún no llega ninguno",
+            tone: actual?.last_error ? "danger" : actual?.last_webhook_at ? "success" : "warning",
+            detail: actual?.last_error
               ? actual.last_error
               : actual?.last_webhook_at
                 ? `Último ${haceCuanto(actual.last_webhook_at)}`
-                : `Escríbele a la ${canal === "instagram" ? "cuenta" : "página"} para probar`
-          }
-        />
-        <Estado
-          icon={Target}
-          label="Campaña de destino"
-          value={nombreCampana ?? "Sin elegir"}
-          ok={Boolean(nombreCampana)}
-          detail={nombreCampana ? "Los contactos nuevos entran aquí" : "Sin campaña, los mensajes no se guardan"}
-        />
-      </div>
+                : `Escríbele a la ${canal === "instagram" ? "cuenta" : "página"} para probar`,
+          },
+          {
+            label: "Campaña de destino",
+            icon: Target,
+            value: nombreCampana ?? "Sin elegir",
+            tone: nombreCampana ? "success" : "warning",
+            detail: nombreCampana ? "Los contactos nuevos entran aquí" : "Sin campaña, los mensajes no se guardan",
+          },
+        ]}
+      />
 
       {actual && (
         <SectionCard
-          icon={Target}
-          tone="primary"
           title="Campaña de destino"
           description={`Cada persona nueva que escribe por ${nombre} crea un registro en esta campaña y cae en su cola de mensajería, junto a WhatsApp.`}
         >
-          <ActionForm action={guardarCampanaDelCanalSocial} success="Campaña guardada" className="flex flex-wrap items-end gap-3 p-4">
+          <ActionForm action={guardarCampanaDelCanalSocial} success="Campaña guardada" className="flex flex-wrap items-end gap-3 border-t border-border px-5 py-4">
             <input type="hidden" name="channel_id" value={actual.id} />
-            <Field label="Campaña" className="min-w-64 flex-1">
+            <Field label="Campaña" className="w-full max-w-sm">
               <Select name="campaign_id" defaultValue={ruta?.campaign_id ?? ""} required>
                 <option value="" disabled>
                   Elige una campaña
@@ -114,8 +113,6 @@ export async function PaginaDeCanalSocial({ canal }: { canal: CanalSocial }) {
       )}
 
       <SectionCard
-        icon={Link2}
-        tone="slate"
         title={actual ? "Conexión con Meta" : `Conectar ${nombre}`}
         description={
           canal === "instagram"
@@ -123,7 +120,7 @@ export async function PaginaDeCanalSocial({ canal }: { canal: CanalSocial }) {
             : "Entras con tu Facebook, autorizas la página de la empresa y Atlas empieza a recibir sus mensajes."
         }
       >
-        <div className="flex flex-wrap items-start justify-between gap-4 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-4 border-t border-border px-5 py-4">
           {meta.listo && meta.configId ? (
             <ConectarCanalSocial canal={canal} appId={meta.appId} configId={meta.configId} version={meta.version} reconectar={Boolean(actual)} />
           ) : (
@@ -144,27 +141,6 @@ export async function PaginaDeCanalSocial({ canal }: { canal: CanalSocial }) {
           )}
         </div>
       </SectionCard>
-    </div>
-  );
-}
-
-function Estado({ icon: Icon, label, value, detail, ok }: { icon: LucideIcon; label: string; value: string; detail: string; ok: boolean }) {
-  const StateIcon = ok ? CheckCircle2 : CircleAlert;
-  return (
-    <div className={`rounded-xl border border-border border-l-2 bg-surface p-4 shadow-sm ${ok ? "border-l-success" : "border-l-warning"}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3">
-          <span className="icon-chip size-8 rounded-lg" data-tone="blue" aria-hidden="true">
-            <Icon size={16} />
-          </span>
-          <div className="min-w-0">
-            <p className="text-xs font-medium text-muted-foreground">{label}</p>
-            <p className="mt-1 truncate text-lg font-semibold tracking-tight text-foreground">{value}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
-          </div>
-        </div>
-        <StateIcon size={18} className={ok ? "text-success" : "text-warning"} aria-hidden="true" />
-      </div>
     </div>
   );
 }

@@ -6,10 +6,8 @@ import {
   ClipboardCheck,
   FileText,
   Gauge,
-  History,
   Hourglass,
   PhoneCall,
-  ShieldCheck,
 } from "lucide-react";
 import { ReportRangePicker } from "@/components/report-range-picker";
 import { requireProfile } from "@/lib/auth";
@@ -22,7 +20,8 @@ import {
   SECRETARIA_VIRTUAL_RUBRIC_NAME,
   SECRETARIA_VIRTUAL_RUBRIC_VERSION,
 } from "@/lib/secretaria-virtual-quality-rubric";
-import { Badge, Callout, EmptyState, MetricCard, SectionCard, Table, Tbody, Td, Th, Thead, Tr } from "@/components/ui";
+import { Avatar, Badge, Callout, EmptyState, SectionCard, Table, Tbody, Td, Th, Thead, Tr } from "@/components/ui";
+import { KpiStrip, KpiStripItem } from "@/components/report-kit";
 
 function formatDuration(seconds: number) {
   const hours = Math.floor(seconds / 3600);
@@ -30,12 +29,23 @@ function formatDuration(seconds: number) {
   return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
 }
 
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("es-CL", {
+function formatDay(value: string) {
+  return new Date(value)
+    .toLocaleDateString("es-CL", { day: "numeric", month: "short", timeZone: "America/Santiago" })
+    .replace(".", "");
+}
+
+function formatTime(value: string) {
+  return new Date(value).toLocaleTimeString("es-CL", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
     timeZone: "America/Santiago",
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(new Date(value));
+  });
+}
+
+function formatScore(value: number) {
+  return value.toLocaleString("es-CL", { maximumFractionDigits: 1 });
 }
 
 const STATUS = {
@@ -44,6 +54,14 @@ const STATUS = {
   completed: { label: "Completada", tone: "success" as const },
   failed: { label: "Con error", tone: "danger" as const },
 };
+
+/** Color de la barra de puntaje según el veredicto. */
+const SCORE_BAR = {
+  success: "bg-success",
+  warning: "bg-warning",
+  danger: "bg-danger",
+  neutral: "bg-muted-foreground/40",
+} as const;
 
 const EVALUATION_VERDICT = {
   cumple: { label: "Cumple", tone: "success" as const },
@@ -73,8 +91,10 @@ export default async function CalidadAnalisisPage({
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-            <BarChart3 size={16} className="text-muted-foreground" aria-hidden="true" />
+          <h2 className="flex items-center gap-2 text-[15px] font-semibold tracking-tight text-foreground">
+            <span className="icon-chip size-7 rounded-lg" data-tone="violet" aria-hidden="true">
+              <BarChart3 size={14} />
+            </span>
             Reportes y análisis
           </h2>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -92,44 +112,39 @@ export default async function CalidadAnalisisPage({
         </Callout>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <MetricCard
+      <KpiStrip title="Transcripción" meta="Venta o rechazo de más de 2 minutos">
+        <KpiStripItem
           label="Llamadas seleccionadas"
           value={analysis.summary.eligibleRecordings.toLocaleString("es-CL")}
-          hint="Venta o rechazo · más de 2 min"
           icon={PhoneCall}
-          iconTone="primary"
+          detail="Entran solas a la cola de transcripción"
         />
-        <MetricCard
+        <KpiStripItem
           label="Transcritas"
           value={analysis.summary.completed.toLocaleString("es-CL")}
-          hint={`${completionRate.toLocaleString("es-CL", { maximumFractionDigits: 1 })}% de cobertura`}
-          tone="good"
           icon={FileText}
-          iconTone="violet"
+          tone={analysis.summary.completed > 0 ? "good" : "default"}
+          detail={`${completionRate.toLocaleString("es-CL", { maximumFractionDigits: 1 })}% de cobertura`}
           progress={completionRate}
         />
-        <MetricCard
+        <KpiStripItem
           label="Pendientes"
           value={analysis.summary.pending.toLocaleString("es-CL")}
-          tone={analysis.summary.pending > 0 ? "warn" : "good"}
           icon={Hourglass}
-          iconTone="amber"
+          tone={analysis.summary.pending > 0 ? "warn" : "default"}
         />
-        <MetricCard
+        <KpiStripItem
           label="Con error"
           value={analysis.summary.failed.toLocaleString("es-CL")}
-          tone={analysis.summary.failed ? "danger" : "default"}
           icon={CircleAlert}
-          iconTone="slate"
+          tone={analysis.summary.failed ? "danger" : "default"}
         />
-        <MetricCard
+        <KpiStripItem
           label="Audio transcrito"
           value={formatDuration(analysis.summary.transcribedSeconds)}
           icon={AudioLines}
-          iconTone="amber"
         />
-      </div>
+      </KpiStrip>
 
       <Callout tone={mercuryConfigured ? "info" : "warning"}>
         <span className="flex items-start gap-3">
@@ -144,69 +159,65 @@ export default async function CalidadAnalisisPage({
         </span>
       </Callout>
 
-      <SectionCard
+      <KpiStrip
         title="Auditoría · Secretaría Virtual"
-        description="Solo llamadas outbound transcritas; Secretaría Virtual - Inbound queda fuera de esta pauta."
-        icon={ShieldCheck}
-        tone="violet"
+        meta="Solo outbound transcritas; Secretaría Virtual - Inbound queda fuera de esta pauta"
       >
-        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-5">
-          <MetricCard
-            label="Auditables"
-            value={analysis.summary.auditableRecordings.toLocaleString("es-CL")}
-            hint="Transcritas con pauta aplicable"
-            icon={FileText}
-            iconTone="violet"
-          />
-          <MetricCard
-            label="Auditadas"
-            value={analysis.summary.evaluated.toLocaleString("es-CL")}
-            tone="good"
-            icon={ClipboardCheck}
-            iconTone="green"
-          />
-          <MetricCard
-            label="Pendientes"
-            value={analysis.summary.evaluationPending.toLocaleString("es-CL")}
-            hint={analysis.summary.evaluationProcessing ? `${analysis.summary.evaluationProcessing} procesando` : undefined}
-            tone={analysis.summary.evaluationPending > 0 ? "warn" : "good"}
-            icon={Hourglass}
-            iconTone="amber"
-          />
-          <MetricCard
-            label="Promedio"
-            value={analysis.summary.evaluated ? `${analysis.summary.averageScore.toLocaleString("es-CL", { maximumFractionDigits: 1 })}/100` : "—"}
-            icon={Gauge}
-            iconTone="violet"
-            progress={analysis.summary.evaluated ? analysis.summary.averageScore : undefined}
-          />
-          <MetricCard
-            label="Con error"
-            value={analysis.summary.evaluationFailed.toLocaleString("es-CL")}
-            tone={analysis.summary.evaluationFailed ? "danger" : "default"}
-            icon={CircleAlert}
-            iconTone="slate"
-          />
-        </div>
-      </SectionCard>
+        <KpiStripItem
+          label="Auditables"
+          value={analysis.summary.auditableRecordings.toLocaleString("es-CL")}
+          icon={FileText}
+          detail="Transcritas con pauta aplicable"
+        />
+        <KpiStripItem
+          label="Auditadas"
+          value={analysis.summary.evaluated.toLocaleString("es-CL")}
+          icon={ClipboardCheck}
+          tone={analysis.summary.evaluated > 0 ? "good" : "default"}
+          progress={
+            analysis.summary.auditableRecordings > 0
+              ? (analysis.summary.evaluated / analysis.summary.auditableRecordings) * 100
+              : undefined
+          }
+        />
+        <KpiStripItem
+          label="Pendientes"
+          value={analysis.summary.evaluationPending.toLocaleString("es-CL")}
+          icon={Hourglass}
+          tone={analysis.summary.evaluationPending > 0 ? "warn" : "default"}
+          detail={analysis.summary.evaluationProcessing ? `${analysis.summary.evaluationProcessing} procesando` : undefined}
+        />
+        <KpiStripItem
+          label="Puntaje promedio"
+          value={analysis.summary.evaluated ? `${formatScore(analysis.summary.averageScore)}/100` : "—"}
+          icon={Gauge}
+          progress={analysis.summary.evaluated ? analysis.summary.averageScore : undefined}
+        />
+        <KpiStripItem
+          label="Con error"
+          value={analysis.summary.evaluationFailed.toLocaleString("es-CL")}
+          icon={CircleAlert}
+          tone={analysis.summary.evaluationFailed ? "danger" : "default"}
+        />
+      </KpiStrip>
 
       <SectionCard
         title="Actividad reciente"
         description="Últimas transcripciones dentro del período seleccionado."
-        icon={History}
-        tone="violet"
       >
         {analysis.recent.length === 0 ? (
-          <EmptyState icon={FileText} title="Todavía no hay transcripciones en este período." />
+          <EmptyState
+            icon={FileText}
+            title="Todavía no hay transcripciones en este período."
+            description="Amplía el rango de fechas o transcribe una llamada desde Grabaciones."
+          />
         ) : (
           <Table>
             <Thead>
-              <Th>Fecha de llamada</Th>
-              <Th>Campaña</Th>
               <Th>Ejecutivo</Th>
-              <Th>Estado</Th>
+              <Th>Llamada</Th>
+              <Th>Transcripción</Th>
               <Th>Auditoría</Th>
-              <Th>Idioma</Th>
               <Th align="right">Caracteres</Th>
             </Thead>
             <Tbody>
@@ -217,16 +228,42 @@ export default async function CalidadAnalisisPage({
                   : null;
                 return (
                   <Tr key={row.recordingId}>
-                    <Td>{formatDateTime(row.recordingStartedAt)}</Td>
-                    <Td>{row.campaignName}</Td>
-                    <Td>{row.agentName}</Td>
-                    <Td><Badge tone={status.tone}>{status.label}</Badge></Td>
                     <Td>
+                      <span className="flex min-w-0 items-center gap-3">
+                        <Avatar name={row.agentName} size="md" />
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium text-foreground">{row.agentName}</span>
+                          <span className="block truncate text-xs text-muted-foreground">{row.campaignName}</span>
+                        </span>
+                      </span>
+                    </Td>
+                    <Td className="whitespace-nowrap">
+                      <span className="block text-foreground">{formatDay(row.recordingStartedAt)}</span>
+                      <span className="block text-xs text-muted-foreground">{formatTime(row.recordingStartedAt)}</span>
+                    </Td>
+                    <Td>
+                      <span className="block">
+                        <Badge tone={status.tone}>{status.label}</Badge>
+                      </span>
+                      {row.languageCode && (
+                        <span className="mt-0.5 block text-xs text-muted-foreground">Idioma: {row.languageCode}</span>
+                      )}
+                    </Td>
+                    <Td className="min-w-44">
                       {evaluationVerdict && row.evaluationScore !== null ? (
-                        <span className="flex items-center gap-2 whitespace-nowrap">
-                          <Badge tone={evaluationVerdict.tone}>{evaluationVerdict.label}</Badge>
-                          <span className="text-xs tabular-nums text-muted-foreground">
-                            {row.evaluationScore.toLocaleString("es-CL", { maximumFractionDigits: 1 })}/100
+                        <span className="block">
+                          <span className="flex items-baseline justify-between gap-3">
+                            <span className="text-[13px] font-semibold tabular-nums text-foreground">
+                              {formatScore(row.evaluationScore)}
+                              <span className="text-[11px] font-normal text-muted-foreground">/100</span>
+                            </span>
+                            <Badge tone={evaluationVerdict.tone}>{evaluationVerdict.label}</Badge>
+                          </span>
+                          <span className="mt-1.5 block h-1.5 overflow-hidden rounded-full bg-surface-muted" aria-hidden="true">
+                            <span
+                              className={`block h-full rounded-full ${SCORE_BAR[evaluationVerdict.tone]}`}
+                              style={{ width: `${Math.min(100, Math.max(0, row.evaluationScore))}%` }}
+                            />
                           </span>
                         </span>
                       ) : row.evaluationStatus === "processing" ? (
@@ -239,8 +276,7 @@ export default async function CalidadAnalisisPage({
                         <span className="text-muted-foreground">—</span>
                       )}
                     </Td>
-                    <Td muted>{row.languageCode ?? "—"}</Td>
-                    <Td align="right">{row.transcriptCharacters.toLocaleString("es-CL")}</Td>
+                    <Td align="right" muted>{row.transcriptCharacters.toLocaleString("es-CL")}</Td>
                   </Tr>
                 );
               })}

@@ -1,9 +1,11 @@
 import { connection } from "next/server";
-import { Coins, Package, PackageX, Receipt, Wallet } from "lucide-react";
+import { Package, PackageX, Receipt, Wallet } from "lucide-react";
 
 import { crearInsumo, guardarInsumo } from "@/app/actions/insumos";
 import { CreatePanel } from "@/components/create-panel";
-import { ActionForm, ActionSubmit, Badge, Callout, EmptyState, Field, Input, PageHeader, SectionCard, StatCard } from "@/components/ui";
+import { ActionForm, ActionSubmit, Avatar, Badge, Callout, EmptyState, Field, Input, PageHeader, SectionCard } from "@/components/ui";
+import { KpiStrip, KpiStripItem } from "@/components/report-kit";
+import { Conteo } from "../_diseno";
 import { pesos, type Insumo } from "@/lib/arancel";
 import { ATENCION_POR_EDICION, PACIENTES_POR_EDICION, clinicaDe, type Clinica } from "@/lib/ediciones";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
@@ -84,6 +86,7 @@ export default async function InsumosPage() {
     <div className="space-y-5">
       <PageHeader
         title={`${mayuscula(voc.plural)} e insumos`}
+        icon={Package}
         description={`Lo que usa ${lugar}: el costo alimenta el margen de cada atención, los cobrables se suman a la cuenta y el stock baja solo al atender.`}
         actions={
           <CreatePanel
@@ -126,26 +129,28 @@ export default async function InsumosPage() {
 
       {error && <Callout tone="danger">No se pudieron leer los {voc.plural}. Vuelve a cargar para reintentar.</Callout>}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label={`Costo de ${voc.plural} · 30 días`} value={pesos.format(costoMes)} hint={`${(usos ?? []).length} usos registrados`} icon={Wallet} iconTone="green" />
-        <StatCard label={`${mayuscula(voc.plural)} cobrados · 30 días`} value={pesos.format(cobradoMes)} hint={`Sumados a la cuenta del ${cliente}`} tone="good" icon={Receipt} iconTone="green" />
-        <StatCard label="Inventario valorizado" value={pesos.format(inventario)} hint={`${insumos.filter((insumo) => insumo.activo).length} ${voc.plural} activos`} icon={Package} iconTone="slate" />
-        <StatCard
+      <KpiStrip columns={4}>
+        <KpiStripItem label={`Costo de ${voc.plural} · 30 días`} icon={Wallet} value={pesos.format(costoMes)} detail={`${(usos ?? []).length} usos registrados`} />
+        <KpiStripItem label={`${mayuscula(voc.plural)} cobrados · 30 días`} icon={Receipt} value={pesos.format(cobradoMes)} detail={`Sumados a la cuenta del ${cliente}`} tone="good" />
+        <KpiStripItem label="Inventario valorizado" icon={Package} value={pesos.format(inventario)} detail={`${insumos.filter((insumo) => insumo.activo).length} ${voc.plural} activos`} />
+        <KpiStripItem
           label="Por reponer"
           icon={PackageX}
-          iconTone={bajos.length > 0 ? "amber" : "green"}
-          value={bajos.length}
-          hint={bajos.length > 0 ? bajos.slice(0, 3).map((insumo) => insumo.nombre).join(", ") : "Todo sobre el mínimo"}
+          value={String(bajos.length)}
+          detail={bajos.length > 0 ? bajos.slice(0, 3).map((insumo) => insumo.nombre).join(", ") : "Todo sobre el mínimo"}
           tone={bajos.length > 0 ? "warn" : "default"}
         />
-      </div>
+      </KpiStrip>
 
       {masUsados.length > 0 && (
-        <SectionCard icon={Coins} tone="green" title="Dónde se va el gasto" description={`Los ${voc.plural} que más costaron en los últimos 30 días.`}>
-          <ul className="divide-y divide-border">
+        <SectionCard title="Dónde se va el gasto" description={`Los ${voc.plural} que más costaron en los últimos 30 días.`}>
+          <ul className="divide-y divide-border/70 border-t border-border">
             {masUsados.map(([id, uso]) => (
-              <li key={id} className="flex items-center justify-between gap-3 px-4 py-2 text-sm">
-                <span className="truncate text-foreground">{nombre.get(id) ?? `${mayuscula(voc.singular)} eliminado`}</span>
+              <li key={id} className="flex items-center justify-between gap-3 px-5 py-2.5 text-sm">
+                <span className="flex min-w-0 items-center gap-2.5">
+                  <Avatar name={nombre.get(id) ?? voc.singular} size="sm" shape="square" />
+                  <span className="truncate text-foreground">{nombre.get(id) ?? `${mayuscula(voc.singular)} eliminado`}</span>
+                </span>
                 <span className="flex-shrink-0 tabular-nums text-muted-foreground">
                   {numero.format(uso.cantidad)} usados · <span className="text-foreground">{pesos.format(uso.costo)}</span>
                 </span>
@@ -156,7 +161,7 @@ export default async function InsumosPage() {
       )}
 
       {!error && insumos.length === 0 && (
-        <SectionCard icon={Package} tone="slate" title={mayuscula(voc.plural)}>
+        <SectionCard>
           <EmptyState
             icon={Package}
             title={`Todavía no hay ${voc.plural}`}
@@ -167,8 +172,16 @@ export default async function InsumosPage() {
       )}
 
       {[...grupos.entries()].map(([categoria, items]) => (
-        <SectionCard key={categoria} icon={Package} tone="slate" title={categoria} description={`${items.length} ${items.length === 1 ? voc.singular : voc.plural}`}>
-          <div className="hidden grid-cols-[minmax(0,1fr)_110px_110px_90px_90px_auto_auto] h-10 items-center gap-3 border-b border-border px-4 text-xs font-medium text-muted-foreground lg:grid">
+        <SectionCard
+          key={categoria}
+          title={
+            <>
+              {categoria}
+              <Conteo>{items.length}</Conteo>
+            </>
+          }
+        >
+          <div className="hidden h-10 grid-cols-[minmax(0,1fr)_110px_110px_90px_90px_auto_auto] items-center gap-3 border-y border-border bg-surface-raised px-5 text-xs font-medium text-muted-foreground lg:grid">
             <span>{mayuscula(voc.singular)}</span>
             <span className="text-right">Costo</span>
             <span className="text-right">Precio venta</span>
@@ -186,7 +199,7 @@ export default async function InsumosPage() {
                   key={insumo.id}
                   action={guardarInsumo}
                   success={`${insumo.nombre} guardado`}
-                  className={`grid items-center gap-3 px-4 py-3 lg:grid-cols-[minmax(0,1fr)_110px_110px_90px_90px_auto_auto] ${insumo.activo ? "" : "opacity-60"}`}
+                  className={`grid items-center gap-3 px-5 py-3 lg:grid-cols-[minmax(0,1fr)_110px_110px_90px_90px_auto_auto] ${insumo.activo ? "" : "opacity-60"}`}
                 >
                   <input type="hidden" name="id" value={insumo.id} />
                   <div className="min-w-0">

@@ -47,13 +47,13 @@ import {
   CHART_COLOR,
   CHART_CURSOR,
   CHART_GRID,
-  CHART_TOOLTIP_LABEL_STYLE,
-  CHART_TOOLTIP_STYLE,
   chartGradients,
   gradientUrl,
   useChartId,
 } from "@/components/chart-theme";
+import { ChartTooltip } from "@/components/report-kit";
 import {
+  Avatar,
   Badge,
   Button,
   Callout,
@@ -64,9 +64,7 @@ import {
   Input,
   LoadingState,
   MetricLabel,
-  SectionCard,
   Select,
-  StatusDot,
   actionErrorMessage,
   useToast,
   type BadgeTone,
@@ -384,24 +382,25 @@ function formatInt(value: number): string {
   return value.toLocaleString("es-CL");
 }
 
+/**
+ * Tarjeta de una cifra: etiqueta con su ícono, la cifra grande y el contexto
+ * debajo. El color de la cifra solo aparece cuando hay algo que atender (o un
+ * resultado comercial); el resto va en el color del texto.
+ */
 function MetricWidget({ id, label, value, hint, tone = "default", metric, children }: { id: WidgetId; label: string; value: string | number; hint?: ReactNode; tone?: "default" | "warn" | "danger" | "good"; metric?: MetricId; children?: ReactNode }) {
   const color = tone === "danger" ? "text-danger" : tone === "warn" ? "text-warning" : tone === "good" ? "text-success" : "text-foreground";
   const chipTone = ALERT_CHIP[tone] ?? WIDGET_ICON[id].tone;
   return (
-    <div className="relative flex h-full min-h-32 flex-col justify-between overflow-hidden">
-      <div>
-        <div className="mb-3 flex items-center gap-2.5">
-          <WidgetChip id={id} tone={chipTone} />
-          <p className="min-w-0 truncate text-xs text-muted-foreground">
-            {WIDGET_KICKER[id]}
-          </p>
-        </div>
-        <p className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+    <div className="relative flex h-full min-h-32 flex-col overflow-hidden">
+      <div className="flex items-center gap-2 pr-6">
+        <WidgetChip id={id} tone={chipTone} />
+        <p className="flex min-w-0 items-center gap-1 truncate text-[13px] font-medium text-foreground">
           {metric ? <MetricLabel id={metric} /> : label}
         </p>
-        <p className={cn("mt-1.5 text-4xl font-semibold tabular-nums tracking-[-0.06em]", color)}>{value}</p>
       </div>
-      {(hint || children) && <div className="mt-4 border-t border-border/70 pt-2.5 text-xs leading-relaxed text-muted-foreground">{hint}{children}</div>}
+      <p className={cn("mt-3 text-[32px] font-semibold leading-none tracking-tight tabular-nums", color)}>{value}</p>
+      <p className="mt-1.5 truncate text-[11px] text-muted-foreground">{WIDGET_KICKER[id]}</p>
+      {(hint || children) && <div className="mt-auto pt-3 text-xs leading-relaxed text-muted-foreground">{hint}{children}</div>}
     </div>
   );
 }
@@ -433,40 +432,85 @@ function QueueHealthCard({ queue, funnel }: { queue: QueueHealth; funnel?: Embud
   const abandonRate = handled > 0 ? Math.round((queue.abandoned_today / handled) * 100) : 0;
   const overThreshold = abandonRate > THRESHOLDS.abandonRate;
   return (
-    <div className="rounded-xl border border-border bg-surface-muted/40 p-4 shadow-sm transition-colors hover:border-border-strong">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <div>
-          <p className="text-sm font-semibold text-foreground">{queue.campaign_name}</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">Cola · {queue.queue_name}</p>
+    <div className="overflow-hidden rounded-xl border border-border bg-surface">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <Avatar name={queue.campaign_name} seed={queue.campaign_id} shape="square" size="md" />
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-foreground">{queue.campaign_name}</p>
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">Cola · {queue.queue_name}</p>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          <Badge tone="info">Contactabilidad {formatPercent(funnel?.contactabilidad)}</Badge>
-          <Badge tone={overThreshold ? "danger" : "neutral"}>Abandono {abandonRate}%</Badge>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <span className="text-xs text-muted-foreground">
+            Contactabilidad <span className="font-semibold tabular-nums text-foreground">{formatPercent(funnel?.contactabilidad)}</span>
+          </span>
+          <Badge tone={overThreshold ? "danger" : "neutral"} dot={overThreshold}>Abandono {abandonRate}%</Badge>
         </div>
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
-        <QueueNumber label="Recorridos" value={funnel?.recorridos ?? 0} edge="var(--tone-teal)" />
-        <QueueNumber label="Conectados" value={funnel?.conectados ?? 0} edge="var(--tone-slate)" />
-        <QueueNumber label="Aló" value={funnel?.contactados ?? 0} edge="var(--primary)" />
-        <QueueNumber label="Titular" value={funnel?.titulares ?? 0} edge="var(--tone-violet)" />
-        <QueueNumber label="Ventas" value={funnel?.ventas ?? 0} edge="var(--success)" />
-      </div>
-      <div className="mt-3 grid grid-cols-2 gap-3 border-t border-border/70 pt-3 sm:grid-cols-4">
-        <QueueNumber label="En curso" value={queue.in_flight} />
-        <QueueNumber label="Llamadas conectadas" value={queue.answered_today} />
-        <QueueNumber label="Completadas" value={queue.completed_today} />
-        <QueueNumber label="No responde" value={queue.no_answer_today} edge={queue.no_answer_today > 0 ? "var(--warning)" : undefined} />
-      </div>
+      {/* Embudo y telefonía en una franja dividida: cifras alineadas, sin
+          baldosas ni bordes de color por etapa. */}
+      <dl className="grid grid-cols-2 gap-px border-t border-border bg-border sm:grid-cols-5">
+        <QueueNumber label="Recorridos" value={funnel?.recorridos ?? 0} />
+        <QueueNumber label="Conectados" value={funnel?.conectados ?? 0} />
+        <QueueNumber label="Aló" value={funnel?.contactados ?? 0} />
+        <QueueNumber label="Titular" value={funnel?.titulares ?? 0} />
+        <QueueNumber label="Ventas" value={funnel?.ventas ?? 0} tone={(funnel?.ventas ?? 0) > 0 ? "good" : undefined} />
+      </dl>
+      <dl className="grid grid-cols-2 gap-px border-t border-border bg-border sm:grid-cols-4">
+        <QueueNumber label="En curso" value={queue.in_flight} muted />
+        <QueueNumber label="Llamadas conectadas" value={queue.answered_today} muted />
+        <QueueNumber label="Completadas" value={queue.completed_today} muted />
+        <QueueNumber label="No responde" value={queue.no_answer_today} muted tone={queue.no_answer_today > 0 ? "warn" : undefined} />
+      </dl>
     </div>
   );
 }
 
-/** Cifra en baldosa: el borde izquierdo lleva el color de la etapa. */
-function QueueNumber({ label, value, edge }: { label: string; value: number; edge?: string }) {
+/** Cifra de la franja: el color solo cuando la cifra pide atención o es venta. */
+function QueueNumber({ label, value, tone, muted = false }: { label: string; value: number; tone?: "good" | "warn"; muted?: boolean }) {
   return (
-    <div className="rounded-lg border border-border border-l-2 bg-background px-3 py-2" style={{ borderLeftColor: edge ?? "var(--border-strong)" }}>
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className="mt-0.5 text-xl font-semibold tabular-nums tracking-tight text-foreground">{formatInt(value)}</p>
+    <div className={cn("min-w-0 px-4 py-2.5", muted ? "bg-surface-raised" : "bg-surface")}>
+      <dt className="truncate text-[11px] text-muted-foreground">{label}</dt>
+      <dd
+        className={cn(
+          "mt-0.5 font-semibold tabular-nums tracking-tight",
+          muted ? "text-base" : "text-xl",
+          tone === "good" ? "text-success" : tone === "warn" ? "text-warning" : "text-foreground"
+        )}
+      >
+        {formatInt(value)}
+      </dd>
+    </div>
+  );
+}
+
+/** Avatar del ejecutivo con su punto de presencia en el color de su estado. */
+function PresenceAvatar({ name, seed, group }: { name: string; seed: string; group: AgentGroup }) {
+  return (
+    <span className="relative inline-flex shrink-0">
+      <Avatar name={name} seed={seed} size="md" className={cn(group === "offline" && "opacity-55")} />
+      <span
+        aria-hidden="true"
+        className="absolute -bottom-0.5 -right-0.5 size-3 rounded-full ring-2 ring-surface"
+        style={{ backgroundColor: STATUS_COLORS[group] }}
+      />
+    </span>
+  );
+}
+
+/** Cabecera de las tarjetas con tabla o lista (sin tarjeta dentro de tarjeta). */
+function PanelHeader({ id, title, description, actions }: { id: WidgetId; title: ReactNode; description: ReactNode; actions?: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-3 pr-6">
+      <div className="flex min-w-0 items-start gap-2.5">
+        <WidgetChip id={id} />
+        <div className="min-w-0">
+          <p className="text-[15px] font-semibold tracking-tight text-foreground">{title}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
+        </div>
+      </div>
+      {actions}
     </div>
   );
 }
@@ -665,14 +709,28 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
   }
 
   const columns = useMemo<Column<AgentLiveStatus>[]>(() => [
-    { id: "ejecutivo", header: "Ejecutivo", value: (row) => row.full_name },
-    { id: "extension", header: "Extensión", value: (row) => row.extension, className: "text-muted-foreground" },
-    { id: "campana", header: "Campaña", value: (row) => row.campaign_name ?? "", cell: (row) => row.campaign_name ?? "—", className: "text-muted-foreground" },
-    { id: "estado", header: "Estado", value: (row) => agentDisplay(row, now, pauseCaps).label, cell: (row) => { const { label, tone, exceeded } = agentDisplay(row, now, pauseCaps); return <span className="inline-flex flex-wrap items-center gap-2"><StatusDot tone={tone} />{label}{exceeded && <span className="rounded-md border border-danger bg-danger-bg px-1.5 py-0.5 text-[11px] font-semibold text-danger">{exceeded}</span>}</span>; } },
+    {
+      // Persona, presencia y extensión en una celda; el Excel separa la extensión.
+      id: "ejecutivo",
+      header: "Ejecutivo",
+      value: (row) => row.full_name,
+      exportValues: (row) => ({ Ejecutivo: row.full_name, "Extensión": row.extension }),
+      cell: (row) => (
+        <span className="flex min-w-0 items-center gap-3">
+          <PresenceAvatar name={row.full_name} seed={row.profile_id} group={groupOf(row)} />
+          <span className="min-w-0">
+            <span className="block max-w-[14rem] truncate font-medium text-foreground">{row.full_name}</span>
+            <span className="mt-0.5 block truncate text-xs tabular-nums text-muted-foreground">Anexo {row.extension}</span>
+          </span>
+        </span>
+      ),
+    },
+    { id: "campana", header: "Campaña", value: (row) => row.campaign_name ?? "", cell: (row) => row.campaign_name ? <span className="flex min-w-0 items-center gap-2"><Avatar name={row.campaign_name} size="xs" shape="square" /><span className="max-w-[12rem] truncate text-foreground">{row.campaign_name}</span></span> : <span className="text-muted-foreground">—</span> },
+    { id: "estado", header: "Estado", value: (row) => agentDisplay(row, now, pauseCaps).label, cell: (row) => { const { label, tone, exceeded } = agentDisplay(row, now, pauseCaps); return <span className="block"><Badge tone={tone} dot>{label}</Badge>{exceeded && <span className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-danger"><TriangleAlert size={11} aria-hidden="true" />{exceeded}</span>}</span>; } },
     { id: "gestiones-hoy", header: "Gestiones hoy", align: "right", value: (row) => todayByAgent.get(row.profile_id)?.gestiones ?? 0, cell: (row) => { const today = todayByAgent.get(row.profile_id); return <span className="tabular-nums">{today ? `${today.gestiones} · ${today.contactos} ctc` : "—"}</span>; } },
     { id: "tmo-hoy", header: "TMO hoy", align: "right", value: (row) => todayByAgent.get(row.profile_id)?.tmo_segundos ?? -1, cell: (row) => <span className="tabular-nums">{formatElapsed(todayByAgent.get(row.profile_id)?.tmo_segundos ?? null)}</span> },
     { id: "pausa-hoy", header: "Pausa hoy", align: "right", value: (row) => todayByAgent.get(row.profile_id)?.pausa_segundos ?? 0, cell: (row) => { const today = todayByAgent.get(row.profile_id); const detail = (today?.pausa_por_motivo ?? []).map((item) => `${item.motivo}: ${formatElapsed(item.segundos)}`).join(" · "); return <span className="tabular-nums" title={detail || undefined}>{today && today.pausa_segundos > 0 ? formatElapsed(today.pausa_segundos) : "—"}</span>; } },
-    { id: "tiempo", header: "Tiempo en estado", align: "right", value: (row) => elapsedSeconds(agentDisplay(row, now, pauseCaps).since, now) ?? -1, cell: (row) => { const { since, alert } = agentDisplay(row, now, pauseCaps); return <span className={alert ? "font-medium text-danger" : "tabular-nums"}>{formatElapsed(elapsedSeconds(since, now))}{alert && " ⚠"}</span>; } },
+    { id: "tiempo", header: "Tiempo en estado", align: "right", value: (row) => elapsedSeconds(agentDisplay(row, now, pauseCaps).since, now) ?? -1, cell: (row) => { const { since, alert } = agentDisplay(row, now, pauseCaps); return <span className={cn("inline-flex items-center justify-end gap-1 tabular-nums", alert && "font-semibold text-danger")}>{alert && <TriangleAlert size={12} aria-label="Sobre el umbral" />}{formatElapsed(elapsedSeconds(since, now))}</span>; } },
     ...(canForceLogout ? [{
       id: "acciones",
       header: "",
@@ -720,15 +778,15 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
   const widgets: Record<WidgetId, ReactNode> = {
     occupancy: <MetricWidget id="occupancy" label="Ocupación del equipo" metric="ocupacion" value={`${occupancy}%`} hint={`${connected} conectados · objetivo operativo 85%`} tone={occupancy >= 85 ? "warn" : "default"} />,
     connected: <MetricWidget id="connected" label="Equipo conectado" value={connected} hint={`de ${agents.length} ejecutivos`} />,
-    available: <MetricWidget id="available" label="Disponibles" value={groups.available} hint={connected ? `${Math.round((groups.available / connected) * 100)}% del equipo conectado` : "Sin equipo conectado"} tone={groups.available === 0 && connected > 0 ? "warn" : "good"} />,
+    available: <MetricWidget id="available" label="Disponibles" value={groups.available} hint={connected ? `${Math.round((groups.available / connected) * 100)}% del equipo conectado` : "Sin equipo conectado"} tone={groups.available === 0 && connected > 0 ? "warn" : "default"} />,
     "on-call": <MetricWidget id="on-call" label="En llamada" value={groups.on_call} hint={`${groups.on_call + groups.wrap_up} trabajando llamadas`} />,
     "wrap-up": <MetricWidget id="wrap-up" label="En cierre" value={groups.wrap_up} hint="Incluye interrupción legal y ACW" tone={groups.wrap_up > 0 ? "warn" : "default"} />,
     paused: <MetricWidget id="paused" label="En pausa" value={groups.paused} hint={exceededPauses ? `${exceededPauses} ${exceededPauses === 1 ? "excedió" : "excedieron"} el tope de su pausa` : "Fuera de la cola por AUX"} tone={exceededPauses ? "danger" : groups.paused > 0 ? "warn" : "default"} />,
-    alerts: <MetricWidget id="alerts" label="Alertas operativas" value={alerts} hint={alerts ? "Pausa o cierre fuera de umbral" : "Todo dentro de los umbrales"} tone={alerts ? "danger" : "good"} />,
+    alerts: <MetricWidget id="alerts" label="Alertas operativas" value={alerts} hint={alerts ? "Pausa o cierre fuera de umbral" : "Todo dentro de los umbrales"} tone={alerts ? "danger" : "default"} />,
     campaigns: <MetricWidget id="campaigns" label="Campañas activas" value={queues.length} hint={`${totals.inFlight} llamadas en curso`} />,
     answered: <MetricWidget id="answered" label="Conectados hoy" metric="conectados" value={funnel ? formatInt(funnel.conectados) : "—"} hint={funnel ? (funnel.conectados ? `${formatPercent(funnel.tasa_conexion)} de ${formatInt(funnel.recorridos)} recorridos únicos · ${formatInt(funnel.contactados)} con aló (${formatPercent(funnel.alo_de_conectados)})` : "Nadie ha contestado todavía") : pendingHint} />,
     completed: <MetricWidget id="completed" label="Completadas hoy" value={formatInt(totals.completed)} hint={totals.answered ? `${Math.round((totals.completed / totals.answered) * 100)}% de las llamadas conectadas` : "Sin llamadas conectadas"} />,
-    "abandon-rate": <MetricWidget id="abandon-rate" label="Abandono hoy" metric="abandono" value={`${abandonRate}%`} hint={`${formatInt(totals.abandoned)} abandonadas · umbral ${THRESHOLDS.abandonRate}%`} tone={abandonRate > THRESHOLDS.abandonRate ? "danger" : "good"} />,
+    "abandon-rate": <MetricWidget id="abandon-rate" label="Abandono hoy" metric="abandono" value={`${abandonRate}%`} hint={`${formatInt(totals.abandoned)} abandonadas · umbral ${THRESHOLDS.abandonRate}%`} tone={abandonRate > THRESHOLDS.abandonRate ? "danger" : "default"} />,
     "no-answer-rate": <MetricWidget id="no-answer-rate" label="Sin respuesta hoy" value={`${noAnswerRate}%`} hint={`${formatInt(totals.noAnswer)} intentos sin respuesta`} tone={noAnswerRate >= 70 ? "warn" : "default"} />,
     "contact-rate": <MetricWidget id="contact-rate" label="Contactabilidad hoy" metric="contactabilidad" value={formatPercent(funnel?.contactabilidad)} hint={funnel ? (funnel.recorridos ? `${formatInt(funnel.contactados)} aló de ${formatInt(funnel.recorridos)} registros recorridos` : "Sin registros recorridos todavía") : pendingHint} />,
     "effective-contacts": <MetricWidget id="effective-contacts" label="Contacto titular" metric="contacto_titular" value={formatPercent(funnel?.contactabilidad_titular)} hint={funnel ? (funnel.contactados ? `${formatInt(funnel.titulares)} titulares · ${formatPercent(funnel.titularidad)} de los aló` : "Sin aló todavía") : pendingHint} />,
@@ -772,7 +830,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
     tmo: <MetricWidget id="tmo" label="TMO del día" value={formatElapsed(today?.tmo_segundos ?? null)} hint={today ? `Gestión completa, de abrir a tipificar · con contacto ${formatElapsed(today.tmo_contacto_segundos)}` : pendingHint} />,
     tmc: <MetricWidget id="tmc" label="Tiempo de conversación" value={formatElapsed(today?.tmc_segundos ?? null)} hint={today ? `Promedio por llamada conectada · ${formatInt(today.discador_conectadas)} conectadas hoy` : pendingHint} />,
     production: <MetricWidget id="production" label="Producción del día" value={today ? formatInt(today.gestiones) : "—"} hint={today ? `Gestiones cerradas del equipo · ${formatInt(today.contactos)} con aló · ${formatInt(today.ventas)} ventas · ${formatInt(today.cotizaciones)} cotizaciones · ${formatInt(today.agendas)} agendas` : pendingHint} tone={today && today.ventas > 0 ? "good" : "default"} />,
-    "technical-failures": <MetricWidget id="technical-failures" label="Fallas de troncal" value={today?.fallas_tecnicas == null ? "—" : `${today.fallas_tecnicas}%`} hint={today ? `Intentos que no alcanzaron a sonar · ${formatInt(today.discador_intentos)} intentos hoy · abandono ${today.abandono ?? 0}%` : pendingHint} tone={today?.fallas_tecnicas != null && today.fallas_tecnicas >= 30 ? "danger" : today?.fallas_tecnicas != null && today.fallas_tecnicas >= 10 ? "warn" : "good"} />,
+    "technical-failures": <MetricWidget id="technical-failures" label="Fallas de troncal" value={today?.fallas_tecnicas == null ? "—" : `${today.fallas_tecnicas}%`} hint={today ? `Intentos que no alcanzaron a sonar · ${formatInt(today.discador_intentos)} intentos hoy · abandono ${today.abandono ?? 0}%` : pendingHint} tone={today?.fallas_tecnicas != null && today.fallas_tecnicas >= 30 ? "danger" : today?.fallas_tecnicas != null && today.fallas_tecnicas >= 10 ? "warn" : "default"} />,
     hourly: (
       <div className="h-[19.5rem]">
         <WidgetHeader id="hourly" title="Curva por hora" description="Registros recorridos, conectados, con aló y con titular en cada hora de hoy, hora Chile." />
@@ -783,7 +841,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
               <CartesianGrid {...CHART_GRID} vertical={false} />
               <XAxis dataKey="name" tick={{ ...CHART_AXIS_TICK, fontSize: 10 }} tickLine={false} axisLine={false} interval={0} />
               <YAxis allowDecimals={false} tick={CHART_AXIS_TICK} tickLine={false} axisLine={false} />
-              <Tooltip cursor={CHART_CURSOR} contentStyle={CHART_TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} labelFormatter={(label, payload) => `${label} · contactabilidad ${payload?.[0]?.payload?.Contactabilidad ?? "—"}`} />
+              <Tooltip cursor={CHART_CURSOR} content={<ChartTooltip formatLabel={(label, payload) => `${label} · contactabilidad ${String(payload[0]?.payload?.Contactabilidad ?? "—")}`} />} />
               <Bar dataKey="Recorridos" fill={gradientUrl(hourlyChartId, "teal")} radius={[5, 5, 0, 0]} maxBarSize={18} />
               <Bar dataKey="Conectados" fill={gradientUrl(hourlyChartId, "slate")} radius={[5, 5, 0, 0]} maxBarSize={18} />
               <Bar dataKey="Aló" fill={gradientUrl(hourlyChartId, "primary")} radius={[5, 5, 0, 0]} maxBarSize={18} />
@@ -820,7 +878,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
           <div>
             <WidgetHeader id="status-chart" title="Distribución del equipo" description="Lectura de disponibilidad en este instante." />
           </div>
-          <div className="rounded-lg border border-border border-r-2 border-r-[color:var(--tone-blue)] bg-background px-3 py-2 text-right">
+          <div className="rounded-lg bg-surface-muted px-3 py-2 text-right">
             <p className="text-xs font-medium text-muted-foreground">Conectados</p>
             <p className="mt-0.5 text-xl font-semibold tabular-nums tracking-tight text-foreground">{connected}<span className="text-sm text-muted-foreground">/{agents.length}</span></p>
           </div>
@@ -840,7 +898,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
                 {statusChartData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
                 <Label value={`${occupancy}%`} position="center" className="fill-foreground text-2xl font-semibold" />
               </Pie>
-              <Tooltip contentStyle={CHART_TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} formatter={(value) => [formatInt(Number(value)), "Ejecutivos"]} />
+              <Tooltip content={<ChartTooltip formatLabel={() => "Ejecutivos"} />} />
             </PieChart>
           </ResponsiveContainer>
         </div>
@@ -864,7 +922,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
               <CartesianGrid {...CHART_GRID} vertical={false} />
               <XAxis dataKey="name" tick={{ ...CHART_AXIS_TICK, fontSize: 10 }} tickLine={false} axisLine={false} interval={0} />
               <YAxis allowDecimals={false} tick={CHART_AXIS_TICK} tickLine={false} axisLine={false} />
-              <Tooltip cursor={CHART_CURSOR} contentStyle={CHART_TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} labelFormatter={(_, payload) => payload?.[0]?.payload?.fullName ?? ""} />
+              <Tooltip cursor={CHART_CURSOR} content={<ChartTooltip formatLabel={(_, payload) => String(payload[0]?.payload?.fullName ?? "")} />} />
               <Bar dataKey="En curso" stackId="a" fill={CHART_COLOR.teal} radius={[0, 0, 4, 4]} maxBarSize={44} />
               <Bar dataKey="Conectadas" stackId="a" fill={CHART_COLOR.primary} maxBarSize={44} />
               <Bar dataKey="Completadas" stackId="a" fill={CHART_COLOR.green} radius={[6, 6, 0, 0]} maxBarSize={44} />
@@ -874,21 +932,35 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
       </div>
     ),
     queues: (
-      <SectionCard className="rounded-xl border-border" icon={Layers} tone="rose" title={<span className="text-base tracking-tight">Salud de las colas</span>} description={`Actualizado automáticamente cada ${POLL_MS / 1000} segundos.`} actions={<span className="hidden sm:inline-flex">{liveFailed ? <Badge tone="warning">Sin actualizar</Badge> : <Badge tone="success">En vivo</Badge>}</span>}>
-        <div className="space-y-3 p-4">{queues.length === 0 ? <EmptyState icon={Megaphone} title="No hay campañas activas para el motor de discado." className="py-8" /> : queues.map((queue) => <QueueHealthCard key={queue.campaign_id} queue={queue} funnel={funnelByCampaign.get(queue.campaign_id)} />)}</div>
-      </SectionCard>
+      <div className="flex h-full flex-col">
+        <PanelHeader
+          id="queues"
+          title="Salud de las colas"
+          description={`Se actualiza sola cada ${POLL_MS / 1000} segundos.`}
+          actions={<span className="hidden sm:inline-flex">{liveFailed ? <Badge tone="warning">Sin actualizar</Badge> : <Badge tone="success">En vivo</Badge>}</span>}
+        />
+        <div className="mt-4 min-h-0 flex-1 space-y-3 overflow-y-auto">
+          {queues.length === 0 ? <EmptyState icon={Megaphone} title="No hay campañas activas para el motor de discado." className="py-8" /> : queues.map((queue) => <QueueHealthCard key={queue.campaign_id} queue={queue} funnel={funnelByCampaign.get(queue.campaign_id)} />)}
+        </div>
+      </div>
     ),
     agents: (
-      <SectionCard className="rounded-xl border-border" icon={Users} tone="blue" title={<span className="text-base tracking-tight">Ejecutivos <span className="font-mono text-sm font-medium text-muted-foreground">({filteredAgents.length})</span></span>} description={alerts > 0 ? `${alerts} sobre el umbral${exceededPauses ? ` (${exceededPauses} ${exceededPauses === 1 ? "pausa excedida" : "pausas excedidas"})` : ""}: pausa sobre el tope de su motivo (${THRESHOLDS.pauseSeconds / 60} minutos si no tiene) o cierre de llamada sobre ${THRESHOLDS.wrapUpSeconds} segundos.` : `Se sincroniza cada ${POLL_MS / 1000} segundos.`}>
-        <div className="space-y-4 p-4">
-          <div className="flex flex-wrap items-end gap-3 rounded-xl bg-surface-muted/45 p-3">
-            <Field label="Estado" className="w-44"><Select value={group} onChange={(event) => setGroup(event.target.value as AgentGroup | "")}><option value="">Todos</option>{(Object.keys(GROUP_LABEL) as AgentGroup[]).map((key) => <option key={key} value={key}>{GROUP_LABEL[key]}</option>)}</Select></Field>
-            <Field label="Campaña" className="w-48"><Select value={campaign} onChange={(event) => setCampaign(event.target.value)}><option value="">Todas</option>{campaignOptions.map((name) => <option key={name} value={name}>{name}</option>)}</Select></Field>
-            <Field label="Buscar" className="w-56"><Input value={term} onChange={(event) => setTerm(event.target.value)} placeholder="Nombre o extensión" /></Field>
+      <div className="flex h-full flex-col">
+        <PanelHeader
+          id="agents"
+          title={<span className="flex items-center gap-2">Ejecutivos <span className="rounded-md bg-surface-muted px-1.5 text-[11px] font-semibold tabular-nums text-muted-foreground">{filteredAgents.length}</span></span>}
+          description={alerts > 0 ? `${alerts} sobre el umbral${exceededPauses ? ` (${exceededPauses} ${exceededPauses === 1 ? "pausa excedida" : "pausas excedidas"})` : ""}: pausa sobre el tope de su motivo (${THRESHOLDS.pauseSeconds / 60} minutos si no tiene) o cierre de llamada sobre ${THRESHOLDS.wrapUpSeconds} segundos.` : `Se sincroniza cada ${POLL_MS / 1000} segundos.`}
+        />
+        <div className="mt-4 min-h-0 flex-1 space-y-3 overflow-y-auto">
+          {/* Filtros en una barra: la primera opción dice qué filtra. */}
+          <div className="flex flex-wrap items-end gap-2.5" data-no-drag>
+            <Field label="Estado" hideLabel className="w-48"><Select value={group} onChange={(event) => setGroup(event.target.value as AgentGroup | "")}><option value="">Todos los estados</option>{(Object.keys(GROUP_LABEL) as AgentGroup[]).map((key) => <option key={key} value={key}>{GROUP_LABEL[key]} · {groups[key]}</option>)}</Select></Field>
+            <Field label="Campaña" hideLabel className="w-52"><Select value={campaign} onChange={(event) => setCampaign(event.target.value)}><option value="">Todas las campañas</option>{campaignOptions.map((name) => <option key={name} value={name}>{name}</option>)}</Select></Field>
+            <Field label="Buscar" hideLabel className="w-60"><Input value={term} onChange={(event) => setTerm(event.target.value)} placeholder="Buscar por nombre o anexo" /></Field>
           </div>
           <DataTable rows={filteredAgents} columns={columns} getRowId={(row) => row.profile_id} storageKey="monitor-agentes" exportFilename="monitor-en-vivo" emptyTitle="Ningún ejecutivo con estos filtros" emptyDescription="Quita el filtro de estado o campaña para ver a todo el equipo." />
         </div>
-      </SectionCard>
+      </div>
     ),
   };
 

@@ -217,6 +217,8 @@ export function KpiStrip({
   className?: string;
 }) {
   const grid = columns === 5 ? "lg:grid-cols-5" : columns === 4 ? "lg:grid-cols-4" : "lg:grid-cols-3";
+  // Con un número impar de celdas en dos columnas, la última ocupa la fila
+  // entera: si no, el hueco dejaba ver el fondo gris de la rejilla.
   return (
     <section className={cn("atlas-panel overflow-hidden rounded-xl border border-border bg-surface shadow-sm", className)}>
       {(title || meta) && (
@@ -225,7 +227,16 @@ export function KpiStrip({
           {meta && <div className="text-xs text-muted-foreground">{meta}</div>}
         </header>
       )}
-      <div className={cn("grid grid-cols-1 gap-px bg-border sm:grid-cols-2", grid)}>{children}</div>
+      <div
+        className={cn(
+          "grid grid-cols-1 gap-px bg-border sm:grid-cols-2 sm:[&>*:last-child:nth-child(odd)]:col-span-2",
+          columns === 3 ? "lg:[&>*:last-child:nth-child(odd)]:col-span-1" : "",
+          columns === 5 ? "lg:[&>*:last-child:nth-child(odd)]:col-span-1" : "",
+          grid
+        )}
+      >
+        {children}
+      </div>
     </section>
   );
 }
@@ -314,7 +325,7 @@ export function KpiStripItem({
     </>
   );
 
-  const base = "group flex min-h-[9.5rem] flex-col bg-surface px-5 py-4";
+  const base = "group flex flex-col bg-surface px-5 py-4";
   if (!href) return <div className={base}>{body}</div>;
   return (
     <Link

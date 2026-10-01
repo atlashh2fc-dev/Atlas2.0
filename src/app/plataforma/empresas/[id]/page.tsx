@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { Avatar } from "@/components/ui";
 import { EDICION_INFO } from "@/lib/ediciones";
 import { MODULE_INFO } from "@/lib/modules";
 import { fechaCorta, haceCuanto, leerEmpresa } from "@/lib/plataforma.server";
@@ -16,7 +17,7 @@ export default async function EmpresaResumenPage({ params }: { params: Promise<{
 
   return (
     <div className="space-y-8">
-      <dl className="grid grid-cols-2 rounded-xl border border-border bg-surface shadow-sm lg:grid-cols-4 lg:divide-x lg:divide-border">
+      <dl className="atlas-panel grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border shadow-sm lg:grid-cols-4">
         <Cifra etiqueta="Miembros activos" valor={String(empresa.miembrosActivos)} />
         <Cifra etiqueta="Campañas" valor={String(empresa.campanas)} />
         <Cifra etiqueta="Aplicaciones" valor={String(empresa.aplicaciones.length)} />
@@ -32,8 +33,9 @@ export default async function EmpresaResumenPage({ params }: { params: Promise<{
           ) : (
             <ul className="divide-y divide-border/70">
               {administradores.map((miembro) => (
-                <li key={miembro.id} className="flex items-center justify-between gap-3 px-5 py-3">
-                  <span className="min-w-0">
+                <li key={miembro.id} className="flex items-center gap-3 px-5 py-3">
+                  <Avatar name={miembro.nombre} size="md" />
+                  <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium text-foreground">{miembro.nombre}</span>
                     {miembro.correo && <span className="block truncate text-xs text-muted-foreground">{miembro.correo}</span>}
                   </span>
@@ -50,9 +52,12 @@ export default async function EmpresaResumenPage({ params }: { params: Promise<{
           ) : (
             <ul className="divide-y divide-border/70">
               {empresa.aplicaciones.map((modulo) => (
-                <li key={modulo} className="flex items-center justify-between gap-3 px-5 py-3 text-sm">
-                  <span className="font-medium text-foreground">{MODULE_INFO[modulo].label}</span>
-                  <span className="text-xs text-muted-foreground">{MODULE_INFO[modulo].producto}</span>
+                <li key={modulo} className="flex items-center gap-3 px-5 py-3 text-sm">
+                  <Avatar name={MODULE_INFO[modulo].label} size="md" shape="square" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-medium text-foreground">{MODULE_INFO[modulo].label}</span>
+                    <span className="block text-xs text-muted-foreground">{MODULE_INFO[modulo].producto}</span>
+                  </span>
                 </li>
               ))}
             </ul>
@@ -69,7 +74,7 @@ export default async function EmpresaResumenPage({ params }: { params: Promise<{
 
 function Cifra({ etiqueta, valor }: { etiqueta: string; valor: string }) {
   return (
-    <div className="px-5 py-4">
+    <div className="bg-surface px-5 py-4">
       <dt className="text-[13px] text-muted-foreground">{etiqueta}</dt>
       <dd className="mt-1 text-xl font-semibold tabular-nums tracking-tight text-foreground">{valor}</dd>
     </div>
@@ -88,7 +93,7 @@ function Bloque({
   return (
     <section className="space-y-3">
       <div className="flex items-baseline justify-between">
-        <h2 className="text-base font-semibold tracking-tight text-foreground">{titulo}</h2>
+        <h2 className="text-[15px] font-semibold tracking-tight text-foreground">{titulo}</h2>
         <Link href={accion.href} className="text-[13px] font-medium text-primary hover:underline">
           {accion.texto}
         </Link>

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { AppRole } from "@/lib/types";
 import { UsersTable, type UserRow } from "@/components/users-table";
+import { Users } from "lucide-react";
 import { Callout, NavTabs, PageHeader } from "@/components/ui";
 
 /**
@@ -24,9 +25,9 @@ export default async function TeamUsersPage() {
   const header = (
     <>
       <PageHeader
+        icon={Users}
         title="Mi equipo"
         description="Administra a tus ejecutivos: campañas que operan, contraseña y acceso."
-        className="border-b-0 pb-0"
       />
       <NavTabs
         tabs={[

@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { AlarmClock, AlertTriangle, BadgeDollarSign, CalendarCheck, Clock, FileClock, Handshake, Inbox, Mail, Plus, Trophy, UserX } from "lucide-react";
+import { AlarmClock, AlertTriangle, BadgeDollarSign, CalendarCheck, ChevronRight, FileClock, Handshake, Inbox, LayoutDashboard, Mail, Plus, Trophy, UserX } from "lucide-react";
 
-import { Badge, EmptyState, MetricCard, PageHeader, SectionCard, buttonClasses } from "@/components/ui";
+import { Avatar, Badge, EmptyState, PageHeader, SectionCard, buttonClasses } from "@/components/ui";
+import { KpiStrip, KpiStripItem } from "@/components/report-kit";
 import { ZONA_CLINICA, fechaEnChile, instanteEnChile, sumarDias } from "@/lib/citas";
 import { VENTAS_POR_EDICION, type Edicion } from "@/lib/ediciones";
 import { haceCuanto, senalDe, type Prospecto } from "@/lib/prospeccion";
@@ -88,67 +89,98 @@ export async function InicioComercial({ profile, edicion, empresa }: { profile: 
   const ganadosMes =negocios.filter((negocio) => negocio.status === "ganada" && negocio.closed_at && new Date(negocio.closed_at) >= inicioMes);
   const horasDesde = (desde: string) => Math.floor((ahora.getTime() - new Date(desde).getTime()) / (60 * 60 * 1000));
 
-  const Fila = ({ negocio, detalle, tono }: { negocio: Negocio; detalle: string; tono?: "danger" | "warning" | "neutral" | "info" }) => (
-    <li className="flex items-center gap-3 px-4 py-2.5">
-      <div className="min-w-0 flex-1">
-        <Link href={`/dashboard/ventas/${negocio.id}`} className="block truncate text-sm font-medium text-foreground hover:text-primary hover:underline">
-          {primero(negocio.sales_companies)?.name ?? negocio.name}
+  // Toda la fila abre el negocio: avatar de la empresa, nombre, detalle y
+  // la señal de urgencia a la derecha.
+  const Fila = ({ negocio, detalle, tono }: { negocio: Negocio; detalle: string; tono?: "danger" | "warning" | "neutral" | "info" }) => {
+    const empresaNegocio = primero(negocio.sales_companies)?.name ?? negocio.name;
+    return (
+      <li>
+        <Link
+          href={`/dashboard/ventas/${negocio.id}`}
+          className="group flex items-center gap-3 px-5 py-2.5 transition-colors hover:bg-surface-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        >
+          <Avatar name={empresaNegocio} shape="square" size="md" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-foreground">{empresaNegocio}</p>
+            <p className="truncate text-xs text-muted-foreground">
+              {negocio.name}{negocio.owner_id ? ` · ${nombres.get(negocio.owner_id) ?? ""}` : " · sin responsable"}{monto(negocio) > 0 ? ` · ${pesos.format(monto(negocio))}` : ""}
+            </p>
+          </div>
+          <Badge tone={tono ?? "neutral"}>{detalle}</Badge>
+          <ChevronRight size={16} className="shrink-0 text-muted-foreground/50 transition-colors group-hover:text-primary" aria-hidden="true" />
         </Link>
-        <p className="truncate text-xs text-muted-foreground">
-          {negocio.name}{negocio.owner_id ? ` · ${nombres.get(negocio.owner_id) ?? ""}` : " · sin responsable"}{monto(negocio) > 0 ? ` · ${pesos.format(monto(negocio))}` : ""}
-        </p>
-      </div>
-      <Badge tone={tono ?? "neutral"}>{detalle}</Badge>
-    </li>
+      </li>
+    );
+  };
+
+  // Lo primero del día, en una frase: lo vencido antes que lo nuevo.
+  const loPrimero =
+    vencidos.length > 0
+      ? `Lo primero: ${vencidos.length} ${vencidos.length === 1 ? "negocio vencido" : "negocios vencidos"}.`
+      : sinContactar.length > 0
+        ? `Lo primero: ${sinContactar.length} ${sinContactar.length === 1 ? "negocio sin contactar" : "negocios sin contactar"}.`
+        : reunionesHoy.length > 0
+          ? `Hoy tienes ${reunionesHoy.length} ${reunionesHoy.length === 1 ? "compromiso" : "compromisos"}.`
+          : "Todo al día.";
+  const conteo = (n: number) => (
+    <span className="rounded-md bg-surface-muted px-1.5 text-[11px] font-semibold tabular-nums text-foreground">{n}</span>
   );
 
   return (
     <div className="space-y-5">
       <PageHeader
+        icon={LayoutDashboard}
         title={`Hola, ${profile.full_name.split(" ")[0]}`}
-        description={`${empresa ?? "Tu empresa"} · ${fechaLarga.format(ahora)} · ${abiertos.length} ${abiertos.length === 1 ? "negocio abierto" : "negocios abiertos"}`}
+        description={`${fechaLarga.format(ahora).replace(/^./, (letra) => letra.toUpperCase())}. ${loPrimero}`}
+        meta={
+          <>
+            <span>{empresa ?? "Tu empresa"}</span>
+            <span>{abiertos.length} {abiertos.length === 1 ? "negocio abierto" : "negocios abiertos"}</span>
+          </>
+        }
         actions={
           <div className="flex flex-wrap gap-2">
-            <Link href="/dashboard/ventas/prospeccion" className={buttonClasses()}>
-              <Inbox size={16} aria-hidden="true" /> Por contactar
-            </Link>
             <Link href="/dashboard/pipeline" className={buttonClasses({ variant: "secondary" })}>
               <Handshake size={16} aria-hidden="true" /> Negocios
             </Link>
             <Link href="/dashboard/ventas" className={buttonClasses({ variant: "secondary" })}>
               <Plus size={16} aria-hidden="true" /> {voc.nuevo}
             </Link>
+            <Link href="/dashboard/ventas/prospeccion" className={buttonClasses()}>
+              <Inbox size={16} aria-hidden="true" /> Por contactar
+            </Link>
           </div>
         }
       />
 
-      <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-6">
-        {[
-          { label: "Por contactar", valor: porContactar.length, detalle: "Mostraron interés en la campaña", href: "/dashboard/ventas/prospeccion", icon: Inbox, iconTone: "teal" as const, tone: porContactar.length > 0 ? ("warn" as const) : ("good" as const) },
-          { label: "Sin contactar", valor: sinContactar.length, detalle: "Negocios sin ninguna gestión", href: "/dashboard/pipeline?responsable=nadie", icon: UserX, iconTone: "blue" as const, tone: sinContactar.length > 0 ? ("warn" as const) : ("good" as const) },
-          { label: "Vencidos", valor: vencidos.length, detalle: "Próxima acción pasada", href: "/dashboard/pipeline?vencidas=1", icon: AlarmClock, iconTone: "amber" as const, tone: vencidos.length > 0 ? ("danger" as const) : ("good" as const) },
-          { label: "Hoy", valor: reunionesHoy.length, detalle: "Reuniones y acciones de hoy", href: "/dashboard/pipeline", icon: CalendarCheck, iconTone: "amber" as const, tone: "default" as const },
-          { label: "En juego", valor: pesos.format(abiertos.reduce((total, negocio) => total + monto(negocio), 0)), detalle: `${mensual ? "mensual" : "único"} de lo abierto`, href: "/dashboard/pipeline", icon: BadgeDollarSign, iconTone: "green" as const, tone: "default" as const },
-          { label: "Ganado este mes", valor: pesos.format(ganadosMes.reduce((total, negocio) => total + monto(negocio), 0)), detalle: `${ganadosMes.length} ${ganadosMes.length === 1 ? "negocio" : "negocios"}`, href: "/dashboard/pipeline", icon: Trophy, iconTone: "green" as const, tone: "default" as const },
-        ].map((metrica) => (
-          <MetricCard
-            key={metrica.label}
-            label={metrica.label}
-            value={metrica.valor}
-            hint={metrica.detalle}
-            href={metrica.href}
-            hrefLabel="Abrir"
-            icon={metrica.icon}
-            iconTone={metrica.iconTone}
-            tone={metrica.tone}
-          />
-        ))}
-      </div>
+      {/* Seis cifras en dos filas: lo que exige acción arriba, la plata abajo.
+          El color solo aparece cuando hay algo que atender. */}
+      <KpiStrip title="Tu día comercial" meta="Cada cifra abre su lista" columns={3}>
+        <KpiStripItem label="Por contactar" icon={Inbox} value={porContactar.length.toLocaleString("es-CL")} tone={porContactar.length > 0 ? "warn" : "default"} detail="Mostraron interés en la campaña" href="/dashboard/ventas/prospeccion" />
+        <KpiStripItem label="Sin contactar" icon={UserX} value={sinContactar.length.toLocaleString("es-CL")} tone={sinContactar.length > 0 ? "warn" : "default"} detail="Negocios sin ninguna gestión" href="/dashboard/pipeline?responsable=nadie" />
+        <KpiStripItem label="Vencidos" icon={AlarmClock} value={vencidos.length.toLocaleString("es-CL")} tone={vencidos.length > 0 ? "danger" : "default"} detail="Próxima acción pasada" href="/dashboard/pipeline?vencidas=1" />
+        <KpiStripItem label="Hoy" icon={CalendarCheck} value={reunionesHoy.length.toLocaleString("es-CL")} detail="Reuniones y acciones de hoy" href="/dashboard/pipeline" />
+        <KpiStripItem label="En juego" icon={BadgeDollarSign} value={pesos.format(abiertos.reduce((total, negocio) => total + monto(negocio), 0))} detail={`${mensual ? "Mensual" : "Único"} de lo abierto`} href="/dashboard/pipeline" />
+        <KpiStripItem label="Ganado este mes" icon={Trophy} value={pesos.format(ganadosMes.reduce((total, negocio) => total + monto(negocio), 0))} tone={ganadosMes.length > 0 ? "good" : "default"} detail={`${ganadosMes.length} ${ganadosMes.length === 1 ? "negocio" : "negocios"}`} href="/dashboard/pipeline" />
+      </KpiStrip>
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <SectionCard title={`Sin contactar · ${sinContactar.length}`} description="Llegaron y nadie los ha gestionado. Lo que viene de la web debería contactarse en menos de una hora." icon={UserX} tone="blue">
+      {sinContactar.some((negocio) => negocio.source === "agenda_web" && horasDesde(negocio.created_at) >= 1) && (
+        <p role="status" className="inline-flex items-center gap-2 text-xs font-medium text-danger"><AlertTriangle size={14} aria-hidden="true" /> Hay leads de la web con más de una hora sin contacto.</p>
+      )}
+
+      <div className="grid gap-5 xl:grid-cols-2">
+        <SectionCard title="Vencidos" description="Negocios con la próxima acción ya pasada, del más atrasado al más reciente." actions={conteo(vencidos.length)}>
+          {vencidos.length === 0 ? <EmptyState icon={AlarmClock} title="Nada vencido" description="Todas las próximas acciones están al día." /> : (
+            <ul className="divide-y divide-border/70 border-t border-border">
+              {vencidos.slice(0, 10).map((negocio) => (
+                <Fila key={negocio.id} negocio={negocio} detalle={`${Math.floor((ahora.getTime() - new Date(negocio.next_action_at as string).getTime()) / DIA)} d`} tono="danger" />
+              ))}
+            </ul>
+          )}
+        </SectionCard>
+        <SectionCard title="Sin contactar" description="Llegaron y nadie los ha gestionado. Lo que viene de la web debería contactarse en menos de una hora." actions={conteo(sinContactar.length)}>
           {sinContactar.length === 0 ? <EmptyState icon={UserX} title="Todo contactado" description="Cada negocio abierto tiene al menos una gestión. Los que solo abrieron el correo están en Ventas › Por contactar." /> : (
-            <ul className="divide-y divide-border">
+            <ul className="divide-y divide-border/70 border-t border-border">
               {sinContactar.slice(0, 10).map((negocio) => {
                 const horas = horasDesde(negocio.created_at);
                 return <Fila key={negocio.id} negocio={negocio} detalle={horas < 24 ? `${horas} h` : `${Math.floor(horas / 24)} d`} tono={negocio.source === "agenda_web" && horas >= 1 ? "danger" : horas >= 48 ? "warning" : "neutral"} />;
@@ -156,33 +188,34 @@ export async function InicioComercial({ profile, edicion, empresa }: { profile: 
             </ul>
           )}
         </SectionCard>
-        <SectionCard title={`Vencidos · ${vencidos.length}`} description="Negocios con la próxima acción ya pasada, del más atrasado al más reciente." icon={AlarmClock} tone="amber">
-          {vencidos.length === 0 ? <EmptyState icon={AlarmClock} title="Nada vencido" description="Todas las próximas acciones están al día." /> : (
-            <ul className="divide-y divide-border">
-              {vencidos.slice(0, 10).map((negocio) => (
-                <Fila key={negocio.id} negocio={negocio} detalle={`${Math.floor((ahora.getTime() - new Date(negocio.next_action_at as string).getTime()) / DIA)} d`} tono="danger" />
-              ))}
-            </ul>
-          )}
-        </SectionCard>
-        <SectionCard title={`Hoy · ${reunionesHoy.length}`} description="Reuniones y acciones comprometidas para hoy, en orden." icon={CalendarCheck} tone="amber">
+        <SectionCard title="Hoy" description="Reuniones y acciones comprometidas para hoy, en orden." actions={conteo(reunionesHoy.length)}>
           {reunionesHoy.length === 0 ? <EmptyState icon={CalendarCheck} title="Sin compromisos hoy" description="Nada agendado para hoy." /> : (
-            <ul className="divide-y divide-border">
-              {reunionesHoy.map((negocio) => (
-                <li key={negocio.id} className="flex items-center gap-3 px-4 py-2.5">
-                  <span className="inline-flex w-16 shrink-0 items-center gap-1 tabular-nums text-sm font-medium text-foreground"><Clock size={12} className="text-[var(--tone-amber)]" aria-hidden="true" />{hora.format(new Date(negocio.next_action_at as string))}</span>
-                  <div className="min-w-0 flex-1">
-                    <Link href={`/dashboard/ventas/${negocio.id}`} className="block truncate text-sm font-medium text-foreground hover:text-primary hover:underline">{primero(negocio.sales_companies)?.name ?? negocio.name}</Link>
-                    <p className="truncate text-xs text-muted-foreground">{negocio.next_action_note ?? negocio.name}</p>
-                  </div>
-                </li>
-              ))}
+            <ul className="divide-y divide-border/70 border-t border-border">
+              {reunionesHoy.map((negocio) => {
+                const empresaNegocio = primero(negocio.sales_companies)?.name ?? negocio.name;
+                return (
+                  <li key={negocio.id}>
+                    <Link
+                      href={`/dashboard/ventas/${negocio.id}`}
+                      className="group flex items-center gap-3 px-5 py-2.5 transition-colors hover:bg-surface-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    >
+                      <span className="w-12 shrink-0 text-sm font-semibold tabular-nums text-foreground">{hora.format(new Date(negocio.next_action_at as string))}</span>
+                      <Avatar name={empresaNegocio} shape="square" size="md" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-foreground">{empresaNegocio}</p>
+                        <p className="truncate text-xs text-muted-foreground">{negocio.next_action_note ?? negocio.name}</p>
+                      </div>
+                      <ChevronRight size={16} className="shrink-0 text-muted-foreground/50 transition-colors group-hover:text-primary" aria-hidden="true" />
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </SectionCard>
-        <SectionCard title={`Propuestas sin respuesta · ${propuestasSinRespuesta.length}`} description="En propuesta o negociación con más de 7 días sin avance. Un mensaje corto suele destrabarlas." icon={FileClock} tone="green">
+        <SectionCard title="Propuestas sin respuesta" description="En propuesta o negociación con más de 7 días sin avance. Un mensaje corto suele destrabarlas." actions={conteo(propuestasSinRespuesta.length)}>
           {propuestasSinRespuesta.length === 0 ? <EmptyState icon={FileClock} title="Nada detenido" description="Ninguna propuesta lleva más de una semana sin respuesta." /> : (
-            <ul className="divide-y divide-border">
+            <ul className="divide-y divide-border/70 border-t border-border">
               {propuestasSinRespuesta.slice(0, 10).map((negocio) => (
                 <Fila key={negocio.id} negocio={negocio} detalle={`desde ${fechaCorta.format(new Date(negocio.next_action_at as string))}`} tono="warning" />
               ))}
@@ -191,44 +224,67 @@ export async function InicioComercial({ profile, edicion, empresa }: { profile: 
         </SectionCard>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <SectionCard title="Campaña de correo" description="Lo que va enviando Atlas Lead: a cuántos les llegó, cuántos abrieron y cuántos hicieron clic." icon={Mail} tone="teal">
-          {campanasCorreo.length === 0 ? <EmptyState icon={Mail} title="Sin campañas de correo" description="Cuando Atlas Lead envíe, el avance aparece acá." /> : (
-            <ul className="divide-y divide-border">
-              {campanasCorreo.map(([id, cuenta]) => (
-                <li key={id} className="space-y-2 px-4 py-3">
-                  <p className="truncate text-sm font-medium text-foreground">{nombreCampana.get(id) ?? "Campaña"}</p>
-                  <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
-                    <div className="rounded-lg border border-border border-l-2 border-l-border-strong bg-background px-3 py-2"><p className="text-lg font-semibold tabular-nums text-foreground">{cuenta.personas}</p><p className="text-muted-foreground">personas · {cuenta.correos} correos</p></div>
-                    <div className="rounded-lg border border-border border-l-2 border-l-[var(--tone-teal)] bg-background px-3 py-2"><p className="text-lg font-semibold tabular-nums text-foreground">{cuenta.abrieron}</p><p className="text-muted-foreground">abrieron · {porciento(cuenta.abrieron, cuenta.personas)}</p></div>
-                    <div className="rounded-lg border border-border border-l-2 border-l-success bg-background px-3 py-2"><p className="text-lg font-semibold tabular-nums text-success">{cuenta.clic}</p><p className="text-muted-foreground">hicieron clic · {porciento(cuenta.clic, cuenta.personas)}</p></div>
-                    <div className={`rounded-lg border border-border border-l-2 bg-background px-3 py-2 ${cuenta.rebotes + cuenta.bajas > 0 ? "border-l-warning" : "border-l-border-strong"}`}><p className={`text-lg font-semibold tabular-nums ${cuenta.rebotes + cuenta.bajas > 0 ? "text-warning" : "text-foreground"}`}>{cuenta.rebotes + cuenta.bajas}</p><p className="text-muted-foreground">rebotes y bajas</p></div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </SectionCard>
-        <SectionCard title={`Por contactar · ${porContactar.length}`} description="Abrieron, hicieron clic o respondieron la campaña y esperan que les escribas. Los más calientes primero." icon={Inbox} tone="teal">
+      <div className="grid gap-5 xl:grid-cols-2">
+        <SectionCard title="Por contactar" description="Abrieron, hicieron clic o respondieron la campaña y esperan que les escribas. Los más calientes primero." actions={conteo(porContactar.length)}>
           {porContactar.length === 0 ? <EmptyState icon={Inbox} title="Bandeja al día" description="Nadie con interés espera gestión." /> : (
-            <ul className="divide-y divide-border">
-              {porContactar.slice(0, 8).map((p) => (
-                <li key={p.lead_id} className="flex items-center gap-3 px-4 py-2.5">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-foreground">{p.empresa ?? p.contacto ?? "Sin nombre"}</p>
-                    <p className="truncate text-xs text-muted-foreground">{senalDe(p)} · {haceCuanto(p.ultima_senal_at, ahora)}</p>
-                  </div>
-                  <Badge tone={p.respondio || p.clic ? "success" : p.estado === "volvio" ? "warning" : "info"}>{p.estado === "nuevo" ? "Sin contactar" : p.estado === "volvio" ? "Volvió a abrir" : "Seguimiento"}</Badge>
-                </li>
-              ))}
+            <ul className="divide-y divide-border/70 border-t border-border">
+              {porContactar.slice(0, 8).map((p) => {
+                const nombre = p.empresa ?? p.contacto ?? "Sin nombre";
+                return (
+                  <li key={p.lead_id} className="flex items-center gap-3 px-5 py-2.5">
+                    <Avatar name={nombre} shape={p.empresa ? "square" : "circle"} size="md" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-foreground">{nombre}</p>
+                      <p className="truncate text-xs text-muted-foreground">{senalDe(p)} · {haceCuanto(p.ultima_senal_at, ahora)}</p>
+                    </div>
+                    <Badge tone={p.respondio || p.clic ? "success" : p.estado === "volvio" ? "warning" : "info"}>{p.estado === "nuevo" ? "Sin contactar" : p.estado === "volvio" ? "Volvió a abrir" : "Seguimiento"}</Badge>
+                  </li>
+                );
+              })}
             </ul>
           )}
-          <p className="border-t border-border px-4 py-2 text-xs"><Link href="/dashboard/ventas/prospeccion" className="text-primary hover:underline">Ver a quién escribirle</Link></p>
+          <p className="border-t border-border bg-surface-raised px-5 py-2.5 text-xs"><Link href="/dashboard/ventas/prospeccion" className="font-medium text-primary hover:underline">Ver a quién escribirle</Link></p>
+        </SectionCard>
+        <SectionCard title="Campaña de correo" description="Lo que va enviando Atlas Lead: a cuántos les llegó, cuántos abrieron y cuántos hicieron clic.">
+          {campanasCorreo.length === 0 ? <EmptyState icon={Mail} title="Sin campañas de correo" description="Cuando Atlas Lead envíe, el avance aparece acá." /> : (
+            <ul className="divide-y divide-border/70 border-t border-border">
+              {campanasCorreo.map(([id, cuenta]) => {
+                const nombre = nombreCampana.get(id) ?? "Campaña";
+                const problemas = cuenta.rebotes + cuenta.bajas;
+                return (
+                  <li key={id} className="px-5 py-3">
+                    <div className="flex items-center gap-3">
+                      <Avatar name={nombre} seed={id} shape="square" size="sm" />
+                      <p className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{nombre}</p>
+                      <span className="shrink-0 text-xs text-muted-foreground">{cuenta.correos.toLocaleString("es-CL")} correos</span>
+                    </div>
+                    {/* Embudo de la campaña en una franja dividida: cifras
+                        alineadas, color solo en el clic y en los problemas. */}
+                    <dl className="mt-2.5 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-4">
+                      <div className="bg-surface px-3 py-2">
+                        <dt className="text-[11px] text-muted-foreground">Personas</dt>
+                        <dd className="text-base font-semibold tabular-nums text-foreground">{cuenta.personas.toLocaleString("es-CL")}</dd>
+                      </div>
+                      <div className="bg-surface px-3 py-2">
+                        <dt className="text-[11px] text-muted-foreground">Abrieron · {porciento(cuenta.abrieron, cuenta.personas)}</dt>
+                        <dd className="text-base font-semibold tabular-nums text-foreground">{cuenta.abrieron.toLocaleString("es-CL")}</dd>
+                      </div>
+                      <div className="bg-surface px-3 py-2">
+                        <dt className="text-[11px] text-muted-foreground">Clic · {porciento(cuenta.clic, cuenta.personas)}</dt>
+                        <dd className={`text-base font-semibold tabular-nums ${cuenta.clic > 0 ? "text-success" : "text-foreground"}`}>{cuenta.clic.toLocaleString("es-CL")}</dd>
+                      </div>
+                      <div className="bg-surface px-3 py-2">
+                        <dt className="text-[11px] text-muted-foreground">Rebotes y bajas</dt>
+                        <dd className={`text-base font-semibold tabular-nums ${problemas > 0 ? "text-warning" : "text-foreground"}`}>{problemas.toLocaleString("es-CL")}</dd>
+                      </div>
+                    </dl>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </SectionCard>
       </div>
-      {sinContactar.some((negocio) => negocio.source === "agenda_web" && horasDesde(negocio.created_at) >= 1) && (
-        <p className="inline-flex items-center gap-2 text-xs text-danger"><AlertTriangle size={14} aria-hidden="true" /> Hay leads de la web con más de una hora sin contacto.</p>
-      )}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { cambiarAplicacionDeEmpresa } from "@/app/actions/organizaciones";
-import { ActionForm, ActionSubmit, Badge } from "@/components/ui";
+import { ActionForm, ActionSubmit, Avatar, Badge } from "@/components/ui";
 import { APP_MODULES, MODULE_INFO, type AppModule } from "@/lib/modules";
 import { leerEmpresa } from "@/lib/plataforma.server";
 
@@ -23,13 +23,19 @@ export default async function EmpresaAplicacionesPage({ params }: { params: Prom
       </p>
       {grupos.map((grupo) => (
         <section key={grupo.titulo} className="space-y-3">
-          <h2 className="text-base font-semibold tracking-tight text-foreground">{grupo.titulo}</h2>
+          <h2 className="flex items-center text-[15px] font-semibold tracking-tight text-foreground">
+            {grupo.titulo}
+            <span className="ml-1.5 inline-flex rounded-md bg-surface-muted px-1.5 text-[11px] font-semibold tabular-nums text-muted-foreground">
+              {grupo.modulos.filter((modulo) => empresa.aplicaciones.includes(modulo)).length}/{grupo.modulos.length}
+            </span>
+          </h2>
           <ul className="divide-y divide-border/70 overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
             {grupo.modulos.map((modulo) => {
               const info = MODULE_INFO[modulo];
               const activa = empresa.aplicaciones.includes(modulo);
               return (
                 <li key={modulo} className="flex items-center gap-4 px-5 py-4">
+                  <Avatar name={info.label} size="md" shape="square" className={activa ? "" : "opacity-50"} />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-foreground">
                       {info.label}

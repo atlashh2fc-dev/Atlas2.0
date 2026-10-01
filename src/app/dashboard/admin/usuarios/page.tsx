@@ -92,9 +92,9 @@ export default async function UsersAdminPage({
   return (
     <div className="space-y-5">
       <FilterBar storageKey="usuarios">
-        <Field label="Rol" className="w-44">
+        <Field label="Rol" hideLabel className="w-44">
           <Select name="role" defaultValue={roleFilter ?? ""}>
-            <option value="">Todos</option>
+            <option value="">Todos los roles</option>
             {ROLE_OPTIONS.map((role) => (
               <option key={role.value} value={role.value}>
                 {role.label}
@@ -103,17 +103,17 @@ export default async function UsersAdminPage({
           </Select>
         </Field>
 
-        <Field label="Estado" className="w-40">
+        <Field label="Estado" hideLabel className="w-44">
           <Select name="active" defaultValue={activeFilter ?? ""}>
-            <option value="">Todos</option>
+            <option value="">Todos los estados</option>
             <option value="si">Activos</option>
             <option value="no">Inactivos</option>
           </Select>
         </Field>
 
-        <Field label="Campaña" className="w-56">
+        <Field label="Campaña" hideLabel className="w-56">
           <Select name="campaign" defaultValue={selectedCampaign?.id ?? ""}>
-            <option value="">Todas</option>
+            <option value="">Todas las campañas</option>
             {(campaigns ?? []).map((campaign) => (
               <option key={campaign.id} value={campaign.id}>
                 {campaign.name}

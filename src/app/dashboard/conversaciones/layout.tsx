@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { MessagesSquare } from "lucide-react";
 
 import { requireProfile } from "@/lib/auth";
 import { puedeLeerConversaciones, requireModule } from "@/lib/modules.server";
@@ -34,6 +35,7 @@ export default async function AttentionLayout({ children }: { children: React.Re
     <div className="space-y-5">
       <PageHeader
         title={permissions.canAttendCustomers ? "Mi atención" : soloLectura ? "Conversaciones" : "Historial de atención"}
+        icon={MessagesSquare}
         description={
           permissions.canAttendCustomers
             ? "Los canales que ves son los de tus campañas y tus colas. Correo y WhatsApp se prenden o apagan en tu estado, arriba."

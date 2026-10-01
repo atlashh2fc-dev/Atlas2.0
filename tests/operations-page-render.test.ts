@@ -48,6 +48,10 @@ const ui = {
   TableEmpty: ({ colSpan, children }: Props) => React.createElement("tr", null,
     React.createElement("td", { colSpan: colSpan as number }, children)),
   ActionForm: ({ children }: Props) => React.createElement("form", { "data-action": "general-automation" }, children),
+  // Primitivos de identidad y filtros: sin estilo, conservan la etiqueta y los controles.
+  Avatar: () => React.createElement("span", { "aria-hidden": "true" }),
+  Field: ({ label, children }: Props) => React.createElement("label", null, label as React.ReactNode, children),
+  FilterBar: ({ children, more, action }: Props) => React.createElement("form", { action }, children, more as React.ReactNode),
   ActionSubmit: element("button"), buttonClasses: () => "button",
 };
 

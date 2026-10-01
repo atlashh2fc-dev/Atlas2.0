@@ -34,13 +34,16 @@ export function Header({
   duenio?: boolean;
 }) {
   return (
-    <header className="flex h-14 flex-shrink-0 items-center justify-between border-b border-border bg-background px-6">
+    <header className="flex h-14 flex-shrink-0 items-center justify-between gap-4 border-b border-border bg-background px-4 sm:px-6">
       <div className="flex min-w-0 items-center gap-3">
         <MobileNav profile={profile} badges={badges} modules={modules} edicion={edicion} duenio={duenio} />
         <WorkspaceContext role={profile.role} />
+        {/* El buscador es la puerta de entrada (Linear, Attio): a la vista y
+            pegado al contexto, no perdido entre los íconos de la derecha. */}
+        <QuickSearch role={profile.role} userId={profile.id} modules={modules} edicion={edicion} />
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
         {/* La administración de Atlas vive fuera del CRM de cada empresa: el
             dueño de la plataforma entra a ella desde acá, no desde el menú. */}
         {duenio && (
@@ -54,8 +57,8 @@ export function Header({
         )}
         <SelectorEmpresa empresas={empresas} actual={profile.viewing_organization_id ?? null} unaALaVez={duenio} />
         {profile.is_demo && <DemoRoleSwitcher accounts={demoAccounts} currentId={profile.id} />}
-        <QuickSearch role={profile.role} userId={profile.id} modules={modules} edicion={edicion} />
         {profile.role === "agente" && <AgendaBell />}
+        <span aria-hidden="true" className="mx-1 hidden h-5 w-px bg-border sm:block" />
         <ThemeToggle />
         <BotonCerrarSesion />
       </div>

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Layers } from "lucide-react";
 
 import { MiembrosDeCola } from "@/components/miembros-de-cola";
 import { PageHeader } from "@/components/ui";
@@ -23,7 +23,7 @@ export default async function MoverEjecutivosPage({ params }: { params: Promise<
       <Link href="/dashboard/operacion" className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary">
         <ArrowLeft size={13} aria-hidden="true" /> Centro de operaciones
       </Link>
-      <PageHeader title={`Cola ${cola.name}`} description="Quién atiende esta cola. Los cambios rigen desde el próximo correo o WhatsApp que llegue." />
+      <PageHeader icon={Layers} title={`Cola ${cola.name}`} description="Quién atiende esta cola. Los cambios rigen desde el próximo correo o WhatsApp que llegue." />
       <MiembrosDeCola queueId={id} rol={profile.role} />
     </div>
   );

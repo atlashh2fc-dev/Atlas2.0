@@ -18,11 +18,16 @@ export function EmptyState({
   return (
     <div className={cn("flex flex-col items-center justify-center gap-2 px-5 py-12 text-center", className)}>
       {Icon && (
-        <Icon size={22} className="mb-1 text-muted-foreground/60" aria-hidden="true" />
+        <span
+          className="mb-2 flex size-12 items-center justify-center rounded-2xl border border-border bg-surface-raised text-muted-foreground shadow-sm"
+          style={{ backgroundImage: "linear-gradient(140deg, color-mix(in srgb, var(--primary) 10%, transparent), transparent 70%)" }}
+        >
+          <Icon size={20} aria-hidden="true" />
+        </span>
       )}
       <p className="text-sm font-medium text-foreground">{title}</p>
-      {description && <p className="max-w-sm text-xs text-muted-foreground">{description}</p>}
-      {action && <div className="mt-2">{action}</div>}
+      {description && <p className="max-w-sm text-[13px] leading-relaxed text-muted-foreground">{description}</p>}
+      {action && <div className="mt-3">{action}</div>}
     </div>
   );
 }

@@ -61,10 +61,12 @@ export function OfflineManagementButton({ leadId }: { leadId: string }) {
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        // Mismo tamaño que el resto de las acciones de la cabecera de la ficha.
         className={buttonClasses({ size: "sm", variant: "secondary" })}
       >
-        <MessageSquare size={14} />
-        Registrar gestión sin llamada
+        <MessageSquare size={14} aria-hidden="true" />
+        Gestión sin llamada
       </button>
       {open && (
         <span className="absolute right-0 top-full z-30 mt-1 block w-72 space-y-2 rounded-xl border border-border bg-surface-solid p-3 text-left shadow-lg">

@@ -47,14 +47,24 @@ const VERDICT = {
   no_evaluable: { label: "No evaluable", tone: "neutral" as const },
 };
 
-/** Borde de estado de las baldosas: el color del veredicto se lee sin la etiqueta. */
-const TONE_EDGE: Record<"success" | "warning" | "danger" | "neutral" | "info", string> = {
-  success: "border-l-success",
-  warning: "border-l-warning",
-  danger: "border-l-danger",
-  neutral: "border-l-border-strong",
-  info: "border-l-primary",
+/** Color de la barra de puntaje según el veredicto. */
+const TONE_BAR: Record<"success" | "warning" | "danger" | "neutral" | "info", string> = {
+  success: "bg-success",
+  warning: "bg-warning",
+  danger: "bg-danger",
+  neutral: "bg-muted-foreground/40",
+  info: "bg-primary",
 };
+
+/** Barra de 0 a 100 que acompaña al puntaje, como en Gong o Chorus. */
+function ScoreBar({ value, tone, className }: { value: number; tone: keyof typeof TONE_BAR; className?: string }) {
+  const width = Math.min(100, Math.max(0, value));
+  return (
+    <span className={`block h-1.5 overflow-hidden rounded-full bg-surface-muted ${className ?? ""}`} aria-hidden="true">
+      <span className={`block h-full rounded-full ${TONE_BAR[tone]}`} style={{ width: `${width}%` }} />
+    </span>
+  );
+}
 
 const TONE_TEXT: Record<"success" | "warning" | "danger" | "neutral" | "info", string> = {
   success: "text-success",
@@ -64,11 +74,13 @@ const TONE_TEXT: Record<"success" | "warning" | "danger" | "neutral" | "info", s
   info: "text-primary",
 };
 
-/** Encabezado de bloque con icono plano; `tone` se conserva por compatibilidad. */
-function BlockTitle({ icon: Icon, children }: { icon: typeof ListChecks; tone: string; children: string }) {
+/** Encabezado de bloque: ícono en chip tintado y título. */
+function BlockTitle({ icon: Icon, tone, children }: { icon: typeof ListChecks; tone: string; children: string }) {
   return (
     <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-      <Icon size={16} className="text-muted-foreground" aria-hidden="true" />
+      <span className="icon-chip size-7 rounded-lg" data-tone={tone} aria-hidden="true">
+        <Icon size={14} />
+      </span>
       {children}
     </h3>
   );
@@ -128,8 +140,8 @@ export function RecordingQualityEvaluationControl({
   }
   if (transcriptionStatus === "processing" && !transcriptionReady && status !== "completed") {
     return (
-      <Badge tone="info" className={compact ? "w-full justify-center" : undefined}>
-        <LoaderCircle size={13} className="animate-spin" />
+      <Badge tone="info" dot={false} className={compact ? "px-1.5 py-1" : undefined}>
+        <LoaderCircle size={13} className="animate-spin text-primary" />
         Transcribiendo
       </Badge>
     );
@@ -227,13 +239,39 @@ export function RecordingQualityEvaluationControl({
   return (
     <>
       {status === "completed" ? (
-        <Button type="button" variant="secondary" size="sm" onClick={view} disabled={loading} className={compact ? "w-full gap-1 px-2 text-xs leading-tight" : undefined}>
-          {loading ? <LoaderCircle size={14} className="animate-spin" /> : <BrainCircuit size={14} />}
-          {score === null ? "Ver auditoría" : `${score.toLocaleString("es-CL", { maximumFractionDigits: 1 })}/100`}
-        </Button>
+        <button
+          type="button"
+          onClick={view}
+          disabled={loading}
+          title="Ver la auditoría de la llamada"
+          className="group/score block w-full min-w-0 rounded-lg px-1.5 py-1 text-left transition-colors hover:bg-surface-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+        >
+          <span className="flex items-baseline justify-between gap-2">
+            <span className="flex items-baseline gap-0.5">
+              {loading ? (
+                <LoaderCircle size={14} className="animate-spin self-center text-muted-foreground" aria-hidden="true" />
+              ) : score === null ? (
+                <span className="text-xs font-medium text-primary">Ver auditoría</span>
+              ) : (
+                <>
+                  <span className={`text-[15px] font-semibold tabular-nums ${TONE_TEXT[verdictMeta?.tone ?? "neutral"]}`}>
+                    {score.toLocaleString("es-CL", { maximumFractionDigits: 1 })}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">/100</span>
+                </>
+              )}
+            </span>
+            {verdictMeta && (
+              <span className="truncate text-[11px] text-muted-foreground group-hover/score:text-foreground">
+                {verdictMeta.label}
+              </span>
+            )}
+          </span>
+          {score !== null && <ScoreBar value={score} tone={verdictMeta?.tone ?? "info"} className="mt-1.5" />}
+        </button>
       ) : status === "processing" || loading ? (
-        <Badge tone="info" className={compact ? "w-full justify-center" : undefined}>
-          <LoaderCircle size={13} className="animate-spin" />
+        <Badge tone="info" dot={false} className={compact ? "px-1.5 py-1" : undefined}>
+          <LoaderCircle size={13} className="animate-spin text-primary" />
           Auditando
         </Badge>
       ) : (
@@ -272,25 +310,29 @@ export function RecordingQualityEvaluationControl({
               Whisper no identifica hablantes. Mercury infiere los roles por contexto; usa este resultado como apoyo y revisa el audio antes de tomar decisiones sobre una persona.
             </Callout>
 
-            <div
-              className={`flex flex-wrap items-end justify-between gap-3 rounded-xl border border-border border-l-2 bg-surface-muted/40 p-4 ${TONE_EDGE[verdictMeta?.tone ?? "neutral"]}`}
-            >
-              <div>
-                <p className="text-xs font-medium text-muted-foreground">Puntaje normalizado</p>
-                <p className={`mt-1 text-3xl font-semibold tracking-tight tabular-nums ${TONE_TEXT[verdictMeta?.tone ?? "neutral"]}`}>
-                  {evaluation.score?.toLocaleString("es-CL", { maximumFractionDigits: 1 }) ?? "—"}
-                  <span className="text-base font-normal text-muted-foreground">/100</span>
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
+            <div className="rounded-xl border border-border bg-surface-raised p-4">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Puntaje normalizado</p>
+                  <p className={`mt-1 text-4xl font-semibold tracking-tight tabular-nums ${TONE_TEXT[verdictMeta?.tone ?? "neutral"]}`}>
+                    {evaluation.score?.toLocaleString("es-CL", { maximumFractionDigits: 1 }) ?? "—"}
+                    <span className="text-base font-normal text-muted-foreground">/100</span>
+                  </p>
+                </div>
                 {verdictMeta && <Badge tone={verdictMeta.tone}>{verdictMeta.label}</Badge>}
-                {evaluation.rubric?.version && <Badge tone="neutral">Pauta v{evaluation.rubric.version}</Badge>}
-                {evaluation.speakerConfidence !== null && evaluation.speakerConfidence !== undefined && (
-                  <Badge tone="neutral">
-                    Confianza de roles {Math.round(evaluation.speakerConfidence * 100)}%
-                  </Badge>
-                )}
               </div>
+              {typeof evaluation.score === "number" && (
+                <ScoreBar value={evaluation.score} tone={verdictMeta?.tone ?? "info"} className="mt-3 h-2" />
+              )}
+              {(evaluation.rubric?.version ||
+                (evaluation.speakerConfidence !== null && evaluation.speakerConfidence !== undefined)) && (
+                <p className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  {evaluation.rubric?.version && <span>Pauta v{evaluation.rubric.version}</span>}
+                  {evaluation.speakerConfidence !== null && evaluation.speakerConfidence !== undefined && (
+                    <span>Confianza de roles {Math.round(evaluation.speakerConfidence * 100)}%</span>
+                  )}
+                </p>
+              )}
             </div>
 
             <div>
@@ -300,50 +342,68 @@ export function RecordingQualityEvaluationControl({
 
             <div className="space-y-3">
               <BlockTitle icon={ListChecks} tone="violet">Criterios</BlockTitle>
-              {(evaluation.criteria ?? []).map((criterion) => {
-                const meta = criterion.status ? CRITERION_STATUS[criterion.status] : null;
-                return (
-                  <div
-                    key={criterion.id ?? criterion.name}
-                    className={`rounded-xl border border-border border-l-2 bg-background p-4 ${TONE_EDGE[meta?.tone ?? "neutral"]}`}
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-medium text-foreground">{criterion.name ?? criterion.id}</p>
-                      <div className="flex items-center gap-2">
-                        {meta && <Badge tone={meta.tone}>{meta.label}</Badge>}
-                        {criterion.status !== "no_aplica" && criterion.status !== "no_observable" && (
-                          <span className="text-xs tabular-nums text-muted-foreground">
-                            {criterion.score ?? 0}/{criterion.maxScore ?? 0}
-                          </span>
-                        )}
+              <ol className="divide-y divide-border/70 overflow-hidden rounded-xl border border-border">
+                {(evaluation.criteria ?? []).map((criterion) => {
+                  const meta = criterion.status ? CRITERION_STATUS[criterion.status] : null;
+                  const scored = criterion.status !== "no_aplica" && criterion.status !== "no_observable";
+                  const max = criterion.maxScore ?? 0;
+                  return (
+                    <li key={criterion.id ?? criterion.name} className="bg-surface px-4 py-3.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-medium text-foreground">{criterion.name ?? criterion.id}</p>
+                        <div className="flex items-center gap-3">
+                          {meta && <Badge tone={meta.tone}>{meta.label}</Badge>}
+                          {scored && (
+                            <span className="text-xs font-medium tabular-nums text-foreground">
+                              {criterion.score ?? 0}
+                              <span className="text-muted-foreground">/{max}</span>
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    {criterion.finding && <p className="mt-2 text-sm leading-5 text-muted-foreground">{criterion.finding}</p>}
-                    {(criterion.evidence ?? []).filter((item) => item.quote).map((item, index) => {
-                      const timestamp = formatTimestamp(item.start_seconds);
-                      return (
-                        <blockquote key={`${criterion.id}-${index}`} className="mt-2 border-l-2 border-primary/40 pl-3 text-xs italic text-foreground">
-                          {timestamp && <span className="mr-2 not-italic text-muted-foreground">{timestamp}</span>}
-                          “{item.quote}”
-                        </blockquote>
-                      );
-                    })}
-                  </div>
-                );
-              })}
+                      {scored && max > 0 && (
+                        <ScoreBar value={((criterion.score ?? 0) / max) * 100} tone={meta?.tone ?? "neutral"} className="mt-2 h-1" />
+                      )}
+                      {criterion.finding && <p className="mt-2 text-sm leading-5 text-muted-foreground">{criterion.finding}</p>}
+                      {(criterion.evidence ?? []).filter((item) => item.quote).map((item, index) => {
+                        const timestamp = formatTimestamp(item.start_seconds);
+                        return (
+                          <blockquote
+                            key={`${criterion.id}-${index}`}
+                            className="mt-2 flex gap-2 rounded-lg bg-surface-muted/60 px-3 py-2 text-xs italic text-foreground"
+                          >
+                            {timestamp && <span className="shrink-0 not-italic tabular-nums text-muted-foreground">{timestamp}</span>}
+                            <span>“{item.quote}”</span>
+                          </blockquote>
+                        );
+                      })}
+                    </li>
+                  );
+                })}
+              </ol>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <div className="rounded-xl border border-border border-l-2 border-l-success bg-background p-4">
+              <div className="rounded-xl border border-border bg-surface p-4">
                 <BlockTitle icon={ThumbsUp} tone="green">Fortalezas</BlockTitle>
-                <ul className="mt-2 space-y-2 text-sm text-muted-foreground">
-                  {(evaluation.strengths ?? []).map((item) => <li key={item}>• {item}</li>)}
+                <ul className="mt-3 space-y-2 text-sm leading-5 text-muted-foreground">
+                  {(evaluation.strengths ?? []).map((item) => (
+                    <li key={item} className="flex gap-2">
+                      <span aria-hidden="true" className="mt-2 size-1.5 shrink-0 rounded-full bg-success" />
+                      {item}
+                    </li>
+                  ))}
                 </ul>
               </div>
-              <div className="rounded-xl border border-border border-l-2 border-l-warning bg-background p-4">
+              <div className="rounded-xl border border-border bg-surface p-4">
                 <BlockTitle icon={Lightbulb} tone="amber">Oportunidades de mejora</BlockTitle>
-                <ul className="mt-2 space-y-2 text-sm text-muted-foreground">
-                  {(evaluation.improvements ?? []).map((item) => <li key={item}>• {item}</li>)}
+                <ul className="mt-3 space-y-2 text-sm leading-5 text-muted-foreground">
+                  {(evaluation.improvements ?? []).map((item) => (
+                    <li key={item} className="flex gap-2">
+                      <span aria-hidden="true" className="mt-2 size-1.5 shrink-0 rounded-full bg-warning" />
+                      {item}
+                    </li>
+                  ))}
                 </ul>
               </div>
             </div>

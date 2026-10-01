@@ -6,7 +6,7 @@ import { Ban, CheckCircle2, ChevronRight, Mail, MailOpen } from "lucide-react";
 
 import { registrarToque } from "@/app/actions/prospeccion";
 import { ContactarProspecto } from "@/components/contactar-prospecto";
-import { Badge, SubmitButton } from "@/components/ui";
+import { Avatar, Badge, SubmitButton } from "@/components/ui";
 
 export type FilaProspecto = {
   leadId: string;
@@ -70,14 +70,17 @@ export function BandejaProspeccion({ filas }: { filas: FilaProspecto[] }) {
   const anotar = (leadId: string, resultado: string) => setHechos((previo) => ({ ...previo, [leadId]: resultado }));
 
   return (
-    <ul className="divide-y divide-border">
+    <ul className="divide-y divide-border/70">
       {vistas.filas.map((p) => {
         const leadId = p.leadId;
         const hecho = hechos[leadId];
         if (!presentes.has(leadId) || hecho) {
           return (
-            <li key={leadId} className="flex items-center justify-between gap-3 bg-surface-muted/40 px-4 py-3 text-muted-foreground">
-              <span className="truncate text-sm">{p.nombre}</span>
+            <li key={leadId} className="flex items-center justify-between gap-3 bg-surface-muted/40 px-5 py-3 text-muted-foreground">
+              <span className="flex min-w-0 items-center gap-3">
+                <Avatar name={p.nombre} shape="square" size="sm" className="opacity-50" />
+                <span className="truncate text-[13px]">{p.nombre}</span>
+              </span>
               <span className="inline-flex flex-shrink-0 items-center gap-1.5 text-xs">
                 <CheckCircle2 size={14} aria-hidden="true" className="text-success" />
                 {HECHO[hecho ?? ""] ?? "Gestionado"}
@@ -87,51 +90,55 @@ export function BandejaProspeccion({ filas }: { filas: FilaProspecto[] }) {
         }
         if (p.noContactar) {
           return (
-            <li key={leadId} className="space-y-1.5 border-l-4 border-l-danger bg-danger-bg px-4 py-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <Link href={`/dashboard/leads/${p.leadId}`} className="truncate text-sm font-medium text-foreground hover:underline">
-                  {p.nombre}
-                </Link>
-                <Badge tone="danger">{p.estado.texto}</Badge>
+            <li key={leadId} className="flex gap-3 px-5 py-3.5">
+              <Avatar name={p.nombre} shape="square" size="md" tone="slate" />
+              <div className="min-w-0 space-y-1">
+                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                  <Link href={`/dashboard/leads/${p.leadId}`} className="truncate text-[13px] font-medium text-foreground hover:text-primary">
+                    {p.nombre}
+                  </Link>
+                  <Badge tone="danger">{p.estado.texto}</Badge>
+                </div>
+                <p className="flex items-start gap-1.5 text-xs font-medium text-danger">
+                  <Ban size={13} aria-hidden="true" className="mt-px flex-shrink-0" />
+                  {p.noContactar}
+                </p>
+                <Correos correos={p.correos} />
               </div>
-              <p className="flex items-start gap-1.5 text-sm font-medium text-danger">
-                <Ban size={14} aria-hidden="true" className="mt-0.5 flex-shrink-0" />
-                {p.noContactar}
-              </p>
-              <Correos correos={p.correos} />
             </li>
           );
         }
         return (
-          <li key={leadId} className="flex flex-col gap-3 px-4 py-3.5 lg:flex-row lg:items-start lg:justify-between">
-            <div className="min-w-0 space-y-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <Link href={`/dashboard/leads/${p.leadId}`} className="truncate text-sm font-semibold text-foreground hover:text-primary hover:underline">
-                  {p.nombre}
-                </Link>
-                <Badge tone={p.tonoSenal}>{p.senal}</Badge>
-                <Badge tone={p.estado.tono}>{p.estado.texto}</Badge>
+          <li key={leadId} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-surface-muted/40 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex min-w-0 gap-3">
+              <Avatar name={p.nombre} shape="square" size="md" />
+              <div className="min-w-0 space-y-1">
+                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                  <Link href={`/dashboard/leads/${p.leadId}`} className="truncate text-[13px] font-semibold text-foreground hover:text-primary">
+                    {p.nombre}
+                  </Link>
+                  <Badge tone={p.tonoSenal}>{p.senal}</Badge>
+                  <Badge tone={p.estado.tono}>{p.estado.texto}</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {p.haceCuanto ? p.haceCuanto.charAt(0).toUpperCase() + p.haceCuanto.slice(1) : ""}
+                  {p.ultimoToque ? ` · ${p.ultimoToque}` : ""}
+                  {p.respondio && (
+                    <>
+                      {" · "}
+                      <Link href="/dashboard/ventas/prospeccion?vista=respuestas" className="font-medium text-primary hover:underline">Ver su respuesta</Link>
+                    </>
+                  )}
+                </p>
+                <p className="truncate text-xs text-muted-foreground">{p.datos}</p>
+                <Correos correos={p.correos} abiertos={p.abiertos} campana={p.campana} />
               </div>
-              <p className="text-xs text-muted-foreground">
-                {p.haceCuanto}
-                {p.ultimoToque ? ` · ${p.ultimoToque}` : ""}
-                {p.respondio && (
-                  <>
-                    {" · "}
-                    <Link href="/dashboard/ventas/prospeccion?vista=respuestas" className="text-primary hover:underline">Ver su respuesta</Link>
-                  </>
-                )}
-              </p>
-              <p className="truncate text-xs text-muted-foreground">{p.datos}</p>
-              <Correos correos={p.correos} abiertos={p.abiertos} campana={p.campana} />
             </div>
-            <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
+            <div className="flex flex-shrink-0 flex-wrap items-center gap-2 lg:justify-end">
               <ContactarProspecto canal={p.canal} enlace={p.enlace} etiqueta={p.etiqueta} alAbrir={() => setAbrio((previo) => ({ ...previo, [leadId]: true }))} />
-              <div
-                role="group"
-                aria-label="Cómo te fue"
-                className={`flex flex-wrap items-center gap-0.5 rounded-lg border py-0.5 pl-2.5 pr-0.5 transition-colors ${abrio[leadId] ? "border-primary bg-primary/8" : "border-border bg-surface-muted/40"}`}
-              >
+              {/* Sin caja: los resultados son botones fantasma en una fila. Tras
+                  abrir WhatsApp, la etiqueta cambia y toma el color de lo pendiente. */}
+              <div role="group" aria-label="Cómo te fue" className={`flex flex-wrap items-center gap-0.5 rounded-lg pl-2 transition-colors ${abrio[leadId] ? "bg-primary/[0.07]" : ""}`}>
                 <span className={`mr-1 text-xs ${abrio[leadId] ? "font-medium text-primary" : "text-muted-foreground"}`}>{abrio[leadId] ? "¿Lo enviaste? Anota cómo te fue:" : "¿Cómo te fue?"}</span>
                 <Resultado
                   leadId={p.leadId}

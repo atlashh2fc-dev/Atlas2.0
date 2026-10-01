@@ -22,7 +22,8 @@ export function ContactarProspecto({
   alAbrir?: () => void;
 }) {
   const Icono = canal === "whatsapp" ? MessageCircle : canal === "llamada" ? Phone : Mail;
-  const clases = buttonClasses({ size: "sm", variant: canal === "whatsapp" ? "primary" : "secondary" });
+  // Secundario en todas las filas: con veinte filas, veinte botones primarios no dejan ver nada.
+  const clases = buttonClasses({ size: "sm", variant: "secondary" });
   if (!enlace) return null;
   return (
     <a

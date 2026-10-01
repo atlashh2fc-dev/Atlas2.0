@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import type { ComponentType, ReactNode } from "react";
 import {
   ArrowUpRight,
-  Bot,
   Mail,
   MessageCircle,
   Phone,
+  Radar,
   ShieldCheck,
-  Users,
 } from "lucide-react";
 import { setWhatsAppAutomationEnabled } from "@/app/actions/whatsapp";
 import { OperationsRefresh } from "@/components/operations-refresh";
@@ -15,9 +15,11 @@ import { TableroDeColas, type ColaEnVivo } from "@/components/tablero-de-colas";
 import {
   ActionForm,
   ActionSubmit,
+  Avatar,
   Badge,
   Callout,
-  Card,
+  Field,
+  FilterBar,
   NavTabs,
   PageHeader,
   SectionCard,
@@ -30,6 +32,7 @@ import {
   Thead,
   Tr,
   buttonClasses,
+  type BadgeTone,
 } from "@/components/ui";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -93,19 +96,21 @@ const one = <T,>(value: Relation<T>): T | null =>
   Array.isArray(value) ? (value[0] ?? null) : value;
 
 const DATA_TONE = {
-  default: { value: "text-foreground", edge: "border-l-border-strong" },
-  warn: { value: "text-warning", edge: "border-l-warning" },
-  danger: { value: "text-danger", edge: "border-l-danger" },
-  good: { value: "text-success", edge: "border-l-success" },
+  default: "text-foreground",
+  warn: "text-warning",
+  danger: "text-danger",
+  // "Al día" no se pinta: un cero va neutro y el color queda para lo que
+  // pide acción.
+  good: "text-foreground",
 } as const;
 
 type DataTone = keyof typeof DATA_TONE;
 
-/** Pendiente que pide acción: ámbar si hay algo, verde si está en cero. */
+/** Pendiente que pide acción: ámbar si hay algo, neutro si está en cero. */
 const pendingTone = (value: number | null | undefined): DataTone =>
   value === null || value === undefined ? "default" : value > 0 ? "warn" : "good";
 
-/** Cifra en baldosa: el borde izquierdo y el número toman el color del estado. */
+/** Cifra dentro de la franja dividida de un canal. */
 function DataNumber({
   label,
   value,
@@ -117,22 +122,96 @@ function DataNumber({
   hint?: string;
   tone?: DataTone;
 }) {
-  const style = DATA_TONE[value === null ? "default" : tone];
   return (
-    <div className={`rounded-lg border border-border border-l-2 bg-background px-3 py-2.5 ${style.edge}`}>
-      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
-      <dd className={`mt-1 text-2xl font-semibold tracking-tight tabular-nums ${value === null ? "text-base text-muted-foreground" : style.value}`}>
+    <div className="min-w-0 bg-surface px-4 py-3">
+      <dt className="truncate text-xs text-muted-foreground">{label}</dt>
+      <dd
+        className={`mt-1 font-semibold tracking-tight tabular-nums ${
+          value === null ? "text-sm text-muted-foreground" : `text-2xl ${DATA_TONE[tone]}`
+        }`}
+      >
         {typeof value === "number" ? value.toLocaleString("es-CL") : (value ?? "No disponible")}
       </dd>
-      {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
+      {hint && <p className="mt-1 text-[11px] leading-snug text-muted-foreground">{hint}</p>}
     </div>
   );
 }
+
+type ChipIcon = ComponentType<{ size?: number; "aria-hidden"?: boolean | "true" }>;
+
+/**
+ * Resumen de un canal: cabecera con su ícono y las cifras en una franja
+ * dividida (sin baldosas sueltas ni bordes de color).
+ */
+function ChannelSummary({
+  icon: Icon,
+  tone,
+  title,
+  description,
+  children,
+}: {
+  icon: ChipIcon;
+  tone: string;
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="atlas-panel @container overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
+      <header className="flex items-start gap-3 px-4 py-3">
+        <span className="icon-chip size-8 rounded-lg" data-tone={tone} aria-hidden="true">
+          <Icon size={15} aria-hidden="true" />
+        </span>
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+          <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
+        </div>
+      </header>
+      <dl className="grid grid-cols-2 gap-px border-t border-border bg-border @xl:grid-cols-4">{children}</dl>
+    </section>
+  );
+}
+
+/** Título de bloque fuera de tarjeta: las tablas de abajo ya traen la suya. */
+function BlockHeading({ title, description, children }: { title: ReactNode; description?: ReactNode; children?: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-end justify-between gap-3 px-1">
+      <div className="min-w-0">
+        <h2 className="text-[15px] font-semibold tracking-tight text-foreground">{title}</h2>
+        {description && <p className="mt-0.5 max-w-3xl text-[13px] text-muted-foreground">{description}</p>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+const CHANGE_DAY = new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", day: "numeric", month: "short" });
+const CHANGE_HOUR = new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", hour: "2-digit", minute: "2-digit" });
+
+/** "24 may · 09:27", en hora de Chile. */
+function formatChange(iso: string): string {
+  const date = new Date(iso);
+  return `${CHANGE_DAY.format(date).replace(".", "")} · ${CHANGE_HOUR.format(date)}`;
+}
+
+const CHANNEL_LABEL: Record<string, { label: string; icon: ChipIcon; tone: string }> = {
+  voice: { label: "Voz outbound", icon: Phone, tone: "primary" },
+  whatsapp: { label: "Meta WhatsApp", icon: MessageCircle, tone: "green" },
+  email: { label: "Correo", icon: Mail, tone: "violet" },
+};
 
 /** COPC outbound: registros con aló ÷ registros recorridos. */
 function contactabilityLabel(contacted: number, swept: number) {
   if (!swept) return "—";
   return `${(Math.round((contacted / swept) * 1000) / 10).toLocaleString("es-CL")}%`;
+}
+
+/** Color del punto de presencia de voz: el texto sigue diciendo el estado. */
+function phoneTone(agent: AgentLiveStatus): BadgeTone {
+  if (agent.phone_status === "on_call" || agent.phone_status === "ringing" || agent.phone_status === "wrap_up") return "info";
+  if (agent.phone_status === "offline" || agent.reason_code === "desconectado") return "neutral";
+  if (agent.is_pause) return "warning";
+  return agent.phone_status === "available" ? "success" : "neutral";
 }
 
 function phoneState(agent: AgentLiveStatus) {
@@ -464,111 +543,84 @@ export default async function OperationsPage({
     waAgents.set(member.profile_id, current);
   }
 
+  const unitChannelList = [...new Set(sources
+    .filter((source) => matchingQueueIds.has(source.queue_id) && source.is_active)
+    .map((source) => source.channel_type))];
+  const availableVoiceAgents = liveAgents.filter(
+    (agent) =>
+      agent.phone_status === "available" &&
+      !agent.is_pause &&
+      agent.reason_code !== "desconectado",
+  ).length;
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <PageHeader
+        icon={Radar}
         title="Centro de operaciones"
         description={
           permissions.canConfigurePlatform
             ? "Visibilidad global de colas, canales y capacidad configurada. Administración sin atención al cliente."
             : "Control de tus equipos y campañas autorizadas. Supervisa la carga sin asumir conversaciones."
         }
+        meta={
+          <span className="inline-flex items-center gap-1.5">
+            <ShieldCheck size={13} aria-hidden="true" /> Solo metadatos operativos · sin contenido de conversaciones
+          </span>
+        }
         actions={
-          permissions.canConfigurePlatform ? (
-            <Link
-              href="/dashboard/admin/colas"
-              className={buttonClasses({ variant: "secondary", size: "sm" })}
-            >
-              Configurar colas <ArrowUpRight size={14} />
-            </Link>
-          ) : undefined
+          <div className="flex flex-wrap items-center gap-3">
+            <OperationsRefresh observedAt={observedAt} />
+            {permissions.canConfigurePlatform && (
+              <Link
+                href="/dashboard/admin/colas"
+                className={buttonClasses({ variant: "secondary", size: "sm" })}
+              >
+                Configurar colas <ArrowUpRight size={14} aria-hidden="true" />
+              </Link>
+            )}
+          </div>
         }
       />
       <NavTabs tabs={OPERATION_TABS} />
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-          <ShieldCheck size={14} /> Solo metadatos operativos · Sin contenido de
-          conversaciones
-        </span>
-        <OperationsRefresh observedAt={observedAt} />
-      </div>
 
-      <Card>
-        <form
-          action="/dashboard/operacion"
-          className="flex flex-wrap items-end gap-3"
-        >
-          <label className="flex min-w-36 flex-1 flex-col gap-1 text-xs font-medium">
-            Canal
-            <Select
-              name="channel"
-              defaultValue={filters.channel}
-              fieldSize="sm"
-            >
-              <option value="all">Voz, WhatsApp y correo</option>
-              <option value="voice">Voz</option>
-              <option value="whatsapp">WhatsApp</option>
-              <option value="email">Correo</option>
-            </Select>
-          </label>
-          <label className="flex min-w-48 flex-[2] flex-col gap-1 text-xs font-medium">
-            Campaña
-            <Select
-              name="campaign"
-              defaultValue={filters.campaign}
-              fieldSize="sm"
-            >
-              <option value="">Todas las autorizadas</option>
-              {campaigns.map((campaign) => (
-                <option key={campaign.id} value={campaign.id}>
-                  {campaign.name}
-                </option>
-              ))}
-            </Select>
-          </label>
-          <label className="flex min-w-48 flex-[2] flex-col gap-1 text-xs font-medium">
-            Unidad operativa
-            <Select name="queue" defaultValue={filters.queue} fieldSize="sm">
-              <option value="">Todas las autorizadas</option>
-              {queues.map((queue) => (
-                <option key={queue.id} value={queue.id}>
-                  {queue.name}
-                </option>
-              ))}
-            </Select>
-          </label>
-          <label className="flex min-w-32 flex-1 flex-col gap-1 text-xs font-medium">
-            Estado de cola
-            <Select name="state" defaultValue={filters.state} fieldSize="sm">
-              <option value="all">Todos</option>
-              <option value="active">Activas</option>
-              <option value="inactive">Inactivas</option>
-            </Select>
-          </label>
-          <button
-            type="submit"
-            className={buttonClasses({ variant: "secondary", size: "sm" })}
-          >
-            Aplicar
-          </button>
-          <Link
-            href="/dashboard/operacion"
-            className={buttonClasses({ variant: "ghost", size: "sm" })}
-          >
-            Limpiar
-          </Link>
-        </form>
-      </Card>
-      {filters.channel !== "voice" && (
-        <TableroDeColas
-          colas={((tableroResult.data ?? []) as ColaEnVivo[]).filter((cola) => !filters.queue || cola.id === filters.queue)}
-          ahora={now}
-          puedeMover
-        />
-      )}
-      {tableroResult.error && (
-        <Callout tone="warning">No se pudo leer el tablero de colas. Vuelve a cargar la página en un momento; si sigue igual, avisa a un administrador.</Callout>
-      )}
+      <FilterBar action="/dashboard/operacion" storageKey="operacion" applyLabel="Aplicar">
+        <Field label="Canal" hideLabel className="min-w-44 flex-1">
+          <Select name="channel" defaultValue={filters.channel}>
+            <option value="all">Voz, WhatsApp y correo</option>
+            <option value="voice">Voz</option>
+            <option value="whatsapp">WhatsApp</option>
+            <option value="email">Correo</option>
+          </Select>
+        </Field>
+        <Field label="Campaña" hideLabel className="min-w-48 flex-[2]">
+          <Select name="campaign" defaultValue={filters.campaign}>
+            <option value="">Todas las campañas autorizadas</option>
+            {campaigns.map((campaign) => (
+              <option key={campaign.id} value={campaign.id}>
+                {campaign.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Unidad operativa" hideLabel className="min-w-48 flex-[2]">
+          <Select name="queue" defaultValue={filters.queue}>
+            <option value="">Todas las unidades autorizadas</option>
+            {queues.map((queue) => (
+              <option key={queue.id} value={queue.id}>
+                {queue.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Estado de cola" hideLabel className="min-w-40 flex-1">
+          <Select name="state" defaultValue={filters.state}>
+            <option value="all">Colas activas e inactivas</option>
+            <option value="active">Solo activas</option>
+            <option value="inactive">Solo inactivas</option>
+          </Select>
+        </Field>
+      </FilterBar>
 
       {catalogUnavailable && (
         <Callout tone="warning">
@@ -586,182 +638,57 @@ export default async function OperationsPage({
         <Callout tone="warning">{stockResult.error}</Callout>
       )}
 
-      {showAutomation && (
-        <SectionCard
-          icon={Bot}
-          tone="teal"
-          title={
-            <span className="flex items-center gap-2">
-              Automatización general de WhatsApp{" "}
-              <Badge
-                tone={
-                  automationState === "Activa"
-                    ? "success"
-                    : automationState === "Mixta"
-                      ? "warning"
-                      : "neutral"
-                }
-              >
-                {automationState}
-              </Badge>
-            </span>
-          }
-          description={
-            permissions.canConfigurePlatform
-              ? "Control administrativo de todas las campañas configuradas. Este control no se limita por los filtros del monitor."
-              : "Control general de todas las campañas configuradas dentro de tu alcance autorizado. No se limita por los filtros del monitor."
-          }
-        >
-          <div className="space-y-3 p-4">
-            <p className="text-xs text-muted-foreground">
-              {automationUnavailable
-                ? "No fue posible consultar el estado de automatización; el control está deshabilitado."
-                : `${automationEnabled} de ${automationConfigs.length} campañas con automatización activa.`}{" "}
-              La IA atiende hasta derivar a un ejecutivo. Activarla no retoma
-              conversaciones ya transferidas a atención humana.
-            </p>
-            {!permissions.canConfigurePlatform && (
-              <p className="text-xs text-muted-foreground">
-                En campañas compartidas con equipos fuera de tu alcance, el cambio
-                general requiere un administrador.
-              </p>
-            )}
-            {automationHistoryResult.error && (
-              <Callout tone="warning">
-                No se pudo confirmar quién cambió la automatización por última
-                vez, así que el control queda bloqueado por seguridad. Vuelve a
-                cargar la página; si sigue igual, pídele a un administrador que
-                revise tus permisos.
-              </Callout>
-            )}
-            {!automationUnavailable && automationConfigs.length > 0 && (
-              <ActionForm
-                action={setWhatsAppAutomationEnabled}
-                success="Control general de automatización actualizado"
-                className="flex flex-wrap items-end gap-3"
-              >
-                <label className="flex min-w-64 flex-col gap-1 text-xs font-medium">
-                  Aplicar a todo el alcance
-                  <Select name="enabled" defaultValue="" required fieldSize="sm">
-                    <option value="" disabled>
-                      Seleccionar cambio general
-                    </option>
-                    <option value="true">Activar automatización general</option>
-                    <option value="false">Pausar automatización general</option>
-                  </Select>
-                </label>
-                <label className="inline-flex items-center gap-2 py-2 text-xs text-muted-foreground">
-                  <input type="checkbox" required /> Confirmo el cambio en las{" "}
-                  {automationConfigs.length} campañas de mi alcance
-                </label>
-                <ActionSubmit
-                  variant="secondary"
-                  size="sm"
-                  pendingLabel="Aplicando…"
-                >
-                  Aplicar control general
-                </ActionSubmit>
-              </ActionForm>
-            )}
-            {!automationHistoryResult.error && (
-              <details className="border-t border-border pt-3 text-xs">
-                <summary className="cursor-pointer font-medium text-foreground">
-                  Últimos cambios generales · hasta 10 registros de campaña
-                </summary>
-                <div className="mt-3 overflow-x-auto">
-                  <Table>
-                    <Thead>
-                      <Th>Fecha</Th>
-                      <Th>Responsable</Th>
-                      <Th>Campaña</Th>
-                      <Th>Antes</Th>
-                      <Th>Después</Th>
-                    </Thead>
-                    <Tbody>
-                      {automationHistory.length === 0 ? (
-                        <TableEmpty colSpan={5}>
-                          No hay cambios generales registrados en tu alcance.
-                        </TableEmpty>
-                      ) : (
-                        automationHistory.map((change) => (
-                          <Tr key={change.id}>
-                            <Td>
-                              {new Date(change.created_at).toLocaleString(
-                                "es-CL",
-                                {
-                                  timeZone: "America/Santiago",
-                                  dateStyle: "short",
-                                  timeStyle: "short",
-                                },
-                              )}
-                            </Td>
-                            <Td>
-                              {one(change.profiles)?.full_name ??
-                                "Usuario registrado"}
-                            </Td>
-                            <Td>
-                              {one(change.campaigns)?.name ??
-                                "Campaña registrada"}
-                            </Td>
-                            <Td>
-                              {change.previous_enabled ? "Activa" : "Pausada"}
-                            </Td>
-                            <Td>{change.enabled ? "Activa" : "Pausada"}</Td>
-                          </Tr>
-                        ))
-                      )}
-                    </Tbody>
-                  </Table>
-                </div>
-              </details>
-            )}
-          </div>
-        </SectionCard>
+      {filters.channel !== "voice" && (
+        <TableroDeColas
+          colas={((tableroResult.data ?? []) as ColaEnVivo[]).filter((cola) => !filters.queue || cola.id === filters.queue)}
+          ahora={now}
+          puedeMover
+        />
+      )}
+      {tableroResult.error && (
+        <Callout tone="warning">No se pudo leer el tablero de colas. Vuelve a cargar la página en un momento; si sigue igual, avisa a un administrador.</Callout>
       )}
 
-      <SectionCard
-        icon={Users}
-        tone="blue"
-        title={
-          <span className="flex items-center gap-2">
-            {matchingQueues.length === 1
-              ? matchingQueues[0].name
-              : "Unidades operativas"}
-          </span>
-        }
-        description={
-          matchingQueues.length === 1
-            ? matchingQueues[0].description ?? "Operación omnicanal con sus canales y campañas internas."
-            : "Cada unidad agrupa sus canales y campañas sin convertirlos en operaciones separadas."
-        }
-      >
-        <div className="space-y-4 p-4">
-          {matchingQueues.length > 0 && (
-            <div className="flex flex-wrap gap-2 text-xs">
-              {[...new Set(sources
-                .filter((source) => matchingQueueIds.has(source.queue_id) && source.is_active)
-                .map((source) => source.channel_type))]
-                .map((channel) => (
-                  <Badge key={channel} tone="neutral">
-                    {channel === "voice" ? "Voz outbound" : channel === "whatsapp" ? "Meta WhatsApp" : channel === "email" ? "Correo" : channel}
-                  </Badge>
-                ))}
+      {/* La unidad operativa agrupa sus canales: resumen por canal arriba y
+          el detalle interno de cada uno debajo, sin convertirlos en
+          operaciones separadas. */}
+      <section className="space-y-4">
+        <BlockHeading
+          title={matchingQueues.length === 1 ? matchingQueues[0].name : "Unidades operativas"}
+          description={
+            matchingQueues.length === 1
+              ? matchingQueues[0].description ?? "Operación omnicanal con sus canales y campañas internas."
+              : "Cada unidad agrupa sus canales y campañas sin convertirlos en operaciones separadas."
+          }
+        >
+          {matchingQueues.length > 0 && unitChannelList.length > 0 && (
+            <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+              {unitChannelList.map((channel) => {
+                const meta = CHANNEL_LABEL[channel];
+                const Icon = meta?.icon;
+                return (
+                  <span key={channel} className="inline-flex items-center gap-1.5">
+                    {Icon && (
+                      <span className="icon-chip size-5 rounded-md" data-tone={meta.tone} aria-hidden="true">
+                        <Icon size={11} />
+                      </span>
+                    )}
+                    {meta?.label ?? channel}
+                  </span>
+                );
+              })}
             </div>
           )}
-      <div
-        className={
-          filters.channel === "all" ? "grid gap-4 xl:grid-cols-3" : "grid gap-4"
-        }
-      >
-        {viewWhatsApp && (
-          <SectionCard
-            icon={MessageCircle}
-            tone="green"
-            title="WhatsApp · Stock actual"
-            className="@container"
-            description="Conversaciones abiertas y pendientes; no equivale a chats activos ni a ocupación simultánea."
-          >
-            <dl className="grid grid-cols-2 gap-3 p-4 @xl:grid-cols-4">
+        </BlockHeading>
+
+        <div className={filters.channel === "all" ? "grid gap-4 xl:grid-cols-3" : "grid gap-4"}>
+          {viewWhatsApp && (
+            <ChannelSummary
+              icon={MessageCircle}
+              tone="green"
+              title="WhatsApp · Stock actual"
+              description="Conversaciones abiertas y pendientes; no equivale a chats activos ni a ocupación simultánea."
+            >
               <DataNumber
                 label="Sin cerrar"
                 value={stockUnavailable ? null : (stock?.total ?? null)}
@@ -791,18 +718,15 @@ export default async function OperationsPage({
                 hint="Último inbound sin respuesta"
                 tone={stock?.oldestUnansweredAt ? "danger" : "good"}
               />
-            </dl>
-          </SectionCard>
-        )}
-        {viewVoice && (
-          <SectionCard
-            icon={Phone}
-            tone="primary"
-            title="Voz · Operación actual"
-            className="@container"
-            description="Campañas activas del marcador. Contactabilidad COPC: registros con aló ÷ registros recorridos hoy."
-          >
-            <dl className="grid grid-cols-2 gap-3 p-4 @xl:grid-cols-4">
+            </ChannelSummary>
+          )}
+          {viewVoice && (
+            <ChannelSummary
+              icon={Phone}
+              tone="primary"
+              title="Voz · Operación actual"
+              description="Campañas activas del marcador. Contactabilidad COPC: registros con aló ÷ registros recorridos hoy."
+            >
               <DataNumber
                 label="En curso"
                 value={
@@ -820,16 +744,7 @@ export default async function OperationsPage({
               />
               <DataNumber
                 label="Agentes disponibles"
-                value={
-                  agentsUnavailable || invalidSelection
-                    ? null
-                    : liveAgents.filter(
-                        (agent) =>
-                          agent.phone_status === "available" &&
-                          !agent.is_pause &&
-                          agent.reason_code !== "desconectado",
-                      ).length
-                }
+                value={agentsUnavailable || invalidSelection ? null : availableVoiceAgents}
               />
               <DataNumber
                 label="Contactabilidad hoy"
@@ -846,18 +761,15 @@ export default async function OperationsPage({
                       : "Sin registros recorridos todavía"
                 }
               />
-            </dl>
-          </SectionCard>
-        )}
-        {viewMail && (
-          <SectionCard
-            icon={Mail}
-            tone="violet"
-            title="Correo · Operación actual"
-            className="@container"
-            description="Resultados y oportunidades de las campañas de correo conectadas a la cola seleccionada."
-          >
-            <dl className="grid grid-cols-2 gap-3 p-4 @xl:grid-cols-4">
+            </ChannelSummary>
+          )}
+          {viewMail && (
+            <ChannelSummary
+              icon={Mail}
+              tone="violet"
+              title="Correo · Operación actual"
+              description="Resultados y oportunidades de las campañas de correo conectadas a la cola seleccionada."
+            >
               <DataNumber label="Enviados" value={mailUnavailable ? null : mailTotals.sent} />
               <DataNumber label="Aperturas" value={mailUnavailable ? null : mailTotals.opened} />
               <DataNumber label="Clicks" value={mailUnavailable ? null : mailTotals.clicked} />
@@ -866,397 +778,591 @@ export default async function OperationsPage({
                 value={mailUnavailable ? null : Math.max(mailTotals.prioritized - mailTotals.assigned, 0)}
                 tone={mailUnavailable ? "default" : pendingTone(Math.max(mailTotals.prioritized - mailTotals.assigned, 0))}
               />
-            </dl>
+            </ChannelSummary>
+          )}
+        </div>
+
+        {viewWhatsApp && (
+          <SectionCard
+            title="WhatsApp · detalle interno"
+            description="Carga y estado del canal WhatsApp dentro de la unidad seleccionada."
+          >
+            <div className="overflow-x-auto border-t border-border">
+              <Table>
+                <Thead>
+                  <Th>Cola / campañas</Th>
+                  <Th>Estado</Th>
+                  <Th align="right">Sin cerrar</Th>
+                  <Th align="right">Sin asignar</Th>
+                  <Th align="right">Sin respuesta</Th>
+                  <Th>Antigüedad</Th>
+                  <Th align="right">Miembros habilitados</Th>
+                  <Th>Límite / agente</Th>
+                  <Th>
+                    <span className="sr-only">Acción</span>
+                  </Th>
+                </Thead>
+                <Tbody>
+                  {catalogUnavailable || invalidSelection ? (
+                    <TableEmpty colSpan={9}>Catálogo no disponible.</TableEmpty>
+                  ) : whatsappQueues.length === 0 ? (
+                    <TableEmpty colSpan={9}>
+                      No hay colas de WhatsApp que coincidan con estos filtros.
+                    </TableEmpty>
+                  ) : (
+                    whatsappQueues.map((queue) => {
+                      const queueStock = filteredStock
+                        ? summarizeConversationStock(
+                            filteredStock.filter(
+                              (item) => item.queue_id === queue.id,
+                            ),
+                          )
+                        : null;
+                      const queueSources = sources.filter(
+                        (source) =>
+                          source.queue_id === queue.id &&
+                          source.channel_type === "whatsapp",
+                      );
+                      const disabledChannels = queueSources.filter((source) => {
+                        const route = one(source.whatsapp_campaign_routes);
+                        return (
+                          !source.is_active ||
+                          !route ||
+                          one(route.whatsapp_channels)?.status !== "active"
+                        );
+                      }).length;
+                      const count = (value: number | undefined) =>
+                        stockUnavailable ? "—" : (value ?? "—");
+                      return (
+                        <Tr key={queue.id}>
+                          <Td className="min-w-64">
+                            <span className="flex min-w-0 items-center gap-3">
+                              <Avatar name={queue.name} seed={queue.id} shape="square" size="md" />
+                              <span className="min-w-0">
+                                <span className="block truncate font-medium text-foreground">{queue.name}</span>
+                                <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                                  {[
+                                    ...new Set(
+                                      queueSources.map((source) =>
+                                        source.campaign_id
+                                          ? (campaignNames.get(source.campaign_id) ??
+                                            "Campaña autorizada")
+                                          : "Sin campaña",
+                                      ),
+                                    ),
+                                  ].join(" · ")}
+                                </span>
+                              </span>
+                            </span>
+                          </Td>
+                          <Td>
+                            <Badge
+                              tone={
+                                !queue.is_active || disabledChannels > 0
+                                  ? "warning"
+                                  : "success"
+                              }
+                            >
+                              {!queue.is_active
+                                ? "Cola inactiva"
+                                : disabledChannels > 0
+                                  ? "Revisar canal"
+                                  : "Cola activa"}
+                            </Badge>
+                          </Td>
+                          <Td align="right">{count(queueStock?.total)}</Td>
+                          <Td align="right">{count(queueStock?.unassigned)}</Td>
+                          <Td align="right">
+                            {count(queueStock?.awaitingResponse)}
+                          </Td>
+                          <Td>
+                            {stockUnavailable
+                              ? "—"
+                              : formatOperationalAge(
+                                  queueStock?.oldestUnansweredAt ?? null,
+                                  now,
+                                )}
+                          </Td>
+                          <Td align="right">
+                            {membersUnavailable
+                              ? "—"
+                              : members.filter(
+                                  (member) =>
+                                    member.queue_id === queue.id &&
+                                    one(member.profiles)?.active,
+                                ).length}
+                          </Td>
+                          <Td>
+                            <span className="block text-foreground">
+                              {queue.max_concurrent_per_agent ??
+                                "Sin límite de cola"}
+                            </span>
+                            <span className="mt-0.5 block text-xs text-muted-foreground">
+                              {queue.routing_mode === "manual"
+                                ? "Asignación manual"
+                                : "Menor carga"}
+                            </span>
+                          </Td>
+                          <Td align="right">
+                            {permissions.canConfigurePlatform ? (
+                              <Link
+                                href={`/dashboard/admin/colas/${queue.id}`}
+                                className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium text-primary hover:underline"
+                              >
+                                Configurar <ArrowUpRight size={12} aria-hidden="true" />
+                              </Link>
+                            ) : (
+                              <Link
+                                href={`/dashboard/conversaciones/whatsapp?status=all&queue=${queue.id}`}
+                                className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium text-primary hover:underline"
+                              >
+                                Supervisar asignaciones <ArrowUpRight size={12} aria-hidden="true" />
+                              </Link>
+                            )}
+                          </Td>
+                        </Tr>
+                      );
+                    })
+                  )}
+                </Tbody>
+              </Table>
+            </div>
+            {!stockUnavailable &&
+              (filteredStock?.some((item) => !item.queue_id) ?? false) && (
+                <p className="border-t border-border bg-surface-raised px-5 py-2.5 text-xs text-warning">
+                  Hay {filteredStock!.filter((item) => !item.queue_id).length}{" "}
+                  conversaciones sin cola ACD. Están incluidas en el resumen, pero
+                  no en las filas de colas.
+                </p>
+              )}
           </SectionCard>
         )}
-      </div>
 
-      {viewWhatsApp && (
+        {viewVoice && (
+          <SectionCard
+            title="Voz outbound · detalle interno"
+            description="Contadores de hoy en hora de Chile. Fuente: motor de discado; no incluye contenido ni grabaciones."
+          >
+            {voiceResult.error && (
+              <div className="px-5 pb-4">
+                <Callout tone="warning">
+                  No fue posible consultar el motor de voz. Sus métricas no están
+                  disponibles.
+                </Callout>
+              </div>
+            )}
+            <div className="overflow-x-auto border-t border-border">
+              <Table>
+                <Thead>
+                  <Th>Campaña</Th>
+                  <Th align="right">En curso</Th>
+                  <Th align="right">Intentos hoy</Th>
+                  <Th align="right">Llamadas conectadas</Th>
+                  <Th align="right">Completadas hoy</Th>
+                  <Th align="right">Recorridos hoy</Th>
+                  <Th align="right">Conectados hoy</Th>
+                  <Th align="right">Aló hoy</Th>
+                  <Th align="right">Contactabilidad</Th>
+                </Thead>
+                <Tbody>
+                  {voiceUnavailable ? (
+                    <TableEmpty colSpan={9}>
+                      Datos de voz no disponibles.
+                    </TableEmpty>
+                  ) : voiceQueues.length === 0 ? (
+                    <TableEmpty colSpan={9}>
+                      {filters.state === "inactive"
+                        ? "La fuente de voz informa únicamente campañas activas."
+                        : "No hay campañas activas de voz que coincidan con estos filtros."}
+                    </TableEmpty>
+                  ) : (
+                    voiceQueues.map((queue) => (
+                      <Tr key={queue.campaign_id}>
+                        <Td>
+                          {/* Campaña y su cola de voz en una celda de dos líneas. */}
+                          <span className="flex min-w-0 items-center gap-3">
+                            <Avatar name={queue.campaign_name} seed={queue.campaign_id} shape="square" size="md" />
+                            <span className="min-w-0">
+                              <span className="block max-w-[16rem] truncate font-medium text-foreground">{queue.campaign_name}</span>
+                              <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                                {queue.queue_name || "Sin cola informada"}
+                              </span>
+                            </span>
+                          </span>
+                        </Td>
+                        <Td align="right" className={queue.in_flight > 0 ? "font-medium text-foreground" : "text-muted-foreground"}>
+                          {queue.in_flight}
+                        </Td>
+                        <Td align="right">{queue.attempts_today}</Td>
+                        <Td align="right">{queue.answered_today}</Td>
+                        <Td align="right">{queue.completed_today}</Td>
+                        <Td align="right">
+                          {funnelUnavailable ? "No disponible" : funnelByCampaign.get(queue.campaign_id)?.recorridos ?? 0}
+                        </Td>
+                        <Td align="right">
+                          {funnelUnavailable ? "No disponible" : funnelByCampaign.get(queue.campaign_id)?.conectados ?? 0}
+                        </Td>
+                        <Td align="right">
+                          {funnelUnavailable ? "No disponible" : funnelByCampaign.get(queue.campaign_id)?.contactados ?? 0}
+                        </Td>
+                        <Td align="right" strong>
+                          {funnelUnavailable
+                            ? "No disponible"
+                            : contactabilityLabel(
+                                Number(funnelByCampaign.get(queue.campaign_id)?.contactados ?? 0),
+                                Number(funnelByCampaign.get(queue.campaign_id)?.recorridos ?? 0),
+                              )}
+                        </Td>
+                      </Tr>
+                    ))
+                  )}
+                </Tbody>
+              </Table>
+            </div>
+          </SectionCard>
+        )}
+
+        {viewMail && (
+          <SectionCard
+            title="Correo · detalle interno"
+            description="Las oportunidades conservan su campaña y responsable CRM; la asignación se realiza sin duplicar contactos."
+          >
+            {mailResult.error && (
+              <div className="px-5 pb-4">
+                <Callout tone="warning">
+                  No fue posible consultar la operación de correo.
+                </Callout>
+              </div>
+            )}
+            <div className="overflow-x-auto border-t border-border">
+              <Table>
+                <Thead>
+                  <Th>Campaña</Th>
+                  <Th align="right">Enviados</Th>
+                  <Th align="right">Aperturas</Th>
+                  <Th align="right">Clicks</Th>
+                  <Th align="right">Asignados</Th>
+                  <Th align="right">Gestionados</Th>
+                  <Th>
+                    <span className="sr-only">Acción</span>
+                  </Th>
+                </Thead>
+                <Tbody>
+                  {mailUnavailable ? (
+                    <TableEmpty colSpan={7}>Datos de correo no disponibles.</TableEmpty>
+                  ) : mailReports.length === 0 ? (
+                    <TableEmpty colSpan={7}>
+                      No hay campañas de correo conectadas que coincidan con estos filtros.
+                    </TableEmpty>
+                  ) : (
+                    mailReports.map((report) => (
+                      <Tr key={`${report.mail_campaign_id ?? report.campaign_id}-${report.campaign_id}`}>
+                        <Td>
+                          <span className="flex min-w-0 items-center gap-3">
+                            <Avatar
+                              name={report.mail_campaign_name}
+                              seed={report.mail_campaign_id ?? report.campaign_id}
+                              shape="square"
+                              size="md"
+                              icon={Mail}
+                            />
+                            <span className="min-w-0">
+                              <span className="block max-w-[18rem] truncate font-medium text-foreground">{report.mail_campaign_name}</span>
+                              <span className="mt-0.5 block truncate text-xs text-muted-foreground">{report.campaign_name}</span>
+                            </span>
+                          </span>
+                        </Td>
+                        <Td align="right">{report.sent_leads}</Td>
+                        <Td align="right">{report.opened_leads}</Td>
+                        <Td align="right">{report.clicked_leads}</Td>
+                        <Td align="right">{report.assigned_hot_leads}</Td>
+                        <Td align="right">{report.managed_hot_leads}</Td>
+                        <Td align="right">
+                          <Link
+                            href={`/dashboard/mail?campaign=${report.campaign_id}`}
+                            className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium text-primary hover:underline"
+                          >
+                            Gestionar correo <ArrowUpRight size={12} aria-hidden="true" />
+                          </Link>
+                        </Td>
+                      </Tr>
+                    ))
+                  )}
+                </Tbody>
+              </Table>
+            </div>
+          </SectionCard>
+        )}
+
         <SectionCard
-          icon={MessageCircle}
-          tone="green"
-          title="WhatsApp · detalle interno"
-          description="Carga y estado del canal WhatsApp dentro de la unidad seleccionada."
+          title="Equipo omnicanal y carga por canal"
+          description="La presencia telefónica no prueba disponibilidad para WhatsApp. Los miembros habilitados son configuración, no presencia en línea."
         >
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto border-t border-border">
             <Table>
               <Thead>
-                <Th>Cola / campañas</Th>
-                <Th>Estado</Th>
-                <Th align="right">Sin cerrar</Th>
-                <Th align="right">Sin asignar</Th>
-                <Th align="right">Sin respuesta</Th>
-                <Th>Antigüedad</Th>
-                <Th align="right">Miembros habilitados</Th>
-                <Th>Límite / agente</Th>
-                <Th>Acción</Th>
+                <Th>Ejecutivo</Th>
+                <Th>Canal</Th>
+                <Th>Estado / habilitación</Th>
+                <Th align="right">Carga informada</Th>
               </Thead>
               <Tbody>
                 {catalogUnavailable || invalidSelection ? (
-                  <TableEmpty colSpan={9}>Catálogo no disponible.</TableEmpty>
-                ) : whatsappQueues.length === 0 ? (
-                  <TableEmpty colSpan={9}>
-                    No hay colas de WhatsApp que coincidan con estos filtros.
+                  <TableEmpty colSpan={4}>
+                    Equipo no disponible para esta selección.
                   </TableEmpty>
                 ) : (
-                  whatsappQueues.map((queue) => {
-                    const queueStock = filteredStock
-                      ? summarizeConversationStock(
-                          filteredStock.filter(
-                            (item) => item.queue_id === queue.id,
-                          ),
-                        )
-                      : null;
-                    const queueSources = sources.filter(
-                      (source) =>
-                        source.queue_id === queue.id &&
-                        source.channel_type === "whatsapp",
-                    );
-                    const disabledChannels = queueSources.filter((source) => {
-                      const route = one(source.whatsapp_campaign_routes);
-                      return (
-                        !source.is_active ||
-                        !route ||
-                        one(route.whatsapp_channels)?.status !== "active"
-                      );
-                    }).length;
-                    const count = (value: number | undefined) =>
-                      stockUnavailable ? "—" : (value ?? "—");
-                    return (
-                      <Tr key={queue.id}>
-                        <Td strong className="min-w-64">
-                          {queue.name}
-                          <p className="mt-1 text-xs font-normal text-muted-foreground">
-                            {[
-                              ...new Set(
-                                queueSources.map((source) =>
-                                  source.campaign_id
-                                    ? (campaignNames.get(source.campaign_id) ??
-                                      "Campaña autorizada")
-                                    : "Sin campaña",
-                                ),
-                              ),
-                            ].join(" · ")}
-                          </p>
-                        </Td>
-                        <Td>
-                          <Badge
-                            tone={
-                              !queue.is_active || disabledChannels > 0
-                                ? "warning"
-                                : "neutral"
-                            }
-                          >
-                            {!queue.is_active
-                              ? "Cola inactiva"
-                              : disabledChannels > 0
-                                ? "Revisar canal"
-                                : "Cola activa"}
-                          </Badge>
-                        </Td>
-                        <Td align="right">{count(queueStock?.total)}</Td>
-                        <Td align="right">{count(queueStock?.unassigned)}</Td>
-                        <Td align="right">
-                          {count(queueStock?.awaitingResponse)}
-                        </Td>
-                        <Td>
-                          {stockUnavailable
-                            ? "—"
-                            : formatOperationalAge(
-                                queueStock?.oldestUnansweredAt ?? null,
-                                now,
-                              )}
-                        </Td>
-                        <Td align="right">
-                          {membersUnavailable
-                            ? "—"
-                            : members.filter(
-                                (member) =>
-                                  member.queue_id === queue.id &&
-                                  one(member.profiles)?.active,
-                              ).length}
-                        </Td>
-                        <Td>
-                          {queue.max_concurrent_per_agent ??
-                            "Sin límite de cola"}
-                          <p className="text-xs text-muted-foreground">
-                            {queue.routing_mode === "manual"
-                              ? "Asignación manual"
-                              : "Menor carga"}
-                          </p>
-                        </Td>
-                        <Td>
-                          {permissions.canConfigurePlatform ? (
-                            <Link
-                              href={`/dashboard/admin/colas/${queue.id}`}
-                              className="text-xs font-medium text-primary hover:underline"
-                            >
-                              Configurar
-                            </Link>
-                          ) : (
-                            <Link
-                              href={`/dashboard/conversaciones/whatsapp?status=all&queue=${queue.id}`}
-                              className="text-xs font-medium text-primary hover:underline"
-                            >
-                              Supervisar asignaciones
-                            </Link>
-                          )}
-                        </Td>
-                      </Tr>
-                    );
-                  })
-                )}
-              </Tbody>
-            </Table>
-          </div>
-          {!stockUnavailable &&
-            (filteredStock?.some((item) => !item.queue_id) ?? false) && (
-              <p className="border-t border-border px-4 py-3 text-xs text-warning">
-                Hay {filteredStock!.filter((item) => !item.queue_id).length}{" "}
-                conversaciones sin cola ACD. Están incluidas en el resumen, pero
-                no en las filas de colas.
-              </p>
-            )}
-        </SectionCard>
-      )}
-
-      {viewVoice && (
-        <SectionCard
-          icon={Phone}
-          tone="primary"
-          title="Voz outbound · detalle interno"
-          description="Contadores de hoy según America/Santiago. Fuente: motor de discado; no incluye contenido ni grabaciones."
-        >
-          {voiceResult.error && (
-            <Callout tone="warning">
-              No fue posible consultar el motor de voz. Sus métricas no están
-              disponibles.
-            </Callout>
-          )}
-          <div className="overflow-x-auto">
-            <Table>
-              <Thead>
-                <Th>Campaña</Th>
-                <Th>Cola de voz</Th>
-                <Th align="right">En curso</Th>
-                <Th align="right">Intentos hoy</Th>
-                <Th align="right">Llamadas conectadas</Th>
-                <Th align="right">Completadas hoy</Th>
-                <Th align="right">Recorridos hoy</Th>
-                <Th align="right">Conectados hoy</Th>
-                <Th align="right">Aló hoy</Th>
-                <Th align="right">Contactabilidad</Th>
-              </Thead>
-              <Tbody>
-                {voiceUnavailable ? (
-                  <TableEmpty colSpan={10}>
-                    Datos de voz no disponibles.
-                  </TableEmpty>
-                ) : voiceQueues.length === 0 ? (
-                  <TableEmpty colSpan={10}>
-                    {filters.state === "inactive"
-                      ? "La fuente de voz informa únicamente campañas activas."
-                      : "No hay campañas activas de voz que coincidan con estos filtros."}
-                  </TableEmpty>
-                ) : (
-                  voiceQueues.map((queue) => (
-                    <Tr key={queue.campaign_id}>
-                      <Td strong>{queue.campaign_name}</Td>
-                      <Td>{queue.queue_name || "Sin cola informada"}</Td>
-                      <Td align="right">{queue.in_flight}</Td>
-                      <Td align="right">{queue.attempts_today}</Td>
-                      <Td align="right">{queue.answered_today}</Td>
-                      <Td align="right">{queue.completed_today}</Td>
-                      <Td align="right">
-                        {funnelUnavailable ? "No disponible" : funnelByCampaign.get(queue.campaign_id)?.recorridos ?? 0}
-                      </Td>
-                      <Td align="right">
-                        {funnelUnavailable ? "No disponible" : funnelByCampaign.get(queue.campaign_id)?.conectados ?? 0}
-                      </Td>
-                      <Td align="right">
-                        {funnelUnavailable ? "No disponible" : funnelByCampaign.get(queue.campaign_id)?.contactados ?? 0}
-                      </Td>
-                      <Td align="right" strong>
-                        {funnelUnavailable
-                          ? "No disponible"
-                          : contactabilityLabel(
-                              Number(funnelByCampaign.get(queue.campaign_id)?.contactados ?? 0),
-                              Number(funnelByCampaign.get(queue.campaign_id)?.recorridos ?? 0),
-                            )}
-                      </Td>
-                    </Tr>
-                  ))
-                )}
-              </Tbody>
-            </Table>
-          </div>
-        </SectionCard>
-      )}
-
-      {viewMail && (
-        <SectionCard
-          icon={Mail}
-          tone="violet"
-          title="Correo · detalle interno"
-          description="Las oportunidades conservan su campaña y responsable CRM; la asignación se realiza sin duplicar contactos."
-        >
-          {mailResult.error && (
-            <Callout tone="warning">
-              No fue posible consultar la operación de correo.
-            </Callout>
-          )}
-          <div className="overflow-x-auto">
-            <Table>
-              <Thead>
-                <Th>Campaña</Th>
-                <Th align="right">Enviados</Th>
-                <Th align="right">Aperturas</Th>
-                <Th align="right">Clicks</Th>
-                <Th align="right">Asignados</Th>
-                <Th align="right">Gestionados</Th>
-                <Th>Acción</Th>
-              </Thead>
-              <Tbody>
-                {mailUnavailable ? (
-                  <TableEmpty colSpan={9}>Datos de correo no disponibles.</TableEmpty>
-                ) : mailReports.length === 0 ? (
-                  <TableEmpty colSpan={9}>
-                    No hay campañas de correo conectadas que coincidan con estos filtros.
-                  </TableEmpty>
-                ) : (
-                  mailReports.map((report) => (
-                    <Tr key={`${report.mail_campaign_id ?? report.campaign_id}-${report.campaign_id}`}>
-                      <Td strong>{report.mail_campaign_name}</Td>
-                      <Td align="right">{report.sent_leads}</Td>
-                      <Td align="right">{report.opened_leads}</Td>
-                      <Td align="right">{report.clicked_leads}</Td>
-                      <Td align="right">{report.assigned_hot_leads}</Td>
-                      <Td align="right">{report.managed_hot_leads}</Td>
-                      <Td>
-                        <Link
-                          href={`/dashboard/mail?campaign=${report.campaign_id}`}
-                          className="text-xs font-medium text-primary hover:underline"
-                        >
-                          Gestionar correo
-                        </Link>
-                      </Td>
-                    </Tr>
-                  ))
-                )}
-              </Tbody>
-            </Table>
-          </div>
-        </SectionCard>
-      )}
-
-      <SectionCard
-        icon={Users}
-        tone="blue"
-        title="Equipo omnicanal y carga por canal"
-        description="La presencia telefónica no prueba disponibilidad para WhatsApp. Los miembros habilitados son configuración, no presencia en línea."
-      >
-        <div className="overflow-x-auto">
-          <Table>
-            <Thead>
-              <Th>Ejecutivo</Th>
-              <Th>Canal</Th>
-              <Th>Contexto</Th>
-              <Th>Estado / habilitación</Th>
-              <Th align="right">Carga informada</Th>
-            </Thead>
-            <Tbody>
-              {catalogUnavailable || invalidSelection ? (
-                <TableEmpty colSpan={5}>
-                  Equipo no disponible para esta selección.
-                </TableEmpty>
-              ) : (
-                <>
-                  {viewVoice &&
-                    (agentsUnavailable ? (
-                      <TableEmpty colSpan={5}>
-                        No se pudo consultar la presencia de voz.
-                      </TableEmpty>
-                    ) : liveAgents.length === 0 ? (
-                      <TableEmpty colSpan={5}>
-                        Sin agentes de voz en esta selección.
-                      </TableEmpty>
-                    ) : (
-                      liveAgents.map((agent) => (
-                        <Tr key={`voice-${agent.profile_id}`}>
-                          <Td strong>{agent.full_name}</Td>
-                          <Td>Voz</Td>
-                          <Td>{agent.campaign_name ?? "Sin campaña activa"}</Td>
-                          <Td>{phoneState(agent)}</Td>
-                          <Td align="right">
-                            {agent.phone_status === "on_call"
-                              ? "En llamada"
-                              : "—"}
-                          </Td>
-                        </Tr>
-                      ))
-                    ))}
-                  {viewWhatsApp &&
-                    (membersUnavailable ? (
-                      <TableEmpty colSpan={5}>
-                        No se pudo consultar la membresía de WhatsApp.
-                      </TableEmpty>
-                    ) : waAgents.size === 0 ? (
-                      <TableEmpty colSpan={5}>
-                        Sin miembros de WhatsApp en estas colas.
-                      </TableEmpty>
-                    ) : (
-                      [...waAgents]
-                        .sort(([, a], [, b]) => a.name.localeCompare(b.name))
-                        .map(([id, agent]) => (
-                          <Tr key={`wa-${id}`}>
-                            <Td strong>{agent.name}</Td>
-                            <Td>WhatsApp</Td>
-                            <Td className="max-w-96">
-                              {agent.queues.join(" · ")}
+                  <>
+                    {viewVoice &&
+                      (agentsUnavailable ? (
+                        <TableEmpty colSpan={4}>
+                          No se pudo consultar la presencia de voz.
+                        </TableEmpty>
+                      ) : liveAgents.length === 0 ? (
+                        <TableEmpty colSpan={4}>
+                          Sin agentes de voz en esta selección.
+                        </TableEmpty>
+                      ) : (
+                        liveAgents.map((agent) => (
+                          <Tr key={`voice-${agent.profile_id}`}>
+                            <Td>
+                              <span className="flex min-w-0 items-center gap-3">
+                                <Avatar name={agent.full_name} seed={agent.profile_id} size="md" />
+                                <span className="min-w-0">
+                                  <span className="block truncate font-medium text-foreground">{agent.full_name}</span>
+                                  <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                                    {agent.campaign_name ?? "Sin campaña activa"}
+                                  </span>
+                                </span>
+                              </span>
                             </Td>
                             <Td>
-                              {agent.enabled
-                                ? "Cuenta habilitada"
-                                : "Cuenta deshabilitada"}
+                              <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                                <Phone size={13} aria-hidden="true" /> Voz
+                              </span>
                             </Td>
-                            <Td align="right">
-                              {stockUnavailable
-                                ? "—"
-                                : `${stockByAgent.get(id) ?? 0} sin cerrar`}
+                            <Td>
+                              <Badge tone={phoneTone(agent)} dot>
+                                {phoneState(agent)}
+                              </Badge>
+                            </Td>
+                            <Td align="right" muted>
+                              {agent.phone_status === "on_call"
+                                ? "En llamada"
+                                : "—"}
                             </Td>
                           </Tr>
                         ))
-                    ))}
-                  {filters.channel === "email" && (
-                    <TableEmpty colSpan={5}>
-                      La carga y asignación por ejecutivo se administra en{" "}
-                      <Link
-                        href={
-                          mailReports[0]?.campaign_id
-                            ? `/dashboard/mail?campaign=${mailReports[0].campaign_id}`
-                            : "/dashboard/mail"
-                        }
-                        className="font-medium text-primary hover:underline"
-                      >
-                        Correo
-                      </Link>
-                      .
-                    </TableEmpty>
-                  )}
-                </>
-              )}
-            </Tbody>
-          </Table>
-        </div>
-      </SectionCard>
-        </div>
-      </SectionCard>
+                      ))}
+                    {viewWhatsApp &&
+                      (membersUnavailable ? (
+                        <TableEmpty colSpan={4}>
+                          No se pudo consultar la membresía de WhatsApp.
+                        </TableEmpty>
+                      ) : waAgents.size === 0 ? (
+                        <TableEmpty colSpan={4}>
+                          Sin miembros de WhatsApp en estas colas.
+                        </TableEmpty>
+                      ) : (
+                        [...waAgents]
+                          .sort(([, a], [, b]) => a.name.localeCompare(b.name))
+                          .map(([id, agent]) => (
+                            <Tr key={`wa-${id}`}>
+                              <Td>
+                                <span className="flex min-w-0 items-center gap-3">
+                                  <Avatar name={agent.name} seed={id} size="md" />
+                                  <span className="min-w-0">
+                                    <span className="block truncate font-medium text-foreground">{agent.name}</span>
+                                    <span className="mt-0.5 block max-w-96 truncate text-xs text-muted-foreground">
+                                      {agent.queues.join(" · ")}
+                                    </span>
+                                  </span>
+                                </span>
+                              </Td>
+                              <Td>
+                                <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                                  <MessageCircle size={13} aria-hidden="true" /> WhatsApp
+                                </span>
+                              </Td>
+                              <Td>
+                                <Badge tone={agent.enabled ? "success" : "neutral"} dot>
+                                  {agent.enabled
+                                    ? "Cuenta habilitada"
+                                    : "Cuenta deshabilitada"}
+                                </Badge>
+                              </Td>
+                              <Td align="right">
+                                {stockUnavailable
+                                  ? "—"
+                                  : `${stockByAgent.get(id) ?? 0} sin cerrar`}
+                              </Td>
+                            </Tr>
+                          ))
+                      ))}
+                    {filters.channel === "email" && (
+                      <TableEmpty colSpan={4}>
+                        La carga y asignación por ejecutivo se administra en{" "}
+                        <Link
+                          href={
+                            mailReports[0]?.campaign_id
+                              ? `/dashboard/mail?campaign=${mailReports[0].campaign_id}`
+                              : "/dashboard/mail"
+                          }
+                          className="font-medium text-primary hover:underline"
+                        >
+                          Correo
+                        </Link>
+                        .
+                      </TableEmpty>
+                    )}
+                  </>
+                )}
+              </Tbody>
+            </Table>
+          </div>
+        </SectionCard>
+      </section>
 
-      <details className="rounded-xl border border-border bg-surface px-4 py-3 text-xs text-muted-foreground shadow-sm">
+      {/* Control general poco frecuente: va después de lo que se mira todo
+          el día. */}
+      {showAutomation && (
+        <SectionCard
+          title={
+            <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              Automatización general de WhatsApp
+              <Badge
+                tone={
+                  automationState === "Activa"
+                    ? "success"
+                    : automationState === "Mixta"
+                      ? "warning"
+                      : "neutral"
+                }
+                dot
+              >
+                {automationState}
+              </Badge>
+            </span>
+          }
+          description={
+            permissions.canConfigurePlatform
+              ? "Control administrativo de todas las campañas configuradas. Este control no se limita por los filtros del monitor."
+              : "Control general de todas las campañas configuradas dentro de tu alcance autorizado. No se limita por los filtros del monitor."
+          }
+        >
+          <div className="space-y-3 border-t border-border px-5 py-4">
+            <p className="text-xs text-muted-foreground">
+              {automationUnavailable
+                ? "No fue posible consultar el estado de automatización; el control está deshabilitado."
+                : `${automationEnabled} de ${automationConfigs.length} campañas con automatización activa.`}{" "}
+              La IA atiende hasta derivar a un ejecutivo. Activarla no retoma
+              conversaciones ya transferidas a atención humana.
+            </p>
+            {!permissions.canConfigurePlatform && (
+              <p className="text-xs text-muted-foreground">
+                En campañas compartidas con equipos fuera de tu alcance, el cambio
+                general requiere un administrador.
+              </p>
+            )}
+            {automationHistoryResult.error && (
+              <Callout tone="warning">
+                No se pudo confirmar quién cambió la automatización por última
+                vez, así que el control queda bloqueado por seguridad. Vuelve a
+                cargar la página; si sigue igual, pídele a un administrador que
+                revise tus permisos.
+              </Callout>
+            )}
+            {!automationUnavailable && automationConfigs.length > 0 && (
+              <ActionForm
+                action={setWhatsAppAutomationEnabled}
+                success="Control general de automatización actualizado"
+                className="flex flex-wrap items-end gap-3"
+              >
+                <Field label="Aplicar a todo el alcance" className="min-w-64">
+                  <Select name="enabled" defaultValue="" required fieldSize="sm">
+                    <option value="" disabled>
+                      Seleccionar cambio general
+                    </option>
+                    <option value="true">Activar automatización general</option>
+                    <option value="false">Pausar automatización general</option>
+                  </Select>
+                </Field>
+                <label className="inline-flex min-h-8 items-center gap-2 text-xs text-muted-foreground">
+                  <input type="checkbox" required className="accent-primary" /> Confirmo el cambio en las{" "}
+                  {automationConfigs.length} campañas de mi alcance
+                </label>
+                <ActionSubmit
+                  variant="secondary"
+                  size="sm"
+                  pendingLabel="Aplicando…"
+                >
+                  Aplicar control general
+                </ActionSubmit>
+              </ActionForm>
+            )}
+          </div>
+          {!automationHistoryResult.error && (
+            <details className="group border-t border-border text-xs">
+              <summary className="cursor-pointer bg-surface-raised px-5 py-2.5 font-medium text-foreground">
+                Últimos cambios generales · hasta 10 registros de campaña
+              </summary>
+              <div className="overflow-x-auto border-t border-border">
+                <Table>
+                  <Thead>
+                    <Th>Fecha</Th>
+                    <Th>Responsable</Th>
+                    <Th>Campaña</Th>
+                    <Th>Cambio</Th>
+                  </Thead>
+                  <Tbody>
+                    {automationHistory.length === 0 ? (
+                      <TableEmpty colSpan={4}>
+                        No hay cambios generales registrados en tu alcance.
+                      </TableEmpty>
+                    ) : (
+                      automationHistory.map((change) => {
+                        const actor = one(change.profiles)?.full_name ?? "Usuario registrado";
+                        return (
+                          <Tr key={change.id}>
+                            <Td className="whitespace-nowrap tabular-nums">
+                              {formatChange(change.created_at)}
+                            </Td>
+                            <Td>
+                              <span className="flex items-center gap-2">
+                                <Avatar name={actor} size="xs" />
+                                <span className="truncate text-foreground">{actor}</span>
+                              </span>
+                            </Td>
+                            <Td muted>
+                              {one(change.campaigns)?.name ??
+                                "Campaña registrada"}
+                            </Td>
+                            <Td>
+                              <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                                {change.previous_enabled ? "Activa" : "Pausada"}
+                                <span aria-hidden="true">→</span>
+                                <Badge tone={change.enabled ? "success" : "neutral"} dot>
+                                  {change.enabled ? "Activa" : "Pausada"}
+                                </Badge>
+                              </span>
+                            </Td>
+                          </Tr>
+                        );
+                      })
+                    )}
+                  </Tbody>
+                </Table>
+              </div>
+            </details>
+          )}
+        </SectionCard>
+      )}
+
+      <details className="atlas-panel rounded-xl border border-border bg-surface px-5 py-3 text-xs text-muted-foreground shadow-sm">
         <summary className="cursor-pointer font-medium text-foreground">
           Definiciones y alcance de esta vista
         </summary>
-        <div className="mt-3 space-y-2 leading-relaxed">
+        <div className="mt-3 max-w-4xl space-y-2 leading-relaxed">
           <p>
             Sin cerrar: estados abiertos + pendientes. Sin asignar: registros de
             ese stock que no tienen responsable. Sin respuesta posterior: el

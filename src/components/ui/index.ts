@@ -19,3 +19,4 @@ export { ActionForm, ActionSubmit, actionErrorMessage, useActionPending } from "
 export { ConfirmDialog, type ConfirmOptions } from "./confirm-dialog";
 export { SubmitButton } from "./submit-button";
 export { LoadingState } from "./loading-state";
+export { PageSkeleton, Skeleton } from "./page-skeleton";

@@ -23,9 +23,10 @@ import {
   Tr,
   buttonClasses,
 } from "@/components/ui";
-import { Bot, Download, FileSpreadsheet, History, PhoneOutgoing } from "lucide-react";
+import { Download, History, PhoneOutgoing } from "lucide-react";
 import Link from "next/link";
 import { FormularioConEncendido } from "../formulario-con-encendido";
+import { Grupo, PieDeFormulario, fechaLegible } from "../../../_diseno";
 
 const STATUS_LABELS: Record<string, string> = {
   queued: "En cola",
@@ -140,8 +141,6 @@ export default async function AiVoiceCampaignPage({ params }: { params: Promise<
       )}
 
       <SectionCard
-        icon={Bot}
-        tone="primary"
         title="Agente de voz"
         description="La clave de ElevenLabs no se guarda aquí. Solo se registran los identificadores no secretos del agente y del troncal SIP."
         actions={
@@ -153,7 +152,7 @@ export default async function AiVoiceCampaignPage({ params }: { params: Promise<
         <FormularioConEncendido
           action={upsertAiVoiceCampaignConfig}
           success="Configuración IA guardada"
-          className="grid gap-4 p-4 sm:grid-cols-2"
+          className="divide-y divide-border border-t border-border"
           toggleName="is_active"
           savedOn={config?.is_active ?? false}
           turnOn={{
@@ -171,6 +170,7 @@ export default async function AiVoiceCampaignPage({ params }: { params: Promise<
         >
           <input type="hidden" name="campaign_id" value={id} />
 
+          <Grupo titulo="Agente y troncal" descripcion="Identificadores del agente en ElevenLabs y del número SIP importado. Ninguno es secreto.">
           <Field label="Agente ElevenLabs">
             <Input
               name="agent_id"
@@ -188,6 +188,9 @@ export default async function AiVoiceCampaignPage({ params }: { params: Promise<
             />
           </Field>
 
+          </Grupo>
+
+          <Grupo titulo="Ritmo" descripcion="Cuántas conversaciones lleva el agente a la vez y cuántas veces intenta cada contacto.">
           <Field label="Llamadas simultáneas">
             <Input
               type="number"
@@ -208,34 +211,36 @@ export default async function AiVoiceCampaignPage({ params }: { params: Promise<
             />
           </Field>
 
-          <label className="flex items-center gap-2 text-sm text-foreground sm:col-span-2">
+          </Grupo>
+
+          <Grupo titulo="Encendido" descripcion="Guardar con esta casilla cambiada pide confirmar: es lo que empieza a llamar a la base o deja de hacerlo." columnas={1}>
+          <label className="flex min-h-11 items-center gap-2.5 text-sm text-foreground">
             <input
               type="checkbox"
               name="is_active"
               value="true"
               defaultChecked={config?.is_active ?? false}
               disabled={!readyForActivation && !config?.is_active}
-              className="accent-primary"
+              className="size-4 accent-primary"
             />
             Iniciar llamadas automáticas de esta campaña IA
           </label>
 
           {!readyForActivation && !config?.is_active && (
-            <p className="text-xs text-muted-foreground sm:col-span-2">
+            <p className="text-xs text-muted-foreground">
               Para iniciar: campaña general habilitada, base cargada, cero ejecutivos y troncal SIP importado.
             </p>
           )}
+          </Grupo>
 
-          <div className="sm:col-span-2">
+          <PieDeFormulario>
             <ActionSubmit pendingLabel="Guardando…">Guardar configuración</ActionSubmit>
-          </div>
+          </PieDeFormulario>
         </FormularioConEncendido>
       </SectionCard>
 
       {config?.survey_schema === "prever_v1" && (
         <SectionCard
-          icon={FileSpreadsheet}
-          tone="violet"
           title="Informe contractual PREVER"
           description="Genera el Excel con la misma estructura, fórmulas y presentación del modelo entregado por el cliente."
           actions={
@@ -248,23 +253,21 @@ export default async function AiVoiceCampaignPage({ params }: { params: Promise<
             </Link>
           }
         >
-          <p className="p-4 text-sm text-muted-foreground">
+          <p className="border-t border-border px-5 py-4 text-sm text-muted-foreground">
             Incluye los 62 registros de la base, estados de llamada, intentos y las diez respuestas extraídas por ElevenLabs.
           </p>
         </SectionCard>
       )}
 
       <SectionCard
-        icon={PhoneOutgoing}
-        tone="primary"
         title="Llamada manual de prueba"
         description="Ingresa un número y el agente configurado llamará apenas el motor tome la solicitud. Esto no enciende la campaña automática ni modifica su base."
-        actions={<Badge tone={config?.phone_number_id ? "success" : "danger"}>{config?.phone_number_id ? "Lista para probar" : "Falta troncal"}</Badge>}
+        actions={<Badge tone={config?.phone_number_id ? "success" : "warning"}>{config?.phone_number_id ? "Lista para probar" : "Falta troncal"}</Badge>}
       >
         <ActionForm
           action={requestAiVoiceTestCall}
           success="Prueba encolada: el bot llamará en unos segundos"
-          className="grid gap-4 border-b border-border p-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
+          className="grid gap-4 border-y border-border bg-surface-raised px-5 py-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
         >
           <input type="hidden" name="campaign_id" value={id} />
 
@@ -283,7 +286,7 @@ export default async function AiVoiceCampaignPage({ params }: { params: Promise<
             />
           </Field>
 
-          <ActionSubmit disabled={!config?.phone_number_id} pendingLabel="Encolando…">
+          <ActionSubmit variant="secondary" disabled={!config?.phone_number_id} pendingLabel="Encolando…">
             Llamar ahora
           </ActionSubmit>
         </ActionForm>
@@ -314,7 +317,7 @@ export default async function AiVoiceCampaignPage({ params }: { params: Promise<
                     </Badge>
                   </Td>
                   <Td muted>{resultText}</Td>
-                  <Td muted>{new Date(testCall.created_at).toLocaleString("es-CL", { timeZone: "America/Santiago" })}</Td>
+                  <Td muted className="whitespace-nowrap">{fechaLegible(testCall.created_at)}</Td>
                 </Tr>
               );
             })}
@@ -323,8 +326,6 @@ export default async function AiVoiceCampaignPage({ params }: { params: Promise<
       </SectionCard>
 
       <SectionCard
-        icon={History}
-        tone="blue"
         title="Historial de la base automática"
         description={`${leadCount.toLocaleString("es-CL")} contacto(s) en la base · concurrencia ${config?.max_concurrent_calls ?? 1} · sin agentes humanos`}
       >
@@ -359,8 +360,8 @@ export default async function AiVoiceCampaignPage({ params }: { params: Promise<
                   <Td>
                     <Badge tone={statusTone(attempt.status)}>{STATUS_LABELS[attempt.status] ?? attempt.status}</Badge>
                   </Td>
-                  <Td muted>{attempt.provider_conversation_id ?? "—"}</Td>
-                  <Td muted>{new Date(attempt.created_at).toLocaleString("es-CL", { timeZone: "America/Santiago" })}</Td>
+                  <Td muted className="font-mono text-[11px]">{attempt.provider_conversation_id ?? "—"}</Td>
+                  <Td muted className="whitespace-nowrap">{fechaLegible(attempt.created_at)}</Td>
                 </Tr>
               );
             })}

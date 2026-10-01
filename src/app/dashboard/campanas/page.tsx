@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { Bot, ChevronRight, Mail, Megaphone, MessageCircle, Phone, Users } from "lucide-react";
+import { Bot, ChevronRight, Inbox, Mail, Megaphone, MessageCircle, Phone } from "lucide-react";
 
 import { requireProfile } from "@/lib/auth";
 import { campaignCapabilityKey } from "@/lib/campaign-capabilities";
 import { createClient } from "@/lib/supabase/server";
-import { Badge, EmptyState, PageHeader, SectionCard, type SectionTone } from "@/components/ui";
+import { Avatar, EmptyState, PageHeader, SectionCard, type SectionTone } from "@/components/ui";
 
 type CampaignRow = {
   id: string;
@@ -62,58 +62,71 @@ export default async function OperationalCampaignsPage() {
     <div className="space-y-5">
       <PageHeader
         title="Campañas"
+        icon={Megaphone}
         description="Selecciona una campaña para trabajar con sus registros y canales habilitados."
+        meta={
+          <span>
+            <span className="font-medium text-foreground">{campaigns.length.toLocaleString("es-CL")}</span>{" "}
+            {campaigns.length === 1 ? "campaña operativa" : "campañas operativas"}
+          </span>
+        }
       />
 
-      <SectionCard tone="rose">
-        <div className="divide-y divide-border">
-          {campaigns.length === 0 && (
-            <EmptyState
-              icon={Megaphone}
-              title="No hay campañas operativas"
-              description="Revisa la asignación o el estado de las campañas."
-            />
-          )}
+      <SectionCard>
+        {campaigns.length === 0 ? (
+          <EmptyState
+            icon={Megaphone}
+            title="No hay campañas operativas"
+            description="Revisa la asignación o el estado de las campañas."
+          />
+        ) : (
+          <ul className="divide-y divide-border/70">
+            {campaigns.map((campaign) => {
+              const channels = [
+                withPhone.has(campaign.id) ? { label: "Teléfono", icon: Phone, tone: "primary" } : null,
+                withAiVoice.has(campaign.id) ? { label: "Voz IA · ElevenLabs", icon: Bot, tone: "violet" } : null,
+                withMailSignals.has(campaign.id) ? { label: "Correo", icon: Mail, tone: "teal" } : null,
+                withMailbox.has(campaign.id) ? { label: "Bandeja de entrada", icon: Inbox, tone: "teal" } : null,
+                withWhatsApp.has(campaign.id) ? { label: "WhatsApp Business", icon: MessageCircle, tone: "green" } : null,
+              ].filter(Boolean) as Array<{ label: string; icon: typeof Phone; tone: SectionTone }>;
 
-          {campaigns.map((campaign) => {
-            const channels = [
-              withAiVoice.has(campaign.id) ? { label: "Voz IA · ElevenLabs", icon: Bot, tone: "violet" } : null,
-              withPhone.has(campaign.id) ? { label: "Teléfono", icon: Phone, tone: "primary" } : null,
-              withMailSignals.has(campaign.id) ? { label: "Correo", icon: Mail, tone: "teal" } : null,
-              withMailbox.has(campaign.id) ? { label: "Bandeja de entrada", icon: Mail, tone: "teal" } : null,
-              withWhatsApp.has(campaign.id) ? { label: "WhatsApp Business", icon: MessageCircle, tone: "green" } : null,
-            ].filter(Boolean) as Array<{ label: string; icon: typeof Phone; tone: SectionTone }>;
-
-            return (
-              <Link
-                key={campaign.id}
-                href={`/dashboard/campanas/${campaign.id}`}
-                className="group flex items-center gap-4 px-5 py-4 transition-colors hover:bg-surface-muted/60"
-              >
-                <Megaphone size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-foreground group-hover:text-primary">{campaign.name}</p>
-                  <p className="mt-0.5 truncate text-sm text-muted-foreground">
-                    {campaign.description ?? "Campaña operativa"}
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    <Badge tone="neutral">
-                      <Users size={12} aria-hidden="true" />
-                      Registros
-                    </Badge>
-                    {channels.map(({ label, icon: Icon }) => (
-                      <Badge key={label} tone="neutral">
-                        <Icon size={12} aria-hidden="true" />
-                        {label}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-                <ChevronRight className="shrink-0 text-muted-foreground group-hover:text-primary" size={18} />
-              </Link>
-            );
-          })}
-        </div>
+              return (
+                <li key={campaign.id}>
+                  <Link
+                    href={`/dashboard/campanas/${campaign.id}`}
+                    className="group flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-surface-muted/55 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                  >
+                    <Avatar name={campaign.name} shape="square" size="md" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium text-foreground">{campaign.name}</p>
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        {campaign.description ?? "Campaña operativa"}
+                      </p>
+                    </div>
+                    {/* Canales como íconos: se comparan de un vistazo entre filas. */}
+                    <div className="hidden items-center gap-1.5 sm:flex">
+                      {channels.length === 0 ? (
+                        <span className="text-xs text-muted-foreground">Solo registros</span>
+                      ) : (
+                        channels.map(({ label, icon: Icon, tone }) => (
+                          <span key={label} className="icon-chip size-7 rounded-lg" data-tone={tone} title={label}>
+                            <Icon size={14} aria-hidden="true" />
+                            <span className="sr-only">{label}</span>
+                          </span>
+                        ))
+                      )}
+                    </div>
+                    <ChevronRight
+                      className="shrink-0 text-muted-foreground/50 transition-colors group-hover:text-primary"
+                      size={16}
+                      aria-hidden="true"
+                    />
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </SectionCard>
     </div>
   );

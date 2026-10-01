@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { MetricIconChip, type IconTone } from "./metric-card";
+import { type IconTone, type MetricIconChip } from "./metric-card";
 import type { ComponentProps } from "react";
 
 export function StatCard({
@@ -8,7 +8,7 @@ export function StatCard({
   hint,
   progress,
   tone = "default",
-  icon,
+  icon: Icon,
   iconTone = "primary",
   className,
 }: {
@@ -33,14 +33,14 @@ export function StatCard({
           : "bg-primary";
 
   return (
-    <div className={cn("rounded-xl border border-border bg-surface p-5 shadow-sm", className)}>
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-[13px] font-medium text-muted-foreground">{label}</p>
-        {icon && <MetricIconChip icon={icon} tone={iconTone} />}
-      </div>
+    <div className={cn("atlas-panel rounded-xl border border-border bg-surface p-5 shadow-sm", className)} data-tone={iconTone}>
+      <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+        {Icon && <Icon size={14} aria-hidden="true" />}
+        {label}
+      </p>
       <p
         className={cn(
-          "mt-2 text-[28px] font-semibold leading-none tabular-nums tracking-tight",
+          "mt-3 text-[28px] font-semibold leading-none tabular-nums tracking-tight",
           tone === "good" ? "text-success" : tone === "warn" ? "text-warning" : tone === "danger" ? "text-danger" : "text-foreground"
         )}
       >

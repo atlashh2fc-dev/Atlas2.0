@@ -83,7 +83,7 @@ export function SlideOver({
       >
         <div className="flex items-start gap-3 border-b border-border px-5 py-4">
           <div className="min-w-0">
-            <h2 className="text-base font-semibold text-foreground">{title}</h2>
+            <h2 className="text-base font-semibold tracking-tight text-foreground">{title}</h2>
             {description && <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>}
           </div>
           <button
@@ -98,7 +98,7 @@ export function SlideOver({
 
         <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
 
-        {footer && <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">{footer}</div>}
+        {footer && <div className="flex items-center justify-end gap-2 border-t border-border bg-surface-raised px-5 py-3">{footer}</div>}
       </div>
     </div>
   );

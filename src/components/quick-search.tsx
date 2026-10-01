@@ -210,12 +210,12 @@ export function QuickSearch({
     return (
       <button
         onClick={openPalette}
-        className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground"
+        className="flex h-9 items-center gap-2 rounded-lg border border-border bg-surface px-3 text-[13px] text-muted-foreground shadow-sm transition-colors hover:border-border-strong hover:text-foreground sm:w-72 lg:w-80"
       >
-        <Search size={15} />
-        <span className="hidden sm:inline">Buscar o ir a...</span>
+        <Search size={15} aria-hidden="true" />
+        <span className="hidden sm:inline">Buscar registros, RUT o ir a…</span>
         <span className="sr-only sm:hidden">Buscar o ir a una sección</span>
-        <kbd className="ml-2 hidden rounded border border-border bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline">⌘K</kbd>
+        <kbd className="ml-auto hidden rounded-md border border-border bg-surface-muted px-1.5 py-0.5 font-sans text-[10px] font-medium text-muted-foreground sm:inline">⌘K</kbd>
       </button>
     );
   }

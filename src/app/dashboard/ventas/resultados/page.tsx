@@ -1,8 +1,9 @@
 import { connection } from "next/server";
-import { BadgeDollarSign, Compass, Layers, MailCheck, Percent, Timer, Users } from "lucide-react";
+import { BadgeDollarSign, Compass, MailCheck, Percent, Timer, TrendingUp, Trophy, Users, XCircle } from "lucide-react";
 
 import { alternarSeguimientoAutomatico } from "@/app/actions/pipeline";
-import { Callout, EmptyState, MetricCard, NavTabs, PageHeader, SectionCard, SubmitButton } from "@/components/ui";
+import { KpiStrip, KpiStripItem } from "@/components/report-kit";
+import { Avatar, Badge, EmptyState, NavTabs, PageHeader, SectionCard, SubmitButton, Table, Tbody, Td, Th, Thead, Tr } from "@/components/ui";
 import { requireProfile } from "@/lib/auth";
 import { VENTAS_POR_EDICION } from "@/lib/ediciones";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
@@ -82,76 +83,171 @@ export default async function ResultadosPage() {
   const seguimientosEnviados = (seguimientos ?? []).filter((mensaje) => ["enviado", "entregado", "leido", "respondido"].includes(mensaje.estado as string)).length;
   const seguimientosRespondidos = (seguimientos ?? []).filter((mensaje) => mensaje.estado === "respondido").length;
 
+  const maxOrigen = Math.max(1, ...porOrigen.map((fila) => fila.total));
+  const maxResponsable = Math.max(1, ...porResponsable.map((fila) => fila.abiertos + fila.ganados));
+
   return (
     <div className="space-y-5">
-      <PageHeader title={voc.titulo} description={`${empresa ?? "Tu empresa"} · cuánto vendiste, de dónde llegan los negocios y quién los cierra`} />
+      <PageHeader title={voc.titulo} icon={TrendingUp} description={`${empresa ?? "Tu empresa"} · cuánto vendiste, de dónde llegan los negocios y quién los cierra`} />
       <NavTabs tabs={PESTANAS_VENTAS} />
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {[
-          { label: "Tasa de cierre", valor: tasa === null ? "—" : `${tasa}%`, detalle: `${ganados.length} ganados de ${cerrados.length} cerrados`, icon: Percent, tono: "violet" as const },
-          { label: "Días hasta cerrar", valor: promedioCierre === null ? "—" : `${promedioCierre} d`, detalle: "Promedio de los ganados", icon: Timer, tono: "amber" as const },
-          { label: "En juego", valor: pesos.format(abiertos.reduce((total, negocio) => total + monto(negocio), 0)), detalle: `${pesos.format(ponderado)} ponderado por etapa`, icon: BadgeDollarSign, tono: "green" as const },
-          { label: "Seguimientos automáticos", valor: String(seguimientosEnviados), detalle: `${seguimientosRespondidos} respondidos · ${seguimientoActivo ? "activo" : "apagado"}`, icon: MailCheck, tono: "teal" as const },
-        ].map((metrica) => (
-          <MetricCard
-            key={metrica.label}
-            label={metrica.label}
-            value={metrica.valor}
-            hint={metrica.detalle}
-            icon={metrica.icon}
-            iconTone={metrica.tono}
-          />
-        ))}
-      </div>
+      <KpiStrip columns={4}>
+        <KpiStripItem
+          label="Tasa de cierre"
+          value={tasa === null ? "—" : `${tasa}%`}
+          icon={Percent}
+          detail={`${ganados.length} ganados de ${cerrados.length} cerrados`}
+          progress={tasa ?? undefined}
+          tone={tasa !== null && tasa > 0 ? "good" : "default"}
+        />
+        <KpiStripItem label="Días hasta cerrar" value={promedioCierre === null ? "—" : `${promedioCierre} d`} icon={Timer} detail="Promedio de los ganados" />
+        <KpiStripItem
+          label="En juego"
+          value={pesos.format(abiertos.reduce((total, negocio) => total + monto(negocio), 0))}
+          icon={BadgeDollarSign}
+          detail={`${pesos.format(ponderado)} ponderado por etapa`}
+        />
+        <KpiStripItem
+          label="Seguimientos automáticos"
+          value={seguimientosEnviados.toLocaleString("es-CL")}
+          icon={MailCheck}
+          detail={`${seguimientosRespondidos} respondidos · ${seguimientoActivo ? "activo" : "apagado"}`}
+        />
+      </KpiStrip>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <SectionCard title="Por etapa" description="Cuántos negocios llegaron a cada etapa y cuántos están hoy en ella." icon={Layers} tone="violet">
-          <table className="w-full text-sm">
-            <thead><tr className="border-b border-border text-left text-xs text-muted-foreground"><th className="h-10 px-4 font-medium">Etapa</th><th className="h-10 px-4 font-medium text-right">Llegaron</th><th className="h-10 px-4 font-medium text-right">Hoy</th><th className="h-10 px-4 font-medium text-right">Monto hoy</th></tr></thead>
-            <tbody className="divide-y divide-border">
-              {etapas.map((etapa) => {
-                const hoy = abiertos.filter((negocio) => negocio.stage_id === etapa.id);
-                return (
-                  <tr key={etapa.id}>
-                    <td className="px-4 py-3 text-foreground">{etapa.name}{etapa.probability !== null && !etapa.is_won && !etapa.is_lost ? <span className="text-xs text-muted-foreground"> · {etapa.probability}%</span> : null}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{alcanzaron.get(etapa.id)?.size ?? 0}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{etapa.is_won ? ganados.length : etapa.is_lost ? cerrados.length - ganados.length : hoy.length}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{pesos.format(hoy.reduce((total, negocio) => total + monto(negocio), 0))}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <SectionCard title="Por etapa" description="Cuántos negocios llegaron a cada etapa y cuántos están hoy en ella.">
+          <div className="overflow-x-auto">
+            <Table>
+              <Thead>
+                <Th>Etapa</Th>
+                <Th align="right">Llegaron</Th>
+                <Th align="right">Hoy</Th>
+                <Th align="right">Monto hoy</Th>
+              </Thead>
+              <Tbody>
+                {etapas.map((etapa, indice) => {
+                  const hoy = abiertos.filter((negocio) => negocio.stage_id === etapa.id);
+                  const enEtapa = etapa.is_won ? ganados.length : etapa.is_lost ? cerrados.length - ganados.length : hoy.length;
+                  const montoHoy = hoy.reduce((total, negocio) => total + monto(negocio), 0);
+                  return (
+                    <Tr key={etapa.id}>
+                      <Td>
+                        <span className="flex items-center gap-2.5">
+                          <span
+                            className="icon-chip size-6 rounded-md text-[10px] font-semibold tabular-nums"
+                            data-tone={etapa.is_won ? "green" : etapa.is_lost ? "rose" : "slate"}
+                            aria-hidden="true"
+                          >
+                            {etapa.is_won ? <Trophy size={12} /> : etapa.is_lost ? <XCircle size={12} /> : indice + 1}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block font-medium text-foreground">{etapa.name}</span>
+                            {etapa.probability !== null && !etapa.is_won && !etapa.is_lost && (
+                              <span className="block text-xs text-muted-foreground">{etapa.probability}% de cierre</span>
+                            )}
+                          </span>
+                        </span>
+                      </Td>
+                      <Td align="right" muted>{alcanzaron.get(etapa.id)?.size ?? 0}</Td>
+                      <Td align="right" strong>{enEtapa}</Td>
+                      <Td align="right" className={montoHoy > 0 ? "text-foreground" : "text-muted-foreground"}>{pesos.format(montoHoy)}</Td>
+                    </Tr>
+                  );
+                })}
+              </Tbody>
+            </Table>
+          </div>
         </SectionCard>
-        <SectionCard title="Por origen" description="De dónde llegan los negocios y cuáles se cierran." icon={Compass} tone="violet">
-          {porOrigen.length === 0 ? <EmptyState icon={Compass} title="Sin datos" description="Aparece cuando haya negocios." /> : (
-            <table className="w-full text-sm">
-              <thead><tr className="border-b border-border text-left text-xs text-muted-foreground"><th className="h-10 px-4 font-medium">Origen</th><th className="h-10 px-4 font-medium text-right">Total</th><th className="h-10 px-4 font-medium text-right">Abiertos</th><th className="h-10 px-4 font-medium text-right">Ganados</th><th className="h-10 px-4 font-medium text-right">Tasa</th><th className="h-10 px-4 font-medium text-right">Monto ganado</th></tr></thead>
-              <tbody className="divide-y divide-border">
-                {porOrigen.map((fila) => (
-                  <tr key={fila.origen}><td className="px-4 py-3 text-foreground">{ORIGEN[fila.origen] ?? fila.origen}</td><td className="px-4 py-3 text-right tabular-nums">{fila.total}</td><td className="px-4 py-3 text-right tabular-nums">{fila.abiertos}</td><td className="px-4 py-3 text-right tabular-nums">{fila.ganados}</td><td className="px-4 py-3 text-right tabular-nums">{fila.tasa === null ? "—" : `${fila.tasa}%`}</td><td className="px-4 py-3 text-right tabular-nums">{pesos.format(fila.monto)}</td></tr>
-                ))}
-              </tbody>
-            </table>
+
+        <SectionCard title="Por origen" description="De dónde llegan los negocios y cuáles se cierran.">
+          {porOrigen.length === 0 ? (
+            <EmptyState icon={Compass} title="Sin datos" description="Aparece cuando haya negocios." />
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <Thead>
+                  <Th>Origen</Th>
+                  <Th align="right">Abiertos</Th>
+                  <Th align="right">Ganados</Th>
+                  <Th align="right">Tasa</Th>
+                  <Th align="right">Monto ganado</Th>
+                </Thead>
+                <Tbody>
+                  {porOrigen.map((fila) => (
+                    <Tr key={fila.origen}>
+                      <Td>
+                        <span className="block min-w-32">
+                          <span className="flex items-baseline justify-between gap-3">
+                            <span className="font-medium text-foreground">{ORIGEN[fila.origen] ?? fila.origen}</span>
+                            <span className="text-xs tabular-nums text-muted-foreground">{fila.total}</span>
+                          </span>
+                          {/* Cuánto pesa cada origen frente al mayor, sin un gráfico aparte. */}
+                          <span className="mt-1.5 block h-1 overflow-hidden rounded-full bg-surface-muted">
+                            <span className="block h-full rounded-full bg-primary/70" style={{ width: `${(fila.total / maxOrigen) * 100}%` }} />
+                          </span>
+                        </span>
+                      </Td>
+                      <Td align="right" muted>{fila.abiertos}</Td>
+                      <Td align="right">{fila.ganados}</Td>
+                      <Td align="right" className={fila.tasa ? "font-medium text-success" : "text-muted-foreground"}>{fila.tasa === null ? "—" : `${fila.tasa}%`}</Td>
+                      <Td align="right" className={fila.monto > 0 ? "text-foreground" : "text-muted-foreground"}>{pesos.format(fila.monto)}</Td>
+                    </Tr>
+                  ))}
+                </Tbody>
+              </Table>
+            </div>
           )}
         </SectionCard>
-        <SectionCard title="Por responsable" description="Carga abierta y cierres de cada persona." icon={Users} tone="blue">
-          <table className="w-full text-sm">
-            <thead><tr className="border-b border-border text-left text-xs text-muted-foreground"><th className="h-10 px-4 font-medium">Responsable</th><th className="h-10 px-4 font-medium text-right">Abiertos</th><th className="h-10 px-4 font-medium text-right">Ganados</th><th className="h-10 px-4 font-medium text-right">Monto ganado</th></tr></thead>
-            <tbody className="divide-y divide-border">
+
+        <SectionCard title="Por responsable" description="Carga abierta y cierres de cada persona.">
+          {porResponsable.length === 0 ? (
+            <EmptyState icon={Users} title="Sin datos" description="Aparece cuando haya negocios con responsable." />
+          ) : (
+            <ul className="divide-y divide-border/70 border-t border-border">
               {porResponsable.map((fila) => (
-                <tr key={fila.nombre}><td className="px-4 py-3 text-foreground">{fila.nombre}</td><td className="px-4 py-3 text-right tabular-nums">{fila.abiertos}</td><td className="px-4 py-3 text-right tabular-nums">{fila.ganados}</td><td className="px-4 py-3 text-right tabular-nums">{pesos.format(fila.monto)}</td></tr>
+                <li key={fila.nombre} className="flex items-center gap-3 px-5 py-3">
+                  <Avatar name={fila.nombre} size="sm" tone={fila.nombre === "Sin responsable" ? "slate" : undefined} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13px] font-medium text-foreground">{fila.nombre}</p>
+                    <div className="mt-1.5 flex h-1 overflow-hidden rounded-full bg-surface-muted" aria-hidden="true">
+                      <span className="h-full bg-success/80" style={{ width: `${(fila.ganados / maxResponsable) * 100}%` }} />
+                      <span className="h-full bg-primary/50" style={{ width: `${(fila.abiertos / maxResponsable) * 100}%` }} />
+                    </div>
+                  </div>
+                  <dl className="flex shrink-0 gap-4 text-right">
+                    <div className="w-14">
+                      <dt className="text-[10px] text-muted-foreground">Abiertos</dt>
+                      <dd className="text-[13px] tabular-nums text-foreground">{fila.abiertos}</dd>
+                    </div>
+                    <div className="w-14">
+                      <dt className="text-[10px] text-muted-foreground">Ganados</dt>
+                      <dd className={`text-[13px] tabular-nums ${fila.ganados > 0 ? "font-semibold text-success" : "text-foreground"}`}>{fila.ganados}</dd>
+                    </div>
+                    <div className="hidden w-24 sm:block">
+                      <dt className="text-[10px] text-muted-foreground">Monto ganado</dt>
+                      <dd className="text-[13px] font-medium tabular-nums text-foreground">{pesos.format(fila.monto)}</dd>
+                    </div>
+                  </dl>
+                </li>
               ))}
-            </tbody>
-          </table>
+            </ul>
+          )}
         </SectionCard>
-        <SectionCard title="Seguimiento automático de propuestas" description="Una propuesta o negociación sin avance hace más de 7 días recibe un correo de seguimiento, una vez por semana, por el puente con Atlas Lead. Le escribe a clientes reales: por eso nace apagado." icon={MailCheck} tone="teal">
-          <div className="space-y-3 px-4 py-4">
-            <Callout tone={seguimientoActivo ? "success" : "info"}>
-              <p className="font-medium">{seguimientoActivo ? "Activo" : "Apagado"}</p>
-              <p>{seguimientoActivo ? "Los seguimientos se programan solos y aparecen en la historia de cada negocio." : "Nadie recibe correos automáticos hasta que lo actives."}</p>
-            </Callout>
+
+        <SectionCard title="Seguimiento automático de propuestas" description="Una propuesta o negociación sin avance hace más de 7 días recibe un correo de seguimiento, una vez por semana, por el puente con Atlas Lead. Le escribe a clientes reales: por eso nace apagado.">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border px-5 py-4">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="icon-chip mt-0.5 size-8 rounded-lg" data-tone={seguimientoActivo ? "green" : "slate"} aria-hidden="true">
+                <MailCheck size={15} />
+              </span>
+              <div className="min-w-0">
+                <Badge tone={seguimientoActivo ? "success" : "neutral"} dot>{seguimientoActivo ? "Activo" : "Apagado"}</Badge>
+                <p className="mt-1 text-[13px] text-muted-foreground">
+                  {seguimientoActivo ? "Los seguimientos se programan solos y aparecen en la historia de cada negocio." : "Nadie recibe correos automáticos hasta que lo actives."}
+                </p>
+              </div>
+            </div>
             {profile.role === "admin" && (
               <form action={alternarSeguimientoAutomatico}>
                 <input type="hidden" name="activo" value={seguimientoActivo ? "no" : "si"} />

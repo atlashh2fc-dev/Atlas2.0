@@ -2,9 +2,11 @@ import Link from "next/link";
 import { ArrowUpRight, Layers } from "lucide-react";
 
 import {
+  Avatar,
   Badge,
   Callout,
   EmptyState,
+  InfoTooltip,
   PageHeader,
   SectionCard,
   Table,
@@ -19,6 +21,7 @@ import {
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { loadOperationalConversations } from "@/lib/operations-data";
+import { FlechaDeFila } from "../_diseno";
 
 type Relation<T> = T | T[] | null;
 
@@ -34,7 +37,6 @@ const CHANNEL_LABELS: Record<string, string> = {
   instagram: "Instagram",
 };
 
-/** Color del canal, igual que en el menú: voz en marca, WhatsApp verde, texto en turquesa. */
 export default async function ContactCenterQueuesPage() {
   await requireProfile(["admin"]);
   const supabase = await createClient();
@@ -116,27 +118,68 @@ export default async function ContactCenterQueuesPage() {
     ]);
   }
 
+  const queues = queuesResult.data ?? [];
+  const activeQueues = queues.filter((queue) => queue.is_active).length;
+  const totalUnassigned = [...unassignedCount.values()].reduce((sum, value) => sum + value, 0);
+
+  /** «WhatsApp · Ventas Hogar, Correo · Equifax»: de dónde le llega trabajo a la cola. */
+  const sourcesLine = (queueId: string): string => {
+    const sources = sourcesByQueue.get(queueId) ?? [];
+    return sources
+      .map((source) => {
+        const campaign = one(source.campaigns as Relation<{ name: string }>);
+        const route = one(
+          source.whatsapp_campaign_routes as Relation<{
+            whatsapp_channels: Relation<{ display_phone_number: string }>;
+          }>,
+        );
+        const channel = route ? one(route.whatsapp_channels) : null;
+        return `${CHANNEL_LABELS[source.channel_type] ?? source.channel_type} · ${
+          campaign?.name ?? channel?.display_phone_number ?? "Sin origen"
+        }`;
+      })
+      .join(", ");
+  };
+
   return (
     <div className="space-y-5">
       <PageHeader
         title="Colas y enrutamiento"
+        icon={Layers}
         description="Configuración omnicanal: fuentes, estrategia y membresía ACD de WhatsApp. Voz y correo conservan sus ejecutivos por campaña."
+        meta={
+          !queuesUnavailable && queues.length > 0 ? (
+            <>
+              <span>
+                <span className="font-semibold text-foreground">{queues.length}</span> {queues.length === 1 ? "cola" : "colas"}
+              </span>
+              <span>
+                <span className="font-semibold text-foreground">{activeQueues}</span> {activeQueues === 1 ? "activa" : "activas"}
+              </span>
+              {!stockUnavailable && (
+                <span className={totalUnassigned > 0 ? "text-warning" : undefined}>
+                  <span className="font-semibold">{totalUnassigned}</span> WhatsApp sin asignar
+                </span>
+              )}
+            </>
+          ) : undefined
+        }
         actions={
           <Link
             href="/dashboard/operacion"
-            className={buttonClasses({ variant: "secondary", size: "sm" })}
+            className={buttonClasses({ variant: "secondary" })}
           >
-            Ver operación <ArrowUpRight size={13} />
+            Ver operación <ArrowUpRight size={14} />
           </Link>
         }
       />
-      <Callout tone="info">
+      <p className="max-w-3xl text-[13px] leading-relaxed text-muted-foreground">
         Esta vista muestra los recursos ACD configurados; no es el catálogo completo de campañas. Una cola puede estar todavía sin fuentes, y una campaña sólo aparece aquí cuando se conecta explícitamente a una cola. Las campañas se administran desde{" "}
         <Link href="/dashboard/admin/campanas" className="font-medium text-primary hover:underline">
           Campañas
         </Link>
         .
-      </Callout>
+      </p>
       {(queuesUnavailable || sourcesUnavailable || membersUnavailable) && (
         <Callout tone="warning">
           No fue posible consultar completa la configuración. Los valores no
@@ -154,32 +197,32 @@ export default async function ContactCenterQueuesPage() {
         </Callout>
       )}
 
-      <SectionCard
-        icon={Layers}
-        tone="rose"
-        title="Colas"
-        description="Fuentes, estrategia y stock de WhatsApp de cada cola."
-      >
+      <SectionCard>
         <div className="overflow-x-auto">
           <Table>
             <Thead>
               <Th>Cola</Th>
-              <Th>Fuentes conectadas</Th>
               <Th>Enrutamiento</Th>
-              <Th align="right">Miembros ACD WhatsApp</Th>
-              <Th align="right">WhatsApp sin cerrar</Th>
-              <Th align="right">WhatsApp sin asignar</Th>
-              <Th>Objetivo configurado</Th>
-              <Th />
+              <Th align="right">Miembros WhatsApp</Th>
+              <Th align="right">
+                <span className="inline-flex items-center gap-1">
+                  WhatsApp abiertos
+                  <InfoTooltip text="Conversaciones de WhatsApp sin cerrar en la cola. Debajo, las que todavía no tienen ejecutivo." align="right" />
+                </span>
+              </Th>
+              <Th>Estado</Th>
+              <Th>
+                <span className="sr-only">Abrir</span>
+              </Th>
             </Thead>
             <Tbody>
               {queuesUnavailable ? (
-                <TableEmpty colSpan={8}>
+                <TableEmpty colSpan={6}>
                   <EmptyState icon={Layers} title="Configuración de colas no disponible." className="py-6" />
                 </TableEmpty>
               ) : (
-                (queuesResult.data ?? []).length === 0 && (
-                  <TableEmpty colSpan={8}>
+                queues.length === 0 && (
+                  <TableEmpty colSpan={6}>
                     {/* No hay acción para crear colas desde aquí: nacen al
                         conectar un canal digital a una campaña. */}
                     <EmptyState
@@ -200,127 +243,67 @@ export default async function ContactCenterQueuesPage() {
                 )
               )}
               {!queuesUnavailable &&
-                (queuesResult.data ?? []).map((queue) => {
-                  const sources = sourcesByQueue.get(queue.id) ?? [];
+                queues.map((queue) => {
+                  const href = `/dashboard/admin/colas/${queue.id}`;
+                  const sources = sourcesLine(queue.id);
+                  const unassigned = unassignedCount.get(queue.id) ?? 0;
                   return (
                     <Tr key={queue.id}>
-                      <Td strong className="min-w-64">
-                        <div className="flex items-start gap-3">
-                          <Layers
-                            size={16}
-                            className={`mt-0.5 shrink-0 text-muted-foreground ${queue.is_active ? "" : "opacity-50"}`}
-                            aria-hidden="true"
+                      <Td className="min-w-72">
+                        <div className="flex items-center gap-3">
+                          <Avatar
+                            name={queue.name}
+                            icon={Layers}
+                            size="md"
+                            shape="square"
+                            className={queue.is_active ? "" : "opacity-50"}
                           />
                           <div className="min-w-0">
-                            <Link
-                              href={`/dashboard/admin/colas/${queue.id}`}
-                              className="hover:text-primary hover:underline"
-                            >
+                            <Link href={href} className="font-medium text-foreground hover:text-primary">
                               {queue.name}
                             </Link>
-                            {queue.description && (
-                              <p className="mt-0.5 text-xs font-normal text-muted-foreground">
-                                {queue.description}
-                              </p>
-                            )}
+                            <p className="mt-0.5 max-w-md truncate text-xs text-muted-foreground" title={sources || undefined}>
+                              {sourcesUnavailable
+                                ? "Fuentes no disponibles"
+                                : sources || "Sin fuentes habilitadas"}
+                            </p>
                           </div>
                         </div>
                       </Td>
-                      <Td className="min-w-64">
-                        <div className="flex flex-wrap gap-x-3 gap-y-1">
-                          {sourcesUnavailable ? (
-                            <span className="text-xs text-muted-foreground">
-                              No disponible
+                      <Td className="whitespace-nowrap">
+                        <span className="block text-foreground">
+                          {queue.routing_mode === "least_loaded" ? "Menor carga" : "Manual"}
+                        </span>
+                        <span className="block text-xs text-muted-foreground" title="Objetivo configurado; no es un SLA medido">
+                          Responder en {Math.round(queue.service_level_seconds / 60)} min
+                        </span>
+                      </Td>
+                      <Td align="right">
+                        {membersUnavailable ? (
+                          <span className="text-xs text-muted-foreground">No disponible</span>
+                        ) : (
+                          <span className="font-medium text-foreground">{memberCount.get(queue.id) ?? 0}</span>
+                        )}
+                      </Td>
+                      <Td align="right" className={stockUnavailable ? "whitespace-nowrap text-xs text-muted-foreground" : "whitespace-nowrap"}>
+                        {stockUnavailable
+                          ? "No disponible"
+                          : (
+                          <>
+                            <span className="block font-medium text-foreground">{activeCount.get(queue.id) ?? 0}</span>
+                            <span className={`block text-xs ${unassigned > 0 ? "font-medium text-warning" : "text-muted-foreground"}`}>
+                              {unassigned} sin asignar
                             </span>
-                          ) : sources.length === 0 ? (
-                            <span className="text-xs text-muted-foreground">
-                              Sin fuentes habilitadas
-                            </span>
-                          ) : (
-                            sources.map((source, index) => {
-                              const campaign = one(
-                                source.campaigns as Relation<{ name: string }>,
-                              );
-                              const route = one(
-                                source.whatsapp_campaign_routes as Relation<{
-                                  whatsapp_channels: Relation<{
-                                    display_phone_number: string;
-                                  }>;
-                                }>,
-                              );
-                              const channel = route
-                                ? one(route.whatsapp_channels)
-                                : null;
-                              return (
-                                <Badge
-                                  key={`${source.channel_type}-${index}`}
-                                  tone="neutral"
-                                >
-                                  {CHANNEL_LABELS[source.channel_type] ??
-                                    source.channel_type}{" "}
-                                  ·{" "}
-                                  {campaign?.name ??
-                                    channel?.display_phone_number ??
-                                    "Sin origen"}
-                                </Badge>
-                              );
-                            })
-                          )}
-                        </div>
+                          </>
+                        )}
                       </Td>
                       <Td>
-                        <Badge
-                          tone={
-                            queue.routing_mode === "least_loaded"
-                              ? "success"
-                              : "info"
-                          }
-                        >
-                          {queue.routing_mode === "least_loaded"
-                            ? "Menor carga"
-                            : "Manual"}
+                        <Badge tone={queue.is_active ? "success" : "neutral"}>
+                          {queue.is_active ? "Activa" : "Inactiva"}
                         </Badge>
                       </Td>
                       <Td align="right">
-                        {membersUnavailable
-                          ? "No disponible"
-                          : (memberCount.get(queue.id) ?? 0)}
-                      </Td>
-                      <Td align="right">
-                        {stockUnavailable
-                          ? "No disponible"
-                          : (activeCount.get(queue.id) ?? 0)}
-                      </Td>
-                      <Td align="right">
-                        <span
-                          className={
-                            !stockUnavailable &&
-                            (unassignedCount.get(queue.id) ?? 0) > 0
-                              ? "font-semibold text-warning"
-                              : ""
-                          }
-                        >
-                          {stockUnavailable
-                            ? "No disponible"
-                            : (unassignedCount.get(queue.id) ?? 0)}
-                        </span>
-                      </Td>
-                      <Td>
-                        {Math.round(queue.service_level_seconds / 60)} min
-                        <p className="text-xs text-muted-foreground">
-                          No es un SLA medido
-                        </p>
-                      </Td>
-                      <Td align="right">
-                        <Link
-                          href={`/dashboard/admin/colas/${queue.id}`}
-                          className={buttonClasses({
-                            variant: "secondary",
-                            size: "sm",
-                          })}
-                        >
-                          Configurar <ArrowUpRight size={13} />
-                        </Link>
+                        <FlechaDeFila href={href} label={`Configurar ${queue.name}`} />
                       </Td>
                     </Tr>
                   );

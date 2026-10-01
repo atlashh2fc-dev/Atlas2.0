@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition, type InputHTMLAttributes } from "react";
+import { useMemo, useRef, useState, useTransition, type InputHTMLAttributes, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AlertCircle, CheckCircle2, Database, Loader2, Plus, Search } from "lucide-react";
@@ -31,6 +31,22 @@ type AgentOption = Option & {
 };
 
 type Lookup = Extract<RutLookupResult, { ok: true }>;
+
+/**
+ * Grupo con nombre del formulario: a la izquierda qué es y para qué, a la
+ * derecha los campos. Mismo patrón que la configuración de correo.
+ */
+function Grupo({ titulo, descripcion, children }: { titulo: string; descripcion: string; children: ReactNode }) {
+  return (
+    <div className="grid gap-4 px-5 py-5 md:grid-cols-[minmax(0,15rem)_minmax(0,1fr)] md:gap-8">
+      <div>
+        <h3 className="text-sm font-medium text-foreground">{titulo}</h3>
+        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{descripcion}</p>
+      </div>
+      <div className="min-w-0 space-y-4">{children}</div>
+    </div>
+  );
+}
 
 function FieldLabel({ children, fromBigdata }: { children: string; fromBigdata?: boolean }) {
   return (
@@ -204,11 +220,12 @@ export function ManualLeadRecordForm({
         event.preventDefault();
         handleSubmit(new FormData(event.currentTarget));
       }}
-      className="space-y-5 rounded-xl border border-border bg-surface p-5 shadow-sm"
+      className="atlas-panel divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface shadow-sm"
     >
       {message && (
         <div
-          className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${
+          role={message.type === "error" ? "alert" : "status"}
+          className={`m-5 flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${
             message.type === "error"
               ? "border-danger/30 bg-danger-bg text-danger"
               : "border-success/30 bg-success-bg text-success"
@@ -219,6 +236,10 @@ export function ManualLeadRecordForm({
         </div>
       )}
 
+      <Grupo
+        titulo="Campaña y RUT"
+        descripcion="Con el RUT buscamos al cliente en Bigdata y en Atlas: si ya está en la base de la campaña, se abre su ficha en vez de duplicarlo."
+      >
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <label className="space-y-1.5">
           <FieldLabel>Campaña *</FieldLabel>
@@ -268,7 +289,7 @@ export function ManualLeadRecordForm({
               onClick={() => searchRut(rut, true)}
               disabled={searching || !rut.trim()}
               title="Buscar en Bigdata"
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-surface-muted disabled:opacity-60"
+              className={buttonClasses({ variant: "secondary", className: "shrink-0" })}
             >
               {searching ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
               Buscar
@@ -347,6 +368,9 @@ export function ManualLeadRecordForm({
         </div>
       )}
 
+      </Grupo>
+
+      <Grupo titulo="Cliente" descripcion="Cómo se llama, con quién hablar y por dónde ubicarlo. Lo que llega de Bigdata queda marcado.">
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {text("full_name", "Nombre o razón social *", { required: true })}
         {text("contact_name", "Persona de contacto", { placeholder: "Con quién preguntar" })}
@@ -363,7 +387,7 @@ export function ManualLeadRecordForm({
                   type="button"
                   onClick={() => setField(fields.phone ? "phone_alt" : "phone", item.telefono)}
                   title={fields.phone ? "Usar como teléfono adicional" : "Usar como teléfono"}
-                  className="rounded-lg border border-border bg-background px-2.5 py-1 text-xs text-foreground hover:bg-surface-muted"
+                  className={buttonClasses({ variant: "secondary", size: "sm", className: "tabular-nums" })}
                 >
                   {item.telefono}
                   {item.nombre && <span className="text-muted-foreground"> · {item.nombre}</span>}
@@ -381,6 +405,11 @@ export function ManualLeadRecordForm({
           <input name="product" className={INPUT_CLASS} />
         </label>
 
+      </div>
+      </Grupo>
+
+      <Grupo titulo="Ubicación y rubro" descripcion="Opcional. Ayuda a segmentar la base y a preparar la llamada.">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <label className="space-y-1.5">
           <FieldLabel fromBigdata={fromBigdata.has("region")}>Región</FieldLabel>
           <select
@@ -401,6 +430,14 @@ export function ManualLeadRecordForm({
         {text("comuna", "Comuna")}
         {text("direccion", "Dirección")}
         {text("rubro", "Rubro")}
+      </div>
+      </Grupo>
+
+      <Grupo
+        titulo="Asignación"
+        descripcion="Sin ejecutivo queda en la base de la campaña. Con ejecutivo puedes agendarlo de inmediato."
+      >
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
 
         {(role === "admin" || teams.length > 1) && (
           <label className="space-y-1.5">
@@ -461,8 +498,9 @@ export function ManualLeadRecordForm({
         <FieldLabel>Observación inicial</FieldLabel>
         <textarea name="notes" rows={3} className={INPUT_CLASS} />
       </label>
+      </Grupo>
 
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex items-center justify-end gap-2 bg-surface-raised px-5 py-3">
         <button
           type="button"
           onClick={() => router.push("/dashboard/leads")}

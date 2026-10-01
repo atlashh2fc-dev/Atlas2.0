@@ -3,7 +3,23 @@ import { requireProfile } from "@/lib/auth";
 import { puedeLeerConversaciones } from "@/lib/modules.server";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Briefcase, CalendarClock, Contact, Database, PencilLine, RefreshCw, ShieldCheck, Wallet } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  ArrowUpRight,
+  Briefcase,
+  CalendarClock,
+  CheckCircle2,
+  ChevronRight,
+  Contact,
+  Database,
+  PencilLine,
+  Phone,
+  PhoneCall,
+  RefreshCw,
+  ShieldCheck,
+  Wallet,
+} from "lucide-react";
 import { LEAD_STATUSES } from "@/lib/types";
 import { getLeadSupervisionContext, getMyOpenManagement, getOpenCall, getRevisableCall, getSupervisableCall, type LeadSupervisionContext } from "@/app/actions/calls";
 import { fetchCampaignAgendaPolicy } from "@/lib/campaign-agenda-policy";
@@ -30,8 +46,22 @@ import { isOutsideBaseLead, leadContactPerson, leadExtraFields } from "@/lib/lea
 import { metricDefinition } from "@/lib/metric-definitions";
 import { completeKovacsDemoAssignment } from "@/app/actions/lead-orchestrator";
 import type { Call, Campaign, Lead, Profile, Team, Workflow, WorkflowStep, WorkflowStepBranch } from "@/lib/types";
-import { ActionForm, ActionSubmit, Badge, Callout, Card, InfoTooltip, PageHeader, buttonClasses } from "@/components/ui";
-import type { ComponentType, ReactNode } from "react";
+import { ActionForm, ActionSubmit, Avatar, Badge, Callout, InfoTooltip, StatusDot, buttonClasses } from "@/components/ui";
+import {
+  CountBox,
+  Property,
+  PropertyGroup,
+  PropertyList,
+  RecordFact,
+  RecordFacts,
+  RecordHeader,
+  StateChip,
+  dateTimeLabel,
+  relativeLabel,
+  sentenceCase,
+  type ChipTone,
+} from "@/components/record-kit";
+import type { ComponentType } from "react";
 import { getCampaignAppointmentScheduleUrl } from "@/lib/campaign-appointment-schedules";
 import { getWorkspacePermissions } from "@/lib/workspace-permissions";
 import { LearningMemoryPanel } from "@/components/learning-memory-panel";
@@ -42,44 +72,22 @@ import {
 } from "@/components/mail-thread-panel";
 import { canOperateAssignedConversation } from "@/lib/workspace-permissions";
 
-/** Fila etiqueta/valor de la columna de identidad. */
-function InfoRow({ label, children }: { label: ReactNode; children: ReactNode }) {
-  return (
-    <div className="flex justify-between gap-3">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="text-right text-foreground">{children}</dd>
-    </div>
-  );
-}
-
-type ChipTone = "primary" | "blue" | "teal" | "green" | "amber" | "violet" | "rose" | "slate";
-
-/** Cabecera de tarjeta de la ficha: icono + título + ayuda. El tono queda
- *  en la firma por compatibilidad, pero ya no se pinta. */
-function CardHeading({
-  icon: Icon,
-  title,
-  description,
-  className,
-}: {
+/** Estado operativo de la ficha: el mismo vocabulario que la cola de Registros. */
+type OperationalState = {
+  label: string;
   icon: ComponentType<{ size?: number }>;
   tone: ChipTone;
-  title: ReactNode;
-  description?: ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={`flex min-w-0 items-start gap-3 ${className ?? ""}`}>
-      <span className="mt-0.5 inline-flex shrink-0 text-muted-foreground" aria-hidden="true">
-        <Icon size={16} />
-      </span>
-      <div className="min-w-0">
-        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-        {description && <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>}
-      </div>
-    </div>
-  );
+  danger?: boolean;
+};
+
+/** Mismo día del calendario en Chile (no en UTC). */
+function sameChileDay(a: Date, b: Date) {
+  const key = (date: Date) => date.toLocaleDateString("en-CA", { timeZone: "America/Santiago" });
+  return key(a) === key(b);
 }
+
+/** Clase de la columna lateral: un panel, grupos separados por una línea. */
+const SIDE_PANEL = "atlas-panel divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface shadow-sm";
 
 type EquifaxQuoteRow = {
   id: string;
@@ -200,14 +208,6 @@ const WORKFLOW_STAGE_LABEL: Record<string, string> = {
   completed: "Completado",
   blocked: "Bloqueado",
 };
-
-function formatDateTime(value: string | null | undefined): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  // Se renderiza en el servidor (UTC): sin zona, una agenda de las 09:13 se leía 12:13.
-  return date.toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short", timeZone: "America/Santiago" });
-}
 
 export default async function LeadDetailPage({
   params,
@@ -558,179 +558,219 @@ export default async function LeadDetailPage({
     && profile.role === "agente"
     && (lead.managed_by ?? lead.assigned_to) === profile.id;
 
+  // Estado operativo con el mismo criterio que la cola de Registros: lo que el
+  // ejecutivo tiene que hacer con este cliente ahora, no el valor crudo.
+  const now = new Date();
+  const nextActionDate = lead.next_action_at ? new Date(lead.next_action_at) : null;
+  const managed = Boolean(lead.managed_at) || lead.assignment_status === "managed" || lead.workflow_status === "managed";
+  const operationalState: OperationalState = call
+    ? { label: call.management_channel ? "Gestión sin llamada" : "En gestión", icon: PhoneCall, tone: "primary" }
+    : !lead.phone?.trim()
+      ? { label: "Sin teléfono", icon: AlertTriangle, tone: "rose", danger: true }
+      : overdue
+        ? { label: "Agenda vencida", icon: AlertTriangle, tone: "rose", danger: true }
+        : nextActionDate && sameChileDay(nextActionDate, now)
+          ? { label: "Agenda hoy", icon: CalendarClock, tone: "amber" }
+          : !managed
+            ? { label: "Disponible", icon: PhoneCall, tone: "primary" }
+            : nextActionDate
+              ? { label: "Agenda futura", icon: CalendarClock, tone: "slate" }
+              : { label: "Gestionado", icon: CheckCircle2, tone: "green" };
+  const timelineCount = record.summary?.timeline_count ?? entries.length;
+  const otherContacts = contacts.filter((contact) => contact.contact_type !== "phone");
+  const stageLabel = WORKFLOW_STAGE_LABEL[lead.workflow_status ?? ""] ?? lead.workflow_status ?? "Sin iniciar";
+  // Durante la gestión el formulario manda: la columna se ensancha en pantallas
+  // grandes y las dos franjas (gestión y resto de la ficha) comparten columnas.
+  const columns = call
+    ? "xl:grid-cols-[minmax(0,1fr)_minmax(300px,340px)]"
+    : "lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]";
+
+  // Contacto y teléfonos: el primer grupo de la columna del cliente.
   const contactCard = (
-    <Card>
-      <CardHeading icon={Contact} tone="blue" title="Datos de contacto" className="mb-3 items-center" />
-      <dl className="space-y-2 text-sm">
-        {contactPerson && <InfoRow label="Contacto">{contactPerson}</InfoRow>}
-        <InfoRow label="RUT">{lead.rut ?? "—"}</InfoRow>
-        <InfoRow label="Teléfono">{lead.phone ?? "—"}</InfoRow>
-        <InfoRow label="Correo">{lead.email ?? "—"}</InfoRow>
-      </dl>
+    <>
+      <PropertyGroup icon={Contact} title="Contacto">
+        <PropertyList>
+          {contactPerson && <Property label="Persona">{contactPerson}</Property>}
+          <Property label="RUT" empty={!lead.rut}>
+            <span className="tabular-nums">{lead.rut ?? "Sin RUT"}</span>
+          </Property>
+          <Property label="Teléfono" empty={!lead.phone}>
+            <span className="tabular-nums">{lead.phone ?? "Sin teléfono"}</span>
+          </Property>
+          <Property label="Correo" empty={!lead.email}>
+            {lead.email ? (
+              <a href={`mailto:${lead.email}`} className="break-all text-foreground hover:text-primary hover:underline">
+                {lead.email}
+              </a>
+            ) : (
+              "Sin correo"
+            )}
+          </Property>
+        </PropertyList>
+
+        {otherContacts.length > 0 && (
+          <ul className="mt-4 space-y-2.5 border-t border-border pt-3 text-[13px]">
+            {otherContacts.map((contact) => (
+              <li key={contact.id} className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="break-all text-foreground">{contact.value}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {contact.contact_type === "phone" ? "Teléfono" : "Correo"}
+                    {contact.label ? ` · ${contact.label}` : ""}
+                    {contact.is_primary ? " · Principal" : ""}
+                  </p>
+                </div>
+                {contact.is_valid === false && <Badge tone="danger">Inválido</Badge>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </PropertyGroup>
 
       {/* Teléfonos en el orden en que se llaman; supervisión agrega los
           que están fuera de base y elige el principal. */}
-      <LeadPhonesPanel
-        leadId={lead.id}
-        canManage={profile.role === "admin" || profile.role === "supervisor"}
-      />
-
-      {contacts.some((contact) => contact.contact_type !== "phone") && (
-        <div className="mt-4 space-y-2 border-t border-border pt-3 text-sm">
-          {contacts.filter((contact) => contact.contact_type !== "phone").map((contact) => (
-            <div key={contact.id} className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <p className="truncate text-foreground">{contact.value}</p>
-                <p className="text-xs text-muted-foreground">
-                  {contact.contact_type === "phone" ? "Teléfono" : "Correo"}
-                  {contact.label ? ` · ${contact.label}` : ""}
-                  {contact.is_primary ? " · Principal" : ""}
-                </p>
-              </div>
-              {contact.is_valid === false && <Badge tone="danger">Inválido</Badge>}
-            </div>
-          ))}
-        </div>
-      )}
-    </Card>
+      <PropertyGroup icon={Phone} title="Teléfonos para llamar">
+        <LeadPhonesPanel
+          leadId={lead.id}
+          canManage={profile.role === "admin" || profile.role === "supervisor"}
+        />
+      </PropertyGroup>
+    </>
   );
 
-  function renderDebt(compact: boolean) {
+  function renderDebt() {
     if (!debt) return null;
+    const ageTone = debtAgeTone(debt.diasMora);
     return (
-      <section className="rounded-xl border border-border bg-surface p-5 shadow-sm">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <CardHeading
-            icon={Wallet}
-            tone="green"
-            title="Estado de la deuda"
-            description="Saldo, mora y contexto del alumno con los que se negocia esta gestión."
-          />
-          {debt.estado && <Badge tone="neutral">{debt.estado}</Badge>}
+      <PropertyGroup icon={Wallet} title="Estado de la deuda" meta={debt.estado ? <Badge tone="neutral">{debt.estado}</Badge> : null}>
+        <div className="mb-3">
+          <p className="text-xs text-muted-foreground">Saldo pendiente</p>
+          <p className="mt-0.5 text-xl font-semibold tracking-tight tabular-nums text-foreground">{formatClp(debt.monto)}</p>
+          {debt.montoUf !== null && <p className="text-xs tabular-nums text-muted-foreground">{debt.montoUf} UF</p>}
         </div>
-        <dl className={compact ? "grid grid-cols-2 gap-x-6 gap-y-3" : "grid gap-x-8 gap-y-3 sm:grid-cols-2 xl:grid-cols-4"}>
-          <div className="min-w-0 border-b border-border/70 pb-2">
-            <dt className="text-xs font-medium text-muted-foreground">Saldo pendiente</dt>
-            <dd className="mt-0.5 text-lg font-semibold tabular-nums text-foreground">
-              {formatClp(debt.monto)}
-            </dd>
-            {debt.montoUf !== null && (
-              <dd className="text-xs text-muted-foreground">{debt.montoUf} UF</dd>
-            )}
-          </div>
-          <div className="min-w-0 border-b border-border/70 pb-2">
-            <dt className="text-xs font-medium text-muted-foreground">Mora</dt>
-            <dd
-              className={`mt-0.5 text-sm font-medium ${
-                debtAgeTone(debt.diasMora) === "danger"
-                  ? "text-danger"
-                  : debtAgeTone(debt.diasMora) === "warning"
-                    ? "text-warning"
-                    : "text-foreground"
-              }`}
-            >
+        <PropertyList>
+          <Property label="Mora" empty={debt.diasMora === null}>
+            <span className={ageTone === "danger" ? "font-medium text-danger" : ageTone === "warning" ? "font-medium text-warning" : undefined}>
               {debt.diasMora !== null ? `${debt.diasMora} días` : "Sin informar"}
-            </dd>
-            {debt.tramo && <dd className="text-xs text-muted-foreground">{debt.tramo}</dd>}
-          </div>
-          <div className="min-w-0 border-b border-border/70 pb-2">
-            <dt className="text-xs font-medium text-muted-foreground">Cuotas impagas</dt>
-            <dd className="mt-0.5 text-sm text-foreground">{debt.cuotas ?? "—"}</dd>
-            {debt.tipo && <dd className="text-xs text-muted-foreground">{debt.tipo}</dd>}
-          </div>
-          <div className="min-w-0 border-b border-border/70 pb-2">
-            <dt className="text-xs font-medium text-muted-foreground">Vencimiento más antiguo</dt>
-            <dd className="mt-0.5 text-sm text-foreground">{debt.vencimiento ?? "—"}</dd>
-          </div>
+            </span>
+            {debt.tramo && <span className="block text-xs text-muted-foreground">{debt.tramo}</span>}
+          </Property>
+          <Property label="Cuotas impagas" empty={!debt.cuotas}>
+            {debt.cuotas ?? "—"}
+            {debt.tipo && <span className="block text-xs text-muted-foreground">{debt.tipo}</span>}
+          </Property>
+          <Property label="Vencimiento más antiguo" empty={!debt.vencimiento}>{debt.vencimiento ?? "—"}</Property>
           {debt.alumno && (
-            <div className="min-w-0 border-b border-border/70 pb-2">
-              <dt className="text-xs font-medium text-muted-foreground">Alumno</dt>
-              <dd className="mt-0.5 text-sm text-foreground">{debt.alumno}</dd>
-              {debt.curso && <dd className="text-xs text-muted-foreground">{debt.curso}</dd>}
-            </div>
+            <Property label="Alumno">
+              {debt.alumno}
+              {debt.curso && <span className="block text-xs text-muted-foreground">{debt.curso}</span>}
+            </Property>
           )}
-          {debt.sede && (
-            <div className="min-w-0 border-b border-border/70 pb-2">
-              <dt className="text-xs font-medium text-muted-foreground">Sede</dt>
-              <dd className="mt-0.5 text-sm text-foreground">{debt.sede}</dd>
-            </div>
-          )}
-        </dl>
-      </section>
+          {debt.sede && <Property label="Sede">{debt.sede}</Property>}
+        </PropertyList>
+      </PropertyGroup>
     );
   }
 
-  function renderCampaignData(compact: boolean) {
+  function renderCampaignData() {
     return (
-      <section className="rounded-xl border border-border bg-surface p-5 shadow-sm">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <CardHeading
-            icon={Database}
-            tone="slate"
-            title="Datos cargados de la base"
-            description="Información disponible para esta gestión."
-          />
-          <Badge tone="neutral">{campaignData.length} campos</Badge>
-        </div>
-        <dl className={compact ? "grid grid-cols-2 gap-x-6 gap-y-3" : "grid gap-x-8 gap-y-3 sm:grid-cols-2 xl:grid-cols-3"}>
+      <PropertyGroup icon={Database} title="Datos cargados de la base" meta={<CountBox>{campaignData.length}</CountBox>}>
+        {/* Etiqueta arriba y valor abajo: las claves de la carga son largas y
+            en dos columnas se cortaban. */}
+        <dl className="space-y-2.5 text-[13px]">
           {campaignData.map(([key, value], index) => (
-            <div key={`${key}-${index}`} className="min-w-0 border-b border-border/70 pb-2">
-              <dt className="text-xs font-medium text-muted-foreground">{key}</dt>
-              <dd className="mt-0.5 break-words text-sm text-foreground">{value}</dd>
+            <div key={`${key}-${index}`} className="min-w-0">
+              <dt className="text-xs text-muted-foreground">{key}</dt>
+              <dd className="mt-0.5 break-words text-foreground">{value}</dd>
             </div>
           ))}
         </dl>
-      </section>
+      </PropertyGroup>
     );
   }
 
+  const operationGroup = (
+    <PropertyGroup
+      icon={Briefcase}
+      title="Gestión"
+      meta={
+        campaign?.id && profile.role === "admin" ? (
+          <Link
+            href={`/dashboard/admin/campanas/${campaign.id}`}
+            className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-primary"
+          >
+            Abrir campaña
+            <ArrowUpRight size={12} aria-hidden="true" />
+          </Link>
+        ) : null
+      }
+    >
+      <PropertyList>
+        <Property label="Campaña" empty={!campaign?.name}>
+          <span className="inline-flex min-w-0 items-center gap-1.5">
+            {campaign?.name && <Avatar name={campaign.name} size="xs" shape="square" />}
+            <span className="min-w-0 break-words">{campaign?.name ?? "Sin campaña"}</span>
+          </span>
+        </Property>
+        <Property label="Flujo" empty={!workflow?.name}>{workflow?.name ?? "Sin flujo asignado"}</Property>
+        <Property
+          label={
+            <span className="inline-flex items-center gap-1">
+              {metricDefinition("etapa_flujo").label}
+              <InfoTooltip text={metricDefinition("etapa_flujo").definition} />
+            </span>
+          }
+        >
+          {stageLabel}
+        </Property>
+        <Property label="Estado del registro">{statusLabel}</Property>
+        {profile.role !== "agente" && (
+          <>
+            <Property label="Ejecutivo" empty={!assignedProfile}>
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                {assignedProfile && <Avatar name={assignedProfile.full_name} size="xs" />}
+                <span className="min-w-0 break-words">{assignedProfile?.full_name ?? "Sin asignar"}</span>
+              </span>
+            </Property>
+            <Property label="Equipo" empty={!team}>{team?.name ?? "Sin equipo"}</Property>
+          </>
+        )}
+        <Property label="Última gestión" empty={!lead.managed_at}>
+          {lead.managed_at ? dateTimeLabel(lead.managed_at) : "Sin gestión"}
+        </Property>
+        <Property label="Actualizado">
+          <span title={dateTimeLabel(lead.updated_at)}>{relativeLabel(lead.updated_at)}</span>
+        </Property>
+      </PropertyList>
+    </PropertyGroup>
+  );
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <Link
         href="/dashboard/leads"
         className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary"
       >
-        <ArrowLeft size={13} />
+        <ArrowLeft size={13} aria-hidden="true" />
         {profile.role === "agente" ? "Mis registros" : "Registros"}
       </Link>
 
-      <PageHeader
-        title={lead.full_name}
-        description={
-          <span className="flex flex-wrap items-center gap-2">
-            {contactPerson && (
-              <span className="text-sm font-semibold text-foreground">Contacto: {contactPerson}</span>
-            )}
-            <Badge tone="neutral">{statusLabel}</Badge>
-            {isOutsideBaseLead(lead.extra) && <Badge tone="info">Fuera de base</Badge>}
-            {campaign?.name && <span className="text-sm text-muted-foreground">{campaign.name}</span>}
-            {lead.tipificacion_actual && (
-              <span className="text-sm text-muted-foreground">· {lead.tipificacion_actual}</span>
-            )}
-          </span>
-        }
-        className="border-b-0 pb-0"
+      <RecordHeader
+        name={lead.full_name}
+        seed={lead.rut ?? lead.full_name}
+        identifiers={[
+          lead.rut ? <span className="tabular-nums">{lead.rut}</span> : null,
+          lead.phone ? <span className="tabular-nums">{lead.phone}</span> : <span className="text-danger">Sin teléfono</span>,
+          contactPerson ? <span>Contacto: <span className="font-medium text-foreground">{contactPerson}</span></span> : null,
+        ]}
+        tags={isOutsideBaseLead(lead.extra) ? <Badge tone="info">Fuera de base</Badge> : null}
         actions={
-          <div className="flex flex-wrap items-center gap-2">
+          <>
             {/* Con la llamada al aire el cronómetro está en la barra del teléfono. */}
             {call && (
               <span className="cti-hide-in-call">
                 <CallTimer startedAt={call.started_at} endedAt={call.ended_at} />
               </span>
-            )}
-            {/* Sin gestión abierta, un compromiso propio se puede marcar desde
-                aquí aunque la campaña sea automática: el discador solo entrega
-                el callback dentro de su ventana y después queda incallable. */}
-            {canManageCall && !call && !otherOpenManagement && (canOperateAssigned || ownsManagedRecord || ownsAgenda) && lead.phone && (
-              <AgendaCallButton
-                leadId={lead.id}
-                fullName={lead.full_name}
-                variant="secondary"
-                label={lead.next_action_at && overdue ? "Llamar compromiso vencido" : "Llamar ahora"}
-                // Con agenda propia se abre como agenda: queda tomada y el
-                // discador ya no la marca en paralelo ni después.
-                source={ownsAgenda ? "agenda" : "assigned_lead"}
-              />
             )}
             {/* Contacto por otro canal (WhatsApp propio, correo, presencial):
                 se tipifica sin volver a llamar. */}
@@ -741,9 +781,9 @@ export default async function LeadDetailPage({
             {revisableCall && !correctionRequested && (
               <Link
                 href={`/dashboard/leads/${lead.id}?corregir=1`}
-                className={buttonClasses({ variant: "secondary" })}
+                className={buttonClasses({ variant: "secondary", size: "sm" })}
               >
-                <PencilLine size={15} />
+                <PencilLine size={14} aria-hidden="true" />
                 Corregir tipificación
               </Link>
             )}
@@ -758,15 +798,90 @@ export default async function LeadDetailPage({
                 agents={reassignAgents}
               />
             )}
-            {campaign?.id && profile.role === "admin" && (
-              <Link
-                href={`/dashboard/admin/campanas/${campaign.id}`}
-                className={buttonClasses({ variant: "secondary" })}
-              >
-                Abrir campaña
-              </Link>
+            {/* Sin gestión abierta, un compromiso propio se puede marcar desde
+                aquí aunque la campaña sea automática: el discador solo entrega
+                el callback dentro de su ventana y después queda incallable.
+                Llamar es la acción principal de la ficha: va al final y en primario. */}
+            {canManageCall && !call && !otherOpenManagement && (canOperateAssigned || ownsManagedRecord || ownsAgenda) && lead.phone && (
+              <AgendaCallButton
+                leadId={lead.id}
+                fullName={lead.full_name}
+                variant="primary"
+                label={lead.next_action_at && overdue ? "Llamar compromiso vencido" : "Llamar ahora"}
+                // Con agenda propia se abre como agenda: queda tomada y el
+                // discador ya no la marca en paralelo ni después.
+                source={ownsAgenda ? "agenda" : "assigned_lead"}
+              />
             )}
-          </div>
+          </>
+        }
+        facts={
+          <RecordFacts>
+            <RecordFact label="Estado operativo" detail={statusLabel}>
+              <StateChip
+                icon={operationalState.icon}
+                tone={operationalState.tone}
+                label={operationalState.label}
+                danger={operationalState.danger}
+              />
+            </RecordFact>
+            <RecordFact
+              label={debt ? "Próximo compromiso" : "Próxima acción"}
+              detail={lead.next_action_at ? dateTimeLabel(lead.next_action_at) : "Nada agendado"}
+            >
+              {lead.next_action_at ? (
+                <span className={overdue ? "text-danger" : undefined}>
+                  {overdue ? "Vencida · " : ""}
+                  {relativeLabel(lead.next_action_at)}
+                </span>
+              ) : (
+                <span className="text-muted-foreground">Sin agenda</span>
+              )}
+            </RecordFact>
+            <RecordFact
+              label="Última gestión"
+              detail={lead.tipificacion_actual ? sentenceCase(lead.tipificacion_actual) : "Todavía sin tipificar"}
+            >
+              {lead.managed_at ? (
+                <span title={dateTimeLabel(lead.managed_at)}>{relativeLabel(lead.managed_at)}</span>
+              ) : (
+                <span className="text-muted-foreground">Sin gestión</span>
+              )}
+            </RecordFact>
+            {debt ? (
+              <RecordFact
+                label="Saldo pendiente"
+                detail={debt.diasMora !== null ? `${debt.diasMora} días de mora` : "Mora sin informar"}
+              >
+                <span className="tabular-nums">{formatClp(debt.monto)}</span>
+              </RecordFact>
+            ) : (
+              <RecordFact label="Campaña" detail={workflow?.name ?? "Sin flujo asignado"}>
+                <span className="flex min-w-0 items-center gap-2">
+                  {campaign?.name && <Avatar name={campaign.name} size="xs" shape="square" />}
+                  <span className={campaign?.name ? "truncate" : "truncate text-muted-foreground"}>
+                    {campaign?.name ?? "Sin campaña"}
+                  </span>
+                </span>
+              </RecordFact>
+            )}
+            {profile.role !== "agente" ? (
+              <RecordFact label="Responsable" detail={team?.name ?? "Sin equipo"}>
+                <span className="flex min-w-0 items-center gap-2">
+                  <Avatar name={assignedProfile?.full_name} size="xs" />
+                  <span className={assignedProfile ? "truncate" : "truncate text-muted-foreground"}>
+                    {assignedProfile?.full_name ?? "Sin asignar"}
+                  </span>
+                </span>
+              </RecordFact>
+            ) : (
+              <RecordFact label="Actividad" detail={`Actualizado ${relativeLabel(lead.updated_at).toLocaleLowerCase("es-CL")}`}>
+                <span className="tabular-nums">
+                  {timelineCount.toLocaleString("es-CL")} {timelineCount === 1 ? "gestión" : "gestiones"}
+                </span>
+              </RecordFact>
+            )}
+          </RecordFacts>
         }
       />
 
@@ -832,59 +947,84 @@ export default async function LeadDetailPage({
       )}
 
       {supervisionContext && (
-        <section className="rounded-xl border border-border bg-surface p-4 shadow-sm sm:p-5">
-          <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-            <CardHeading
-              icon={ShieldCheck}
-              tone="violet"
-              title="Supervisión de la gestión"
-              description="Corrige una tipificación o agrega la última. Una venta que no se marcó como tal entra a la validación de ventas al dejarla como VENTA EN VALIDACION."
-            />
+        <section className="atlas-panel overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3 px-5 pb-3 pt-4">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="icon-chip mt-0.5 size-8 rounded-lg" data-tone="violet" aria-hidden="true">
+                <ShieldCheck size={16} />
+              </span>
+              <div className="min-w-0">
+                <h2 className="text-[15px] font-semibold tracking-tight text-foreground">Supervisión de la gestión</h2>
+                <p className="mt-0.5 max-w-2xl text-[13px] text-muted-foreground">
+                  Corrige una tipificación o agrega la última. Una venta que no se marcó como tal entra a la validación de
+                  ventas al dejarla como VENTA EN VALIDACION.
+                </p>
+              </div>
+            </div>
             <Link
               href={`/dashboard/leads/${lead.id}?supervisar=nueva#supervision-form`}
-              className={buttonClasses({ variant: supervisionTarget === "nueva" ? "primary" : "secondary", size: "sm" })}
+              aria-current={supervisionTarget === "nueva" ? "true" : undefined}
+              className={buttonClasses({ variant: "secondary", size: "sm" })}
             >
               Agregar tipificación
             </Link>
           </div>
           {supervisionContext.managements.length === 0 ? (
-            <p className="text-xs text-muted-foreground">Este registro no tiene gestiones tipificadas.</p>
+            <p className="border-t border-border px-5 py-4 text-[13px] text-muted-foreground">
+              Este registro no tiene gestiones tipificadas.
+            </p>
           ) : (
-            <ul className="divide-y divide-border rounded-lg border border-border">
-              {supervisionContext.managements.map((management) => (
-                <li key={management.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
-                  <div className="min-w-0">
-                    <p className="font-medium text-foreground">{management.reason ?? "Sin tipificación"}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {[
-                        new Date(management.endedAt).toLocaleString("es-CL", {
-                          dateStyle: "short",
-                          timeStyle: "short",
-                          timeZone: "America/Santiago",
-                        }),
-                        management.agentName,
-                        management.channel === "supervision" ? "Registrada por supervisión" : null,
-                        management.fromAtlas1 ? "Atlas 1" : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </p>
-                  </div>
-                  {management.fromAtlas1 ? (
-                    <span className="text-xs text-muted-foreground" title="El historial de Atlas 1 no se reescribe: agrega una tipificación nueva.">
-                      No se corrige
+            <ul className="divide-y divide-border border-t border-border">
+              {supervisionContext.managements.map((management) => {
+                const selected = supervisionTarget === management.id;
+                const body = (
+                  <>
+                    <Avatar name={management.agentName} size="sm" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium text-foreground">
+                        {management.reason ? sentenceCase(management.reason) : "Sin tipificación"}
+                      </span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {[
+                          dateTimeLabel(management.endedAt),
+                          management.agentName,
+                          management.channel === "supervision" ? "Registrada por supervisión" : null,
+                          management.fromAtlas1 ? "Atlas 1" : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
                     </span>
-                  ) : (
-                    <Link
-                      href={`/dashboard/leads/${lead.id}?supervisar=${management.id}#supervision-form`}
-                      className={buttonClasses({ variant: supervisionTarget === management.id ? "primary" : "ghost", size: "sm" })}
-                    >
-                      <PencilLine size={13} />
-                      Corregir
-                    </Link>
-                  )}
-                </li>
-              ))}
+                  </>
+                );
+                return (
+                  <li key={management.id}>
+                    {management.fromAtlas1 ? (
+                      <div
+                        className="flex items-center gap-3 px-5 py-3 text-sm"
+                        title="El historial de Atlas 1 no se reescribe: agrega una tipificación nueva."
+                      >
+                        {body}
+                        <span className="shrink-0 text-xs text-muted-foreground">No se corrige</span>
+                      </div>
+                    ) : (
+                      // La fila entera abre la corrección; la flecha dice que navega.
+                      <Link
+                        href={`/dashboard/leads/${lead.id}?supervisar=${management.id}#supervision-form`}
+                        aria-current={selected ? "true" : undefined}
+                        className={`group flex items-center gap-3 px-5 py-3 text-sm transition-colors hover:bg-surface-muted/60 ${selected ? "bg-surface-muted" : ""}`}
+                      >
+                        {body}
+                        <span className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground group-hover:text-primary">
+                          <PencilLine size={13} aria-hidden="true" />
+                          {selected ? "Corrigiendo" : "Corregir"}
+                          <ChevronRight size={14} aria-hidden="true" />
+                        </span>
+                      </Link>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>
@@ -895,7 +1035,7 @@ export default async function LeadDetailPage({
       )}
 
       {supervisionContext && supervisedCall && (
-        <section id="supervision-form" className="rounded-xl border border-warning/30 bg-warning/[0.025] p-3 sm:p-5">
+        <section id="supervision-form" className="scroll-mt-4">
           <CallTypificationForm
             key={supervisedCall.id || "nueva"}
             lead={lead}
@@ -920,17 +1060,20 @@ export default async function LeadDetailPage({
       {call && (
         // Durante la gestión: el formulario a la izquierda y el cliente a la
         // derecha, una sola vez. El teléfono ya no repite estos datos.
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(300px,360px)] xl:items-start">
+        <div className={`grid items-start gap-5 ${columns}`}>
           <section
             id="gestion-en-curso"
             {...{ [OPEN_CALL_FORM_ATTRIBUTE]: call.id }}
-            className="min-w-0 scroll-mt-4 rounded-xl border border-primary/30 bg-primary/[0.025] p-3 sm:p-5"
+            className="min-w-0 scroll-mt-4 space-y-3"
           >
             {/* Cierra la medición de cuánto tardó la ficha en aparecer. */}
             {profile.role === "agente" && <ScreenPopTiming leadId={lead.id} />}
             {call.management_channel && (
-              <p className="mb-3">
-                <Badge tone="info">Gestión sin llamada · {OFFLINE_CHANNEL_LABEL[call.management_channel] ?? "Otro canal"}</Badge>
+              <p className="flex items-center gap-2 text-[13px] text-muted-foreground">
+                <span className="icon-chip size-6 rounded-md" data-tone="blue" aria-hidden="true">
+                  <PhoneCall size={12} />
+                </span>
+                Gestión sin llamada · {OFFLINE_CHANNEL_LABEL[call.management_channel] ?? "Otro canal"}
               </p>
             )}
             <CallTypificationForm
@@ -950,16 +1093,21 @@ export default async function LeadDetailPage({
               }}
             />
           </section>
-          <aside className="space-y-4 xl:sticky xl:top-0" aria-label="Datos del cliente">
+          {/* Fija junto al formulario; si es más alta que la pantalla, se
+              desplaza sola en vez de cortarse. */}
+          <aside
+            className={`${SIDE_PANEL} xl:sticky xl:top-0 xl:max-h-[calc(100dvh-7rem)] xl:overflow-y-auto`}
+            aria-label="Datos del cliente"
+          >
             {contactCard}
-            {debt && renderDebt(true)}
-            {campaignData.length > 0 && renderCampaignData(true)}
+            {debt && renderDebt()}
+            {campaignData.length > 0 && renderCampaignData()}
           </aside>
         </div>
       )}
 
       {!call && revisableCall && correctionRequested && (
-        <section className="rounded-xl border border-warning/30 bg-warning/[0.025] p-3 sm:p-5">
+        <section className="scroll-mt-4">
           <CallTypificationForm
             key={revisableCall.id}
             lead={lead}
@@ -973,75 +1121,9 @@ export default async function LeadDetailPage({
         </section>
       )}
 
-      {!call && debt && renderDebt(false)}
-
-      {!call && campaignData.length > 0 && renderCampaignData(false)}
-
-      <div className="grid gap-5 lg:grid-cols-[minmax(240px,280px)_minmax(0,1fr)]">
-        {/* Zona 1: identidad y contexto */}
-        <aside className="space-y-4">
-          {!call && contactCard}
-
-          <Card>
-            <CardHeading icon={Briefcase} tone="rose" title="Operación" className="mb-3 items-center" />
-            <dl className="space-y-2 text-sm">
-              <InfoRow label="Campaña">{campaign?.name ?? "Sin campaña"}</InfoRow>
-              <InfoRow label="Flujo de gestión">{workflow?.name ?? "Sin flujo asignado"}</InfoRow>
-              <InfoRow
-                label={
-                  <span className="inline-flex items-center gap-1">
-                    {metricDefinition("etapa_flujo").label}
-                    <InfoTooltip text={metricDefinition("etapa_flujo").definition} />
-                  </span>
-                }
-              >
-                {WORKFLOW_STAGE_LABEL[lead.workflow_status ?? ""] ?? lead.workflow_status ?? "Sin iniciar"}
-              </InfoRow>
-              {profile.role !== "agente" && (
-                <>
-                  <InfoRow label="Ejecutivo">{assignedProfile?.full_name ?? "Sin asignar"}</InfoRow>
-                  <InfoRow label="Equipo">{team?.name ?? "Sin equipo"}</InfoRow>
-                </>
-              )}
-              <InfoRow label="Última gestión">{formatDateTime(lead.managed_at)}</InfoRow>
-              <InfoRow label="Actualizado">{formatDateTime(lead.updated_at)}</InfoRow>
-            </dl>
-          </Card>
-
-          {/* Dato de integración: al ejecutivo no le cambia nada de la gestión. */}
-          {profile.role !== "agente" && (
-          <Card>
-            <CardHeading icon={RefreshCw} tone="slate" title="Sincronización 360" className="mb-3 items-center" />
-            {externalRefs.length ? (
-              <div className="space-y-3">
-                {externalRefs.map((reference) => {
-                  const source = relationOne(reference.integration_sources);
-                  return (
-                    <div key={reference.id} className="border-b border-border/70 pb-2 last:border-0 last:pb-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-medium text-foreground">{source?.name ?? source?.code ?? "Externo"}</span>
-                        <Badge tone="success">Sincronizado</Badge>
-                      </div>
-                      <p className="mt-1 truncate text-xs text-muted-foreground" title={reference.external_key}>
-                        {reference.external_key}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Última señal {formatDateTime(reference.last_seen_at)}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">Sin referencias externas para este registro.</p>
-            )}
-          </Card>
-          )}
-
-        </aside>
-
-        {/* Zona 2: la acción de ahora y el hilo completo */}
-        <main className="space-y-5">
+      <div className={`grid items-start gap-5 ${columns}`}>
+        {/* La acción de ahora y el hilo completo */}
+        <div className="min-w-0 space-y-5">
           {/* Sin gestión abierta también se cotiza: la propuesta queda en el
               registro. Durante la gestión va dentro de la tipificación. */}
           {!call && canQuoteWithoutManagement && (
@@ -1057,26 +1139,6 @@ export default async function LeadDetailPage({
               }}
             />
           )}
-          <Card className={`border-l-2 ${overdue ? "border-danger/40 border-l-danger" : lead.next_action_at ? "border-l-warning" : "border-l-border-strong"}`}>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <span className="icon-chip size-8 shrink-0 rounded-lg" data-tone={overdue ? "rose" : "amber"} aria-hidden="true">
-                  <CalendarClock size={16} />
-                </span>
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground">Próxima acción</p>
-                  <p className={`text-sm font-medium ${overdue ? "text-danger" : "text-foreground"}`}>
-                    {lead.next_action_at
-                      ? `${overdue ? "Vencida · " : ""}${formatDateTime(lead.next_action_at)}`
-                      : "Sin agenda"}
-                  </p>
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {record.summary?.timeline_count ?? entries.length} gestiones registradas
-              </p>
-            </div>
-          </Card>
 
           <CorreoRegistroPanel
             leadId={lead.id}
@@ -1094,7 +1156,50 @@ export default async function LeadDetailPage({
           />
 
           <LeadTimeline entries={entries} />
-        </main>
+        </div>
+
+        {/* Propiedades del registro, agrupadas. Durante la gestión el contacto,
+            la deuda y la base ya están junto al formulario. */}
+        {/* En el teléfono va primero: el contacto antes que el historial. */}
+        <aside className={`${SIDE_PANEL} ${call ? "" : "max-lg:order-first"}`} aria-label="Propiedades del registro">
+          {!call && contactCard}
+          {operationGroup}
+          {!call && debt && renderDebt()}
+          {!call && campaignData.length > 0 && renderCampaignData()}
+
+          {/* Dato de integración: al ejecutivo no le cambia nada de la gestión. */}
+          {profile.role !== "agente" && (
+            <PropertyGroup icon={RefreshCw} title="Sincronización 360" meta={externalRefs.length ? <CountBox>{externalRefs.length}</CountBox> : null}>
+              {externalRefs.length ? (
+                <ul className="space-y-3 text-[13px]">
+                  {externalRefs.map((reference) => {
+                    const source = relationOne(reference.integration_sources);
+                    const sourceName = source?.name ?? source?.code ?? "Externo";
+                    return (
+                      <li key={reference.id} className="flex min-w-0 items-start gap-2.5">
+                        <Avatar name={sourceName} size="sm" shape="square" />
+                        <div className="min-w-0 flex-1">
+                          <p className="flex items-center gap-1.5 font-medium text-foreground">
+                            <StatusDot tone="success" />
+                            <span className="truncate">{sourceName}</span>
+                          </p>
+                          <p className="truncate text-xs text-muted-foreground" title={reference.external_key}>
+                            {reference.external_key}
+                          </p>
+                          <p className="text-xs text-muted-foreground" title={dateTimeLabel(reference.last_seen_at)}>
+                            Última señal {relativeLabel(reference.last_seen_at).toLocaleLowerCase("es-CL")}
+                          </p>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="text-[13px] text-muted-foreground">Sin referencias externas para este registro.</p>
+              )}
+            </PropertyGroup>
+          )}
+        </aside>
       </div>
     </div>
   );
