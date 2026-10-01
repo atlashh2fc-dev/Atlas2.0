@@ -74,6 +74,10 @@ export function CallBar({
           : held
             ? "En espera"
             : elapsed;
+  // Lo que se anuncia al lector de pantalla: solo los cambios de fase. El
+  // cronómetro cambia cada segundo y, anunciado, no deja oír nada más.
+  const announced =
+    phase === "in_call" ? (held ? "Llamada en espera" : "Llamada conectada") : status;
   const details = [
     contactPerson ? `Contacto: ${contactPerson}` : null,
     phoneLabel,
@@ -105,7 +109,10 @@ export function CallBar({
           )}
         </div>
 
-        <div className="flex items-center gap-2" aria-live="polite">
+        <span className="sr-only" role="status">
+          {announced}
+        </span>
+        <div className="flex items-center gap-2">
           {inCall && quality && (
             <span className="flex h-3.5 items-end gap-0.5" title={QUALITY_LABEL[quality]} aria-label={QUALITY_LABEL[quality]} role="img">
               {[0, 1, 2].map((bar) => (

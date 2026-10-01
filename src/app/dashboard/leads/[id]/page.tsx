@@ -226,7 +226,13 @@ export default async function LeadDetailPage({
   const supervisionTarget = typeof supervisar === "string" && supervisar ? supervisar : null;
   const supabase = await createClient();
 
-  const { data: lead360 } = await supabase.rpc("get_lead_360", { p_lead_id: id });
+  const { data: lead360, error: lead360Error } = await supabase.rpc("get_lead_360", { p_lead_id: id });
+  // Un fallo de la base no es "este registro no existe": se lanza para que lo
+  // muestre error.tsx con su reintento, en vez de un 404 que confunde.
+  if (lead360Error) {
+    console.error("No se pudo leer la ficha 360 del registro", { leadId: id, error: lead360Error });
+    throw new Error("No se pudo abrir la ficha del registro. Actualiza la página; si sigue igual, avisa a tu supervisor.");
+  }
   if (!lead360) notFound();
 
   const record = lead360 as Lead360;
@@ -685,7 +691,7 @@ export default async function LeadDetailPage({
         className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary"
       >
         <ArrowLeft size={13} />
-        Registros
+        {profile.role === "agente" ? "Mis registros" : "Registros"}
       </Link>
 
       <PageHeader
@@ -1002,6 +1008,8 @@ export default async function LeadDetailPage({
             </dl>
           </Card>
 
+          {/* Dato de integración: al ejecutivo no le cambia nada de la gestión. */}
+          {profile.role !== "agente" && (
           <Card>
             <CardHeading icon={RefreshCw} tone="slate" title="Sincronización 360" className="mb-3 items-center" />
             {externalRefs.length ? (
@@ -1028,6 +1036,7 @@ export default async function LeadDetailPage({
               <p className="text-sm text-muted-foreground">Sin referencias externas para este registro.</p>
             )}
           </Card>
+          )}
 
         </aside>
 

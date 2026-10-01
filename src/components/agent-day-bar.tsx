@@ -60,8 +60,10 @@ export function AgentDayBar() {
   const states = day.estados.filter((state) => state.segundos > 0 || state.reason_id === currentId);
 
   return (
+    // Grupo y no status: los tiempos cambian cada segundo y un role=status
+    // los anunciaría todos.
     <div
-      role="status"
+      role="group"
       aria-label="Tu jornada de hoy"
       className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto text-xs [scrollbar-width:none]"
     >

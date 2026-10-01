@@ -186,19 +186,21 @@ async function BandejaDelEjecutivo({ profileId, params }: { profileId: string; p
       <RefrescoDeBandeja />
 
       <nav aria-label="Conversaciones de correo" className="min-w-0 rounded-2xl border border-border bg-surface">
-        <div className="flex gap-1 border-b border-border p-2" role="tablist">
+        {/* Filtro por query, con el mismo estilo que los filtros de Mis registros y WhatsApp. */}
+        <div className="flex gap-1 border-b border-border p-2">
           {[
             { clave: "pendientes", texto: `Por atender · ${porAtender.length}` },
             { clave: "atendidos", texto: `Atendidos · ${atendidos.length}` },
           ].map((opcion) => (
             <Link
               key={opcion.clave}
-              role="tab"
-              aria-selected={vista === opcion.clave}
+              aria-current={vista === opcion.clave ? "page" : undefined}
               href={`/dashboard/conversaciones/correo?vista=${opcion.clave}`}
               className={cn(
-                "flex-1 rounded-lg px-2 py-1.5 text-center text-xs font-medium transition-colors",
-                vista === opcion.clave ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-surface-muted hover:text-foreground",
+                "inline-flex h-8 flex-1 items-center justify-center rounded-lg px-2.5 text-[13px] font-medium transition-colors",
+                vista === opcion.clave
+                  ? "bg-surface text-foreground shadow-sm ring-1 ring-border"
+                  : "text-muted-foreground hover:bg-surface-muted hover:text-foreground",
               )}
             >
               {opcion.texto}

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { getMyAgendaCampaignId } from "@/lib/agenda-scope";
@@ -193,7 +193,8 @@ export function AgendaBell() {
                       <p className="text-sm font-medium text-foreground">{i.full_name}</p>
                       <p className={`text-xs ${isOverdue ? "font-medium text-danger" : "text-muted-foreground"}`}>
                         {isOverdue ? "Vencida: " : ""}
-                        {agendaChannelLabel(i.next_action_channel)} · {new Date(i.next_action_at).toLocaleString("es-CL")}
+                        {agendaChannelLabel(i.next_action_channel)} ·{" "}
+                        {new Date(i.next_action_at).toLocaleString("es-CL", { timeZone: "America/Santiago" })}
                       </p>
                     </Link>
                   </li>
@@ -216,12 +217,48 @@ export function AgendaBell() {
   );
 }
 
+/*
+ * «Ocultar» vale por la sesión del navegador. Antes guardaba el contador al
+ * ocultar y el banner volvía en cuanto cambiaba (cada tick de 30 s o una
+ * agenda más) y en cada pantalla nueva. La campana sigue mostrando el total.
+ */
+const BANNER_HIDDEN_KEY = "atlas:agenda-banner-oculto";
+const bannerListeners = new Set<() => void>();
+// Si el navegador bloquea sessionStorage, al menos dura hasta recargar.
+let bannerHiddenInMemory = false;
+
+function readBannerHidden(): boolean {
+  if (bannerHiddenInMemory) return true;
+  try {
+    return window.sessionStorage.getItem(BANNER_HIDDEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function subscribeBannerHidden(listener: () => void) {
+  bannerListeners.add(listener);
+  return () => {
+    bannerListeners.delete(listener);
+  };
+}
+
+function hideBannerForSession() {
+  bannerHiddenInMemory = true;
+  try {
+    window.sessionStorage.setItem(BANNER_HIDDEN_KEY, "1");
+  } catch {
+    // Sin almacenamiento queda la marca en memoria.
+  }
+  bannerListeners.forEach((listener) => listener());
+}
+
 /** Banner que aparece debajo del header en todas las pantallas cuando hay agendas vencidas. */
 export function AgendaBanner() {
   const { overdueTotal } = useAgenda();
-  const [dismissedCount, setDismissedCount] = useState<number | null>(null);
+  const hidden = useSyncExternalStore(subscribeBannerHidden, readBannerHidden, () => false);
 
-  if (overdueTotal <= 0 || dismissedCount === overdueTotal) return null;
+  if (overdueTotal <= 0 || hidden) return null;
 
   return (
     <div className="flex items-center justify-between gap-3 border-b border-danger/30 bg-danger-bg px-6 py-2 text-sm">
@@ -237,7 +274,8 @@ export function AgendaBanner() {
         </Link>
         <button
           type="button"
-          onClick={() => setDismissedCount(overdueTotal)}
+          onClick={hideBannerForSession}
+          title="Se oculta hasta que cierres el navegador; la campana sigue mostrando las vencidas."
           className="text-xs text-danger/70 hover:text-danger"
         >
           Ocultar

@@ -79,7 +79,8 @@ export default async function VoiceQueuePage() {
 
   const pendingQuery = supabase
     .from("leads")
-    .select("id, full_name, rut, phone, tipificacion_actual, campaigns!leads_campaign_id_fkey(name)")
+    // La lista muestra 25, pero la cifra de "Sin trabajar" es el total real.
+    .select("id, full_name, rut, phone, tipificacion_actual, campaigns!leads_campaign_id_fkey(name)", { count: "exact" })
     .in("campaign_id", voiceCampaigns)
     .is("next_action_at", null)
     .is("managed_at", null)
@@ -89,10 +90,12 @@ export default async function VoiceQueuePage() {
     .limit(25);
   if (permissions.canAttendCustomers) pendingQuery.eq("assigned_to", profile.id);
 
-  const [{ data: agendaLeads, error }, { data: pendingLeads }] = await Promise.all([
+  const [{ data: agendaLeads, error }, { data: pendingLeads, count: pendingCount }] = await Promise.all([
     agendaQuery,
     pendingQuery,
   ]);
+
+  if (error) console.error("No se pudo cargar la cola de voz", error);
 
   // Mismo criterio que /dashboard/agenda: vencido es "su hora ya pasó".
   const now = new Date().getTime();
@@ -119,6 +122,7 @@ export default async function VoiceQueuePage() {
     LeadRow,
     "id" | "full_name" | "rut" | "phone" | "tipificacion_actual" | "campaigns"
   >[];
+  const pendingTotal = pendingCount ?? pending.length;
 
   return (
     <div className="space-y-5">
@@ -129,7 +133,9 @@ export default async function VoiceQueuePage() {
       </p>
 
       {error && (
-        <Callout tone="danger">{`No se pudo cargar la cola de voz: ${error.message}`}</Callout>
+        <Callout tone="danger">
+          No se pudieron cargar tus compromisos telefónicos. Actualiza la página; si sigue igual, avisa a tu supervisor.
+        </Callout>
       )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -148,10 +154,10 @@ export default async function VoiceQueuePage() {
         />
         <StatCard
           label="Sin trabajar"
-          value={String(pending.length)}
+          value={pendingTotal.toLocaleString("es-CL")}
           icon={UserRoundCheck}
-          iconTone={pending.length > 0 ? "amber" : "green"}
-          tone={pending.length > 0 ? "warn" : "good"}
+          iconTone={pendingTotal > 0 ? "amber" : "green"}
+          tone={pendingTotal > 0 ? "warn" : "good"}
         />
       </div>
 
@@ -168,7 +174,11 @@ export default async function VoiceQueuePage() {
         title="Asignados sin trabajar"
         icon={UserRoundCheck}
         tone="blue"
-        description="Registros con teléfono que todavía no tienen gestión ni agenda."
+        description={
+          pendingTotal > pending.length
+            ? `Registros con teléfono que todavía no tienen gestión ni agenda. Se ven los ${pending.length} más recientes de ${pendingTotal.toLocaleString("es-CL")}.`
+            : "Registros con teléfono que todavía no tienen gestión ni agenda."
+        }
         actions={
           <Link href="/dashboard/leads" className={buttonClasses({ variant: "secondary", size: "sm" })}>
             Ver todos

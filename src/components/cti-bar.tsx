@@ -41,7 +41,7 @@ import {
   type ManualCallManagement,
   type OpenManagement,
 } from "@/app/actions/calls";
-import { SlideOver, StatusDot, Input, type BadgeTone } from "@/components/ui";
+import { SlideOver, StatusDot, Input, actionErrorMessage, type BadgeTone } from "@/components/ui";
 import {
   beginLegalIntercallBreak,
   LEGAL_INTERCALL_BREAK_SECONDS,
@@ -694,7 +694,8 @@ export function CtiBar({ profile }: { profile: Profile }) {
       // el anterior, y el discador actuaba según la base.
       setCurrentReasonId(previous);
       setStatusSince(previousSince);
-      setStatusError(err instanceof Error ? err.message : "No se pudo guardar el estado.");
+      console.error("No se pudo guardar el estado", err);
+      setStatusError(actionErrorMessage(err));
     } finally {
       setSavingStatus(false);
     }
@@ -710,9 +711,8 @@ export function CtiBar({ profile }: { profile: Profile }) {
         current ? { ...current, active_campaign_id: campaignId, session: null } : current
       );
     } catch (err) {
-      setCampaignSwitchError(
-        err instanceof Error ? err.message : "No se pudo cambiar la campaña activa."
-      );
+      console.error("No se pudo cambiar la campaña activa", err);
+      setCampaignSwitchError(actionErrorMessage(err));
     } finally {
       setSwitchingCampaign(false);
     }
@@ -730,9 +730,8 @@ export function CtiBar({ profile }: { profile: Profile }) {
       await refreshCurrentAgentStatus();
       setDialerOpen(true);
     } catch (err) {
-      setCallError(
-        err instanceof Error ? err.message : "No se pudo activar la llamada manual."
-      );
+      console.error("No se pudo activar la llamada manual", err);
+      setCallError(actionErrorMessage(err));
     } finally {
       setHybridTransitionPending(false);
     }
@@ -747,9 +746,8 @@ export function CtiBar({ profile }: { profile: Profile }) {
       setSubscriber("");
       setSelectedName(null);
     } catch (err) {
-      setCallError(
-        err instanceof Error ? err.message : "No se pudo volver al discado automático."
-      );
+      console.error("No se pudo volver al discado automático", err);
+      setCallError(actionErrorMessage(err));
     } finally {
       setHybridTransitionPending(false);
     }

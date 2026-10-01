@@ -2,7 +2,7 @@ import Link from "next/link";
 import { BadgeCheck, CalendarClock, CalendarX2, ChartColumn, CheckCheck, HandCoins, Hourglass, Megaphone, MessageCircle, Percent, PhoneCall, Plus, UserPlus, UserRound } from "lucide-react";
 
 import { Badge, Callout, EmptyState, MetricCard, PageHeader, SectionCard, buttonClasses } from "@/components/ui";
-import { PACIENTES_POR_EDICION, VENTAS_POR_EDICION, type Clinica } from "@/lib/ediciones";
+import { ATENCION_POR_EDICION, PACIENTES_POR_EDICION, VENTAS_POR_EDICION, type Clinica } from "@/lib/ediciones";
 import { ETIQUETA_ESTADO, ocupaHorario, primero as primeroDe, type Cita } from "@/lib/citas";
 import { REPORT_TIME_ZONE } from "@/lib/report-range";
 import { createClient } from "@/lib/supabase/server";
@@ -91,8 +91,16 @@ export async function InicioClinica({
   const supabase = await createClient();
   const voc = VENTAS_POR_EDICION[edicion];
   const genteDeLaFicha = PACIENTES_POR_EDICION[edicion].titulo.toLowerCase();
+  const atencion = ATENCION_POR_EDICION[edicion];
   const mensual = voc.monto === "mensual";
   const soloMios = profile.role === "agente";
+  // El ejecutivo no abre Citas, Ventas ni la ficha de pacientes (son de
+  // administración y supervisión): para él esas filas son texto y los atajos
+  // no se muestran, en vez de llevarlo a una pantalla que lo rebota sin aviso.
+  const abreFichas = !soloMios;
+  // En una clínica la bandeja de WhatsApp es /dashboard/mensajes; el puesto
+  // del ejecutivo sigue siendo Mi atención.
+  const hrefConversaciones = soloMios ? "/dashboard/conversaciones" : "/dashboard/mensajes";
   const ahora = new Date();
   const hoy = inicioDeHoyEnChile(ahora);
   const finDeHoy = new Date(hoy.getTime() + DIA);
@@ -126,7 +134,7 @@ export async function InicioClinica({
   const citasSinConfirmar = citasActivas.filter((cita) => cita.estado === "reservada").length;
   const citasEnSala = citasActivas.filter((cita) => cita.estado === "en_sala").length;
   const proximaCita = citasActivas.find((cita) => new Date(cita.inicio) >= ahora && cita.estado !== "atendida");
-  const porCobrar = (porCobrarData ?? []).reduce((total, atencion) => total + Number(atencion.precio ?? 0), 0);
+  const porCobrar = (porCobrarData ?? []).reduce((total, fila) => total + Number(fila.precio ?? 0), 0);
 
   const negocios = (negociosData ?? []) as Negocio[];
   const monto = (negocio: Negocio) => Number((mensual ? negocio.monthly_amount : negocio.one_time_amount) ?? 0);
@@ -190,7 +198,7 @@ export async function InicioClinica({
   }
   const porProfesional = agrupar((negocio) => {
     const valor = primero(negocio.sales_companies)?.metadata?.profesional;
-    return typeof valor === "string" && valor ? valor : "Sin profesional";
+    return typeof valor === "string" && valor ? valor : `Sin ${atencion.profesional.toLowerCase()}`;
   });
   const etiquetaOrigen = new Map(voc.origenes.map((origen) => [origen.value, origen.label]));
   const porOrigen = agrupar((negocio) => etiquetaOrigen.get(negocio.source ?? "") ?? "Sin origen");
@@ -212,19 +220,19 @@ export async function InicioClinica({
         title={`Hola, ${primerNombre}`}
         description={`${empresa ?? (edicion === "barber" ? "Tu barbería" : "Tu clínica")} · ${fechaLarga.format(ahora)}${soloMios ? ` · tus ${genteDeLaFicha}` : ""}`}
         actions={
-          <div className="flex flex-wrap gap-2">
-            <Link href="/dashboard/citas" className={buttonClasses()}>
-              <Plus size={16} aria-hidden="true" /> Nueva cita
-            </Link>
-            <Link href="/dashboard/ventas" className={buttonClasses({ variant: "secondary" })}>
-              {voc.nuevo}
-            </Link>
-            {!soloMios && (
+          abreFichas ? (
+            <div className="flex flex-wrap gap-2">
+              <Link href="/dashboard/citas" className={buttonClasses()}>
+                <Plus size={16} aria-hidden="true" /> Nueva {atencion.cita}
+              </Link>
+              <Link href="/dashboard/ventas" className={buttonClasses({ variant: "secondary" })}>
+                {voc.nuevo}
+              </Link>
               <Link href="/dashboard/pacientes" className={buttonClasses({ variant: "secondary" })}>
                 <UserPlus size={16} aria-hidden="true" /> {PACIENTES_POR_EDICION[edicion].titulo}
               </Link>
-            )}
-          </div>
+            </div>
+          ) : undefined
         }
       />
 
@@ -239,8 +247,8 @@ export async function InicioClinica({
           label="En juego"
           value={pesos.format(enJuego)}
           hint={`${abiertos.length} ${abiertos.length === 1 ? `${negocioMinuscula} abierto` : `${negociosMinuscula} abiertos`}`}
-          href="/dashboard/ventas"
-          hrefLabel={`Ver ${negociosMinuscula}`}
+          href={abreFichas ? "/dashboard/ventas" : undefined}
+          hrefLabel={abreFichas ? `Ver ${negociosMinuscula}` : undefined}
           icon={HandCoins}
           iconTone="green"
         />
@@ -281,7 +289,11 @@ export async function InicioClinica({
           description={`${citasSinConfirmar ? `${citasSinConfirmar} sin confirmar · ` : ""}${citasEnSala ? `${citasEnSala} en sala · ` : ""}${pesos.format(porCobrar)} por cobrar en total`}
         >
           {citasActivas.length === 0 ? (
-            <EmptyState icon={CalendarX2} title="Sin citas hoy" description="Agenda la primera desde la agenda." />
+            <EmptyState
+              icon={CalendarX2}
+              title={`Sin ${atencion.citas} hoy`}
+              description={abreFichas ? "Agenda la primera desde la agenda." : `Cuando haya ${atencion.citas} para hoy aparecen acá.`}
+            />
           ) : (
             <ul className="divide-y divide-border">
               {citasActivas.slice(0, 8).map((cita) => {
@@ -294,9 +306,13 @@ export async function InicioClinica({
                     <span className="w-12 tabular-nums text-sm text-foreground">{hora.format(new Date(cita.inicio))}</span>
                     <span className="h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: profesional?.color }} aria-hidden="true" />
                     <div className="min-w-0 flex-1">
-                      <Link href={`/dashboard/pacientes/${cita.cuenta_id}`} className="block truncate text-sm font-medium text-foreground hover:text-primary hover:underline">
-                        {mascota ? `${mascota.nombre} · ${tutor}` : tutor}
-                      </Link>
+                      {abreFichas ? (
+                        <Link href={`/dashboard/pacientes/${cita.cuenta_id}`} className="block truncate text-sm font-medium text-foreground hover:text-primary hover:underline">
+                          {mascota ? `${mascota.nombre} · ${tutor}` : tutor}
+                        </Link>
+                      ) : (
+                        <p className="truncate text-sm font-medium text-foreground">{mascota ? `${mascota.nombre} · ${tutor}` : tutor}</p>
+                      )}
                       <p className="truncate text-xs text-muted-foreground">
                         {cita.motivo} · {profesional?.nombre ?? ""}
                       </p>
@@ -307,9 +323,13 @@ export async function InicioClinica({
               })}
               {citasActivas.length > 8 && (
                 <li className="px-4 py-2 text-xs text-muted-foreground">
-                  <Link href="/dashboard/citas" className="text-primary hover:underline">
-                    Ver las {citasActivas.length} citas en la agenda
-                  </Link>
+                  {abreFichas ? (
+                    <Link href="/dashboard/citas" className="text-primary hover:underline">
+                      Ver las {citasActivas.length} {atencion.citas} en la agenda
+                    </Link>
+                  ) : (
+                    `Y ${citasActivas.length - 8} ${atencion.citas} más hoy.`
+                  )}
                 </li>
               )}
             </ul>
@@ -331,9 +351,8 @@ export async function InicioClinica({
                 const cuenta = primero(negocio.sales_companies);
                 const aviso = alerta(diasSinRespuesta(negocio));
                 const cuando = new Date(negocio.next_action_at as string);
-                return (
-                  <li key={negocio.id}>
-                    <Link href={`/dashboard/ventas/${negocio.id}`} className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-muted/60">
+                const contenido = (
+                  <>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-foreground">{cuenta?.name ?? "—"}</p>
                         <p className="truncate text-xs text-muted-foreground">
@@ -349,7 +368,17 @@ export async function InicioClinica({
                         </p>
                       </div>
                       <Badge tone={aviso.tono}>{aviso.texto}</Badge>
-                    </Link>
+                  </>
+                );
+                return (
+                  <li key={negocio.id}>
+                    {abreFichas ? (
+                      <Link href={`/dashboard/ventas/${negocio.id}`} className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-muted/60">
+                        {contenido}
+                      </Link>
+                    ) : (
+                      <div className="flex items-center gap-3 px-4 py-3">{contenido}</div>
+                    )}
                   </li>
                 );
               })}
@@ -357,11 +386,17 @@ export async function InicioClinica({
           )}
           {paraHoy.length > 8 && (
             <div className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
-              Y {paraHoy.length - 8} más en{" "}
-              <Link href="/dashboard/ventas" className="text-primary hover:underline">
-                {negociosMinuscula}
-              </Link>
-              .
+              {abreFichas ? (
+                <>
+                  Y {paraHoy.length - 8} más en{" "}
+                  <Link href="/dashboard/ventas" className="text-primary hover:underline">
+                    {negociosMinuscula}
+                  </Link>
+                  .
+                </>
+              ) : (
+                `Y ${paraHoy.length - 8} más para hoy.`
+              )}
             </div>
           )}
         </SectionCard>
@@ -393,7 +428,7 @@ export async function InicioClinica({
                 <Baldosa label={esperando === 1 ? "Espera respuesta" : "Esperan respuesta"} valor={esperando} tono={esperando > 0 ? "warn" : "good"} />
               </dl>
               {leeConversaciones && (
-                <Link href="/dashboard/conversaciones" className={buttonClasses({ variant: "secondary", size: "sm" })}>
+                <Link href={hrefConversaciones} className={buttonClasses({ variant: "secondary", size: "sm" })}>
                   Abrir
                 </Link>
               )}
@@ -403,11 +438,16 @@ export async function InicioClinica({
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <SectionCard icon={UserRound} tone="blue" title="Aceptación por profesional" description={`${voc.negocios} de cada profesional y cuánto se aceptó.`}>
-          <TablaConversion filas={porProfesional} />
+        <SectionCard
+          icon={UserRound}
+          tone="blue"
+          title={`Aceptación por ${atencion.profesional.toLowerCase()}`}
+          description={`${voc.negocios} de cada ${atencion.profesional.toLowerCase()} y cuánto se aceptó.`}
+        >
+          <TablaConversion filas={porProfesional} negocios={negociosMinuscula} />
         </SectionCard>
         <SectionCard icon={Megaphone} tone="rose" title="Por canal de origen" description={`De dónde llegan los ${genteDeLaFicha} que aceptan.`}>
-          <TablaConversion filas={porOrigen} />
+          <TablaConversion filas={porOrigen} negocios={negociosMinuscula} />
         </SectionCard>
       </div>
 
@@ -421,10 +461,13 @@ export async function InicioClinica({
 
 function TablaConversion({
   filas,
+  negocios,
 }: {
   filas: { llave: string; total: number; ganados: number; tasa: number | null; monto: number }[];
+  /** Cómo se llaman en la edición: presupuestos, planes, paquetes. */
+  negocios: string;
 }) {
-  if (filas.length === 0) return <EmptyState icon={ChartColumn} title="Sin datos todavía" description="Aparece cuando haya presupuestos decididos." />;
+  if (filas.length === 0) return <EmptyState icon={ChartColumn} title="Sin datos todavía" description={`Aparece cuando haya ${negocios} decididos.`} />;
   return (
     <table className="w-full text-sm">
       <thead>

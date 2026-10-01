@@ -320,6 +320,13 @@ export default async function LeadsPage({
         agents={(agentOptions ?? []).map((option) => ({ id: option.id, full_name: option.full_name ?? "Sin nombre" }))}
         canManage={canManage}
         errorMessage={result.error}
+        emptyDescription={
+          profile.role === "admin"
+            ? "Cambia de vista, ajusta los filtros o importa una base nueva."
+            : profile.role === "supervisor"
+              ? "Cambia de vista o ajusta los filtros. Las bases nuevas las importa administración."
+              : "Cambia de vista. Los registros que te asignen o que gestiones aparecen acá."
+        }
       />
     </div>
   );

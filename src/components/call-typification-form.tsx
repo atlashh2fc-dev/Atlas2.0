@@ -49,12 +49,59 @@ function localInputToIso(value: string): string | null {
   return d.toISOString();
 }
 
-function localInputToWindow(value: string): string {
-  const hour = Number(value.match(/T(\d{2}):/)?.[1]);
-  if (!Number.isInteger(hour) || hour < 0 || hour > 23) return "";
-  const start = String(hour).padStart(2, "0");
-  const end = String((hour + 1) % 24).padStart(2, "0");
-  return `${start}:00-${end}:00`;
+function dateToLocalInput(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** Dentro de una hora, redondeado al bloque de 30 minutos siguiente. */
+function inOneHourInput(): string {
+  const d = new Date(Date.now() + 60 * 60 * 1000);
+  d.setSeconds(0, 0);
+  const minutes = d.getMinutes();
+  if (minutes > 30) d.setHours(d.getHours() + 1, 0);
+  else if (minutes > 0) d.setMinutes(30);
+  return dateToLocalInput(d);
+}
+
+function tomorrowAtTenInput(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  d.setHours(10, 0, 0, 0);
+  return dateToLocalInput(d);
+}
+
+/**
+ * La UF se escribe como se escribe en Chile ("3,5" o "1.234,5") o como la deja
+ * el cotizador ("3.5"). Lo que no se puede leer queda vacío y la validación lo
+ * pide de nuevo, en vez de viajar como NaN.
+ */
+function parseUf(value: string): number | null {
+  const raw = value.trim().replace(/\s/g, "");
+  if (!raw) return null;
+  const normalized = raw.includes(",") ? raw.replace(/\./g, "").replace(",", ".") : raw;
+  const n = Number(normalized);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** El campo del formulario al que apunta cada aviso de validateCallClosure. */
+type IssueField = "reason" | "schedule" | "notes" | "products" | "uf" | "q" | "email";
+
+function issueField(issue: string): IssueField {
+  if (issue.includes("producto Equifax")) return "products";
+  if (issue.includes("UF mensual")) return "uf";
+  if (issue.startsWith("La Q")) return "q";
+  if (issue.includes("email destinatario")) return "email";
+  if (issue.includes("exige una nota")) return "notes";
+  if (/agenda/i.test(issue)) return "schedule";
+  return "reason";
+}
+
+const INPUT_BASE =
+  "w-full rounded-lg border px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
+function inputBorder(invalid: boolean): string {
+  return invalid ? "border-danger" : "border-border";
 }
 
 type PendingAction = "close" | "discard" | null;
@@ -223,7 +270,6 @@ export function CallTypificationForm({
   // en el payload aunque el estado de React todavía no se haya actualizado.
   const closureNextActionAt = reasonConfig?.agenda === "none" ? null : localInputToIso(nextActionAt);
   const showEquifaxBlock = reasonConfig?.requiresEquifaxData === true;
-  const inferredNextActionWindow = localInputToWindow(nextActionAt);
   const legalBreakRemaining = Math.max(
     0,
     Math.ceil((legalBreakUntil - clockNow) / 1000)
@@ -248,7 +294,7 @@ export function CallTypificationForm({
           notes,
           next_action_at: closureNextActionAt,
           equifax_products: equifaxProducts,
-          equifax_uf_amount: equifaxUf ? Number(equifaxUf) : null,
+          equifax_uf_amount: parseUf(equifaxUf),
           equifax_q_consultas: equifaxQ ? Number(equifaxQ) : null,
           equifax_recipient_email: equifaxEmail || null,
           lead_email: lead.email,
@@ -259,6 +305,30 @@ export function CallTypificationForm({
       ),
     [catalog, closureOptions, status, outcome, reason, notes, closureNextActionAt, equifaxProducts, equifaxUf, equifaxQ, equifaxEmail, lead.email]
   );
+
+  // Cada aviso queda bajo el campo que lo causa, no solo en la lista de arriba.
+  const fieldIssues = useMemo(() => {
+    const grouped: Partial<Record<IssueField, string[]>> = {};
+    if (!attemptedClose) return grouped;
+    for (const issue of pendingIssues) (grouped[issueField(issue)] ??= []).push(issue);
+    return grouped;
+  }, [attemptedClose, pendingIssues]);
+
+  function renderFieldError(field: IssueField) {
+    const messages = fieldIssues[field];
+    if (!messages?.length) return null;
+    return (
+      <p id={`${fieldId}-${field}-error`} className="mt-1 text-xs font-medium text-danger">
+        {messages.join(" ")}
+      </p>
+    );
+  }
+
+  function fieldA11y(field: IssueField, describedBy?: string) {
+    const invalid = Boolean(fieldIssues[field]?.length);
+    const ids = [describedBy, invalid ? `${fieldId}-${field}-error` : undefined].filter(Boolean).join(" ");
+    return { "aria-invalid": invalid || undefined, "aria-describedby": ids || undefined };
+  }
 
   function handleReasonSelect(option: CallReasonConfig) {
     if (closeInFlightRef.current || pending !== null) return;
@@ -319,7 +389,7 @@ export function CallTypificationForm({
       notes: notes || null,
       next_action_at: selectedReason?.agenda === "none" ? null : closureNextActionAt,
       equifax_products: equifaxProducts,
-      equifax_uf_amount: equifaxUf ? Number(equifaxUf) : null,
+      equifax_uf_amount: parseUf(equifaxUf),
       // Solo con el bloque Equifax a la vista: fuera de él no hay Q que tocar.
       equifax_q_consultas: showEquifaxBlock ? (equifaxQ ? Number(equifaxQ) : null) : undefined,
       equifax_recipient_email: equifaxEmail || null,
@@ -519,7 +589,11 @@ export function CallTypificationForm({
       router.push("/dashboard/leads");
       router.refresh();
     } catch (e) {
-      setMessage({ type: "error", text: e instanceof Error ? e.message : "Error al descartar la llamada." });
+      console.error("No se pudo descartar la gestión por error técnico", e);
+      setMessage({
+        type: "error",
+        text: "No se pudo descartar la gestión. Revisa tu conexión y reintenta; si persiste, informa a supervisión.",
+      });
     } finally {
       if (!completed) {
         closeInFlightRef.current = false;
@@ -937,6 +1011,7 @@ export function CallTypificationForm({
             ) : (
               <p className="text-xs text-muted-foreground">Elige la categoría para ver sus motivos.</p>
             )}
+            {renderFieldError("reason")}
           </section>
 
           {showAgendaBlock && (
@@ -958,9 +1033,9 @@ export function CallTypificationForm({
                   />
                 )}
               </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div>
-                  <label htmlFor={`${fieldId}-schedule`} className="mb-1.5 block text-xs font-medium text-muted-foreground">Fecha y hora</label>
+              <div>
+                <label htmlFor={`${fieldId}-schedule`} className="mb-1.5 block text-xs font-medium text-muted-foreground">Fecha y hora</label>
+                <div className="flex flex-wrap items-center gap-2">
                   <input
                     id={`${fieldId}-schedule`}
                     type="datetime-local"
@@ -968,22 +1043,32 @@ export function CallTypificationForm({
                     // Bloques de 30 minutos como en Atlas 1; el navegador solo
                     // sugiere, la validación de la franja es la que manda.
                     step={agendaPolicy ? 1800 : undefined}
-                    aria-describedby={agendaPolicyText ? `${fieldId}-schedule-policy` : undefined}
+                    {...fieldA11y("schedule", agendaPolicyText ? `${fieldId}-schedule-policy` : undefined)}
                     onChange={(e) => setNextActionAt(e.target.value)}
-                    className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className={`${INPUT_BASE} ${inputBorder(Boolean(fieldIssues.schedule))} bg-surface sm:w-auto sm:min-w-56`}
                   />
-                  {agendaPolicyText && (
-                    <p id={`${fieldId}-schedule-policy`} className="mt-1 text-xs text-muted-foreground">
-                      {agendaPolicyText}
-                    </p>
-                  )}
+                  {/* Los dos plazos que más se agendan, a un clic. */}
+                  <button
+                    type="button"
+                    onClick={() => setNextActionAt(inOneHourInput())}
+                    className="h-9 rounded-lg border border-border px-3 text-xs font-medium text-foreground hover:bg-surface-muted"
+                  >
+                    En 1 hora
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNextActionAt(tomorrowAtTenInput())}
+                    className="h-9 rounded-lg border border-border px-3 text-xs font-medium text-foreground hover:bg-surface-muted"
+                  >
+                    Mañana 10:00
+                  </button>
                 </div>
-                <div>
-                  <p className="mb-1.5 block text-xs font-medium text-muted-foreground">Bloque inferido</p>
-                  <div className="min-h-10 rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-foreground">
-                    {inferredNextActionWindow || "Selecciona fecha y hora"}
-                  </div>
-                </div>
+                {agendaPolicyText && (
+                  <p id={`${fieldId}-schedule-policy`} className="mt-1 text-xs text-muted-foreground">
+                    {agendaPolicyText}
+                  </p>
+                )}
+                {renderFieldError("schedule")}
               </div>
             </div>
           )}
@@ -994,9 +1079,18 @@ export function CallTypificationForm({
                 <BadgeDollarSign size={16} className="text-muted-foreground" aria-hidden="true" />
                 <h3 className="text-sm font-semibold text-foreground">Datos comerciales Equifax</h3>
               </div>
-              <div className="mb-3">
-                <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Productos</label>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <div
+                className="mb-3"
+                role="group"
+                aria-labelledby={`${fieldId}-products-label`}
+                {...fieldA11y("products")}
+              >
+                <p id={`${fieldId}-products-label`} className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                  Productos
+                </p>
+                <div
+                  className={`grid grid-cols-2 gap-2 sm:grid-cols-3 ${fieldIssues.products ? "rounded-lg border border-danger p-2" : ""}`}
+                >
                   {EQUIFAX_PRODUCTS.map((product) => (
                     <label key={product} className="flex items-center gap-2 text-sm text-foreground">
                       <input
@@ -1009,17 +1103,26 @@ export function CallTypificationForm({
                     </label>
                   ))}
                 </div>
+                {renderFieldError("products")}
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1.5 block text-xs font-medium text-muted-foreground">UF mensual</label>
+                  <label htmlFor={`${fieldId}-equifax-uf`} className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                    UF mensual
+                  </label>
+                  {/* Texto y no number: el número de Chrome rechaza "3,5". */}
                   <input
-                    type="number"
-                    step="0.01"
+                    id={`${fieldId}-equifax-uf`}
+                    type="text"
+                    inputMode="decimal"
+                    autoComplete="off"
                     value={equifaxUf}
                     onChange={(e) => setEquifaxUf(e.target.value)}
-                    className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    placeholder="Ej: 3,5"
+                    {...fieldA11y("uf")}
+                    className={`${INPUT_BASE} ${inputBorder(Boolean(fieldIssues.uf))} bg-surface`}
                   />
+                  {renderFieldError("uf")}
                 </div>
                 <div>
                   {/* La Q que Atlas 1 pedía por producto: consultas de RI o de
@@ -1036,20 +1139,27 @@ export function CallTypificationForm({
                     inputMode="numeric"
                     value={equifaxQ}
                     onChange={(e) => setEquifaxQ(e.target.value)}
-                    placeholder="Ej: 10 consultas RI, 1000 registros"
-                    className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    placeholder="Ej: 1000"
+                    {...fieldA11y("q")}
+                    className={`${INPUT_BASE} ${inputBorder(Boolean(fieldIssues.q))} bg-surface`}
                   />
+                  {renderFieldError("q")}
                 </div>
                 {reason === "COTIZACION ENVIADA" && (
                   <div>
-                    <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Email destinatario</label>
+                    <label htmlFor={`${fieldId}-equifax-email`} className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                      Email destinatario
+                    </label>
                     <input
+                      id={`${fieldId}-equifax-email`}
                       type="email"
                       value={equifaxEmail}
                       onChange={(e) => setEquifaxEmail(e.target.value)}
                       placeholder={lead.email ?? "correo@ejemplo.com"}
-                      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      {...fieldA11y("email")}
+                      className={`${INPUT_BASE} ${inputBorder(Boolean(fieldIssues.email))} bg-surface`}
                     />
+                    {renderFieldError("email")}
                   </div>
                 )}
               </div>
@@ -1067,8 +1177,10 @@ export function CallTypificationForm({
               rows={2}
               aria-required={notesRequired}
               placeholder={notesRequired ? "Obligatoria sin agenda: qué se envió y a quién" : "Opcional"}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              {...fieldA11y("notes")}
+              className={`${INPUT_BASE} ${inputBorder(Boolean(fieldIssues.notes))} bg-background`}
             />
+            {renderFieldError("notes")}
           </div>
         </div>
       </div>

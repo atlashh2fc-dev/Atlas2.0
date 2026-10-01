@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
-import { CalendarClock, History, PhoneOutgoing } from "lucide-react";
+import { CalendarClock, FileText, History } from "lucide-react";
 import { Callout, EmptyState, SectionCard, buttonClasses } from "@/components/ui";
 import type { HomeDashboardSummary } from "@/lib/types";
 
@@ -32,7 +32,8 @@ export function LiveDashboard({
     if (error) {
       // Antes el fallo del refresco quedaba en silencio y la pantalla mostraba
       // datos viejos como si estuvieran al día.
-      setRefreshError(error.message);
+      console.error("No se pudo actualizar el resumen del inicio", error);
+      setRefreshError("Lo que ves puede estar desactualizado. Revisa tu conexión y reintenta.");
       return;
     }
     if (data) {
@@ -79,7 +80,7 @@ export function LiveDashboard({
 
       {refreshError && (
         <Callout tone="danger" className="flex flex-wrap items-center gap-3 px-4 py-3">
-          <span>No se pudo actualizar: {refreshError}</span>
+          <span>No se pudo actualizar. {refreshError}</span>
           <button
             type="button"
             onClick={() => void refresh()}
@@ -122,11 +123,12 @@ export function LiveDashboard({
                 <div className="flex items-center gap-3">
                   <span className={`text-xs ${overdue ? "font-medium text-danger" : "text-muted-foreground"}`}>
                     {overdue ? "Vencida: " : ""}
-                    {new Date(a.next_action_at).toLocaleString("es-CL")}
+                    {new Date(a.next_action_at).toLocaleString("es-CL", { timeZone: "America/Santiago" })}
                   </span>
-                  <Link href={`/dashboard/leads/${a.id}`} className={buttonClasses({ size: "sm" })}>
-                    <PhoneOutgoing size={13} aria-hidden="true" />
-                    Llamar ahora
+                  {/* Abre la ficha; desde ahí se marca. Por fila, secundario. */}
+                  <Link href={`/dashboard/leads/${a.id}`} className={buttonClasses({ variant: "secondary", size: "sm" })}>
+                    <FileText size={13} aria-hidden="true" />
+                    Abrir ficha
                   </Link>
                 </div>
               </li>
@@ -156,7 +158,7 @@ export function LiveDashboard({
                 <p className="text-xs text-muted-foreground">{r.result}</p>
               </div>
               <span className="text-xs text-muted-foreground">
-                {new Date(r.created_at).toLocaleString("es-CL")}
+                {new Date(r.created_at).toLocaleString("es-CL", { timeZone: "America/Santiago" })}
               </span>
             </li>
           ))}

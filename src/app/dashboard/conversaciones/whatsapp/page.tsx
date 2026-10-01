@@ -30,6 +30,7 @@ import { LogoDeIntegracion } from "@/components/logo-integracion";
 import { WhatsAppAutoRefresh } from "@/components/whatsapp-auto-refresh";
 import { WhatsAppComposer } from "@/components/whatsapp-composer";
 import { WhatsAppMessageMedia } from "@/components/whatsapp-message-media";
+import { CierreAtencionCampos } from "./cierre-atencion-campos";
 import {
   ActionForm,
   ActionSubmit,
@@ -46,6 +47,9 @@ import { canalDeMensajeria, NOMBRE_DEL_CANAL } from "@/lib/mensajeria-social";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 import { getWorkspacePermissions } from "@/lib/workspace-permissions";
+import { LEAD_STATUSES } from "@/lib/types";
+
+const LEAD_STATUS_LABEL = new Map<string, string>(LEAD_STATUSES.map((item) => [item.value, item.label]));
 
 type Relation<T> = T | T[] | null;
 type ConversationStatus = "open" | "pending" | "closed";
@@ -470,11 +474,13 @@ export default async function WhatsAppInboxPage({
                     campaign: campaignFilter,
                     queue: queueFilter,
                   })}
-                  className={buttonClasses({
-                    variant: status === value ? "primary" : "ghost",
-                    size: "sm",
-                    className: "flex-1 px-2",
-                  })}
+                  aria-current={status === value ? "page" : undefined}
+                  // Filtro por query: mismo estilo que Correo y Mis registros.
+                  className={`inline-flex h-8 flex-1 items-center justify-center rounded-lg px-2 text-[13px] font-medium transition-colors ${
+                    status === value
+                      ? "bg-surface text-foreground shadow-sm ring-1 ring-border"
+                      : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"
+                  }`}
                 >
                   {value === "open"
                     ? "Abiertas"
@@ -496,18 +502,11 @@ export default async function WhatsAppInboxPage({
                 <input type="hidden" name="queue" value={queueFilter} />
               )}
               <Select
-                aria-label="Canal"
-                defaultValue="whatsapp"
-                disabled
-                fieldSize="sm"
-              >
-                <option value="whatsapp">WhatsApp</option>
-              </Select>
-              <Select
                 name="campaign"
                 aria-label="Campaña"
                 defaultValue={campaignFilter ?? ""}
                 fieldSize="sm"
+                className="col-span-2"
               >
                 <option value="">Todas las campañas</option>
                 {campaigns.map((item) => (
@@ -780,6 +779,60 @@ export default async function WhatsAppInboxPage({
 
           {selected && (
             <aside className="border-t border-border bg-surface lg:col-span-2 xl:col-span-1 xl:min-h-0 xl:overflow-y-auto xl:border-l xl:border-t-0">
+              {/* El cierre va primero: es lo que el ejecutivo hace al terminar
+                  cada atención, y antes quedaba bajo cuatro secciones. */}
+              <ContextSection title="Cierre de atención" icon={CheckCheck} tone="green">
+                {selected.status === "closed" ? (
+                  <div className="rounded-lg border border-border border-l-2 border-l-success bg-surface-muted p-3">
+                    <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                      <CheckCheck size={14} className="text-success" /> Atención cerrada
+                    </p>
+                    <p className="mt-1 text-xs text-foreground">
+                      {closureReason?.label ?? "Tipificación registrada"}
+                    </p>
+                    {selected.close_note && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {selected.close_note}
+                      </p>
+                    )}
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      {formatDateTime(selected.closed_at)}
+                    </p>
+                  </div>
+                ) : !permissions.canAttendCustomers || !humanAttentionReady ? (
+                  <p className="text-xs text-muted-foreground">
+                    {!humanAttentionReady
+                      ? "El cierre se habilita después de la derivación a atención humana."
+                      : "El cierre y la tipificación corresponden al ejecutivo responsable."}
+                  </p>
+                ) : closureReasons.length > 0 ? (
+                  <ActionForm
+                    action={closeWhatsAppConversation}
+                    success="Atención cerrada y tipificada"
+                    className="space-y-2"
+                  >
+                    <input
+                      type="hidden"
+                      name="conversation_id"
+                      value={selected.id}
+                    />
+                    <CierreAtencionCampos motivos={closureReasons} />
+                    <ActionSubmit
+                      variant="secondary"
+                      size="sm"
+                      pendingLabel="Cerrando…"
+                      className="w-full"
+                    >
+                      <XCircle size={14} /> Cerrar atención
+                    </ActionSubmit>
+                  </ActionForm>
+                ) : (
+                  <p className="text-xs text-warning">
+                    La campaña aún no tiene tipificaciones de cierre.
+                  </p>
+                )}
+              </ContextSection>
+
               <ContextSection title="Contexto comercial" icon={Megaphone} tone="rose">
                 <ContextRow label="Campaña">
                   {campaign?.name ?? "Sin campaña"}
@@ -832,7 +885,9 @@ export default async function WhatsAppInboxPage({
                   {lead?.phone ?? selected.contact_phone ?? "—"}
                 </ContextRow>
                 <ContextRow label="Correo">{lead?.email ?? "—"}</ContextRow>
-                <ContextRow label="Estado">{lead?.status ?? "—"}</ContextRow>
+                <ContextRow label="Estado">
+                  {lead?.status ? (LEAD_STATUS_LABEL.get(lead.status) ?? fieldLabel(lead.status)) : "—"}
+                </ContextRow>
                 <ContextRow label="Tipificación">
                   {lead?.tipificacion_actual ?? "Sin tipificar"}
                 </ContextRow>
@@ -1022,81 +1077,6 @@ export default async function WhatsAppInboxPage({
                 {selected.ai_last_error && (
                   <p className="text-xs text-danger">
                     {selected.ai_last_error}
-                  </p>
-                )}
-              </ContextSection>
-
-              <ContextSection title="Cierre de atención" icon={CheckCheck} tone="green">
-                {selected.status === "closed" ? (
-                  <div className="rounded-lg border border-border border-l-2 border-l-success bg-surface-muted p-3">
-                    <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                      <CheckCheck size={14} className="text-success" /> Atención cerrada
-                    </p>
-                    <p className="mt-1 text-xs text-foreground">
-                      {closureReason?.label ?? "Tipificación registrada"}
-                    </p>
-                    {selected.close_note && (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {selected.close_note}
-                      </p>
-                    )}
-                    <p className="mt-1 text-[11px] text-muted-foreground">
-                      {formatDateTime(selected.closed_at)}
-                    </p>
-                  </div>
-                ) : !permissions.canAttendCustomers || !humanAttentionReady ? (
-                  <p className="text-xs text-muted-foreground">
-                    {!humanAttentionReady
-                      ? "El cierre se habilita después de la derivación a atención humana."
-                      : "El cierre y la tipificación corresponden al ejecutivo responsable."}
-                  </p>
-                ) : closureReasons.length > 0 ? (
-                  <ActionForm
-                    action={closeWhatsAppConversation}
-                    success="Atención cerrada y tipificada"
-                    className="space-y-2"
-                  >
-                    <input
-                      type="hidden"
-                      name="conversation_id"
-                      value={selected.id}
-                    />
-                    <Select
-                      name="reason_id"
-                      defaultValue=""
-                      required
-                      fieldSize="sm"
-                      className="w-full"
-                    >
-                      <option value="" disabled>
-                        Selecciona tipificación
-                      </option>
-                      {closureReasons.map((reason) => (
-                        <option key={reason.id} value={reason.id}>
-                          {reason.label}
-                          {reason.requires_note ? " · requiere nota" : ""}
-                        </option>
-                      ))}
-                    </Select>
-                    <textarea
-                      name="note"
-                      rows={3}
-                      maxLength={2000}
-                      placeholder="Resumen u observación de cierre"
-                      className="w-full resize-none rounded-md border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    />
-                    <ActionSubmit
-                      variant="secondary"
-                      size="sm"
-                      pendingLabel="Cerrando…"
-                      className="w-full"
-                    >
-                      <XCircle size={14} /> Cerrar atención
-                    </ActionSubmit>
-                  </ActionForm>
-                ) : (
-                  <p className="text-xs text-warning">
-                    La campaña aún no tiene tipificaciones de cierre.
                   </p>
                 )}
               </ContextSection>

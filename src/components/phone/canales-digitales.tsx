@@ -176,8 +176,11 @@ export function IndicadorDigital({ onAbrir }: { onAbrir: () => void }) {
         const recibe = canal === "correo" ? presencia.recibeCorreo : presencia.recibeWhatsapp;
         const pendientes = canal === "correo" ? presencia.pendientesCorreo : presencia.pendientesWhatsapp;
         return (
+          // El estado va también en palabras: el color solo no lo distingue
+          // quien no ve bien el verde del ámbar.
           <span key={canal} className={cn("inline-flex items-center gap-1", !prendido ? "text-muted-foreground" : recibe ? "text-success" : "text-warning")}>
             <Icon size={14} aria-hidden />
+            <span className="text-[11px]">{!prendido ? "Apagado" : recibe ? "Activo" : "Sin recibir"}</span>
             {pendientes > 0 && <span className="tabular-nums text-foreground">{pendientes}</span>}
           </span>
         );

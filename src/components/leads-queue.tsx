@@ -18,6 +18,7 @@ import { bulkAssignLeads, bulkRescheduleLeads } from "@/app/actions/leads";
 import {
   Badge,
   Button,
+  ConfirmDialog,
   DataTable,
   Field,
   Input,
@@ -121,6 +122,7 @@ export function LeadsQueue({
   agents,
   canManage,
   errorMessage,
+  emptyDescription = "Cambia de vista o ajusta los filtros.",
   vertical = "ventas",
 }: {
   leads: LeadQueueRow[];
@@ -134,6 +136,8 @@ export function LeadsQueue({
   agents: { id: string; full_name: string }[];
   canManage: boolean;
   errorMessage?: string | null;
+  /** Qué hacer con la vista vacía según quién mira: el ejecutivo no carga bases. */
+  emptyDescription?: string;
   /** Vocabulario y columnas de la cola: cartera de cobranza o base comercial. */
   vertical?: CampaignVertical;
 }) {
@@ -145,6 +149,7 @@ export function LeadsQueue({
 
   const [assigning, setAssigning] = useState<LeadQueueRow[] | null>(null);
   const [rescheduling, setRescheduling] = useState<LeadQueueRow[] | null>(null);
+  const [unassigning, setUnassigning] = useState<LeadQueueRow[] | null>(null);
   const [agentId, setAgentId] = useState("");
   const [when, setWhen] = useState("");
 
@@ -260,11 +265,10 @@ export function LeadsQueue({
         header: "",
         align: "right",
         sortable: false,
+        // Acción por fila: secundaria e igual en todas, con o sin teléfono. El
+        // primario de la vista es la acción de la página, no cada registro.
         cell: (row) => (
-          <Link
-            href={`/dashboard/leads/${row.id}`}
-            className={buttonClasses({ variant: hasPhone(row) ? "primary" : "secondary", size: "sm" })}
-          >
+          <Link href={`/dashboard/leads/${row.id}`} className={buttonClasses({ variant: "secondary", size: "sm" })}>
             {hasPhone(row) ? action : "Revisar"}
           </Link>
         ),
@@ -296,14 +300,12 @@ export function LeadsQueue({
         id: "unassign",
         label: "Quitar asignación",
         variant: "ghost",
-        onAction: (rows) =>
-          startTransition(async () => {
-            const result = await bulkAssignLeads(rows.map((row) => row.id), null);
-            report(result.ok, result.skipped, result.error, "Registros liberados");
-          }),
+        onAction: (rows) => setUnassigning(rows),
       },
     ];
-  }, [canManage, report, startTransition]);
+  }, [canManage]);
+
+  const unassignCount = unassigning?.length ?? 0;
 
   return (
     <>
@@ -346,7 +348,27 @@ export function LeadsQueue({
         onPageChange={(next) => router.push(withParam("page", String(next)))}
         error={errorMessage ?? null}
         emptyTitle="No hay registros para este filtro"
-        emptyDescription="Cambia de vista, ajusta los filtros o carga una base nueva."
+        emptyDescription={emptyDescription}
+      />
+
+      <ConfirmDialog
+        open={unassigning !== null}
+        options={{
+          title: `¿Quitar la asignación de ${unassignCount.toLocaleString("es-CL")} ${unassignCount === 1 ? "registro" : "registros"}?`,
+          description:
+            "Quedan sin ejecutivo responsable y salen de las colas personales hasta que se vuelvan a asignar. Se puede deshacer asignándolos de nuevo.",
+          confirmLabel: `Quitar asignación de ${unassignCount.toLocaleString("es-CL")}`,
+          tone: "danger",
+        }}
+        onCancel={() => setUnassigning(null)}
+        onConfirm={() => {
+          const rows = unassigning ?? [];
+          setUnassigning(null);
+          startTransition(async () => {
+            const result = await bulkAssignLeads(rows.map((row) => row.id), null);
+            report(result.ok, result.skipped, result.error, "Registros liberados");
+          });
+        }}
       />
 
       <SlideOver

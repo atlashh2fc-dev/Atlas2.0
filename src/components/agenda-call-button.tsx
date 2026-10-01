@@ -22,7 +22,9 @@ import { formatDialDigits } from "@/lib/phone-format";
 export function AgendaCallButton({
   leadId,
   fullName,
-  variant = "primary",
+  // Va por fila en la agenda: secundario por defecto, para que el primario de
+  // la vista siga siendo uno solo.
+  variant = "secondary",
   label = "Llamar ahora",
   source = "agenda",
 }: {

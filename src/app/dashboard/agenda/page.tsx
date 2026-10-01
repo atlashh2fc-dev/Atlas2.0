@@ -31,6 +31,7 @@ export default async function MyAgendaPage({
     .limit(500);
   if (campaignScope) leadsQuery.eq("campaign_id", campaignScope);
   const { data: leads, error } = await leadsQuery;
+  if (error) console.error("No se pudo cargar la agenda del ejecutivo", error);
 
   const now = new Date().getTime();
   const rows: AgendaRow[] = (leads ?? []).map((lead) => {
@@ -79,15 +80,14 @@ export default async function MyAgendaPage({
         }
       />
 
-      <Callout tone="info">
-        A la hora acordada, si estás Disponible, el sistema marca automáticamente tus compromisos telefónicos: primero
-        suena tu teléfono y, al contestar, se llama al cliente. Se marcan de a uno y en orden. Si ya hablaste con el
-        cliente no se vuelve a marcar, y si no contesta se reintenta como máximo una vez más. Con «Llamar ahora» lo
-        llamas tú en cualquier momento y el sistema deja de marcarlo. Los seguimientos por WhatsApp abren el chat para
-        que los gestiones tú.
-      </Callout>
+      {/* Una línea: el detalle del reintento vive en el sistema, no en la pantalla. */}
+      <p className="text-sm text-muted-foreground">
+        Si estás Disponible, tus llamadas agendadas se marcan solas a la hora acordada; «Llamar ahora» la adelanta.
+      </p>
       {error ? (
-        <Callout tone="danger">No se pudo cargar tu agenda: {error.message}</Callout>
+        <Callout tone="danger">
+          No se pudo cargar tu agenda. Actualiza la página; si sigue igual, avisa a tu supervisor.
+        </Callout>
       ) : (
         <>
           <section className="space-y-3">

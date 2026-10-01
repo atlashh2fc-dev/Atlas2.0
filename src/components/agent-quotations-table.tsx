@@ -225,14 +225,14 @@ export function AgentQuotationsTable({ rows, campaigns }: { rows: QuotationRow[]
         return (
           <span className="flex justify-end gap-1.5">
             {!(row.state === "vendida" && row.validationStatus === "pendiente") && (
-              <Button size="sm" onClick={() => open(row, "vendida")} aria-label={`Marcar vendida la cotización de ${row.leadName ?? "registro"}`}>
+              <Button size="sm" variant="secondary" onClick={() => open(row, "vendida")} aria-label={`Marcar vendida la cotización de ${row.leadName ?? "registro"}`}>
                 <Check size={14} aria-hidden />
                 Vendida
               </Button>
             )}
             <Button
               size="sm"
-              variant="secondary"
+              variant="ghost"
               onClick={() => open(row, "no_vendida")}
               aria-label={`Marcar no vendida la cotización de ${row.leadName ?? "registro"}`}
             >
