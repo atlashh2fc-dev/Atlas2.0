@@ -528,7 +528,7 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
         name: "Motivo - No contacto",
         description: "Motivos usados por Registro Intel para intentos no contactados.",
         fieldType: "combobox",
-        options: ["NO CONECTA", "BUZON DE VOZ", "NO CONTESTA", "TELEFONO FUERA DE SERVICIO"],
+        options: ["NO CONECTA", "BUZON DE VOZ", "CONTESTA IA", "NO CONTESTA", "TELEFONO FUERA DE SERVICIO"],
         isMandatory: true,
         isStart: false,
         posX: 720,

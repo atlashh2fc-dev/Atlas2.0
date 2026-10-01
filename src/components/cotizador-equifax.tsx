@@ -22,9 +22,12 @@ import {
   configInicial,
   cotizarLinea,
   definicion,
+  desglosePorProducto,
   etiquetaCobro,
   formatoPesos,
   formatoUf,
+  montoAtlas,
+  montoLinea,
   totales,
   type ConfigLinea,
   type LineaCotizada,
@@ -70,14 +73,9 @@ function pesos(valor: string): number {
   return digitos ? Number(digitos) : 0;
 }
 
+/** "Portfolio Monitor 1,5 UF/mes · Mora Control 2,5 UF/mes": cada producto con su precio, sin sumar. */
 function resumenTotales(lineas: LineaCotizada[]): string {
-  const total = totales(lineas);
-  return [
-    total.mensual > 0 ? `${formatoUf(total.mensual)} UF/mes` : null,
-    total.unico > 0 ? `${formatoUf(total.unico)} UF pago único` : null,
-    total.anual > 0 ? `${formatoUf(total.anual)} UF/año` : null,
-    total.clp > 0 ? `${formatoPesos(total.clp)} publicación` : null,
-  ].filter(Boolean).join(" · ") || "Sin valor";
+  return desglosePorProducto(lineas.map(montoAtlas));
 }
 
 const fechaHora = (iso: string) =>
@@ -277,8 +275,19 @@ export function CotizadorEquifax({
                 </label>
               )}
 
+              {/* Con varios productos no se suma: cada uno con su precio, como lo lee el cliente. */}
               {lineas.length > 1 && (
-                <p className="rounded-lg bg-surface-muted px-3 py-2 text-sm font-semibold text-foreground">Total: {resumenTotales(cotizadas)} + IVA</p>
+                <div className="rounded-lg bg-surface-muted px-3 py-2 text-sm">
+                  <p className="mb-1 text-xs font-medium text-muted-foreground">Precio por producto (+ IVA)</p>
+                  <ul className="space-y-0.5">
+                    {cotizadas.map((cotizada, indice) => (
+                      <li key={lineas[indice].id} className="flex items-baseline justify-between gap-3">
+                        <span className="text-foreground">{cotizada.nombre}</span>
+                        <span className="shrink-0 font-semibold tabular-nums text-foreground">{montoLinea(montoAtlas(cotizada))}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               )}
             </section>
 
@@ -658,16 +667,19 @@ function Historial({ filas }: { filas: CotizacionEnviada[] }) {
       <h3 className="text-sm font-semibold text-foreground">Propuestas anteriores a este cliente</h3>
       <ul className="divide-y divide-border rounded-xl border border-border">
         {filas.map((fila) => {
-          const montos = [
-            fila.uf_mensual > 0 ? `${formatoUf(fila.uf_mensual)} UF/mes` : null,
-            fila.uf_unico > 0 ? `${formatoUf(fila.uf_unico)} UF único` : null,
-            fila.uf_anual > 0 ? `${formatoUf(fila.uf_anual)} UF/año` : null,
-            fila.clp_total > 0 ? formatoPesos(fila.clp_total) : null,
-          ].filter(Boolean).join(" · ");
+          const montos = fila.lineas.length > 0
+            ? desglosePorProducto(fila.lineas)
+            : [
+                fila.uf_mensual > 0 ? `${formatoUf(fila.uf_mensual)} UF/mes` : null,
+                fila.uf_unico > 0 ? `${formatoUf(fila.uf_unico)} UF único` : null,
+                fila.uf_anual > 0 ? `${formatoUf(fila.uf_anual)} UF/año` : null,
+                fila.clp_total > 0 ? formatoPesos(fila.clp_total) : null,
+              ].filter(Boolean).join(" · ");
           return (
             <li key={fila.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 px-3 py-2 text-sm">
-              <span className="text-foreground">{fila.productos.join(", ")}</span>
-              <span className="text-muted-foreground">{montos}</span>
+              {fila.lineas.length > 0
+                ? <span className="text-foreground">{montos}</span>
+                : <><span className="text-foreground">{fila.productos.join(", ")}</span><span className="text-muted-foreground">{montos}</span></>}
               <span className={`ml-auto text-xs ${fila.estado === "fallida" ? "text-danger" : "text-muted-foreground"}`}>
                 {fila.respondida_at ? `Respondida ${fechaHora(fila.respondida_at)}` : ESTADO_ENVIO[fila.estado]} · {fila.destinatario} · {fechaHora(fila.created_at)}{fila.agente ? ` · ${fila.agente}` : ""}
               </span>

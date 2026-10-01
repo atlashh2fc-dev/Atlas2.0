@@ -524,6 +524,33 @@ export function totales(lineas: LineaCotizada[]): Totales {
   return { mensual, unico, anual, clp, ufTipificacion };
 }
 
+/** Lo mínimo de una línea para nombrar su precio; también calza con las líneas guardadas en el historial. */
+export type MontoLinea = { nombre: string; cobro: Cobro; ufVenta: number | null; clp: number | null };
+
+export function montoLinea(linea: MontoLinea): string {
+  if (linea.cobro === "clp") return linea.clp ? `${formatoPesos(linea.clp)} publicación` : "por confirmar";
+  if (linea.ufVenta == null) return "por confirmar";
+  const sufijo = linea.cobro === "mensual" ? "UF/mes" : linea.cobro === "anual" ? "UF/año" : "UF pago único";
+  return `${formatoUf(linea.ufVenta)} ${sufijo}`;
+}
+
+/**
+ * El precio de cada producto por separado: "Portfolio Monitor 1,5 UF/mes ·
+ * Mora Control 2,5 UF/mes". Operación lo pidió así (01-10-2026): con más de un
+ * producto, la propuesta y el registro no suman las UF, las nombran una a una.
+ */
+export function desglosePorProducto(lineas: MontoLinea[]): string {
+  return lineas.map((linea) => `${linea.nombre} ${montoLinea(linea)}`).join(" · ") || "Sin valor";
+}
+
+/** Una línea cotizada con el nombre corto de Atlas, para el registro y la ficha. */
+export const montoAtlas = (linea: LineaCotizada): MontoLinea => ({
+  nombre: linea.atlas,
+  cobro: linea.cobro,
+  ufVenta: linea.ufVenta,
+  clp: linea.publicacion?.total ?? null,
+});
+
 // ── Formatos ──────────────────────────────────────────────────────────────
 
 export function formatoUf(valor: number): string {

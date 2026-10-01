@@ -166,6 +166,38 @@ function fila(contenido: string, padding = "0 36px"): string {
   return `<tr><td class="px" style="padding:${padding};">${contenido}</td></tr>`;
 }
 
+/** El precio de una línea: [monto, "+ IVA mensual"]; null si está por confirmar. */
+function precioLinea(linea: LineaCotizada): [string, string] | null {
+  if (linea.producto === "pub" && linea.publicacion) return [formatoPesos(linea.publicacion.total), "IVA incluido"];
+  if (linea.ufVenta == null) return null;
+  return [`${formatoUf(linea.ufVenta)} UF`, `+ IVA ${periodoCorto(linea)}`];
+}
+
+/**
+ * Con más de un servicio, cada uno con su precio y sin sumarlos: el cliente lee
+ * "Portfolio Monitor 1,5 UF · Mora Control 2,5 UF", no un total de 4 UF
+ * (pedido de operación, 01-10-2026).
+ */
+function filasPorServicio(lineas: LineaCotizada[], valorUf: number): string {
+  return lineas.map((linea, indice) => {
+    const precio = precioLinea(linea);
+    const pesos = linea.ufVenta != null && (linea.cobro === "mensual" || linea.cobro === "anual")
+      ? `<p style="margin:2px 0 0;${FUENTE}font-size:12px;line-height:16px;color:${GRIS_CLARO};">Unos ${formatoPesos(linea.ufVenta * valorUf)} + IVA ${linea.cobro === "mensual" ? "al mes" : "al año"}</p>`
+      : "";
+    const relleno = indice ? "14px" : "4px";
+    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="${indice ? `border-top:1px solid ${GRAFITO_OSCURO};` : ""}"><tr>
+      <td class="col" valign="top" style="padding:${relleno} 12px 14px 0;">
+        <p style="margin:0;${FUENTE}font-size:16px;line-height:22px;font-weight:bold;color:#ffffff;">${esc(linea.nombre)}</p>${pesos}
+      </td>
+      <td class="col precio-tarjeta" valign="top" align="right" style="padding:${relleno} 0 14px;white-space:nowrap;">
+        ${precio
+          ? `<p style="margin:0;${FUENTE}font-size:24px;line-height:28px;font-weight:bold;color:#ffffff;">${esc(precio[0])}</p><p style="margin:2px 0 0;${FUENTE}font-size:12px;line-height:16px;color:${GRIS_CLARO};">${esc(precio[1])}</p>`
+          : `<p style="margin:0;${FUENTE}font-size:16px;line-height:22px;font-weight:bold;color:#ffffff;">Por confirmar</p>`}
+      </td>
+    </tr></table>`;
+  }).join("");
+}
+
 /** El total por forma de cobro: [monto, "+ IVA mensual"]. */
 function partesTotal(lineas: LineaCotizada[]): Array<[string, string]> {
   const total = totales(lineas);
@@ -207,14 +239,15 @@ function bloqueInversion(datos: DatosPropuesta, asunto: string): string {
   const aceptar = enlaceAceptar(datos, asunto);
   const whatsapp = datos.ejecutivo.whatsapp?.replace(/\D/g, "") || null;
 
-  const titulo = lineas.length > 1 ? "Su inversión total" : `Su inversión en ${lineas[0]?.nombre ?? "Equifax"}`;
+  const varios = lineas.length > 1;
+  const titulo = varios ? "Su inversión por servicio" : `Su inversión en ${lineas[0]?.nombre ?? "Equifax"}`;
   const cifra = principal
     ? `<p style="margin:0;${FUENTE}font-size:44px;line-height:50px;font-weight:bold;letter-spacing:-1px;color:#ffffff;" class="cifra">${esc(principal[0])} <span style="font-size:16px;font-weight:normal;letter-spacing:0;color:${GRIS_CLARO};">${esc(principal[1])}</span></p>`
     : `<p style="margin:0;${FUENTE}font-size:22px;line-height:30px;font-weight:bold;color:#ffffff;">Valor por confirmar</p>`;
   const otros = resto
     .map(([monto, cobro]) => `<p style="margin:6px 0 0;${FUENTE}font-size:18px;line-height:24px;font-weight:bold;color:#ffffff;">+ ${esc(monto)} <span style="font-size:13px;font-weight:normal;color:${GRIS_CLARO};">${esc(cobro)}</span></p>`)
     .join("");
-  const pesos = total.mensual > 0
+  const pesos = !varios && total.mensual > 0
     ? `<p style="margin:10px 0 0;${FUENTE}font-size:13px;line-height:19px;color:${GRIS_CLARO};">Unos <strong style="color:#ffffff;">${formatoPesos(total.mensual * valorUf)} + IVA al mes</strong> con la UF de hoy (${formatoPesos(valorUf)}).</p>`
     : "";
   const chipAhorro = ahorro > 0
@@ -235,7 +268,7 @@ function bloqueInversion(datos: DatosPropuesta, asunto: string): string {
 
   return `<tr><td class="px" bgcolor="${GRAFITO}" style="background:${GRAFITO};padding:30px 36px 32px;">
     <p style="margin:0 0 8px;${FUENTE}font-size:11px;line-height:14px;letter-spacing:1.4px;font-weight:bold;text-transform:uppercase;color:#f3b4c0;">${esc(titulo)}</p>
-    ${cifra}${otros}${pesos}${chipAhorro}${boton}
+    ${varios ? filasPorServicio(lineas, valorUf) : `${cifra}${otros}`}${pesos}${chipAhorro}${boton}
     ${alternativa ? `<p style="margin:12px 0 0;${FUENTE}font-size:13px;line-height:19px;color:${GRIS_CLARO};">${aceptar ? "" : "Para avanzar, "}${alternativa}</p>` : ""}
   </td></tr>`;
 }
@@ -372,7 +405,9 @@ export function correoHtml(datos: DatosPropuesta, logoSrc: string): string {
   const ahorro = ahorroMensual(lineas);
   const preheader = [
     empresa ? `Propuesta para ${empresa}` : "Su propuesta Equifax",
-    total.length ? total.map((parte) => parte.join(" ")).join(" · ") : null,
+    lineas.length > 1
+      ? lineas.map((linea) => [linea.nombre, ...(precioLinea(linea) ?? ["por confirmar"])].join(" ")).join(" · ")
+      : total.length ? total.map((parte) => parte.join(" ")).join(" · ") : null,
     ahorro > 0 ? `ahorro de ${formatoUf(ahorro)} UF al mes frente al precio lista` : null,
   ].filter(Boolean).join(" — ");
   const saludo = `${esc(vocativo(cliente.contacto))} ${saludoSegunHora(fecha).toLocaleLowerCase("es-CL")}. ${
@@ -466,18 +501,18 @@ export function mensajeWhatsapp(datos: DatosPropuesta): string {
     "",
   ].filter((fila): fila is string => fila !== null);
 
-  const total = totales(lineas);
-  const cierreTotal = lineas.length > 1
+  // Con varios productos, un resumen con el precio de cada uno; nunca la suma.
+  const resumen = lineas.length > 1
     ? [
         RAYA,
-        "*TOTAL DE LA PROPUESTA*",
+        "*RESUMEN DE LA PROPUESTA*",
         RAYA,
-        total.mensual > 0 ? `${formatoUf(total.mensual)} UF + IVA mensual` : null,
-        total.unico > 0 ? `${formatoUf(total.unico)} UF + IVA pago único` : null,
-        total.anual > 0 ? `${formatoUf(total.anual)} UF + IVA al año` : null,
-        total.clp > 0 ? `${formatoPesos(total.clp)} IVA incluido (publicación)` : null,
+        ...lineas.map((linea) => {
+          const precio = precioLinea(linea);
+          return `• ${linea.nombre}: ${precio ? `*${precio[0]}* ${precio[1]}` : "por confirmar"}`;
+        }),
         "",
-      ].filter((fila): fila is string => fila !== null)
+      ]
     : [];
 
   const soloPublicacion = lineas.every((linea) => linea.producto === "pub");
@@ -494,7 +529,7 @@ export function mensajeWhatsapp(datos: DatosPropuesta): string {
   return [
     ...encabezado,
     ...lineas.flatMap((linea) => textoLinea(linea, valorUf)),
-    ...cierreTotal,
+    ...resumen,
     RAYA,
     "*DOCUMENTOS*",
     RAYA,

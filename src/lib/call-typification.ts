@@ -91,6 +91,20 @@ export const CALL_REASONS: CallReasonConfig[] = ([
     agenda: "none",
   },
   {
+    // Contestó el asistente con IA del teléfono o del operador, no la persona.
+    // Para contactabilidad es una máquina, como el buzón, pero se cuenta aparte.
+    value: "CONTESTA IA",
+    label: "Contesta IA",
+    stateLabel: "NO CONTACTO",
+    stateOrderIndex: 10,
+    resultLabel: "NO CONTACTO",
+    resultOrderIndex: 10,
+    reasonOrderIndex: 25,
+    status: "voicemail",
+    outcome: "other",
+    agenda: "none",
+  },
+  {
     value: "NO CONTESTA",
     label: "No contesta",
     stateLabel: "NO CONTACTO",
@@ -686,6 +700,9 @@ function inferStatus(label: string): CallStatus {
     return "connected";
   }
   if (normalized.includes("BUZON")) return "voicemail";
+  // «Contesta IA»: atendió el asistente de llamadas, no una persona. Va con el
+  // buzón; sin esto caía en "connected" y contaba como contacto.
+  if (/(^| )IA( |$)/.test(normalized) || normalized.includes("ASISTENTE VIRTUAL")) return "voicemail";
   if (normalized.includes("OCUP")) return "busy";
   // "SERVICIO" a secas no es una línea caída: "Contrata servicio" o "Ya tiene
   // el servicio" son contactos efectivos.

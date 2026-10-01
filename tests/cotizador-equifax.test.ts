@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { cotizarLinea, normalizarConfig, totales } from "../src/lib/equifax-cotizador/catalogo.ts";
+import { cotizarLinea, desglosePorProducto, montoAtlas, normalizarConfig, totales } from "../src/lib/equifax-cotizador/catalogo.ts";
 import { asuntoDeRespuesta, respuestaHtml } from "../src/lib/equifax-cotizador/correo-cuenta.ts";
 import { asuntoPropuesta, correoHtml, mensajeWhatsapp, remitenteDeEjecutivo, vocativo, type DatosPropuesta } from "../src/lib/equifax-cotizador/propuesta.ts";
 
@@ -151,4 +151,24 @@ test("la respuesta desde la ficha no acumula «Re:» y escapa lo que escribe el 
   const html = respuestaHtml("Hola <b>Carolina</b>", datos.ejecutivo, "propuestas@geimser.cl");
   assert.ok(html.includes("Hola &lt;b&gt;Carolina&lt;/b&gt;"));
   assert.ok(html.includes("propuestas@geimser.cl"));
+});
+
+test("con varios productos la propuesta muestra el precio de cada uno y no la suma", () => {
+  const portfolio = { ...cotizarLinea({ producto: "pfm", frecuencia: "m", ruts: 45, doa: 0, precioManual: 1.5 }) };
+  const mora = cotizarLinea({ producto: "mc", plan: "4100", doa: 0, precioManual: 2.5 });
+  const varios = { ...datos, lineas: [portfolio, mora] };
+
+  const html = correoHtml(varios, "cid:logo");
+  assert.ok(html.includes("Su inversión por servicio"));
+  assert.ok(!html.includes("Su inversión total"));
+  assert.ok(html.includes("1,50 UF") && html.includes("2,50 UF"));
+  assert.ok(!html.includes(">4 UF"), "no aparece la suma de 4 UF");
+
+  const whatsapp = mensajeWhatsapp(varios);
+  assert.ok(!whatsapp.includes("TOTAL DE LA PROPUESTA"));
+  assert.ok(whatsapp.includes("*RESUMEN DE LA PROPUESTA*"));
+  assert.ok(whatsapp.includes(`• ${portfolio.nombre}: *1,50 UF* + IVA mensual`));
+  assert.ok(whatsapp.includes(`• ${mora.nombre}: *2,50 UF* + IVA mensual`));
+
+  assert.equal(desglosePorProducto([portfolio, mora].map(montoAtlas)), "Portfolio Monitor 1,50 UF/mes · Mora Control 2,50 UF/mes");
 });

@@ -375,7 +375,7 @@ export function CallTypificationForm({
     setNotes((prev) =>
       prev.trim()
         ? prev
-        : `Propuesta ${result.canal === "correo" ? "enviada por correo a" : "enviada por WhatsApp a"} ${result.destinatario}: ${result.productos.join(", ")} (${result.resumen}).`
+        : `Propuesta ${result.canal === "correo" ? "enviada por correo a" : "enviada por WhatsApp a"} ${result.destinatario}: ${result.resumen}.`
     );
     // Lo natural después de enviar es tipificar la cotización; si ya eligió
     // otro motivo (una venta, por ejemplo), se respeta.

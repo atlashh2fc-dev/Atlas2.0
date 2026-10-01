@@ -400,3 +400,27 @@ test("Secretaria Virtual 2026-10-01: un motivo repetido en dos ramas se valida c
     assert.deepEqual(errors, [], `rama ${(option.groupPath ?? []).join(" > ")}`);
   }
 });
+
+test("«Contesta IA» es no contacto como el buzón, no una llamada conectada", () => {
+  const steps = [
+    step({ id: "start", name: "Llamada", is_start: true, options: ["Conecta", "No Conecta"] }),
+    step({ id: "connected", name: "Conecta", step_order: 2, options: ["Volver a Llamar"] }),
+    step({
+      id: "not-connected",
+      name: "No Conecta",
+      step_order: 3,
+      field_type: "combobox",
+      options: ["No Contesta", "Buzón de Voz", "Contesta IA", "Teléfono Fuera de Servicio"],
+    }),
+  ];
+  const branches = [
+    branch({ id: "e1", from_step_id: "start", from_option: "Conecta", to_step_id: "connected" }),
+    branch({ id: "e2", from_step_id: "start", from_option: "No Conecta", to_step_id: "not-connected" }),
+  ];
+
+  const ia = buildCallReasonCatalogFromWorkflow(steps, branches).find((reason) => reason.value === "CONTESTA IA");
+  assert.ok(ia, "la opción llega a la ficha");
+  assert.equal(ia.status, "voicemail");
+  assert.equal(ia.stateLabel, "NO CONTACTO");
+  assert.equal(ia.agenda, "none");
+});

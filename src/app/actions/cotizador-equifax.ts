@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { requireProfile } from "@/lib/auth";
 import { buzonDeCampana } from "@/lib/correo/buzon";
 import { enviarCorreo } from "@/lib/correo/smtp";
-import { cotizarLinea, normalizarConfig, totales, type ConfigLinea } from "@/lib/equifax-cotizador/catalogo";
+import { cotizarLinea, normalizarConfig, totales, type ConfigLinea, type MontoLinea } from "@/lib/equifax-cotizador/catalogo";
 import { COPIA_OCULTA_EQUIFAX } from "@/lib/equifax-cotizador/correo-cuenta";
 import { LOGO_EQUIFAX_CID, LOGO_EQUIFAX_PNG_BASE64 } from "@/lib/equifax-cotizador/logo";
 import { asuntoPropuesta, correoHtml, correoTexto, firmaDesdePerfil, remitenteDeEjecutivo, type DatosPropuesta } from "@/lib/equifax-cotizador/propuesta";
@@ -47,6 +47,8 @@ export type CotizacionEnviada = {
   uf_unico: number;
   uf_anual: number;
   clp_total: number;
+  /** Cada producto con su precio, para mostrarlos por separado y no sumados. */
+  lineas: MontoLinea[];
   estado: "enviando" | "enviada" | "fallida" | "whatsapp_abierto";
   error: string | null;
   created_at: string;
@@ -83,10 +85,27 @@ async function leerFirma(supabase: Awaited<ReturnType<typeof createClient>>, use
   };
 }
 
+/** Las líneas guardadas en equifax_cotizaciones.lineas, con su nombre corto de Atlas. */
+function lineasGuardadas(valor: unknown): MontoLinea[] {
+  if (!Array.isArray(valor)) return [];
+  return valor.flatMap((linea) => {
+    if (!linea || typeof linea !== "object") return [];
+    const { atlas, nombre, cobro, uf_venta, publicacion } = linea as Record<string, unknown>;
+    if (cobro !== "mensual" && cobro !== "unico" && cobro !== "anual" && cobro !== "clp") return [];
+    const total = (publicacion as { total?: unknown } | null)?.total;
+    return [{
+      nombre: String(atlas ?? nombre ?? "Producto"),
+      cobro,
+      ufVenta: uf_venta == null ? null : Number(uf_venta),
+      clp: total == null ? null : Number(total),
+    }];
+  });
+}
+
 async function leerHistorial(supabase: Awaited<ReturnType<typeof createClient>>, leadId: string): Promise<CotizacionEnviada[]> {
   const { data } = await supabase
     .from("equifax_cotizaciones")
-    .select("id, canal, destinatario, productos, uf_mensual, uf_unico, uf_anual, clp_total, estado, error, created_at, respondida_at, profiles!equifax_cotizaciones_agent_id_fkey(full_name)")
+    .select("id, canal, destinatario, productos, lineas, uf_mensual, uf_unico, uf_anual, clp_total, estado, error, created_at, respondida_at, profiles!equifax_cotizaciones_agent_id_fkey(full_name)")
     .eq("lead_id", leadId)
     .order("created_at", { ascending: false })
     .limit(10);
@@ -101,6 +120,7 @@ async function leerHistorial(supabase: Awaited<ReturnType<typeof createClient>>,
       uf_unico: Number(fila.uf_unico),
       uf_anual: Number(fila.uf_anual),
       clp_total: Number(fila.clp_total),
+      lineas: lineasGuardadas(fila.lineas),
       estado: fila.estado,
       error: fila.error,
       created_at: fila.created_at,
