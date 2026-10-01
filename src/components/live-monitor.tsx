@@ -726,11 +726,38 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
       ),
     },
     { id: "campana", header: "Campaña", value: (row) => row.campaign_name ?? "", cell: (row) => row.campaign_name ? <span className="flex min-w-0 items-center gap-2"><Avatar name={row.campaign_name} size="xs" shape="square" /><span className="max-w-[12rem] truncate text-foreground">{row.campaign_name}</span></span> : <span className="text-muted-foreground">—</span> },
-    { id: "estado", header: "Estado", value: (row) => agentDisplay(row, now, pauseCaps).label, cell: (row) => { const { label, tone, exceeded } = agentDisplay(row, now, pauseCaps); return <span className="block"><Badge tone={tone} dot>{label}</Badge>{exceeded && <span className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-danger"><TriangleAlert size={11} aria-hidden="true" />{exceeded}</span>}</span>; } },
-    { id: "gestiones-hoy", header: "Gestiones hoy", align: "right", value: (row) => todayByAgent.get(row.profile_id)?.gestiones ?? 0, cell: (row) => { const today = todayByAgent.get(row.profile_id); return <span className="tabular-nums">{today ? `${today.gestiones} · ${today.contactos} ctc` : "—"}</span>; } },
-    { id: "tmo-hoy", header: "TMO hoy", align: "right", value: (row) => todayByAgent.get(row.profile_id)?.tmo_segundos ?? -1, cell: (row) => <span className="tabular-nums">{formatElapsed(todayByAgent.get(row.profile_id)?.tmo_segundos ?? null)}</span> },
-    { id: "pausa-hoy", header: "Pausa hoy", align: "right", value: (row) => todayByAgent.get(row.profile_id)?.pausa_segundos ?? 0, cell: (row) => { const today = todayByAgent.get(row.profile_id); const detail = (today?.pausa_por_motivo ?? []).map((item) => `${item.motivo}: ${formatElapsed(item.segundos)}`).join(" · "); return <span className="tabular-nums" title={detail || undefined}>{today && today.pausa_segundos > 0 ? formatElapsed(today.pausa_segundos) : "—"}</span>; } },
-    { id: "tiempo", header: "Tiempo en estado", align: "right", value: (row) => elapsedSeconds(agentDisplay(row, now, pauseCaps).since, now) ?? -1, cell: (row) => { const { since, alert } = agentDisplay(row, now, pauseCaps); return <span className={cn("inline-flex items-center justify-end gap-1 tabular-nums", alert && "font-semibold text-danger")}>{alert && <TriangleAlert size={12} aria-label="Sobre el umbral" />}{formatElapsed(elapsedSeconds(since, now))}</span>; } },
+    // Estado y tiempo en estado en una celda: es una sola lectura ("Descanso
+    // hace 07:24") y la tabla cabe entera en el panel sin desplazarse.
+    {
+      id: "estado",
+      header: "Estado",
+      value: (row) => elapsedSeconds(agentDisplay(row, now, pauseCaps).since, now) ?? -1,
+      exportValues: (row) => {
+        const { label, since } = agentDisplay(row, now, pauseCaps);
+        return { Estado: label, "Tiempo en estado": formatElapsed(elapsedSeconds(since, now)) };
+      },
+      cell: (row) => {
+        const { label, tone, exceeded, since, alert } = agentDisplay(row, now, pauseCaps);
+        const elapsed = elapsedSeconds(since, now);
+        return (
+          <span className="block whitespace-nowrap">
+            <span className="flex items-center gap-2">
+              <Badge tone={tone} dot>{label}</Badge>
+              {elapsed !== null && (
+                <span className={cn("inline-flex items-center gap-1 text-xs tabular-nums", alert ? "font-semibold text-danger" : "text-muted-foreground")}>
+                  {alert && <TriangleAlert size={11} aria-label="Sobre el umbral" />}
+                  {formatElapsed(elapsed)}
+                </span>
+              )}
+            </span>
+            {exceeded && <span className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-danger"><TriangleAlert size={11} aria-hidden="true" />{exceeded}</span>}
+          </span>
+        );
+      },
+    },
+    { id: "gestiones-hoy", header: "Gestiones", align: "right", value: (row) => todayByAgent.get(row.profile_id)?.gestiones ?? 0, cell: (row) => { const today = todayByAgent.get(row.profile_id); return <span className="tabular-nums">{today ? `${today.gestiones} · ${today.contactos} ctc` : "—"}</span>; } },
+    { id: "tmo-hoy", header: "TMO", align: "right", value: (row) => todayByAgent.get(row.profile_id)?.tmo_segundos ?? -1, cell: (row) => <span className="tabular-nums">{formatElapsed(todayByAgent.get(row.profile_id)?.tmo_segundos ?? null)}</span> },
+    { id: "pausa-hoy", header: "Pausa", align: "right", value: (row) => todayByAgent.get(row.profile_id)?.pausa_segundos ?? 0, cell: (row) => { const today = todayByAgent.get(row.profile_id); const detail = (today?.pausa_por_motivo ?? []).map((item) => `${item.motivo}: ${formatElapsed(item.segundos)}`).join(" · "); return <span className="tabular-nums" title={detail || undefined}>{today && today.pausa_segundos > 0 ? formatElapsed(today.pausa_segundos) : "—"}</span>; } },
     ...(canForceLogout ? [{
       id: "acciones",
       header: "",
@@ -746,15 +773,19 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
         const failed = controlRelevant && row.control_status === "failed";
         return (
           <div className="flex flex-col items-end gap-1">
+            {/* Solo el ícono: el texto completo va en el tooltip y en el
+                diálogo de confirmación. Así la columna no empuja la tabla. */}
             <Button
               type="button"
               size="sm"
-              variant={failed ? "danger" : "secondary"}
+              variant={failed ? "danger" : "ghost"}
               disabled={closing}
               onClick={() => openLogoutDialog(row)}
+              title={closing ? "Cerrando la sesión…" : failed ? "Reintentar el cierre de sesión" : `Cerrar la sesión de ${row.full_name}`}
+              aria-label={closing ? "Cerrando la sesión" : failed ? "Reintentar el cierre de sesión" : `Cerrar la sesión de ${row.full_name}`}
+              className="w-8 px-0"
             >
-              <LogOut size={13} aria-hidden="true" />
-              {closing ? "Cerrando…" : failed ? "Reintentar" : "Cerrar sesión"}
+              <LogOut size={14} aria-hidden="true" />
             </Button>
             {controlRelevant && row.control_status === "completed" && (
               <span className="text-xs text-success">
@@ -958,7 +989,11 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
             <Field label="Campaña" hideLabel className="w-52"><Select value={campaign} onChange={(event) => setCampaign(event.target.value)}><option value="">Todas las campañas</option>{campaignOptions.map((name) => <option key={name} value={name}>{name}</option>)}</Select></Field>
             <Field label="Buscar" hideLabel className="w-60"><Input value={term} onChange={(event) => setTerm(event.target.value)} placeholder="Buscar por nombre o anexo" /></Field>
           </div>
+          {/* Fuera del arrastre del tablero: si no, desplazar la tabla hacia el
+              lado movía el panel completo. */}
+          <div data-no-drag>
           <DataTable rows={filteredAgents} columns={columns} getRowId={(row) => row.profile_id} storageKey="monitor-agentes" exportFilename="monitor-en-vivo" emptyTitle="Ningún ejecutivo con estos filtros" emptyDescription="Quita el filtro de estado o campaña para ver a todo el equipo." />
+          </div>
         </div>
       </div>
     ),

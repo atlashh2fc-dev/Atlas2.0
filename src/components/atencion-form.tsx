@@ -100,19 +100,34 @@ export function AtencionForm({
   return (
     <div className="space-y-3">
       {titulo && <p className="text-xs font-medium text-muted-foreground">{titulo}</p>}
+      {/* Los frecuentes como lista de menú (nombre, duración y precio), no como
+          una nube de fichas: se leen de un vistazo y se tocan con el pulgar. */}
       {sugeridos.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
+        <ul className="divide-y divide-border/70 overflow-hidden rounded-xl border border-border bg-surface">
           {sugeridos.slice(0, 6).map((procedimiento) => (
-            <button
-              key={procedimiento.id}
-              type="button"
-              onClick={() => abrir(procedimiento)}
-              className="h-8 rounded-lg bg-surface px-2.5 text-left text-[13px] font-medium text-foreground ring-1 ring-border transition-colors hover:bg-surface-muted"
-            >
-              {procedimiento.name}
-            </button>
+            <li key={procedimiento.id}>
+              <button
+                type="button"
+                onClick={() => abrir(procedimiento)}
+                className="group flex min-h-11 w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-surface-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              >
+                <span className="icon-chip size-7 rounded-lg" data-tone="primary">
+                  <Icono size={14} aria-hidden="true" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-medium text-foreground">{procedimiento.name}</span>
+                  {procedimiento.duracion_min ? (
+                    <span className="block text-[11px] text-muted-foreground">{procedimiento.duracion_min} min</span>
+                  ) : null}
+                </span>
+                <span className="text-[13px] tabular-nums text-foreground">
+                  {procedimiento.one_time_price ? pesos.format(Number(procedimiento.one_time_price)) : ""}
+                </span>
+                <Plus size={15} className="shrink-0 text-muted-foreground/60 transition-colors group-hover:text-primary" aria-hidden="true" />
+              </button>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
       <button
         type="button"
