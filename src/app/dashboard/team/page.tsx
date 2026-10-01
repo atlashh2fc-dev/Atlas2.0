@@ -17,8 +17,8 @@ import {
 } from "lucide-react";
 import {
   ActionForm,
+  ActionSubmit,
   Callout,
-  Button,
   FilterBar,
   Field,
   MetricCard,
@@ -120,9 +120,9 @@ function ReassignForm({ lead, agents }: { lead: AgendaLead; agents: AgentOption[
         defaultValue={toDatetimeLocal(lead.next_action_at!)}
         className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       />
-      <Button type="submit" size="sm">
+      <ActionSubmit size="sm" variant="secondary" pendingLabel="Reagendando…">
         Reagendar
-      </Button>
+      </ActionSubmit>
     </ActionForm>
   );
 }
@@ -194,11 +194,12 @@ export default async function TeamPage({
   const campaignScope = resolveCampaignScope(campaign);
   const supabase = await createClient();
   let campaignBoard: AgentCampaignBoardRow[] = [];
-  let campaignBoardError: string | null = null;
+  let campaignBoardError = false;
   try {
     campaignBoard = await listAgentCampaignBoard();
   } catch (error) {
-    campaignBoardError = error instanceof Error ? error.message : "Error desconocido";
+    console.error("[equipo] asignación de campañas:", error);
+    campaignBoardError = true;
   }
   const filters = {
     agent: agent || "",
@@ -250,6 +251,7 @@ export default async function TeamPage({
   const { data: loadRows, error: loadError } = await supabase.rpc("get_team_agent_load", {
     p_campaign_id: campaignScope || null,
   });
+  if (loadError) console.error("[equipo] carga por ejecutivo:", loadError.message);
 
   // Compromisos vencidos: agendas que pasaron su hora sin cumplirse.
   const callbackQuery = supabase
@@ -420,6 +422,18 @@ export default async function TeamPage({
         </Field>
       </FilterBar>
 
+      {/* Lo que el supervisor hace más seguido va primero, pegado a los filtros que lo acotan. */}
+      <SectionCard
+        title="Asignación de registros"
+        description={`Los ${assignmentRows.length} registros movidos más recientemente. Selecciona varios y asígnalos de una vez, o reparte automáticamente según la carga de cada ejecutivo.`}
+        icon={UserPlus}
+        tone="blue"
+      >
+        <div className="p-4">
+          <TeamLeadsAssignment rows={assignmentRows} agents={activeAgents} />
+        </div>
+      </SectionCard>
+
       <div id="carga" />
       <SectionCard
         title="Carga por ejecutivo"
@@ -429,7 +443,7 @@ export default async function TeamPage({
       >
         <div className="p-4">
           {loadError ? (
-            <Callout tone="danger">No se pudo calcular la carga del equipo: {loadError.message}</Callout>
+            <Callout tone="danger">No se pudo calcular la carga del equipo. Vuelve a cargar la página; si sigue igual, avisa a un administrador.</Callout>
           ) : (
             <TeamAgentsTable rows={agentRows} />
           )}
@@ -445,7 +459,7 @@ export default async function TeamPage({
       >
         <div className="p-4">
           {campaignBoardError ? (
-            <Callout tone="danger">No se pudo leer la asignación de campañas: {campaignBoardError}</Callout>
+            <Callout tone="danger">No se pudo leer qué campaña tiene cada ejecutivo. Vuelve a cargar la página; si sigue igual, avisa a un administrador.</Callout>
           ) : (
             <TeamCampaignControl rows={campaignBoard} viewerId={viewer.id} isAdmin={false} />
           )}
@@ -486,16 +500,6 @@ export default async function TeamPage({
         </div>
       </SectionCard>
 
-      <SectionCard
-        title="Asignación de registros"
-        description={`Los ${assignmentRows.length} registros movidos más recientemente. Selecciona varios y asígnalos de una vez, o reparte automáticamente según la carga de cada ejecutivo.`}
-        icon={UserPlus}
-        tone="blue"
-      >
-        <div className="p-4">
-          <TeamLeadsAssignment rows={assignmentRows} agents={activeAgents} />
-        </div>
-      </SectionCard>
     </div>
   );
 }

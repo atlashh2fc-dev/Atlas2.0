@@ -67,6 +67,7 @@ import {
   SectionCard,
   Select,
   StatusDot,
+  actionErrorMessage,
   useToast,
   type BadgeTone,
   type Column,
@@ -74,6 +75,8 @@ import {
 } from "@/components/ui";
 
 const POLL_MS = 2000;
+/** Hora Chile para el aviso de «sin actualizar desde»: nunca UTC en pantalla. */
+const horaChile = new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 /** Las métricas del día cambian por minuto, no por segundo. */
 const WALLBOARD_POLL_MS = 15000;
 
@@ -475,7 +478,14 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
   const [pauseCaps, setPauseCaps] = useState<PauseCaps>(() => new Map());
   const [now, setNow] = useState(() => new Date().getTime());
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Un sondeo fallido no borra lo que ya se ve: se guarda cuándo fue la última
+  // lectura buena y el monitor avisa que está desactualizado mientras reintenta.
+  const [liveFailed, setLiveFailed] = useState(false);
+  const [liveOkAt, setLiveOkAt] = useState<number | null>(null);
+  const [liveRetry, setLiveRetry] = useState(0);
+  const [wallboardFailed, setWallboardFailed] = useState(false);
+  const [wallboardOkAt, setWallboardOkAt] = useState<number | null>(null);
+  const [wallboardRetry, setWallboardRetry] = useState(0);
   const [group, setGroup] = useState<AgentGroup | "">("");
   const [campaign, setCampaign] = useState("");
   const [term, setTerm] = useState("");
@@ -543,9 +553,12 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
         if (disposed) return;
         setAgents(liveAgents);
         setQueues(liveQueues);
-        setError(null);
+        setLiveFailed(false);
+        setLiveOkAt(new Date().getTime());
       } catch (err) {
-        if (!disposed) setError(err instanceof Error ? err.message : "Error al cargar el monitor");
+        if (disposed) return;
+        console.error("Monitor: no se pudo leer el estado en vivo", err);
+        setLiveFailed(true);
       } finally {
         if (!disposed) setLoading(false);
       }
@@ -553,7 +566,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
     poll();
     const id = setInterval(poll, POLL_MS);
     return () => { disposed = true; clearInterval(id); };
-  }, []);
+  }, [liveRetry]);
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date().getTime()), 1000);
@@ -567,9 +580,14 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
     async function pollWallboard() {
       try {
         const data = await getLiveWallboard();
-        if (!disposed) setWallboard(data);
+        if (!disposed) {
+          setWallboard(data);
+          setWallboardFailed(false);
+          setWallboardOkAt(new Date().getTime());
+        }
       } catch (err) {
         console.error("Monitor: no se pudo leer el tablero del día", err);
+        if (!disposed) setWallboardFailed(true);
       }
       // Los topes cambian solo cuando el admin los edita: basta con el ritmo
       // del tablero y son veinte filas del catálogo, no otra consulta en vivo.
@@ -583,7 +601,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
     pollWallboard();
     const id = setInterval(pollWallboard, WALLBOARD_POLL_MS);
     return () => { disposed = true; clearInterval(id); };
-  }, []);
+  }, [wallboardRetry]);
 
   const todayByAgent = useMemo(
     () => new Map((wallboard?.por_ejecutivo ?? []).map((row) => [row.profile_id, row])),
@@ -640,7 +658,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
       } catch (err) {
         toast({
           tone: "danger",
-          message: err instanceof Error ? err.message : "No se pudo cerrar la sesión.",
+          message: actionErrorMessage(err),
         });
       }
     });
@@ -681,7 +699,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
               {closing ? "Cerrando…" : failed ? "Reintentar" : "Cerrar sesión"}
             </Button>
             {controlRelevant && row.control_status === "completed" && (
-              <span className="text-[10px] text-success">
+              <span className="text-xs text-success">
                 {row.control_browser_acknowledged_at ? "Navegador y PBX confirmados" : "PBX confirmado"}
               </span>
             )}
@@ -693,6 +711,10 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
 
 
   const today = wallboard?.hoy ?? null;
+  // Si el tablero del día nunca llegó, las tarjetas no se quedan en
+  // «Calculando…» para siempre: dicen que no hay datos y el aviso de arriba
+  // ofrece reintentar.
+  const pendingHint = wallboardFailed && !wallboard ? "Sin datos por ahora" : "Calculando…";
   const hourlyData = (wallboard?.por_hora ?? []).map((row) => ({ name: `${String(row.hora).padStart(2, "0")}h`, Recorridos: row.recorridos ?? 0, Conectados: row.conectados ?? 0, "Aló": row.contactados ?? 0, Titular: row.titulares ?? 0, Contactabilidad: row.recorridos ? `${Math.round(((row.contactados ?? 0) / row.recorridos) * 1000) / 10}%` : "—" }));
   const pauseTotal = (wallboard?.pausa_equipo ?? []).reduce((sum, item) => sum + item.segundos, 0);
   const widgets: Record<WidgetId, ReactNode> = {
@@ -704,14 +726,14 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
     paused: <MetricWidget id="paused" label="En pausa" value={groups.paused} hint={exceededPauses ? `${exceededPauses} ${exceededPauses === 1 ? "excedió" : "excedieron"} el tope de su pausa` : "Fuera de la cola por AUX"} tone={exceededPauses ? "danger" : groups.paused > 0 ? "warn" : "default"} />,
     alerts: <MetricWidget id="alerts" label="Alertas operativas" value={alerts} hint={alerts ? "Pausa o cierre fuera de umbral" : "Todo dentro de los umbrales"} tone={alerts ? "danger" : "good"} />,
     campaigns: <MetricWidget id="campaigns" label="Campañas activas" value={queues.length} hint={`${totals.inFlight} llamadas en curso`} />,
-    answered: <MetricWidget id="answered" label="Conectados hoy" metric="conectados" value={funnel ? formatInt(funnel.conectados) : "—"} hint={funnel ? (funnel.conectados ? `${formatPercent(funnel.tasa_conexion)} de ${formatInt(funnel.recorridos)} recorridos únicos · ${formatInt(funnel.contactados)} con aló (${formatPercent(funnel.alo_de_conectados)})` : "Nadie ha contestado todavía") : "Calculando…"} />,
+    answered: <MetricWidget id="answered" label="Conectados hoy" metric="conectados" value={funnel ? formatInt(funnel.conectados) : "—"} hint={funnel ? (funnel.conectados ? `${formatPercent(funnel.tasa_conexion)} de ${formatInt(funnel.recorridos)} recorridos únicos · ${formatInt(funnel.contactados)} con aló (${formatPercent(funnel.alo_de_conectados)})` : "Nadie ha contestado todavía") : pendingHint} />,
     completed: <MetricWidget id="completed" label="Completadas hoy" value={formatInt(totals.completed)} hint={totals.answered ? `${Math.round((totals.completed / totals.answered) * 100)}% de las llamadas conectadas` : "Sin llamadas conectadas"} />,
     "abandon-rate": <MetricWidget id="abandon-rate" label="Abandono hoy" metric="abandono" value={`${abandonRate}%`} hint={`${formatInt(totals.abandoned)} abandonadas · umbral ${THRESHOLDS.abandonRate}%`} tone={abandonRate > THRESHOLDS.abandonRate ? "danger" : "good"} />,
     "no-answer-rate": <MetricWidget id="no-answer-rate" label="Sin respuesta hoy" value={`${noAnswerRate}%`} hint={`${formatInt(totals.noAnswer)} intentos sin respuesta`} tone={noAnswerRate >= 70 ? "warn" : "default"} />,
-    "contact-rate": <MetricWidget id="contact-rate" label="Contactabilidad hoy" metric="contactabilidad" value={formatPercent(funnel?.contactabilidad)} hint={funnel ? (funnel.recorridos ? `${formatInt(funnel.contactados)} aló de ${formatInt(funnel.recorridos)} registros recorridos` : "Sin registros recorridos todavía") : "Calculando…"} />,
-    "effective-contacts": <MetricWidget id="effective-contacts" label="Contacto titular" metric="contacto_titular" value={formatPercent(funnel?.contactabilidad_titular)} hint={funnel ? (funnel.contactados ? `${formatInt(funnel.titulares)} titulares · ${formatPercent(funnel.titularidad)} de los aló` : "Sin aló todavía") : "Calculando…"} />,
-    "attempts-per-contact": <MetricWidget id="attempts-per-contact" label="Intentos por contacto" metric="intentos_por_contacto" value={formatRatio(funnel?.intentos_por_contacto)} hint={funnel ? (funnel.contactados ? `${formatInt(funnel.intentos)} marcaciones · intensidad ${formatRatio(funnel.intensidad)} por registro` : "Aún sin aló") : "Calculando…"} tone={funnel?.intentos_por_contacto != null && funnel.intentos_por_contacto > 15 ? "warn" : "default"} />,
-    "sales-today": <MetricWidget id="sales-today" label="Ventas hoy" value={funnel ? formatInt(funnel.ventas) : "—"} hint={funnel ? (funnel.titulares ? `Conversión ${formatPercent(funnel.conversion)} de los contactos titulares` : "Sin contactos titulares todavía") : "Calculando…"} tone={funnel && funnel.ventas > 0 ? "good" : "default"} />,
+    "contact-rate": <MetricWidget id="contact-rate" label="Contactabilidad hoy" metric="contactabilidad" value={formatPercent(funnel?.contactabilidad)} hint={funnel ? (funnel.recorridos ? `${formatInt(funnel.contactados)} aló de ${formatInt(funnel.recorridos)} registros recorridos` : "Sin registros recorridos todavía") : pendingHint} />,
+    "effective-contacts": <MetricWidget id="effective-contacts" label="Contacto titular" metric="contacto_titular" value={formatPercent(funnel?.contactabilidad_titular)} hint={funnel ? (funnel.contactados ? `${formatInt(funnel.titulares)} titulares · ${formatPercent(funnel.titularidad)} de los aló` : "Sin aló todavía") : pendingHint} />,
+    "attempts-per-contact": <MetricWidget id="attempts-per-contact" label="Intentos por contacto" metric="intentos_por_contacto" value={formatRatio(funnel?.intentos_por_contacto)} hint={funnel ? (funnel.contactados ? `${formatInt(funnel.intentos)} marcaciones · intensidad ${formatRatio(funnel.intensidad)} por registro` : "Aún sin aló") : pendingHint} tone={funnel?.intentos_por_contacto != null && funnel.intentos_por_contacto > 15 ? "warn" : "default"} />,
+    "sales-today": <MetricWidget id="sales-today" label="Ventas hoy" value={funnel ? formatInt(funnel.ventas) : "—"} hint={funnel ? (funnel.titulares ? `Conversión ${formatPercent(funnel.conversion)} de los contactos titulares` : "Sin contactos titulares todavía") : pendingHint} tone={funnel && funnel.ventas > 0 ? "good" : "default"} />,
     funnel: (
       <div className="flex h-[19.5rem] flex-col">
         <WidgetHeader id="funnel" title="Embudo del día" description="Toques únicos a la base: cada registro cuenta una vez al día aunque se marque varias veces. Hora Chile. Cada tasa sobre el recorrido; entre paréntesis, sobre la etapa anterior." />
@@ -744,13 +766,13 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
               Conectados sin aló: {conectadosSinAlo(funnel.conectados_sin_alo)}
             </p>
           </div>
-        ) : <EmptyState icon={Funnel} title={funnel ? "Sin registros recorridos todavía." : "Calculando…"} className="flex-1 py-0" />}
+        ) : <EmptyState icon={Funnel} title={funnel ? "Sin registros recorridos todavía." : pendingHint} className="flex-1 py-0" />}
       </div>
     ),
-    tmo: <MetricWidget id="tmo" label="TMO del día" value={formatElapsed(today?.tmo_segundos ?? null)} hint={today ? `Gestión completa, de abrir a tipificar · con contacto ${formatElapsed(today.tmo_contacto_segundos)}` : "Calculando…"} />,
-    tmc: <MetricWidget id="tmc" label="Tiempo de conversación" value={formatElapsed(today?.tmc_segundos ?? null)} hint={today ? `Promedio por llamada conectada · ${formatInt(today.discador_conectadas)} conectadas hoy` : "Calculando…"} />,
-    production: <MetricWidget id="production" label="Producción del día" value={today ? formatInt(today.gestiones) : "—"} hint={today ? `Gestiones cerradas del equipo · ${formatInt(today.contactos)} con aló · ${formatInt(today.ventas)} ventas · ${formatInt(today.cotizaciones)} cotizaciones · ${formatInt(today.agendas)} agendas` : "Calculando…"} tone={today && today.ventas > 0 ? "good" : "default"} />,
-    "technical-failures": <MetricWidget id="technical-failures" label="Fallas de troncal" value={today?.fallas_tecnicas == null ? "—" : `${today.fallas_tecnicas}%`} hint={today ? `Intentos que no alcanzaron a sonar · ${formatInt(today.discador_intentos)} intentos hoy · abandono ${today.abandono ?? 0}%` : "Calculando…"} tone={today?.fallas_tecnicas != null && today.fallas_tecnicas >= 30 ? "danger" : today?.fallas_tecnicas != null && today.fallas_tecnicas >= 10 ? "warn" : "good"} />,
+    tmo: <MetricWidget id="tmo" label="TMO del día" value={formatElapsed(today?.tmo_segundos ?? null)} hint={today ? `Gestión completa, de abrir a tipificar · con contacto ${formatElapsed(today.tmo_contacto_segundos)}` : pendingHint} />,
+    tmc: <MetricWidget id="tmc" label="Tiempo de conversación" value={formatElapsed(today?.tmc_segundos ?? null)} hint={today ? `Promedio por llamada conectada · ${formatInt(today.discador_conectadas)} conectadas hoy` : pendingHint} />,
+    production: <MetricWidget id="production" label="Producción del día" value={today ? formatInt(today.gestiones) : "—"} hint={today ? `Gestiones cerradas del equipo · ${formatInt(today.contactos)} con aló · ${formatInt(today.ventas)} ventas · ${formatInt(today.cotizaciones)} cotizaciones · ${formatInt(today.agendas)} agendas` : pendingHint} tone={today && today.ventas > 0 ? "good" : "default"} />,
+    "technical-failures": <MetricWidget id="technical-failures" label="Fallas de troncal" value={today?.fallas_tecnicas == null ? "—" : `${today.fallas_tecnicas}%`} hint={today ? `Intentos que no alcanzaron a sonar · ${formatInt(today.discador_intentos)} intentos hoy · abandono ${today.abandono ?? 0}%` : pendingHint} tone={today?.fallas_tecnicas != null && today.fallas_tecnicas >= 30 ? "danger" : today?.fallas_tecnicas != null && today.fallas_tecnicas >= 10 ? "warn" : "good"} />,
     hourly: (
       <div className="h-[19.5rem]">
         <WidgetHeader id="hourly" title="Curva por hora" description="Registros recorridos, conectados, con aló y con titular en cada hora de hoy, hora Chile." />
@@ -852,7 +874,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
       </div>
     ),
     queues: (
-      <SectionCard className="rounded-xl border-border" icon={Layers} tone="rose" title={<span className="text-base tracking-tight">Salud de las colas</span>} description={`Actualizado automáticamente cada ${POLL_MS / 1000} segundos.`} actions={<span className="hidden sm:inline-flex"><Badge tone="success">En vivo</Badge></span>}>
+      <SectionCard className="rounded-xl border-border" icon={Layers} tone="rose" title={<span className="text-base tracking-tight">Salud de las colas</span>} description={`Actualizado automáticamente cada ${POLL_MS / 1000} segundos.`} actions={<span className="hidden sm:inline-flex">{liveFailed ? <Badge tone="warning">Sin actualizar</Badge> : <Badge tone="success">En vivo</Badge>}</span>}>
         <div className="space-y-3 p-4">{queues.length === 0 ? <EmptyState icon={Megaphone} title="No hay campañas activas para el motor de discado." className="py-8" /> : queues.map((queue) => <QueueHealthCard key={queue.campaign_id} queue={queue} funnel={funnelByCampaign.get(queue.campaign_id)} />)}</div>
       </SectionCard>
     ),
@@ -871,7 +893,21 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
   };
 
   if (loading) return <LoadingState label="Estamos conectando el monitor en vivo" className="rounded-xl border border-border bg-surface px-5 py-4" />;
-  if (error) return <Callout tone="danger">Error: {error}</Callout>;
+  if (liveFailed && liveOkAt === null) {
+    return (
+      <Callout tone="danger">
+        <p className="font-medium">No se pudo conectar el monitor en vivo.</p>
+        <p className="mt-1">Atlas sigue reintentando cada {POLL_MS / 1000} segundos. Si no se conecta en un minuto, revisa tu conexión o avisa a soporte.</p>
+        <Button type="button" size="sm" variant="secondary" className="mt-3" onClick={() => setLiveRetry((value) => value + 1)}>
+          <RotateCcw size={14} aria-hidden="true" /> Reintentar ahora
+        </Button>
+      </Callout>
+    );
+  }
+  const staleNotices = [
+    liveFailed && liveOkAt !== null ? `Estado de los ejecutivos sin actualizar desde las ${horaChile.format(liveOkAt)}` : null,
+    wallboardFailed ? (wallboardOkAt !== null ? `Métricas del día sin actualizar desde las ${horaChile.format(wallboardOkAt)}` : "Las métricas del día no se pudieron leer") : null,
+  ].filter((notice): notice is string => Boolean(notice));
   // Se reconstruye desde el catálogo, no desde lo guardado: así una tarjeta
   // nueva del producto aparece sola y una preferencia vieja o corrupta no deja
   // el monitor en blanco. Lo oculto se respeta; lo que falte se repone.
@@ -914,6 +950,24 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
           </Button>
         </div>
       </dialog>
+      {staleNotices.length > 0 && (
+        <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-warning/40 bg-warning-bg px-3 py-2 text-sm text-foreground">
+          <TriangleAlert size={15} className="shrink-0 text-warning" aria-hidden="true" />
+          <span>{staleNotices.join(" · ")}. Reintentando…</span>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="ml-auto"
+            onClick={() => {
+              if (liveFailed) setLiveRetry((value) => value + 1);
+              if (wallboardFailed) setWallboardRetry((value) => value + 1);
+            }}
+          >
+            <RotateCcw size={14} aria-hidden="true" /> Reintentar ahora
+          </Button>
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <SavedViewsBar<MonitorPreference>
           viewKey="live-monitor"

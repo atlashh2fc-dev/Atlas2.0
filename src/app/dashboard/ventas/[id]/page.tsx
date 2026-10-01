@@ -17,7 +17,6 @@ import {
   PageHeader,
   SectionCard,
   Select,
-  SubmitButton,
   Table,
   TableEmpty,
   Tbody,
@@ -261,7 +260,7 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
               <Field label="Nota (motivo si se pierde)">
                 <Input name="nota" placeholder="Pidió esperar al próximo trimestre" />
               </Field>
-              <ActionSubmit>Actualizar</ActionSubmit>
+              <ActionSubmit variant="secondary" pendingLabel="Actualizando…">Actualizar</ActionSubmit>
             </div>
           </ActionForm>
         </SectionCard>
@@ -287,7 +286,8 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
             <Field label="Cuándo (opcional)">
               <Input name="vence" type="datetime-local" />
             </Field>
-            <ActionSubmit>Registrar</ActionSubmit>
+            {/* La acción principal de la ficha: el resto de los botones son secundarios. */}
+            <ActionSubmit pendingLabel="Registrando…">Registrar</ActionSubmit>
           </div>
         </ActionForm>
       </SectionCard>
@@ -295,7 +295,7 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
       <div id="escribir" />
       <SectionCard title="Escribir desde Atlas" description="Correo al contacto del negocio por el puente con Atlas Lead; WhatsApp si la empresa tiene el canal. Queda en la historia y con su estado." icon={Send} tone="teal">
         <div className="grid gap-4 px-4 py-4 lg:grid-cols-[1fr_320px]">
-          <form action={escribirAlNegocio} className="space-y-2">
+          <ActionForm action={escribirAlNegocio} success="Mensaje enviado; queda en la historia del negocio" className="space-y-2">
             <input type="hidden" name="oportunidad_id" value={negocio.id} />
             <input type="hidden" name="cuenta_id" value={empresa?.id ?? ""} />
             <div className="flex flex-wrap gap-2">
@@ -306,10 +306,10 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
               <Input name="asunto" placeholder="Asunto (correo)" className="flex-1" defaultValue={`Sobre ${negocio.name}`} />
             </div>
             <textarea name="texto" required rows={4} maxLength={5000} placeholder={`Hola ${contacto?.full_name?.split(" ")[0] ?? ""}, …`} className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-primary" />
-            <SubmitButton pendingLabel="Enviando…">Enviar</SubmitButton>
-          </form>
+            <ActionSubmit variant="secondary" pendingLabel="Enviando…">Enviar</ActionSubmit>
+          </ActionForm>
           <div className="space-y-3">
-            <form action={fijarProximaAccion} className="space-y-2 rounded-lg border border-border border-l-2 border-l-warning bg-surface-muted/40 p-3">
+            <ActionForm action={fijarProximaAccion} success="Próxima acción fijada" className="space-y-2 rounded-lg border border-border border-l-2 border-l-warning bg-surface-muted/40 p-3">
               <p className="text-xs font-medium text-muted-foreground">Próxima acción</p>
               <input type="hidden" name="oportunidad_id" value={negocio.id} />
               <div className="flex gap-2">
@@ -317,18 +317,36 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
                 <Input type="time" name="hora" defaultValue="09:00" className="w-28" />
               </div>
               <Input name="nota" placeholder="Qué toca hacer" defaultValue={negocio.next_action_note ?? ""} />
-              <SubmitButton size="sm" variant="secondary" pendingLabel="…">Fijar</SubmitButton>
-            </form>
+              <ActionSubmit size="sm" variant="secondary" pendingLabel="Fijando…">Fijar</ActionSubmit>
+            </ActionForm>
             {negocio.status === "abierta" && (
-              <form action={cerrarNegocio} className="space-y-2 rounded-lg border border-border border-l-2 border-l-success bg-surface-muted/40 p-3">
+              // Dos formularios: ActionForm arma el FormData sin el botón que lo
+              // envió, así que «resultado» va oculto en cada uno. Perdido pide
+              // confirmar y queda separado de Ganado.
+              <div className="space-y-2 rounded-lg border border-border border-l-2 border-l-success bg-surface-muted/40 p-3">
                 <p className="text-xs font-medium text-muted-foreground">Cerrar</p>
-                <input type="hidden" name="oportunidad_id" value={negocio.id} />
-                <Input name="motivo" placeholder="Motivo si se pierde" />
-                <div className="flex gap-2">
-                  <button type="submit" name="resultado" value="ganado" className={buttonClasses({ size: "sm" })}>Ganado</button>
-                  <button type="submit" name="resultado" value="perdido" className={buttonClasses({ variant: "danger", size: "sm" })}>Perdido</button>
-                </div>
-              </form>
+                <ActionForm action={cerrarNegocio} success="Negocio cerrado como ganado">
+                  <input type="hidden" name="oportunidad_id" value={negocio.id} />
+                  <input type="hidden" name="resultado" value="ganado" />
+                  <ActionSubmit size="sm" variant="secondary" pendingLabel="Cerrando…">Ganado</ActionSubmit>
+                </ActionForm>
+                <ActionForm
+                  action={cerrarNegocio}
+                  success="Negocio cerrado como perdido"
+                  className="space-y-2 border-t border-border pt-3"
+                  confirm={{
+                    title: "¿Cerrar el negocio como perdido?",
+                    description: `${negocio.name} sale del tablero y pasa a Cerrados con el motivo que escribiste. No se reabre desde esta ficha.`,
+                    confirmLabel: "Cerrar como perdido",
+                    tone: "danger",
+                  }}
+                >
+                  <input type="hidden" name="oportunidad_id" value={negocio.id} />
+                  <input type="hidden" name="resultado" value="perdido" />
+                  <Input name="motivo" placeholder="Motivo de la pérdida" aria-label="Motivo de la pérdida" />
+                  <ActionSubmit size="sm" variant="danger" pendingLabel="Cerrando…">Perdido</ActionSubmit>
+                </ActionForm>
+              </div>
             )}
           </div>
         </div>

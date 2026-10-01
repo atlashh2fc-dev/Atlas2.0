@@ -6,7 +6,7 @@ import { asignarNegocio } from "@/app/actions/pipeline";
 import { NuevoNegocio } from "@/components/nuevo-negocio";
 import { VistaSegmentada } from "@/components/vista-segmentada";
 import { moverEtapa } from "@/app/actions/ventas";
-import { Badge, Callout, EmptyState, Input, NavTabs, PageHeader, SectionCard, Select, SubmitButton } from "@/components/ui";
+import { ActionForm, ActionSubmit, Badge, Callout, EmptyState, Input, NavTabs, PageHeader, SectionCard, Select, SubmitButton } from "@/components/ui";
 import { requireProfile } from "@/lib/auth";
 import { ZONA_CLINICA } from "@/lib/citas";
 import { VENTAS_POR_EDICION } from "@/lib/ediciones";
@@ -116,24 +116,25 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
           )}
         </div>
         <div className="mt-2 flex items-center gap-1.5">
-          <form action={asignarNegocio} className="flex items-center gap-1">
+          <ActionForm action={asignarNegocio} success="Negocio asignado a ti" className="flex items-center gap-1">
             <input type="hidden" name="oportunidad_id" value={negocio.id} />
             {responsableNombre ? (
               <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/12 text-[10px] font-semibold text-primary" title={responsableNombre}>{iniciales(responsableNombre)}</span>
             ) : (
-              <SubmitButton size="sm" variant="ghost" pendingLabel="…">Tomar</SubmitButton>
+              <ActionSubmit size="sm" variant="ghost" pendingLabel="…">Tomar</ActionSubmit>
             )}
-          </form>
+          </ActionForm>
           {negocio.status === "abierta" && (
-            <form action={moverEtapa} className="ml-auto flex items-center gap-1">
+            <ActionForm action={moverEtapa} success="Negocio movido de etapa" className="ml-auto flex items-center gap-1">
               <input type="hidden" name="oportunidad_id" value={negocio.id} />
               <Select name="etapa" defaultValue={etapas.find((etapa) => etapa.id === negocio.stage_id)?.key ?? ""} aria-label="Mover a etapa" className="h-7 w-32 text-[11px]">
-                {etapas.map((etapa) => (
+                {/* Ganado y Perdido se cierran desde la ficha, con monto y motivo; no por un select. */}
+                {etapas.filter((etapa) => !etapa.is_won && !etapa.is_lost).map((etapa) => (
                   <option key={etapa.key} value={etapa.key}>{etapa.name}</option>
                 ))}
               </Select>
-              <SubmitButton size="sm" variant="ghost" pendingLabel="…" aria-label="Mover"><ArrowRight size={12} aria-hidden="true" /></SubmitButton>
-            </form>
+              <ActionSubmit size="sm" variant="ghost" pendingLabel="…" aria-label="Mover a la etapa elegida"><ArrowRight size={12} aria-hidden="true" /></ActionSubmit>
+            </ActionForm>
           )}
         </div>
       </div>

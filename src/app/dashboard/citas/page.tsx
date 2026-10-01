@@ -4,7 +4,7 @@ import { CalendarDays, CalendarX2, Check, CheckCheck, ChevronLeft, ChevronRight,
 
 import { agendarCita, cambiarEstadoCita } from "@/app/actions/citas";
 import { CreatePanel } from "@/components/create-panel";
-import { Badge, Callout, EmptyState, Field, Input, PageHeader, SectionCard, Select, SubmitButton, buttonClasses } from "@/components/ui";
+import { ActionForm, ActionSubmit, Badge, Callout, EmptyState, Field, Input, PageHeader, SectionCard, Select, buttonClasses, type ConfirmOptions } from "@/components/ui";
 import {
   ETIQUETA_ESTADO,
   ZONA_CLINICA,
@@ -37,6 +37,7 @@ const ALTO_MEDIA_HORA = 36;
 const ANCHO_COLUMNA = 240;
 const ANCHO_HORAS = 56;
 const DURACIONES = [15, 20, 30, 45, 60, 90];
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const fechaLarga = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, weekday: "long", day: "numeric", month: "long" });
 const hora = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
@@ -52,29 +53,33 @@ function Accion({
   dia,
   abrirFicha = false,
   variant = "secondary",
+  success,
+  confirm,
 }: {
   cita: Cita;
   estado: Cita["estado"];
   label: string;
   dia: string;
   abrirFicha?: boolean;
-  variant?: "primary" | "secondary" | "ghost";
+  variant?: "secondary" | "ghost" | "danger";
+  success: string;
+  confirm?: ConfirmOptions;
 }) {
   return (
-    <form action={cambiarEstadoCita}>
+    <ActionForm action={cambiarEstadoCita} success={success} confirm={confirm}>
       <input type="hidden" name="cita_id" value={cita.id} />
       <input type="hidden" name="cuenta_id" value={cita.cuenta_id} />
       <input type="hidden" name="estado" value={estado} />
       <input type="hidden" name="volver" value={`/dashboard/citas?dia=${dia}`} />
       {abrirFicha && <input type="hidden" name="abrir_ficha" value="si" />}
-      <SubmitButton variant={variant} size="sm" pendingLabel="…">
+      <ActionSubmit variant={variant} size="sm" pendingLabel="…">
         {label}
-      </SubmitButton>
-    </form>
+      </ActionSubmit>
+    </ActionForm>
   );
 }
 
-export default async function AgendaPage({ searchParams }: { searchParams: Promise<{ dia?: string }> }) {
+export default async function AgendaPage({ searchParams }: { searchParams: Promise<{ dia?: string; cuenta?: string; mascota?: string }> }) {
   noStore();
   const { edicion, empresa } = await contextoDeMiEmpresa();
   const clinica = clinicaDe(edicion);
@@ -84,7 +89,10 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
   const Cita1 = at.cita[0].toUpperCase() + at.cita.slice(1);
   const ahora = new Date();
   const hoy = fechaEnChile(ahora);
-  const { dia: diaParam } = await searchParams;
+  const { dia: diaParam, cuenta: cuentaParam, mascota: mascotaParam } = await searchParams;
+  // Desde Recordatorios (vacuna por vencer) se llega con la persona y la mascota ya elegidas.
+  const cuentaElegida = cuentaParam && UUID.test(cuentaParam) ? cuentaParam : "";
+  const mascotaElegida = mascotaParam && UUID.test(mascotaParam) ? mascotaParam : "";
   const dia = esFechaValida(diaParam) ? diaParam : hoy;
   const desde = instanteEnChile(dia, "00:00");
   const hasta = instanteEnChile(sumarDias(dia, 1), "00:00");
@@ -134,14 +142,17 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
             <Link href={`/dashboard/citas?dia=${sumarDias(dia, -1)}`} className={buttonClasses({ variant: "secondary", size: "sm" })} aria-label="Día anterior">
               <ChevronLeft size={16} aria-hidden="true" />
             </Link>
-            <Link href="/dashboard/citas" className={buttonClasses({ variant: dia === hoy ? "primary" : "secondary", size: "sm" })}>
+            <Link href="/dashboard/citas" aria-current={dia === hoy ? "date" : undefined} className={buttonClasses({ variant: "secondary", size: "sm", className: dia === hoy ? "border-primary/50 text-primary" : "" })}>
               Hoy
             </Link>
             <Link href={`/dashboard/citas?dia=${sumarDias(dia, 1)}`} className={buttonClasses({ variant: "secondary", size: "sm" })} aria-label="Día siguiente">
               <ChevronRight size={16} aria-hidden="true" />
             </Link>
-            <form action="/dashboard/citas" className="flex items-center gap-2">
-              <Input type="date" name="dia" defaultValue={dia} aria-label="Ir a una fecha" className="w-40" />
+            <form action="/dashboard/citas" className="flex items-center gap-1">
+              <Input type="date" name="dia" defaultValue={dia} aria-label="Fecha a mostrar" className="w-40" />
+              <button type="submit" className={buttonClasses({ variant: "secondary", size: "sm" })}>
+                Ir
+              </button>
             </form>
             <CreatePanel
               label={`Nueva ${at.cita}`}
@@ -152,7 +163,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
               successLabel={`${Cita1} agendada`}
             >
               <Field label={voc.singular}>
-                <Select name="cuenta_id" required defaultValue="" data-autofocus>
+                <Select name="cuenta_id" required defaultValue={cuentaElegida && nombreCuenta.has(cuentaElegida) ? cuentaElegida : ""} data-autofocus>
                   <option value="" disabled>
                     Elige al {voc.singular.toLowerCase()}
                   </option>
@@ -165,7 +176,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
               </Field>
               {esVet && (
                 <Field label="Mascota (opcional)">
-                  <Select name="mascota_id" defaultValue="">
+                  <Select name="mascota_id" defaultValue={mascotaElegida}>
                     <option value="">Sin mascota</option>
                     {(mascotas ?? []).map((mascota) => (
                       <option key={mascota.id as string} value={mascota.id as string}>
@@ -218,6 +229,12 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       />
 
       {error && <Callout tone="danger">No se pudo leer la agenda. Vuelve a cargar para reintentar.</Callout>}
+
+      {cuentaElegida && nombreCuenta.has(cuentaElegida) && (
+        <Callout tone="info">
+          Agendando a <span className="font-medium">{nombreCuenta.get(cuentaElegida)}</span>: abre «Nueva {at.cita}» y elige {at.profesional.toLowerCase() === "barbero" ? "el barbero" : "el profesional"} y la hora; la persona ya viene elegida.
+        </Callout>
+      )}
 
       {profesionales.length === 0 ? (
         <EmptyState icon={Stethoscope} title={`Todavía no hay ${at.profesionales.toLowerCase()}`} description={`La agenda se arma por ${at.profesional.toLowerCase()}. Registra la primera atención y aparecerá acá, o pídenos que los carguemos.`} />
@@ -378,16 +395,30 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap justify-end gap-1.5">
-                          {cita.estado === "reservada" && <Accion cita={cita} estado="confirmada" label="Confirmar" dia={dia} variant="primary" />}
+                          {/* Acciones de fila en secundario: el único primario de la vista es «Nueva cita». */}
+                          {cita.estado === "reservada" && <Accion cita={cita} estado="confirmada" label="Confirmar" dia={dia} success={`${Cita1} confirmada`} />}
                           {(cita.estado === "reservada" || cita.estado === "confirmada") && (
-                            <Accion cita={cita} estado="en_sala" label="En sala" dia={dia} variant={cita.estado === "confirmada" ? "primary" : "secondary"} />
+                            <Accion cita={cita} estado="en_sala" label="En sala" dia={dia} success="Pasó a sala" />
                           )}
-                          {cita.estado === "en_sala" && <Accion cita={cita} estado="atendida" label="Atendida · registrar" dia={dia} abrirFicha variant="primary" />}
+                          {cita.estado === "en_sala" && <Accion cita={cita} estado="atendida" label="Atendida · registrar" dia={dia} abrirFicha success={`${Cita1} atendida`} />}
                           {(cita.estado === "reservada" || cita.estado === "confirmada") && yaPaso && (
-                            <Accion cita={cita} estado="no_vino" label="No vino" dia={dia} variant="ghost" />
+                            <Accion cita={cita} estado="no_vino" label="No vino" dia={dia} variant="ghost" success="Marcada como no vino" />
                           )}
                           {(cita.estado === "reservada" || cita.estado === "confirmada") && !yaPaso && (
-                            <Accion cita={cita} estado="cancelada" label="Cancelar" dia={dia} variant="ghost" />
+                            <Accion
+                              cita={cita}
+                              estado="cancelada"
+                              label={`Cancelar ${at.cita}`}
+                              dia={dia}
+                              variant="ghost"
+                              success={`${Cita1} cancelada`}
+                              confirm={{
+                                title: `¿Cancelar la ${at.cita} de las ${hora.format(new Date(cita.inicio))}?`,
+                                description: `${quien(cita)} · ${cita.motivo}. La hora queda libre para otra persona y la ${at.cita} pasa a gris; para volver a atenderla hay que agendarla de nuevo.`,
+                                confirmLabel: `Cancelar ${at.cita}`,
+                                tone: "danger",
+                              }}
+                            />
                           )}
                           {cita.estado === "atendida" && (
                             <Link href={`/dashboard/pacientes/${cita.cuenta_id}`} className={buttonClasses({ variant: "secondary", size: "sm" })}>

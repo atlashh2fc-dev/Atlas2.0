@@ -25,6 +25,8 @@ const ui = {
   Field: ({ label, children }: Props) => React.createElement("label", null, label as React.ReactNode, children),
   Select: element("select"), Input: element("input"), Button: element("button"), Callout: element("aside"), Badge: element("span"),
   buttonClasses: () => "",
+  // El diálogo de confirmación solo existe abierto; cerrado no pinta nada.
+  ConfirmDialog: () => null,
 };
 function load(path: string, dependencies: Record<string, unknown>, env: Record<string, string> = {}): Record<string, unknown> {
   const compiled = ts.transpileModule(readFileSync(new URL(path, import.meta.url), "utf8"), {
@@ -110,7 +112,7 @@ test("loop render: admin configuration defaults to off; list never loads transcr
 test("loop render: stale recommendations cannot be accepted; failed reads do not show partial results", async () => {
   assert.doesNotMatch((await renderLoop({ stale: true })).html, /name="recommendation"|Guardar revisión/);
   const { html } = await renderLoop({ fail: "ai_loop_feedback" });
-  assert.match(html, /No se pudo consultar el loop completo/);
+  assert.match(html, /No se pudieron cargar todos los análisis/);
   assert.doesNotMatch(html, /name="recommendation"|Versiones en el alcance|Por favor/);
   await assert.rejects(renderLoop({ role: "agente" }), /role_denied/);
 });

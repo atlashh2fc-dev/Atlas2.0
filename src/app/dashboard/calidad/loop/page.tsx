@@ -47,11 +47,12 @@ export default async function LearningLoopPage({ searchParams }: { searchParams:
   // eslint-disable-next-line react-hooks/purity
   const asOf = Date.now();
   const error = campaignsResult.error || runsResult.error || configResult.error || feedbackResult.error || transcriptResult.error;
+  if (error) console.error("[calidad/loop] consulta:", error.message);
   const url = (nextPage: number, run?: string) => `/dashboard/calidad/loop?${new URLSearchParams({ page: String(nextPage), ...(campaignId ? { campaign: campaignId } : {}), ...(run ? { run } : {}) })}`;
   return <div className="space-y-5">
     <Callout tone="info">Observación posterior a la llamada. Las decisiones no llaman, envían mensajes, agendan ni cambian prioridades. Los resultados posteriores son observaciones, no prueba de mejora causal.</Callout>
     {process.env.AI_LOOP_ENABLED !== "true" && <Callout tone="warning">El procesamiento IA está apagado en el servidor. Puedes consultar resultados existentes; no se generarán nuevos análisis.</Callout>}
-    {error && <Callout tone="danger">No se pudo consultar el loop completo. Verifica la migración y el alcance del usuario. No se muestran totales parciales como resultados completos.</Callout>}
+    {error && <Callout tone="danger">No se pudieron cargar todos los análisis, así que no mostramos totales a medias. Vuelve a cargar la página; si sigue igual, avisa a un administrador.</Callout>}
     <form className="flex flex-wrap items-end gap-3">
       <Field label="Campaña"><Select name="campaign" defaultValue={campaignId ?? ""}><option value="">Todas las autorizadas</option>{campaigns.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}</Select></Field>
       <Button type="submit">Filtrar</Button>
@@ -77,7 +78,7 @@ export default async function LearningLoopPage({ searchParams }: { searchParams:
             {run.decision && <p className="text-sm">{run.decision.reason}</p>}
             <div className="flex flex-wrap gap-4 text-sm"><Link className="text-primary underline" href={`/dashboard/leads/${run.lead_id}`}>Ficha 360</Link><Link className="text-primary underline" href={url(page, run.id)}>Ver evidencia y revisión</Link></div>
             {run.review && <p className="text-sm">Última revisión: {run.review.recommendation === "accepted" ? "aceptada" : "rechazada"}; hechos {run.review.extraction === "confirmed" ? "confirmados" : run.review.extraction === "rejected" ? "rechazados" : "no confirmados"}.</p>}
-            {run.error_code && <Callout tone="warning">El análisis no pudo completarse ({run.error_code}). Los intentos se limitan a tres y respetan el cupo diario.</Callout>}
+            {run.error_code && <Callout tone="warning"><span title={`Código: ${run.error_code}`}>Este análisis no pudo completarse. Atlas lo reintenta solo, hasta tres veces y dentro del cupo diario; no tienes que hacer nada.</span></Callout>}
             {activeRun?.id === run.id && <div className="space-y-4 border-t border-border pt-4">
               <p className="break-all font-mono text-xs text-muted-foreground">Decisión {run.id} · Fuente {run.source_hash}</p>
               <h3 className="text-sm font-semibold">Comprobar la fuente original</h3>

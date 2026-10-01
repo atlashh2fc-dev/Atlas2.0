@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { configureLearningLoop, reviewLearningDecision, retractLearningMemory } from "@/app/actions/ai-learning-loop";
-import { Button, Callout, Field, Input, Select } from "@/components/ui";
+import { Button, Callout, ConfirmDialog, Field, Input, Select } from "@/components/ui";
 
 export function LearningLoopReview({ runId, version }: { runId: string; version: number }) {
   const router = useRouter();
@@ -67,22 +67,41 @@ export function LearningMemoryRetraction({ memoryId }: { memoryId: string }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
+  // Retirar no se deshace: el envío solo abre la confirmación y el retiro
+  // corre al confirmar, con el motivo que quedó escrito.
+  const [asking, setAsking] = useState(false);
+  const pendingNote = useRef<FormDataEntryValue | null>(null);
+  function retract(note: FormDataEntryValue | null) {
+    start(async () => {
+      try {
+        const result = await retractLearningMemory({ memoryId, note });
+        setMessage(result.error ?? "Hecho retirado de las próximas decisiones.");
+        if (!result.error) router.refresh();
+      } catch { setMessage("No se pudo retirar el hecho. Reintenta."); }
+    });
+  }
   return <details className="mt-2 text-sm"><summary className="cursor-pointer text-muted-foreground">Corregir o retirar este hecho</summary>
     <form className="mt-3 space-y-2" onSubmit={(event) => {
       event.preventDefault();
-      const note = new FormData(event.currentTarget).get("note");
-      start(async () => {
-        try {
-          const result = await retractLearningMemory({ memoryId, note });
-          setMessage(result.error ?? "Hecho retirado de las próximas decisiones.");
-          if (!result.error) router.refresh();
-        } catch { setMessage("No se pudo retirar el hecho. Reintenta."); }
-      });
+      if (pending) return;
+      pendingNote.current = new FormData(event.currentTarget).get("note");
+      setAsking(true);
     }}>
       <Field label="Motivo de retirar el hecho"><Input name="note" minLength={3} maxLength={1000} required disabled={pending} /></Field>
       <p className="text-xs text-muted-foreground">El retiro queda registrado, incluso si la decisión original venció. Esta memoria no se podrá reactivar.</p>
-      <Button type="submit" disabled={pending}>Retirar de la memoria</Button>
+      <Button type="submit" variant="danger" disabled={pending}>{pending ? "Retirando…" : "Retirar de la memoria"}</Button>
       {message && <p role="status">{message}</p>}
     </form>
+    <ConfirmDialog
+      open={asking}
+      options={{
+        title: "¿Retirar este hecho de la memoria?",
+        description: "Deja de usarse en las próximas decisiones de la IA. El retiro queda registrado y la memoria no se puede reactivar.",
+        confirmLabel: "Retirar el hecho",
+        tone: "danger",
+      }}
+      onCancel={() => { setAsking(false); pendingNote.current = null; }}
+      onConfirm={() => { setAsking(false); retract(pendingNote.current); pendingNote.current = null; }}
+    />
   </details>;
 }

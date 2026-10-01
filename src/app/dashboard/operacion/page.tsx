@@ -321,6 +321,8 @@ export default async function OperationsPage({
     : null;
   const stockUnavailable =
     catalogUnavailable || invalidSelection || Boolean(stockResult.error);
+  if (tableroResult.error) console.error("[operacion] tablero de colas:", tableroResult.error.message);
+  if (automationHistoryResult.error) console.error("[operacion] auditoría de automatización:", automationHistoryResult.error.message);
   const automationUnavailable = Boolean(
     automationResult.error ||
     automationHistoryResult.error ||
@@ -545,7 +547,7 @@ export default async function OperationsPage({
           </label>
           <button
             type="submit"
-            className={buttonClasses({ variant: "primary", size: "sm" })}
+            className={buttonClasses({ variant: "secondary", size: "sm" })}
           >
             Aplicar
           </button>
@@ -564,7 +566,9 @@ export default async function OperationsPage({
           puedeMover
         />
       )}
-      {tableroResult.error && <Callout tone="warning">No se pudo leer el tablero de colas: {tableroResult.error.message}</Callout>}
+      {tableroResult.error && (
+        <Callout tone="warning">No se pudo leer el tablero de colas. Vuelve a cargar la página en un momento; si sigue igual, avisa a un administrador.</Callout>
+      )}
 
       {catalogUnavailable && (
         <Callout tone="warning">
@@ -624,9 +628,10 @@ export default async function OperationsPage({
             )}
             {automationHistoryResult.error && (
               <Callout tone="warning">
-                No se pudo consultar la auditoría del control general. Verifica
-                que la migración de roles esté aplicada y que tu cuenta tenga
-                permisos. No se habilitan cambios sin esta verificación.
+                No se pudo confirmar quién cambió la automatización por última
+                vez, así que el control queda bloqueado por seguridad. Vuelve a
+                cargar la página; si sigue igual, pídele a un administrador que
+                revise tus permisos.
               </Callout>
             )}
             {!automationUnavailable && automationConfigs.length > 0 && (

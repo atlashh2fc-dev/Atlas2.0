@@ -4,7 +4,8 @@ import { AlertTriangle, CalendarClock, CheckCheck, Clock, HandCoins, MessageSqua
 
 import { cambiarEstadoCita } from "@/app/actions/citas";
 import { cancelarMensaje, despacharAhora, enviarMensaje, reintentarMensaje } from "@/app/actions/mensajes";
-import { Badge, Callout, EmptyState, MetricCard, PageHeader, SectionCard, SubmitButton, buttonClasses } from "@/components/ui";
+import { ActionForm, ActionSubmit, Badge, Callout, EmptyState, MetricCard, PageHeader, SectionCard, buttonClasses } from "@/components/ui";
+import { requireProfile } from "@/lib/auth";
 import { ZONA_CLINICA, fechaEnChile, instanteEnChile, primero, sumarDias, type Cita } from "@/lib/citas";
 import { ATENCION_POR_EDICION, PACIENTES_POR_EDICION, VENTAS_POR_EDICION, clinicaDe } from "@/lib/ediciones";
 import { estadoVacuna } from "@/lib/mascotas";
@@ -30,6 +31,20 @@ const pesos = new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP
 
 function primerNombre(nombre: string): string {
   return nombre.split(" ")[0] ?? nombre;
+}
+
+/**
+ * El despacho guarda el motivo del fallo tal como lo devolvió el proveedor o
+ * la base. En pantalla va una frase con el siguiente paso; el original queda
+ * en el title para soporte.
+ */
+function errorLegible(error: string, canal: string, esAdmin: boolean): string {
+  const nombreCanal = canal === "correo" ? "correo" : "WhatsApp";
+  if (/integraciones|no est[aá] conectado|no tiene un canal|puente|no hay por d[oó]nde/i.test(error)) {
+    return `El ${nombreCanal} de la clínica no está conectado. ${esAdmin ? "Conéctalo en Integraciones y reintenta." : "Pídele a un administrador que lo conecte y luego reintenta."}`;
+  }
+  if (/ficha de destino/i.test(error)) return "El mensaje quedó sin ficha de destino. Cancélalo y envíalo de nuevo desde la ficha.";
+  return `No se pudo entregar. Revisa el ${canal === "correo" ? "correo" : "celular"} de la ficha y usa «Reintentar».`;
 }
 
 type Mensaje = {
@@ -77,32 +92,47 @@ function Enviar({
   const canal = telefono && telefono.trim() ? "whatsapp" : "correo";
   const etiqueta = ultimo ? ETIQUETA_ESTADO_MENSAJE[ultimo.estado] : null;
   const yaSalio = ultimo && !["fallido", "cancelado"].includes(ultimo.estado);
+  // Lo que va a recibir la persona, a la vista antes de enviarlo: si ya salió,
+  // el texto real; si no, la plantilla con sus datos.
+  const texto = (yaSalio ? ultimo?.cuerpo : null) ?? renderizarPlantilla(plantilla, variables);
   return (
-    <div className="flex items-center gap-2">
-      {etiqueta && ultimo && (
-        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" title={ultimo.cuerpo ?? ""}>
-          <Badge tone={etiqueta.tone}>{etiqueta.label}</Badge>
-          {ultimo.enviado_at ? fechaHora.format(new Date(ultimo.enviado_at)) : ""}
-          {ultimo.proveedor === "simulado" && " · simulado"}
-        </span>
-      )}
-      <form action={enviarMensaje} title={renderizarPlantilla(plantilla, variables)}>
-        <input type="hidden" name="cuenta_id" value={cuenta} />
-        <input type="hidden" name="plantilla" value={plantilla} />
-        <input type="hidden" name="regla" value={regla} />
-        <input type="hidden" name="origen_ref" value={origen} />
-        <input type="hidden" name="variables" value={JSON.stringify(variables)} />
-        <input type="hidden" name="canal" value={canal} />
-        <SubmitButton size="sm" variant={yaSalio ? "ghost" : "secondary"} pendingLabel="Enviando…">
-          <Send size={14} aria-hidden="true" /> {yaSalio ? "Reenviar" : canal === "correo" ? "Enviar correo" : "Enviar por Atlas"}
-        </SubmitButton>
-      </form>
+    <div className="flex w-full min-w-0 flex-col gap-1 sm:w-80">
+      <div className="flex items-center justify-end gap-2">
+        {etiqueta && ultimo && (
+          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Badge tone={etiqueta.tone}>{etiqueta.label}</Badge>
+            {ultimo.enviado_at ? fechaHora.format(new Date(ultimo.enviado_at)) : ""}
+            {ultimo.proveedor === "simulado" && " · simulado"}
+          </span>
+        )}
+        <ActionForm action={enviarMensaje} success={canal === "correo" ? "Correo enviado" : "WhatsApp enviado"}>
+          <input type="hidden" name="cuenta_id" value={cuenta} />
+          <input type="hidden" name="plantilla" value={plantilla} />
+          <input type="hidden" name="regla" value={regla} />
+          <input type="hidden" name="origen_ref" value={origen} />
+          <input type="hidden" name="variables" value={JSON.stringify(variables)} />
+          <input type="hidden" name="canal" value={canal} />
+          <ActionSubmit size="sm" variant={yaSalio ? "ghost" : "secondary"} pendingLabel="Enviando…">
+            <Send size={14} aria-hidden="true" /> {yaSalio ? "Reenviar" : canal === "correo" ? "Enviar correo" : "Enviar por Atlas"}
+          </ActionSubmit>
+        </ActionForm>
+      </div>
+      <details className="group text-xs text-muted-foreground">
+        <summary className="flex min-h-6 cursor-pointer list-none items-center gap-1 rounded hover:text-foreground">
+          <span className="truncate group-open:hidden">«{texto}»</span>
+          <span className="hidden shrink-0 group-open:inline">Ocultar mensaje</span>
+          <span className="shrink-0 text-primary group-open:hidden">Ver completo</span>
+        </summary>
+        <p className="mt-1 whitespace-pre-line rounded-md bg-surface-muted/50 p-2 text-foreground">{texto}</p>
+      </details>
     </div>
   );
 }
 
 export default async function RecordatoriosPage() {
   noStore();
+  const profile = await requireProfile(["admin", "supervisor"]);
+  const esAdmin = profile.role === "admin";
   const { edicion, empresa } = await contextoDeMiEmpresa();
   const tipo = clinicaDe(edicion);
   const esVet = tipo === "vet";
@@ -187,6 +217,9 @@ export default async function RecordatoriosPage() {
   const total = citas.length + vacunas.length + presupuestos.length + inactivos.length;
   const dias = (desde: string) => Math.floor((ahora.getTime() - new Date(desde).getTime()) / DIA);
   const canalActivo = canal?.status === "active";
+  const pendientesWhatsapp = mensajes.filter((mensaje) => mensaje.estado === "programado" && mensaje.canal !== "correo").length;
+  const pendientesCorreo = mensajes.filter((mensaje) => mensaje.estado === "programado" && mensaje.canal === "correo").length;
+  const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`;
 
   return (
     <div className="space-y-5">
@@ -194,11 +227,29 @@ export default async function RecordatoriosPage() {
         title="Recordatorios"
         description={`${total} ${total === 1 ? "contacto pendiente" : "contactos pendientes"}. Las reglas programan los mensajes solas cada día; acá ves si llegaron y puedes adelantar cualquiera.`}
         actions={
-          <form action={despacharAhora}>
-            <SubmitButton variant="secondary" pendingLabel="Enviando…">
+          <ActionForm
+            action={despacharAhora}
+            success="Despacho hecho: revisa el estado en «Lo que Atlas escribió»"
+            confirm={{
+              title: "¿Enviar ahora los mensajes pendientes?",
+              description: (
+                <>
+                  <p>
+                    Salen ahora {plural(pendientesWhatsapp, "WhatsApp", "WhatsApp")} y {plural(pendientesCorreo, "correo", "correos")} programados
+                    {canalActivo ? ` por el número de ${clinica}` : " (simulados: el WhatsApp de la clínica no está conectado)"}, más los que las reglas
+                    generen hoy.
+                  </p>
+                  <p className="mt-2">Lo que sale ya no se puede retirar.</p>
+                </>
+              ),
+              confirmLabel: pendientesWhatsapp + pendientesCorreo > 0 ? `Enviar ${pendientesWhatsapp + pendientesCorreo} ahora` : "Enviar ahora",
+              tone: "primary",
+            }}
+          >
+            <ActionSubmit variant="secondary" pendingLabel="Enviando…">
               <Send size={16} aria-hidden="true" /> Enviar pendientes{programados ? ` (${programados})` : ""}
-            </SubmitButton>
-          </form>
+            </ActionSubmit>
+          </ActionForm>
         }
       />
 
@@ -206,8 +257,15 @@ export default async function RecordatoriosPage() {
         <Callout tone="warning">
           <p className="font-medium">El WhatsApp de {clinica} todavía no está conectado</p>
           <p>
-            Los mensajes salen igual por la cola y quedan marcados como simulados en la demostración. Cuando conectes el canal en
-            Integraciones, saldrán de verdad por el número de la clínica y las respuestas caerán en Conversaciones.
+            Los mensajes salen igual por la cola y quedan marcados como simulados en la demostración. Cuando el canal esté conectado, saldrán de
+            verdad por el número de la clínica y las respuestas caerán en Conversaciones.{" "}
+            {esAdmin ? (
+              <Link href="/dashboard/admin/integraciones/whatsapp" className="font-medium text-primary hover:underline">
+                Conectar el WhatsApp
+              </Link>
+            ) : (
+              "Para conectarlo, pídeselo a un administrador."
+            )}
           </p>
         </Callout>
       )}
@@ -258,13 +316,13 @@ export default async function RecordatoriosPage() {
                   </div>
                   <Enviar cuenta={cita.cuenta_id} plantilla={plantilla} regla="cita_manana" origen={cita.id} variables={variables} ultimo={ultimo("cita_manana", cita.id)} telefono={tutor?.phone} />
                   {cita.estado === "reservada" && (
-                    <form action={cambiarEstadoCita}>
+                    <ActionForm action={cambiarEstadoCita} success="Cita confirmada">
                       <input type="hidden" name="cita_id" value={cita.id} />
                       <input type="hidden" name="cuenta_id" value={cita.cuenta_id} />
                       <input type="hidden" name="estado" value="confirmada" />
                       <input type="hidden" name="volver" value="/dashboard/recordatorios" />
-                      <SubmitButton size="sm" pendingLabel="…">Confirmada</SubmitButton>
-                    </form>
+                      <ActionSubmit size="sm" variant="secondary" pendingLabel="…">Confirmada</ActionSubmit>
+                    </ActionForm>
                   )}
                 </li>
               );
@@ -295,7 +353,7 @@ export default async function RecordatoriosPage() {
                       </p>
                     </div>
                     {tutor && <Enviar cuenta={tutor.id} plantilla="vacuna" regla="vacuna" origen={mascota.id} variables={variables} ultimo={ultimo("vacuna", mascota.id)} telefono={tutor.phone} />}
-                    <Link href="/dashboard/citas" className={buttonClasses({ size: "sm" })}>
+                    <Link href={tutor ? `/dashboard/citas?cuenta=${tutor.id}&mascota=${mascota.id}` : "/dashboard/citas"} className={buttonClasses({ variant: "secondary", size: "sm" })}>
                       Agendar
                     </Link>
                   </li>
@@ -398,7 +456,11 @@ export default async function RecordatoriosPage() {
                         <p className="line-clamp-2" title={cuerpo}>
                           {cuerpo}
                         </p>
-                        {mensaje.error && <p className="text-xs text-danger">{mensaje.error}</p>}
+                        {mensaje.error && (
+                          <p className="text-xs text-danger" title={mensaje.error}>
+                            {errorLegible(mensaje.error, mensaje.canal, esAdmin)}
+                          </p>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <Badge tone={etiqueta.tone}>{etiqueta.label}</Badge>
@@ -407,16 +469,16 @@ export default async function RecordatoriosPage() {
                       <td className="px-4 py-3">
                         <div className="flex justify-end gap-1.5">
                           {mensaje.estado === "fallido" && (
-                            <form action={reintentarMensaje}>
+                            <ActionForm action={reintentarMensaje} success="Mensaje reintentado">
                               <input type="hidden" name="mensaje_id" value={mensaje.id} />
-                              <SubmitButton size="sm" variant="secondary" pendingLabel="…">Reintentar</SubmitButton>
-                            </form>
+                              <ActionSubmit size="sm" variant="secondary" pendingLabel="…">Reintentar</ActionSubmit>
+                            </ActionForm>
                           )}
                           {(mensaje.estado === "programado" || mensaje.estado === "fallido") && (
-                            <form action={cancelarMensaje}>
+                            <ActionForm action={cancelarMensaje} success="Mensaje cancelado">
                               <input type="hidden" name="mensaje_id" value={mensaje.id} />
-                              <SubmitButton size="sm" variant="ghost" pendingLabel="…">Cancelar</SubmitButton>
-                            </form>
+                              <ActionSubmit size="sm" variant="ghost" pendingLabel="…">Cancelar envío</ActionSubmit>
+                            </ActionForm>
                           )}
                         </div>
                       </td>

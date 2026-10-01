@@ -38,12 +38,13 @@ export default async function TeamUsersPage() {
   );
 
   if (scopeError || supervisedTeamIds.length === 0) {
+    if (scopeError) console.error("[equipo/usuarios] equipos supervisados:", scopeError.message);
     return (
       <div className="space-y-5">
         {header}
         <Callout tone={scopeError ? "danger" : "info"}>
           {scopeError
-            ? `No se pudieron leer tus equipos: ${scopeError.message}`
+            ? "No se pudieron leer tus equipos. Vuelve a cargar la página; si sigue igual, avisa a un administrador."
             : "No tienes equipos asignados. Pide a un administrador que te asigne como supervisor de un equipo."}
         </Callout>
       </div>
@@ -72,6 +73,7 @@ export default async function TeamUsersPage() {
     supabase.from("campaigns").select("id, name").eq("is_active", true).order("name"),
   ]);
 
+  if (agentsError) console.error("[equipo/usuarios] ejecutivos:", agentsError.message);
   const agentIds = (agents ?? []).map((agent) => agent.id);
   const supervisorIds = [...new Set((teamSupervisors ?? []).map((row) => row.supervisor_id))];
   const [{ data: memberships }, { data: supervisors }] = await Promise.all([
@@ -118,7 +120,7 @@ export default async function TeamUsersPage() {
     <div className="space-y-5">
       {header}
       {agentsError ? (
-        <Callout tone="danger">No se pudieron cargar tus ejecutivos: {agentsError.message}</Callout>
+        <Callout tone="danger">No se pudieron cargar tus ejecutivos. Vuelve a cargar la página; si sigue igual, avisa a un administrador.</Callout>
       ) : (
         <UsersTable rows={rows} teams={teams ?? []} campaigns={campaigns ?? []} canEditAccess={false} />
       )}

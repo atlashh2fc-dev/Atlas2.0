@@ -393,13 +393,18 @@ export default async function ReportesPage({
     // equipos asignados"). Relanzarlas dejaba la pantalla en negro con un
     // "server error" que no dice nada y parece una caída del sitio.
     if (error) {
+      console.error("[reportes] resumen del supervisor:", error.message);
+      const sinEquipo = /equipo/i.test(error.message);
+      const sinPermiso = /permiso|autenticado/i.test(error.message);
       return (
         <Callout tone="warning">
           <p className="font-medium">No se pudo armar tu reporte.</p>
-          <p className="mt-1">{error.message}</p>
-          <p className="mt-2 text-xs">
-            Si el mensaje habla de equipos, un administrador tiene que asignarte equipos en
-            ⚙ Configuración → Usuarios y equipos.
+          <p className="mt-1">
+            {sinEquipo
+              ? "Todavía no tienes un equipo asignado, así que no hay ejecutivos que reportar. Pídele a un administrador que te asigne como supervisor de un equipo."
+              : sinPermiso
+                ? "Tu cuenta no tiene permiso para ver este reporte. Pídele a un administrador que lo revise."
+                : "Vuelve a cargar la página en un momento. Si sigue igual, avisa a un administrador."}
           </p>
         </Callout>
       );
@@ -687,10 +692,15 @@ export default async function ReportesPage({
   const { data, error } = summaryResult;
 
   if (error) {
+    console.error("[reportes] resumen de campaña:", error.message);
     return (
       <Callout tone="warning">
         <p className="font-medium">No se pudo armar el reporte.</p>
-        <p className="mt-1">{error.message}</p>
+        <p className="mt-1">
+          {/timeout|tiempo/i.test(error.message)
+            ? "El cálculo tardó demasiado. Prueba con un período más corto o una sola campaña."
+            : "Vuelve a cargar la página en un momento. Si sigue igual, avisa a soporte."}
+        </p>
       </Callout>
     );
   }

@@ -8,6 +8,7 @@ import { bulkAssignLeads, distributeLeads } from "@/app/actions/leads";
 import {
   Badge,
   Button,
+  ConfirmDialog,
   DataTable,
   Field,
   Select,
@@ -106,13 +107,15 @@ export function TeamLeadsAssignment({
 
   const [assigning, setAssigning] = useState<TeamLeadRow[] | null>(null);
   const [distributing, setDistributing] = useState<TeamLeadRow[] | null>(null);
+  const [unassigning, setUnassigning] = useState<TeamLeadRow[] | null>(null);
   const [agentId, setAgentId] = useState("");
   const [targets, setTargets] = useState<string[]>([]);
 
   const report = useCallback(
     (ok: number, skipped: number, error: string | null, title: string) => {
       if (error) {
-        toast({ tone: "danger", message: `No se pudo completar: ${error}` });
+        console.error(`[equipo] ${title}:`, error);
+        toast({ tone: "danger", message: "No se pudo completar la asignación. Actualiza la página e inténtalo otra vez; si sigue fallando, avisa a soporte." });
         return;
       }
       toast({
@@ -150,18 +153,18 @@ export function TeamLeadsAssignment({
       { id: "assign", label: "Asignar a…", onAction: (selected) => setAssigning(selected) },
       { id: "distribute", label: "Repartir por carga…", onAction: (selected) => setDistributing(selected) },
       {
+        // Deja a los ejecutivos sin esos registros: se confirma antes.
         id: "unassign",
         label: "Quitar asignación",
         variant: "ghost",
-        onAction: (selected) =>
-          startTransition(async () => {
-            const result = await bulkAssignLeads(selected.map((row) => row.id), null);
-            report(result.ok, result.skipped, result.error, "Registros liberados");
-          }),
+        onAction: (selected) => setUnassigning(selected),
       },
     ],
-    [report, startTransition]
+    []
   );
+
+  const unassignCount = unassigning?.length ?? 0;
+  const unassignOwners = new Set((unassigning ?? []).map((row) => row.assigned_name).filter(Boolean)).size;
 
   return (
     <>
@@ -176,6 +179,28 @@ export function TeamLeadsAssignment({
         exportFilename="asignacion-de-registros"
         emptyTitle="No hay registros con estos filtros"
         emptyDescription="Ajusta el ejecutivo, la campaña o el estado."
+      />
+
+      <ConfirmDialog
+        open={unassigning !== null}
+        options={{
+          title: `¿Quitar la asignación de ${unassignCount} ${unassignCount === 1 ? "registro" : "registros"}?`,
+          description:
+            unassignOwners > 0
+              ? `Salen de la cartera de ${unassignOwners} ${unassignOwners === 1 ? "ejecutivo" : "ejecutivos"} y quedan sin asignar hasta que los repartas de nuevo. Sus gestiones anteriores no se borran.`
+              : "Quedan sin asignar hasta que los repartas de nuevo. Sus gestiones anteriores no se borran.",
+          confirmLabel: `Quitar ${unassignCount} ${unassignCount === 1 ? "asignación" : "asignaciones"}`,
+          tone: "danger",
+        }}
+        onCancel={() => setUnassigning(null)}
+        onConfirm={() => {
+          const selected = unassigning ?? [];
+          setUnassigning(null);
+          startTransition(async () => {
+            const result = await bulkAssignLeads(selected.map((row) => row.id), null);
+            report(result.ok, result.skipped, result.error, "Registros liberados");
+          });
+        }}
       />
 
       <SlideOver

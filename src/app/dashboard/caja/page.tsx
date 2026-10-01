@@ -5,7 +5,7 @@ import { CalendarCheck, Copy, HandCoins, Link2, MessageCircle, Receipt, Wallet }
 
 import { enviarMensaje } from "@/app/actions/mensajes";
 import { cobrarEnLinea, registrarPago } from "@/app/actions/pagos";
-import { Badge, Callout, EmptyState, Input, MetricCard, NavTabs, PageHeader, SectionCard, Select, SubmitButton, buttonClasses } from "@/components/ui";
+import { ActionForm, ActionSubmit, Badge, Callout, EmptyState, Input, MetricCard, NavTabs, PageHeader, SectionCard, Select, buttonClasses } from "@/components/ui";
 import { ZONA_CLINICA, fechaEnChile } from "@/lib/citas";
 import { PACIENTES_POR_EDICION, VENTAS_POR_EDICION, clinicaDe } from "@/lib/ediciones";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
@@ -117,16 +117,16 @@ export default async function CajaPage({ searchParams }: { searchParams: Promise
           <div className="flex flex-wrap items-center gap-2">
             <code className="rounded bg-surface-muted px-2 py-1 text-xs">{urlEnlace}</code>
             {variablesEnlace && pagoCompartir.estado === "pendiente" && (
-              <form action={enviarMensaje}>
+              <ActionForm action={enviarMensaje} success="Enlace enviado por WhatsApp">
                 <input type="hidden" name="cuenta_id" value={pagoCompartir.cuenta_id} />
                 <input type="hidden" name="plantilla" value="enlace_pago" />
                 <input type="hidden" name="regla" value="enlace_pago" />
                 <input type="hidden" name="origen_ref" value={pagoCompartir.id} />
                 <input type="hidden" name="variables" value={JSON.stringify(variablesEnlace)} />
-                <SubmitButton size="sm" pendingLabel="Enviando…">
+                <ActionSubmit size="sm" pendingLabel="Enviando…">
                   <MessageCircle size={14} aria-hidden="true" /> Enviar por WhatsApp desde Atlas
-                </SubmitButton>
-              </form>
+                </ActionSubmit>
+              </ActionForm>
             )}
             <Link href={urlEnlace} target="_blank" className={buttonClasses({ variant: "secondary", size: "sm" })}>
               <Copy size={14} aria-hidden="true" /> Abrir
@@ -204,7 +204,7 @@ export default async function CajaPage({ searchParams }: { searchParams: Promise
                     <td className="px-4 py-3 text-right tabular-nums text-foreground">{pesos.format(cuenta.total)}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-2">
-                        <form action={registrarPago} className="flex flex-wrap items-center gap-1.5">
+                        <ActionForm action={registrarPago} success={`Pago de ${cuenta.nombre} registrado`} className="flex flex-wrap items-center gap-1.5">
                           <input type="hidden" name="cuenta_id" value={cuentaId} />
                           <Input name="monto" inputMode="numeric" defaultValue={Math.round(cuenta.total)} aria-label="Monto" className="w-28" />
                           <Select name="medio" defaultValue="debito" aria-label="Medio de pago" className="w-36">
@@ -215,18 +215,27 @@ export default async function CajaPage({ searchParams }: { searchParams: Promise
                             ))}
                           </Select>
                           <Input name="referencia" placeholder="Voucher / comprobante" aria-label="Referencia" className="w-40" />
-                          <SubmitButton size="sm" pendingLabel="Cobrando…">Cobrar</SubmitButton>
-                        </form>
-                        <form action={cobrarEnLinea} className="flex flex-wrap items-center gap-1.5">
-                          <input type="hidden" name="cuenta_id" value={cuentaId} />
-                          <input type="hidden" name="monto" value={Math.round(cuenta.total)} />
-                          <button type="submit" name="destino" value="enlace" className={buttonClasses({ variant: "secondary", size: "sm" })}>
-                            <MessageCircle size={14} aria-hidden="true" /> Enlace de pago
-                          </button>
-                          <button type="submit" name="destino" value="pagar" className={buttonClasses({ variant: "ghost", size: "sm" })}>
-                            Pagar acá con Webpay
-                          </button>
-                        </form>
+                          <ActionSubmit size="sm" variant="secondary" pendingLabel="Cobrando…">Cobrar</ActionSubmit>
+                        </ActionForm>
+                        {/* Un formulario por destino: ActionForm no incluye en el FormData el botón que lo envió. */}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <ActionForm action={cobrarEnLinea} success="Enlace de pago creado">
+                            <input type="hidden" name="cuenta_id" value={cuentaId} />
+                            <input type="hidden" name="monto" value={Math.round(cuenta.total)} />
+                            <input type="hidden" name="destino" value="enlace" />
+                            <ActionSubmit size="sm" variant="secondary" pendingLabel="Creando…">
+                              <MessageCircle size={14} aria-hidden="true" /> Enlace de pago
+                            </ActionSubmit>
+                          </ActionForm>
+                          <ActionForm action={cobrarEnLinea} success={`Abriendo ${pasarela.etiqueta}`}>
+                            <input type="hidden" name="cuenta_id" value={cuentaId} />
+                            <input type="hidden" name="monto" value={Math.round(cuenta.total)} />
+                            <input type="hidden" name="destino" value="pagar" />
+                            <ActionSubmit size="sm" variant="ghost" pendingLabel="Abriendo…">
+                              Pagar acá con {pasarela.etiqueta}
+                            </ActionSubmit>
+                          </ActionForm>
+                        </div>
                       </div>
                     </td>
                   </tr>

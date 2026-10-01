@@ -59,7 +59,8 @@ export default async function ValidacionVentasPage({ searchParams }: { searchPar
     ]);
     if (!filtered) found = pending;
   } catch (error) {
-    loadError = error instanceof Error ? error.message : "No se pudieron leer las ventas.";
+    console.error("[validacion-ventas] carga:", error);
+    loadError = "No se pudieron leer las ventas por validar. Vuelve a cargar la página; si sigue igual, avisa a un administrador.";
   }
 
   const rows = sortSales(found, orden);

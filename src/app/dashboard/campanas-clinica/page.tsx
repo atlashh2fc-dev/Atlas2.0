@@ -4,7 +4,7 @@ import { ListChecks, Megaphone, MousePointerClick } from "lucide-react";
 
 import { cancelarCampana, crearCampana, lanzarCampana } from "@/app/actions/campanas-clinica";
 import { CreatePanel } from "@/components/create-panel";
-import { Badge, Callout, EmptyState, Field, Input, PageHeader, SectionCard, Select, SubmitButton } from "@/components/ui";
+import { ActionForm, ActionSubmit, Badge, Callout, EmptyState, Field, Input, PageHeader, SectionCard, Select } from "@/components/ui";
 import { ETIQUETA_CANAL, ETIQUETA_ESTADO_CAMPANA, SEGMENTOS } from "@/lib/campanas-clinica";
 import { ZONA_CLINICA, fechaEnChile } from "@/lib/citas";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
@@ -68,6 +68,7 @@ export default async function CampanasClinicaPage({ searchParams }: { searchPara
     }
   }
 
+  const futura = Boolean(actual?.programada_para && new Date(actual.programada_para) > new Date());
   const resumen = (id: string) => {
     const propios = resultados.filter((fila) => fila.origen_ref === id);
     const cuenta = (...estados: string[]) => propios.filter((fila) => estados.includes(fila.estado)).length;
@@ -114,10 +115,18 @@ export default async function CampanasClinicaPage({ searchParams }: { searchPara
                 required
                 rows={5}
                 maxLength={2000}
-                placeholder={"Hola {{nombre}}, en {{clinica}} tenemos horas para el control de {{mascota}} esta semana. ¿Agendamos?"}
+                placeholder={
+                  esVet
+                    ? "Hola {{nombre}}, en {{clinica}} tenemos horas para el control de {{mascota}} esta semana. ¿Agendamos?"
+                    : edicion === "barber"
+                      ? "Hola {{nombre}}, en {{clinica}} tenemos horas libres esta semana. ¿Te reservamos una?"
+                      : "Hola {{nombre}}, en {{clinica}} tenemos horas para tu control esta semana. ¿Agendamos?"
+                }
                 className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
               />
-              <p className="text-xs text-muted-foreground">Puedes usar {"{{nombre}}"}, {"{{mascota}}"} y {"{{clinica}}"}.</p>
+              <p className="text-xs text-muted-foreground">
+                {esVet ? <>Puedes usar {"{{nombre}}"}, {"{{mascota}}"} y {"{{clinica}}"}.</> : <>Puedes usar {"{{nombre}}"} y {"{{clinica}}"}.</>}
+              </p>
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Fecha (vacío = al lanzar)">
@@ -179,20 +188,50 @@ export default async function CampanasClinicaPage({ searchParams }: { searchPara
                 {actual.asunto && actual.canal !== "whatsapp" && <p className="mb-1 font-medium text-foreground">{actual.asunto}</p>}
                 <p className="whitespace-pre-wrap text-foreground">{actual.texto}</p>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {(actual.estado === "borrador" || actual.estado === "programada") && !actual.lanzada_at && (
-                  <form action={lanzarCampana}>
+                  <ActionForm
+                    action={lanzarCampana}
+                    success={futura ? "Envío programado" : "Campaña lanzada: los mensajes quedaron en la cola"}
+                    confirm={{
+                      title: futura ? `¿Programar «${actual.nombre}»?` : `¿Lanzar «${actual.nombre}» ahora?`,
+                      description: (
+                        <>
+                          <p>
+                            {vistaPrevia
+                              ? `Le llega a ${vistaPrevia.total} ${vistaPrevia.total === 1 ? "ficha" : "fichas"} (${vistaPrevia.conCelular} con celular, ${vistaPrevia.conCorreo} con correo)`
+                              : "Le llega a todas las fichas del segmento"}
+                            {futura && actual.programada_para ? `, el ${cuando.format(new Date(actual.programada_para))}.` : ", desde ahora."}
+                          </p>
+                          <p className="mt-2">Lo que ya salió no se puede retirar.</p>
+                        </>
+                      ),
+                      confirmLabel: futura ? "Programar envío" : vistaPrevia ? `Enviar a ${vistaPrevia.total}` : "Lanzar ahora",
+                      tone: "primary",
+                    }}
+                  >
                     <input type="hidden" name="campana_id" value={actual.id} />
-                    <SubmitButton pendingLabel="Lanzando…">
-                      <Megaphone size={16} aria-hidden="true" /> {actual.programada_para && new Date(actual.programada_para) > new Date() ? "Programar envío" : "Lanzar ahora"}
-                    </SubmitButton>
-                  </form>
+                    <ActionSubmit pendingLabel="Lanzando…">
+                      <Megaphone size={16} aria-hidden="true" /> {futura ? "Programar envío" : "Lanzar ahora"}
+                    </ActionSubmit>
+                  </ActionForm>
                 )}
                 {(actual.estado === "borrador" || actual.estado === "programada") && (
-                  <form action={cancelarCampana}>
+                  // Lejos del primario: cancelar descarta la campaña.
+                  <ActionForm
+                    action={cancelarCampana}
+                    success="Campaña cancelada"
+                    className="ml-auto"
+                    confirm={{
+                      title: `¿Cancelar «${actual.nombre}»?`,
+                      description: "La campaña queda cancelada y no sale ningún mensaje. Para enviarla después hay que crearla de nuevo.",
+                      confirmLabel: "Cancelar campaña",
+                      tone: "danger",
+                    }}
+                  >
                     <input type="hidden" name="campana_id" value={actual.id} />
-                    <SubmitButton variant="ghost" pendingLabel="…">Cancelar</SubmitButton>
-                  </form>
+                    <ActionSubmit variant="ghost" pendingLabel="…">Cancelar campaña</ActionSubmit>
+                  </ActionForm>
                 )}
                 {actual.lanzada_at && (
                   <Link href="/dashboard/recordatorios" className="self-center text-sm text-primary hover:underline">

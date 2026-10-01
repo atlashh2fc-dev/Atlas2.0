@@ -120,7 +120,7 @@ export default async function GrabacionesPage({
       </Callout>
       {!mercuryConfigured && (
         <Callout tone="warning">
-          La pauta v1 de Secretaría Virtual ya está cargada. Falta configurar una clave nueva como <code>INCEPTION_API_KEY</code> para ejecutar la auditoría con Mercury 2.
+          La pauta de Secretaría Virtual ya está cargada, pero la evaluación automática del script todavía no está activada. Puedes escuchar y transcribir; para evaluar, pídele a soporte que la active.
         </Callout>
       )}
 

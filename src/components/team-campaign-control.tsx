@@ -9,7 +9,7 @@ import {
   setAgentCampaignPriorities,
   type AgentCampaignBoardRow,
 } from "@/app/actions/campaign-control";
-import { Badge, Button, Select, Table, TableEmpty, Tbody, Td, Th, Thead, Tr, useToast } from "@/components/ui";
+import { Badge, Button, Select, Table, TableEmpty, Tbody, Td, Th, Thead, Tr, actionErrorMessage, useToast } from "@/components/ui";
 
 const TIME_FORMAT = new Intl.DateTimeFormat("es-CL", {
   timeZone: "America/Santiago",
@@ -68,7 +68,7 @@ export function TeamCampaignControl({
         toast({ tone: "success", message });
         router.refresh();
       } catch (error) {
-        toast({ tone: "danger", message: error instanceof Error ? error.message : "No se pudo guardar." });
+        toast({ tone: "danger", message: actionErrorMessage(error) });
       }
     });
   }
@@ -119,7 +119,7 @@ export function TeamCampaignControl({
                 ) : (
                   <ol className="space-y-1">
                     {row.campaigns.map((campaign, index) => (
-                      <li key={campaign.campaign_id} className="flex items-center gap-2 text-xs">
+                      <li key={campaign.campaign_id} className="flex items-center gap-1 text-xs">
                         <span
                           className={`w-4 text-xs font-semibold tabular-nums ${index === 0 ? "text-primary" : "text-muted-foreground"}`}
                           aria-label={`Prioridad ${index + 1}`}
@@ -132,18 +132,18 @@ export function TeamCampaignControl({
                           aria-label={`Subir prioridad de ${campaign.name}`}
                           disabled={pending || index === 0}
                           onClick={() => move(row, index, -1)}
-                          className="rounded p-0.5 text-muted-foreground hover:bg-surface-muted disabled:opacity-30"
+                          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-surface-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-30"
                         >
-                          <ArrowUp size={13} />
+                          <ArrowUp size={16} aria-hidden="true" />
                         </button>
                         <button
                           type="button"
                           aria-label={`Bajar prioridad de ${campaign.name}`}
                           disabled={pending || index === row.campaigns.length - 1}
                           onClick={() => move(row, index, 1)}
-                          className="rounded p-0.5 text-muted-foreground hover:bg-surface-muted disabled:opacity-30"
+                          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-surface-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-30"
                         >
-                          <ArrowDown size={13} />
+                          <ArrowDown size={16} aria-hidden="true" />
                         </button>
                       </li>
                     ))}
@@ -173,6 +173,7 @@ export function TeamCampaignControl({
                     </Select>
                     <Button
                       size="sm"
+                      variant="secondary"
                       disabled={pending || !selected}
                       onClick={() =>
                         run(
@@ -186,7 +187,7 @@ export function TeamCampaignControl({
                     {row.locked && (
                       <Button
                         size="sm"
-                        variant="secondary"
+                        variant="ghost"
                         disabled={pending}
                         onClick={() =>
                           run(() => releaseAgentCampaign(row.profile_id), `${row.full_name} puede volver a elegir campaña`)

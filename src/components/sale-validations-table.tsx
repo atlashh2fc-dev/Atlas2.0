@@ -232,6 +232,7 @@ export function SaleValidationsTable({
           <span className="flex justify-end gap-1.5">
             <Button
               size="sm"
+              variant="secondary"
               onClick={() => openDecision({ rows: [row], decision: "aprobada" })}
               aria-label={`Aprobar venta de ${row.leadName ?? "registro"}`}
             >
@@ -240,7 +241,7 @@ export function SaleValidationsTable({
             </Button>
             <Button
               size="sm"
-              variant="secondary"
+              variant="ghost"
               onClick={() => openDecision({ rows: [row], decision: "rechazada" })}
               aria-label={`Rechazar venta de ${row.leadName ?? "registro"}`}
             >

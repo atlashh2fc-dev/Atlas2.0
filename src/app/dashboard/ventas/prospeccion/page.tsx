@@ -95,6 +95,7 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
       .gte("occurred_at", new Date(ahora.getTime() - 14 * 24 * 60 * 60 * 1000).toISOString())
       .limit(1000),
   ]);
+  if (error) console.error("[prospeccion] bandeja:", error.message);
   const respondieronPorWhatsapp = new Set((porWhatsappData ?? []).map((fila) => fila.lead_id as string));
 
   // Los marcados "no contactar" se ven en la lista (al final), pero no son trabajo pendiente.
@@ -142,7 +143,7 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
         ]}
       />
 
-      {error && <Callout tone="danger">No se pudo leer la bandeja: {error.message}</Callout>}
+      {error && <Callout tone="danger">No se pudo leer la bandeja de prospección. Vuelve a cargar la página; si sigue igual, avisa a soporte.</Callout>}
 
       {vistaActiva === "respuestas" ? (
         <RespuestasDelAgente config={config} borradores={borradores} />
