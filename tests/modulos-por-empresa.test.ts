@@ -17,7 +17,9 @@ const NAV = leer("src/lib/nav.config.ts");
 const LAYOUT = leer("src/app/dashboard/layout.tsx");
 const SESION = leer("src/lib/sesion.server.ts");
 const MIGRACION_SESION = leer("supabase/migrations/20260921204500_sesion_en_un_viaje.sql");
-const EMPRESAS = leer("src/app/dashboard/admin/empresas/page.tsx");
+const EMPRESAS = leer("src/app/plataforma/empresas/[id]/aplicaciones/page.tsx");
+const CONSOLA = leer("src/app/plataforma/layout.tsx");
+const PLATAFORMA = leer("src/lib/plataforma.server.ts");
 
 // Los productos que vende altiusignite.com tienen que existir en la suite.
 const PRODUCTOS_DEL_SITIO = ["Atlas Scoring", "Atlas Lead", "Atlas CRM", "Atlas ITSM", "Atlas Financiero", "Atlas Analytics"];
@@ -103,7 +105,12 @@ test("contratar una aplicación es del dueño de la plataforma", () => {
   assert.match(MIGRACION, /create table if not exists public\.organization_modules/);
   assert.match(MIGRACION, /using \(organization_id = any \(public\.current_org_ids\(\)\)\)/);
   assert.match(MIGRACION, /using \(public\.is_platform_owner\(\)\)/);
-  // La pantalla de empresas es la única que contrata, y solo para el dueño.
-  assert.match(EMPRESAS, /\{duenioDePlataforma && \(\s*<SectionCard[^>]*?\stitle="Aplicaciones de la suite"/);
+  // Contratar vive en la consola de plataforma, que solo deja entrar al dueño.
   assert.match(EMPRESAS, /cambiarAplicacionDeEmpresa/);
+  assert.match(CONSOLA, /export default async function PlataformaLayout/);
+  assert.match(CONSOLA, /await requirePlataforma\(\)/);
+  assert.match(PLATAFORMA, /rpc\("is_platform_owner"\)/);
+  assert.match(PLATAFORMA, /if \(esDuenio !== true\) redirect\("\/dashboard"\)/);
+  // Y ya no está en el menú del CRM de ninguna empresa.
+  assert.doesNotMatch(NAV, /href: "\/dashboard\/admin\/empresas"/);
 });

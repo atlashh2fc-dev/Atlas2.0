@@ -107,7 +107,7 @@ export async function updateSession(request: NextRequest) {
     url.pathname = "/login";
     // El enlace de un correo abre con la sesión vencida: tras entrar hay que
     // llegar a donde apuntaba, no al inicio.
-    url.search = path.startsWith("/dashboard") ? `?next=${encodeURIComponent(pedida)}` : "";
+    url.search = path.startsWith("/dashboard") || path.startsWith("/plataforma") ? `?next=${encodeURIComponent(pedida)}` : "";
     const redirectResponse = NextResponse.redirect(url);
     for (const cookie of supabaseResponse.cookies.getAll()) {
       redirectResponse.cookies.set(cookie);

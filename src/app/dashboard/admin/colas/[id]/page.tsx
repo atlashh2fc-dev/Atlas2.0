@@ -15,6 +15,7 @@ import {
   Thead,
   Tr,
   buttonClasses,
+  type BadgeTone,
 } from "@/components/ui";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -50,18 +51,15 @@ const CHANNEL_LABELS: Record<string, string> = {
   instagram: "Instagram",
 };
 
-/** Color del canal, igual que en el menú: voz en marca, WhatsApp verde, texto en turquesa. */
-const CHANNEL_TONES: Record<string, string> = {
-  voice: "primary",
-  whatsapp: "green",
-  email: "teal",
-  chat: "teal",
-  instagram: "rose",
+/** Tono del canal: voz en azul, WhatsApp en verde; el resto sin punto. */
+const CHANNEL_TONES: Record<string, BadgeTone> = {
+  voice: "info",
+  whatsapp: "success",
 };
 
 /** Baldosa de regla: como las cifras de Operación, con el estado en el borde izquierdo. */
 const RULE_TILE = "rounded-lg border border-border border-l-2 bg-background px-3 py-2.5";
-const RULE_LABEL = "text-[11px] font-semibold uppercase tracking-wider text-muted-foreground";
+const RULE_LABEL = "text-xs font-medium text-muted-foreground";
 
 export default async function ContactCenterQueuePage({
   params,
@@ -239,13 +237,10 @@ export default async function ContactCenterQueuePage({
                   return (
                     <Tr key={source.id}>
                       <Td>
-                        <span
-                          className="icon-chip rounded-full px-2 py-0.5 text-xs font-medium"
-                          data-tone={CHANNEL_TONES[source.channel_type] ?? "slate"}
-                        >
+                        <Badge tone={CHANNEL_TONES[source.channel_type] ?? "neutral"}>
                           {CHANNEL_LABELS[source.channel_type] ??
                             source.channel_type}
-                        </span>
+                        </Badge>
                       </Td>
                       <Td>
                         {source.campaign_id ? (

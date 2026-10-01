@@ -178,9 +178,7 @@ export function Odontograma({
     <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-surface-muted/40 px-4 py-3">
         <div className="flex min-w-0 items-start gap-3">
-          <span className="icon-chip mt-0.5 size-8 rounded-lg" data-tone="blue" aria-hidden="true">
-            <Smile size={16} />
-          </span>
+          <Smile size={16} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />
           <div className="min-w-0">
             <h2 className="text-sm font-semibold text-foreground">Odontograma</h2>
             <p className="text-xs text-muted-foreground">
@@ -277,7 +275,7 @@ export function Odontograma({
               { label: "Ausentes", valor: resumen.ausentes, borde: "border-l-border-strong", cifra: "text-foreground" },
             ].map((item) => (
               <div key={item.label} className={`rounded-lg border border-border border-l-2 bg-background px-3 py-2 ${item.borde}`}>
-                <dt className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{item.label}</dt>
+                <dt className="text-xs font-medium text-muted-foreground">{item.label}</dt>
                 <dd className={`mt-0.5 text-xl font-semibold tracking-tight tabular-nums ${item.valor > 0 ? item.cifra : "text-foreground"}`}>{item.valor}</dd>
               </div>
             ))}
@@ -356,11 +354,11 @@ export function Odontograma({
                 <div className="flex min-h-0 flex-1 flex-col">
                   <dl className="grid grid-cols-2 gap-2 border-b border-border p-3">
                     <div className="rounded-lg border border-border border-l-2 border-l-success bg-background px-3 py-2">
-                      <dt className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Cobrado</dt>
+                      <dt className="text-xs font-medium text-muted-foreground">Cobrado</dt>
                       <dd className="mt-0.5 text-base font-semibold tabular-nums text-foreground">{pesos.format(cobrado)}</dd>
                     </div>
                     <div className={`rounded-lg border border-border border-l-2 bg-background px-3 py-2 ${porCobrar > 0 ? "border-l-warning" : "border-l-success"}`}>
-                      <dt className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Por cobrar</dt>
+                      <dt className="text-xs font-medium text-muted-foreground">Por cobrar</dt>
                       <dd className={`mt-0.5 text-base font-semibold tabular-nums ${porCobrar > 0 ? "text-warning" : "text-foreground"}`}>{pesos.format(porCobrar)}</dd>
                     </div>
                   </dl>
@@ -450,7 +448,7 @@ export function Odontograma({
               </div>
 
               <div className="border-b border-border px-4 py-3">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Historia de la pieza</p>
+                <p className="mb-2 text-xs font-medium text-muted-foreground">Historia de la pieza</p>
                 {historia.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Sin registros: la pieza figura sana.</p>
                 ) : (
@@ -486,7 +484,7 @@ export function Odontograma({
 
               {atencionesDePieza.length > 0 && (
                 <div className="border-b border-border px-4 py-3">
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Atenciones en esta pieza</p>
+                  <p className="mb-2 text-xs font-medium text-muted-foreground">Atenciones en esta pieza</p>
                   <ul className="space-y-1.5">
                     {atencionesDePieza.map((atencion) => (
                       <li key={atencion.id} className="flex items-center justify-between gap-2 text-sm">
@@ -585,7 +583,7 @@ export function Odontograma({
                 onSuccess={() => setSuperficiesNuevas(new Set())}
                 className="space-y-3 px-4 py-4"
               >
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Registrar en la pieza {pieza.numero}</p>
+                <p className="text-xs font-medium text-muted-foreground">Registrar en la pieza {pieza.numero}</p>
                 <input type="hidden" name="cuenta_id" value={cuentaId} />
                 <input type="hidden" name="pieza" value={pieza.numero} />
                 <input type="hidden" name="estado" value={estadoNuevo} />
@@ -599,8 +597,8 @@ export function Odontograma({
                       key={estado}
                       type="button"
                       onClick={() => setEstadoNuevo(estado)}
-                      className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors ${
-                        estadoNuevo === estado ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground hover:text-foreground"
+                      className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium transition-colors ${
+                        estadoNuevo === estado ? "bg-surface text-foreground shadow-sm ring-1 ring-border" : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"
                       }`}
                     >
                       <span className="size-2 rounded-full" style={{ background: INFO_ESTADO[estado].color }} />

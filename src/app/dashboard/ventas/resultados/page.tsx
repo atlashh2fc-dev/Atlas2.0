@@ -108,16 +108,16 @@ export default async function ResultadosPage() {
       <div className="grid gap-4 xl:grid-cols-2">
         <SectionCard title="Por etapa" description="Cuántos negocios llegaron a cada etapa y cuántos están hoy en ella." icon={Layers} tone="violet">
           <table className="w-full text-sm">
-            <thead><tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground"><th className="px-4 py-2 font-medium">Etapa</th><th className="px-3 py-2 font-medium text-right">Llegaron</th><th className="px-3 py-2 font-medium text-right">Hoy</th><th className="px-4 py-2 font-medium text-right">Monto hoy</th></tr></thead>
+            <thead><tr className="border-b border-border text-left text-xs text-muted-foreground"><th className="h-10 px-4 font-medium">Etapa</th><th className="h-10 px-4 font-medium text-right">Llegaron</th><th className="h-10 px-4 font-medium text-right">Hoy</th><th className="h-10 px-4 font-medium text-right">Monto hoy</th></tr></thead>
             <tbody className="divide-y divide-border">
               {etapas.map((etapa) => {
                 const hoy = abiertos.filter((negocio) => negocio.stage_id === etapa.id);
                 return (
                   <tr key={etapa.id}>
-                    <td className="px-4 py-2 text-foreground">{etapa.name}{etapa.probability !== null && !etapa.is_won && !etapa.is_lost ? <span className="text-xs text-muted-foreground"> · {etapa.probability}%</span> : null}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{alcanzaron.get(etapa.id)?.size ?? 0}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{etapa.is_won ? ganados.length : etapa.is_lost ? cerrados.length - ganados.length : hoy.length}</td>
-                    <td className="px-4 py-2 text-right tabular-nums">{pesos.format(hoy.reduce((total, negocio) => total + monto(negocio), 0))}</td>
+                    <td className="px-4 py-3 text-foreground">{etapa.name}{etapa.probability !== null && !etapa.is_won && !etapa.is_lost ? <span className="text-xs text-muted-foreground"> · {etapa.probability}%</span> : null}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{alcanzaron.get(etapa.id)?.size ?? 0}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{etapa.is_won ? ganados.length : etapa.is_lost ? cerrados.length - ganados.length : hoy.length}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{pesos.format(hoy.reduce((total, negocio) => total + monto(negocio), 0))}</td>
                   </tr>
                 );
               })}
@@ -127,10 +127,10 @@ export default async function ResultadosPage() {
         <SectionCard title="Por origen" description="De dónde llegan los negocios y cuáles se cierran." icon={Compass} tone="violet">
           {porOrigen.length === 0 ? <EmptyState icon={Compass} title="Sin datos" description="Aparece cuando haya negocios." /> : (
             <table className="w-full text-sm">
-              <thead><tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground"><th className="px-4 py-2 font-medium">Origen</th><th className="px-3 py-2 font-medium text-right">Total</th><th className="px-3 py-2 font-medium text-right">Abiertos</th><th className="px-3 py-2 font-medium text-right">Ganados</th><th className="px-3 py-2 font-medium text-right">Tasa</th><th className="px-4 py-2 font-medium text-right">Monto ganado</th></tr></thead>
+              <thead><tr className="border-b border-border text-left text-xs text-muted-foreground"><th className="h-10 px-4 font-medium">Origen</th><th className="h-10 px-4 font-medium text-right">Total</th><th className="h-10 px-4 font-medium text-right">Abiertos</th><th className="h-10 px-4 font-medium text-right">Ganados</th><th className="h-10 px-4 font-medium text-right">Tasa</th><th className="h-10 px-4 font-medium text-right">Monto ganado</th></tr></thead>
               <tbody className="divide-y divide-border">
                 {porOrigen.map((fila) => (
-                  <tr key={fila.origen}><td className="px-4 py-2 text-foreground">{ORIGEN[fila.origen] ?? fila.origen}</td><td className="px-3 py-2 text-right tabular-nums">{fila.total}</td><td className="px-3 py-2 text-right tabular-nums">{fila.abiertos}</td><td className="px-3 py-2 text-right tabular-nums">{fila.ganados}</td><td className="px-3 py-2 text-right tabular-nums">{fila.tasa === null ? "—" : `${fila.tasa}%`}</td><td className="px-4 py-2 text-right tabular-nums">{pesos.format(fila.monto)}</td></tr>
+                  <tr key={fila.origen}><td className="px-4 py-3 text-foreground">{ORIGEN[fila.origen] ?? fila.origen}</td><td className="px-4 py-3 text-right tabular-nums">{fila.total}</td><td className="px-4 py-3 text-right tabular-nums">{fila.abiertos}</td><td className="px-4 py-3 text-right tabular-nums">{fila.ganados}</td><td className="px-4 py-3 text-right tabular-nums">{fila.tasa === null ? "—" : `${fila.tasa}%`}</td><td className="px-4 py-3 text-right tabular-nums">{pesos.format(fila.monto)}</td></tr>
                 ))}
               </tbody>
             </table>
@@ -138,10 +138,10 @@ export default async function ResultadosPage() {
         </SectionCard>
         <SectionCard title="Por responsable" description="Carga abierta y cierres de cada persona." icon={Users} tone="blue">
           <table className="w-full text-sm">
-            <thead><tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground"><th className="px-4 py-2 font-medium">Responsable</th><th className="px-3 py-2 font-medium text-right">Abiertos</th><th className="px-3 py-2 font-medium text-right">Ganados</th><th className="px-4 py-2 font-medium text-right">Monto ganado</th></tr></thead>
+            <thead><tr className="border-b border-border text-left text-xs text-muted-foreground"><th className="h-10 px-4 font-medium">Responsable</th><th className="h-10 px-4 font-medium text-right">Abiertos</th><th className="h-10 px-4 font-medium text-right">Ganados</th><th className="h-10 px-4 font-medium text-right">Monto ganado</th></tr></thead>
             <tbody className="divide-y divide-border">
               {porResponsable.map((fila) => (
-                <tr key={fila.nombre}><td className="px-4 py-2 text-foreground">{fila.nombre}</td><td className="px-3 py-2 text-right tabular-nums">{fila.abiertos}</td><td className="px-3 py-2 text-right tabular-nums">{fila.ganados}</td><td className="px-4 py-2 text-right tabular-nums">{pesos.format(fila.monto)}</td></tr>
+                <tr key={fila.nombre}><td className="px-4 py-3 text-foreground">{fila.nombre}</td><td className="px-4 py-3 text-right tabular-nums">{fila.abiertos}</td><td className="px-4 py-3 text-right tabular-nums">{fila.ganados}</td><td className="px-4 py-3 text-right tabular-nums">{pesos.format(fila.monto)}</td></tr>
               ))}
             </tbody>
           </table>

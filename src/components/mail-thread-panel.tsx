@@ -135,7 +135,7 @@ export function MailThreadPanel({
 
         {commands.length > 0 && (
           <div className="space-y-2 border-t border-border pt-4">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Respuestas solicitadas desde CRM</p>
+            <p className="text-xs font-medium text-muted-foreground">Respuestas solicitadas desde CRM</p>
             {commands.map((command) => (
               <div key={command.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
                 <span className="truncate text-foreground">{command.subject}</span>

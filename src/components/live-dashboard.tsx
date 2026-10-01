@@ -68,7 +68,7 @@ export function LiveDashboard({
   return (
     <div className="space-y-6">
       <div
-        className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-medium ${live ? "border-success/30 bg-success-bg text-success" : "border-border bg-surface text-muted-foreground"}`}
+        className={`inline-flex items-center gap-2 text-xs font-medium ${live ? "text-success" : "text-muted-foreground"}`}
       >
         <span className="relative inline-flex size-2">
           {live && <span className="absolute inset-0 animate-ping rounded-full bg-success opacity-60" />}
@@ -96,7 +96,7 @@ export function LiveDashboard({
         tone="amber"
         actions={
           agenda.length > 0 && (
-            <span className="rounded-full border border-warning/30 bg-warning-bg px-2 py-0.5 text-xs font-semibold tabular-nums text-warning">
+            <span className="text-xs font-semibold tabular-nums text-primary">
               {agenda.length}
             </span>
           )

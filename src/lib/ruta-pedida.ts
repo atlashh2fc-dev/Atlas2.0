@@ -4,12 +4,17 @@
  */
 export const CABECERA_RUTA = "x-atlas-ruta";
 
+/** Áreas con sesión: el CRM de cada empresa y la consola de plataforma. */
+const AREAS_PROPIAS = ["/dashboard", "/plataforma"];
+
 /**
  * Solo rutas propias del panel: un `?next=https://otro-sitio` convertiría el
  * login en un redirector abierto.
  */
 export function rutaSegura(ruta: string | null | undefined, porDefecto = "/dashboard"): string {
-  if (!ruta || !ruta.startsWith("/dashboard") || ruta.startsWith("//") || ruta.includes("\\")) return porDefecto;
+  if (!ruta || !AREAS_PROPIAS.some((area) => ruta.startsWith(area)) || ruta.startsWith("//") || ruta.includes("\\")) {
+    return porDefecto;
+  }
   return ruta;
 }
 

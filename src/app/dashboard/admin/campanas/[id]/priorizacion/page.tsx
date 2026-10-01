@@ -128,9 +128,7 @@ export default async function CampaignPriorityPage({ params }: { params: Promise
               {(rules ?? []).map((rule) => (
                 <Tr key={rule.id}>
                   <Td strong>
-                    <span className="icon-chip size-7 rounded-md text-xs font-semibold tabular-nums" data-tone="rose">
-                      {rule.position}
-                    </span>
+                    <span className="tabular-nums">{rule.position}</span>
                   </Td>
                   <Td strong>{rule.name}</Td>
                   <Td muted>
@@ -157,9 +155,7 @@ export default async function CampaignPriorityPage({ params }: { params: Promise
               ))}
               <Tr>
                 <Td strong>
-                  <span className="icon-chip size-7 rounded-md text-xs font-semibold" data-tone="slate">
-                    —
-                  </span>
+                  <span className="text-muted-foreground">—</span>
                 </Td>
                 <Td strong>Fallback</Td>
                 <Td muted>Todo lo demás · {config?.fallback_order === "newest_first" ? "más reciente primero" : "más antiguo primero"}</Td>

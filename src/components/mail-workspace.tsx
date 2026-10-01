@@ -50,14 +50,12 @@ export function MailWorkspace({
               type="button"
               onClick={() => setActive(tab.id)}
               aria-pressed={selected}
-              className={`inline-flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm font-medium transition-colors ${selected ? "border-border-strong bg-surface-muted text-foreground shadow-sm" : "border-transparent text-muted-foreground hover:bg-surface-muted hover:text-foreground"}`}
+              className={`inline-flex h-8 items-center gap-2 rounded-lg px-2.5 text-[13px] font-medium transition-colors ${selected ? "bg-surface text-foreground shadow-sm ring-1 ring-border" : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"}`}
             >
-              <span className="icon-chip size-7 rounded-lg" data-tone={tab.tone} data-active={selected ? "true" : undefined} aria-hidden="true">
-                <Icon size={15} />
-              </span>
+              <Icon size={16} aria-hidden="true" />
               {tab.label}
-              {tab.id === "team" && attentionCount > 0 && <span className="rounded-full bg-danger-bg px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-danger">{attentionCount}</span>}
-              {tab.id === "inbox" && inboxCount > 0 && <span className="rounded-full bg-warning-bg px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-warning">{inboxCount}</span>}
+              {tab.id === "team" && attentionCount > 0 && <span className="text-xs font-semibold tabular-nums text-primary">{attentionCount}</span>}
+              {tab.id === "inbox" && inboxCount > 0 && <span className="text-xs font-semibold tabular-nums text-primary">{inboxCount}</span>}
             </button>
           );
         })}

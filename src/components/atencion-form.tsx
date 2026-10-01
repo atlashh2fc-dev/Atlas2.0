@@ -99,7 +99,7 @@ export function AtencionForm({
 
   return (
     <div className="space-y-3">
-      {titulo && <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{titulo}</p>}
+      {titulo && <p className="text-xs font-medium text-muted-foreground">{titulo}</p>}
       {sugeridos.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {sugeridos.slice(0, 6).map((procedimiento) => (
@@ -107,7 +107,7 @@ export function AtencionForm({
               key={procedimiento.id}
               type="button"
               onClick={() => abrir(procedimiento)}
-              className="rounded-full border border-border bg-surface px-3 py-1.5 text-left text-xs text-foreground transition-colors hover:border-primary hover:bg-primary/5"
+              className="h-8 rounded-lg bg-surface px-2.5 text-left text-[13px] font-medium text-foreground ring-1 ring-border transition-colors hover:bg-surface-muted"
             >
               {procedimiento.name}
             </button>
@@ -282,9 +282,7 @@ function Visita({
         {region && <input type="hidden" name="region" value={region} />}
 
         <header className="flex items-center gap-3 border-b border-border px-5 py-3.5">
-          <span className="icon-chip size-9 rounded-lg" data-tone="blue" aria-hidden="true">
-            <Stethoscope size={18} />
-          </span>
+          <Stethoscope size={16} className="flex-shrink-0 text-muted-foreground" aria-hidden="true" />
           <div className="min-w-0">
             <h2 className="truncate text-base font-semibold text-foreground">{titulo}</h2>
             <p className="text-xs text-muted-foreground">Agrega todo lo que se hizo en esta visita. Los materiales parten de la receta de cada procedimiento.</p>
@@ -337,10 +335,10 @@ function Visita({
                       setCategoria(valor);
                       setBusqueda("");
                     }}
-                    className={`flex-shrink-0 rounded-full border px-3 py-1 text-xs transition-colors ${
+                    className={`h-8 flex-shrink-0 rounded-lg px-2.5 text-[13px] font-medium transition-colors ${
                       categoria === valor && !termino
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-border bg-surface text-muted-foreground hover:text-foreground"
+                        ? "bg-surface text-foreground shadow-sm ring-1 ring-border"
+                        : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"
                     }`}
                   >
                     {etiqueta}
@@ -392,7 +390,7 @@ function Visita({
           {/* Esta visita */}
           <section className="flex min-w-0 flex-col bg-surface-muted/30 lg:min-h-0">
             <div className="px-4 py-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <p className="mb-2 text-xs font-medium text-muted-foreground">
                 Esta visita {lineas.length > 0 && `· ${lineas.length} ${lineas.length === 1 ? "procedimiento" : "procedimientos"}`}
               </p>
               {lineas.length === 0 ? (

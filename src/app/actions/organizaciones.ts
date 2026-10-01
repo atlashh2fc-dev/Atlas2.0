@@ -23,7 +23,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const SLUG = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
 
 function revalidarEmpresas() {
-  revalidatePath("/dashboard/admin/empresas");
+  revalidatePath("/plataforma", "layout");
   revalidatePath("/dashboard/admin/usuarios");
   revalidatePath("/dashboard", "layout");
 }

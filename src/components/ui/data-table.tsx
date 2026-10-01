@@ -224,14 +224,14 @@ export function DataTable<T>({
       <div className="flex flex-wrap items-center gap-2">
         {toolbar}
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-1">
           {storageKey && (
             <div className="relative">
               <button
                 type="button"
                 onClick={() => setShowColumns((current) => !current)}
                 aria-expanded={showColumns}
-                className={buttonClasses({ variant: "secondary", size: "sm" })}
+                className={buttonClasses({ variant: "ghost", size: "sm" })}
               >
                 <Columns3 size={14} aria-hidden="true" />
                 Columnas
@@ -272,7 +272,7 @@ export function DataTable<T>({
           <button
             type="button"
             onClick={() => setCompact((current) => !current)}
-            className={buttonClasses({ variant: "secondary", size: "sm" })}
+            className={buttonClasses({ variant: "ghost", size: "sm" })}
             title={compact ? "Ver en densidad cómoda" : "Ver en densidad compacta"}
           >
             {compact ? "Cómoda" : "Compacta"}
@@ -281,7 +281,7 @@ export function DataTable<T>({
           <button
             type="button"
             onClick={exportRows}
-            className={buttonClasses({ variant: "secondary", size: "sm" })}
+            className={buttonClasses({ variant: "ghost", size: "sm" })}
             title={
               selectedRows.length > 0
                 ? "Exportar la selección"
@@ -297,7 +297,7 @@ export function DataTable<T>({
       </div>
 
       {selectable && selected.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-primary/[0.06] px-3 py-2">
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 shadow-sm">
           <span className="text-sm font-medium text-foreground">
             {selected.length} {selected.length === 1 ? "seleccionado" : "seleccionados"}
           </span>
@@ -325,12 +325,12 @@ export function DataTable<T>({
 
       <div
         className={cn(
-          "rounded-xl border border-border bg-surface",
+          "rounded-xl border border-border bg-surface shadow-sm",
           fitToWidth ? "overflow-x-clip overflow-y-visible" : "overflow-x-auto"
         )}
       >
         {loading && (
-          <div className="border-b border-border bg-surface-muted/40 px-4 py-2.5">
+          <div className="border-b border-border px-4 py-2.5">
             <LoadingState label={loadingLabel} compact />
           </div>
         )}
@@ -338,18 +338,13 @@ export function DataTable<T>({
           className={cn(
             "w-full border-collapse text-sm tabular-nums",
             fitToWidth && "table-fixed text-[13px] leading-snug",
-            compact && "text-xs [&_td]:py-1 [&_th]:py-1.5"
+            compact && "text-xs [&_td]:py-1.5 [&_th]:h-8"
           )}
         >
           <thead className="sticky top-0 z-10">
-            <tr
-              className={cn(
-                "border-b border-border bg-surface-muted text-left uppercase tracking-wide text-muted-foreground",
-                fitToWidth ? "text-xs" : "text-[11px]"
-              )}
-            >
+            <tr className="border-b border-border bg-surface text-left text-xs text-muted-foreground">
               {selectable && (
-                <th className="w-9 px-4 py-2.5">
+                <th className="h-10 w-9 px-4">
                   <input
                     type="checkbox"
                     aria-label="Seleccionar todas las filas de la página"
@@ -378,7 +373,7 @@ export function DataTable<T>({
                     key={column.id}
                     aria-sort={active ? (sort!.dir === "asc" ? "ascending" : "descending") : undefined}
                     className={cn(
-                      fitToWidth ? "min-w-0 break-words px-2 py-2 font-semibold" : "px-4 py-2.5 font-semibold",
+                      fitToWidth ? "min-w-0 break-words px-2 py-2 font-medium" : "h-10 px-4 font-medium",
                       column.align === "right" && "text-right",
                       column.className
                     )}
@@ -394,10 +389,10 @@ export function DataTable<T>({
                         <button
                           type="button"
                           onClick={() => toggleSort(column)}
-                          className="inline-flex items-center gap-1 uppercase tracking-wide transition-colors hover:text-foreground"
+                          className="inline-flex items-center gap-1 transition-colors hover:text-foreground"
                         >
                           {column.header ?? definition?.label}
-                          <Icon size={12} className={active ? "text-foreground" : "text-muted-foreground/60"} />
+                          <Icon size={12} className={active ? "text-foreground" : "text-muted-foreground/40"} />
                         </button>
                       ) : (
                         <>{column.header ?? definition?.label}</>
@@ -416,11 +411,11 @@ export function DataTable<T>({
             </tr>
           </thead>
 
-          <tbody className="divide-y divide-border">
+          <tbody className="divide-y divide-border/70">
             {loading &&
               Array.from({ length: 6 }).map((_, index) => (
                 <tr key={`skeleton-${index}`}>
-                  <td colSpan={columnSpan} className="px-4 py-2.5">
+                  <td colSpan={columnSpan} className="px-4 py-3">
                     <span className="block h-4 w-full animate-pulse rounded bg-surface-muted" />
                   </td>
                 </tr>
@@ -442,10 +437,8 @@ export function DataTable<T>({
 
             {!loading && !error && pageRows.length === 0 && (
               <tr>
-                <td colSpan={columnSpan} className="px-5 py-10 text-center">
-                  <span className="icon-chip mx-auto mb-3 size-12 rounded-2xl" data-tone="slate" aria-hidden="true">
-                    <Inbox size={22} />
-                  </span>
+                <td colSpan={columnSpan} className="px-5 py-14 text-center">
+                  <Inbox size={22} className="mx-auto mb-3 text-muted-foreground/60" aria-hidden="true" />
                   <p className="text-sm font-medium text-foreground">{emptyTitle}</p>
                   {emptyDescription && <p className="mt-1 text-sm text-muted-foreground">{emptyDescription}</p>}
                   {emptyAction && <div className="mt-3 flex justify-center">{emptyAction}</div>}
@@ -464,13 +457,13 @@ export function DataTable<T>({
                     key={id}
                     onClick={href ? () => router.push(href) : undefined}
                     className={cn(
-                      "transition-colors hover:bg-surface-muted/50",
+                      "transition-colors hover:bg-surface-muted/60",
                       href && "cursor-pointer",
                       selected.includes(id) && "bg-primary/[0.05]"
                     )}
                   >
                     {selectable && (
-                      <td className="w-9 px-4 py-2.5" onClick={(event) => event.stopPropagation()}>
+                      <td className="w-9 px-4 py-3" onClick={(event) => event.stopPropagation()}>
                         <input
                           type="checkbox"
                           aria-label="Seleccionar fila"
@@ -491,7 +484,7 @@ export function DataTable<T>({
                         <td
                           key={column.id}
                           className={cn(
-                            fitToWidth ? "min-w-0 break-words px-2 py-2 align-middle" : "px-4 py-2.5",
+                            fitToWidth ? "min-w-0 break-words px-2 py-2 align-middle" : "px-4 py-3",
                             column.align === "right" && "text-right",
                             column.className
                           )}

@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { RefreshCw } from "lucide-react";
-import { buttonClasses } from "@/components/ui";
+import { Badge, buttonClasses } from "@/components/ui";
 
 /** No realtime subscription: admin never receives conversation row payloads. */
 export function OperationsRefresh({ observedAt }: { observedAt: string }) {
@@ -32,20 +32,16 @@ export function OperationsRefresh({ observedAt }: { observedAt: string }) {
 
   return (
     <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-      <span
-        aria-live="polite"
-        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-medium ${
-          stale ? "border-warning/30 bg-warning-bg text-warning" : "border-success/30 bg-success-bg text-success"
-        }`}
-      >
-        <span className={`size-1.5 rounded-full ${stale ? "bg-warning" : "bg-success"}`} aria-hidden="true" />
-        {stale ? "Datos de hace más de 1 minuto" : "Instantánea consultada"} ·{" "}
-        {new Date(observedAt).toLocaleTimeString("es-CL", {
-          timeZone: "America/Santiago",
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-        })}
+      <span aria-live="polite">
+        <Badge tone={stale ? "warning" : "success"}>
+          {stale ? "Datos de hace más de 1 minuto" : "Instantánea consultada"} ·{" "}
+          {new Date(observedAt).toLocaleTimeString("es-CL", {
+            timeZone: "America/Santiago",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+          })}
+        </Badge>
       </span>
       <label className="inline-flex cursor-pointer items-center gap-2">
         <input

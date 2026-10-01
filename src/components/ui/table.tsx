@@ -7,11 +7,14 @@ export function Table({ className, children }: { className?: string; children: R
   return <table className={cn("w-full border-collapse text-sm tabular-nums", className)}>{children}</table>;
 }
 
-/** Cabecera de tabla: tintada, sticky y en versalitas (estilo consola de datos). */
+/**
+ * Cabecera de tabla: sticky, en gris y en caja normal. Sin franja tintada ni
+ * versalitas: eso es lo que hacía que cada lista pareciera una planilla.
+ */
 export function Thead({ children }: { children: ReactNode }) {
   return (
     <thead className="sticky top-0 z-10">
-      <tr className="border-b border-border bg-surface-muted text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+      <tr className="border-b border-border bg-surface text-left text-xs text-muted-foreground">
         {children}
       </tr>
     </thead>
@@ -28,18 +31,18 @@ export function Th({
   children?: ReactNode;
 }) {
   return (
-    <th className={cn("px-4 py-2.5 font-semibold", align === "right" && "text-right", className)}>
+    <th className={cn("h-10 px-4 font-medium", align === "right" && "text-right", className)}>
       {children}
     </th>
   );
 }
 
 export function Tbody({ children }: { children: ReactNode }) {
-  return <tbody className="divide-y divide-border">{children}</tbody>;
+  return <tbody className="divide-y divide-border/70">{children}</tbody>;
 }
 
 export function Tr({ className, children }: { className?: string; children: ReactNode }) {
-  return <tr className={cn("transition-colors hover:bg-surface-muted/50", className)}>{children}</tr>;
+  return <tr className={cn("transition-colors hover:bg-surface-muted/60", className)}>{children}</tr>;
 }
 
 export function Td({
@@ -61,7 +64,7 @@ export function Td({
     <td
       colSpan={colSpan}
       className={cn(
-        "px-4 py-2.5",
+        "px-4 py-3",
         align === "right" && "text-right",
         muted && "text-muted-foreground",
         strong && "font-medium text-foreground",
@@ -77,7 +80,7 @@ export function Td({
 export function TableEmpty({ colSpan, children }: { colSpan: number; children: ReactNode }) {
   return (
     <tr>
-      <td colSpan={colSpan} className="px-5 py-6 text-center text-muted-foreground">
+      <td colSpan={colSpan} className="px-5 py-10 text-center text-muted-foreground">
         {children}
       </td>
     </tr>

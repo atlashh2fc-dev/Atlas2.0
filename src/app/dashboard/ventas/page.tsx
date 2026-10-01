@@ -161,7 +161,7 @@ export default async function VentasPage() {
                     key={etapa.id}
                     className={`rounded-lg border border-border border-l-2 bg-background px-3 py-2.5 ${(casilla?.total ?? 0) > 0 ? "border-l-[var(--tone-rose)]" : "border-l-border-strong"}`}
                   >
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{etapa.name}</p>
+                    <p className="text-xs font-medium text-muted-foreground">{etapa.name}</p>
                     <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-foreground">
                       {casilla?.total ?? 0}
                     </p>

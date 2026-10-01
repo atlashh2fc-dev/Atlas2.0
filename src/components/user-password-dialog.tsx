@@ -44,11 +44,9 @@ export function UserPasswordDialog({
         className="w-[min(30rem,calc(100vw-2rem))] rounded-xl border border-border bg-surface-solid p-0 text-foreground shadow-2xl backdrop:bg-black/45"
       >
         <div className="flex items-start gap-3 border-b border-border px-5 py-4">
-          <span className="icon-chip mt-0.5 size-9 rounded-lg" data-tone="slate" aria-hidden="true">
-            <KeyRound size={17} />
-          </span>
+          <KeyRound size={16} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />
           <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Acceso del usuario</p>
+            <p className="text-xs font-medium text-muted-foreground">Acceso del usuario</p>
             <h2 className="mt-1 text-lg font-semibold">Cambiar contraseña</h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
               {user.fullName} · {user.email}

@@ -169,11 +169,11 @@ export function UsersTable({
         cell: (row) =>
           row.role === "agente" ? (
             <span className="block space-y-2">
-              <span className="flex max-w-56 flex-wrap gap-1">
+              <span className="flex max-w-56 flex-wrap gap-x-3 gap-y-1">
                 {row.campaign_ids.map((campaignId) => (
-                  <span key={campaignId} className="icon-chip rounded-md px-1.5 py-0.5 text-[11px] font-medium" data-tone="rose">
+                  <Badge key={campaignId} tone="info">
                     {campaignNameById.get(campaignId) ?? "Campaña"}
-                  </span>
+                  </Badge>
                 ))}
                 {row.campaign_ids.length === 0 && (
                   <span className="text-xs text-muted-foreground">Sin campañas</span>

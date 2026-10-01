@@ -183,7 +183,7 @@ export default async function WhatsAppIntegrationPage() {
       >
         <div className="space-y-4 p-4">
         <div className="rounded-lg border border-border bg-background p-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">URL de devolución de llamada</p>
+          <p className="text-xs font-medium text-muted-foreground">URL de devolución de llamada</p>
           <div className="mt-1 flex items-center gap-2">
             <code className="min-w-0 flex-1 truncate text-sm text-foreground">{webhookUrl}</code>
             <Copy size={14} className="text-muted-foreground" aria-hidden />
@@ -239,7 +239,7 @@ function StatusCard({
             <KindIcon size={16} />
           </span>
           <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+            <p className="text-xs font-medium text-muted-foreground">{label}</p>
             <p className="mt-1 text-lg font-semibold tracking-tight text-foreground">{value}</p>
             <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
           </div>

@@ -152,9 +152,7 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
       {prospectos.length > 0 && (
         <Link href="/dashboard/ventas/prospeccion" className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-2.5 text-sm shadow-sm transition-colors hover:border-border-strong hover:bg-surface-muted">
           <span className="inline-flex items-center gap-3 text-foreground">
-            <span className="icon-chip size-8 shrink-0 rounded-lg" data-tone="teal" aria-hidden="true">
-              <Inbox size={16} />
-            </span>
+            <Inbox size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
             {prospectos.length} {prospectos.length === 1 ? "persona espera" : "personas esperan"} que les escribas{calientes > 0 ? ` · ${calientes} muy interesadas` : ""}
           </span>
           <span className="inline-flex flex-shrink-0 items-center gap-1 text-primary">Ver a quién <ArrowRight size={13} aria-hidden="true" /></span>
@@ -206,13 +204,12 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
             const propios = abiertos.filter((negocio) => negocio.stage_id === etapa.id);
             return (
               <div key={etapa.id} className="relative w-64 flex-shrink-0 overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
-                <div aria-hidden="true" className="absolute inset-x-0 top-0 h-0.5 bg-[linear-gradient(90deg,var(--tone-green),transparent_85%)]" />
                 <div className="flex items-center justify-between border-b border-border bg-surface-muted/40 px-3 py-2">
                   <div>
                     <p className="text-sm font-medium text-foreground">{etapa.name}</p>
                     <p className="text-[11px] text-muted-foreground">{pesos.format(propios.reduce((total, negocio) => total + monto(negocio), 0))}{etapa.probability !== null ? ` · ${etapa.probability}%` : ""}</p>
                   </div>
-                  <span className="rounded-full border border-border-strong bg-surface-muted px-2 py-0.5 text-xs font-semibold tabular-nums text-foreground">{propios.length}</span>
+                  <span className="text-xs font-semibold tabular-nums text-muted-foreground">{propios.length}</span>
                 </div>
                 <div className="max-h-[65vh] space-y-2 overflow-y-auto p-2">
                   {propios.length === 0 ? <p className="px-1 py-2 text-xs text-muted-foreground">Nada en esta etapa.</p> : propios.map((negocio) => <Tarjeta key={negocio.id} negocio={negocio} />)}
@@ -224,10 +221,10 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
           <div className="w-64 flex-shrink-0 overflow-hidden rounded-xl border border-border bg-surface-muted/30 shadow-sm">
             <div className="flex items-center justify-between border-b border-border bg-surface-muted/40 px-3 py-2">
               <p className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
-                <span className="icon-chip size-6 rounded-md" data-tone="slate" aria-hidden="true"><CheckCircle2 size={13} /></span>
+                <CheckCircle2 size={16} className="text-muted-foreground" aria-hidden="true" />
                 Cerrados · 30 días
               </p>
-              <span className="rounded-full border border-border-strong bg-surface-muted px-2 py-0.5 text-xs font-semibold tabular-nums text-foreground">{cerradosRecientes.length}</span>
+              <span className="text-xs font-semibold tabular-nums text-muted-foreground">{cerradosRecientes.length}</span>
             </div>
             <div className="max-h-[65vh] space-y-2 overflow-y-auto p-2">
               {cerradosRecientes.length === 0 ? <p className="px-1 py-2 text-xs text-muted-foreground">Nada cerrado este mes.</p> : cerradosRecientes.map((negocio) => (

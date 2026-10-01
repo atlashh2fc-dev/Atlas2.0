@@ -56,7 +56,7 @@ function ResultColumn({ group, total }: { group: TipificationGroup; total: numbe
       style={{ borderLeftColor: palette.bar }}
     >
       <div className="flex items-baseline justify-between gap-2">
-        <span className={`text-[11px] font-semibold uppercase tracking-wider ${palette.text}`}>
+        <span className={`text-xs font-medium ${palette.text}`}>
           {palette.label}
         </span>
         <span className="text-[11px] tabular-nums text-muted-foreground">{fmtPct(share)}</span>

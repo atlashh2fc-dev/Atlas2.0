@@ -143,7 +143,7 @@ export function MailAgentControl({ rows }: { rows: MailAgentControlRow[] }) {
                   <span className="icon-chip size-9 rounded-full text-sm font-semibold" data-tone="blue" aria-hidden="true">{row.agent_name.slice(0, 1).toUpperCase()}</span>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center justify-between gap-2"><span className="truncate font-medium text-foreground">{row.agent_name}</span><ChevronRight size={16} className="text-muted-foreground transition-transform group-hover:translate-x-0.5" /></span>
-                    <span className="mt-1 block"><Badge tone={state.tone}><Icon size={12} className="mr-1" aria-hidden />{state.label}</Badge></span>
+                    <span className="mt-1 block"><Badge tone={state.tone} dot={false}><Icon size={12} aria-hidden />{state.label}</Badge></span>
                   </span>
                 </div>
                 <div className="mt-4 grid grid-cols-3 gap-2">
@@ -183,7 +183,7 @@ function Metric({ label, value, danger = false, good = false }: { label: string;
   return (
     <span className={`block rounded-lg border border-border border-l-2 bg-surface px-2 py-1.5 ${edge}`}>
       <span className={`block text-lg font-semibold tabular-nums tracking-tight ${danger ? "text-danger" : "text-foreground"}`}>{value.toLocaleString("es-CL")}</span>
-      <span className="block truncate text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className="block truncate text-xs font-medium text-muted-foreground">{label}</span>
     </span>
   );
 }
@@ -200,13 +200,13 @@ function AgentDetail({ row }: { row: MailAgentControlRow }) {
           const overdue = label === "Agendas vencidas" && value > 0;
           return (
             <div key={label} className={`rounded-lg border border-border border-l-2 bg-background px-3 py-2.5 ${overdue ? "border-l-danger" : "border-l-border-strong"}`}>
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+              <p className="text-xs font-medium text-muted-foreground">{label}</p>
               <p className={`mt-1 text-xl font-semibold tabular-nums tracking-tight ${overdue ? "text-danger" : "text-foreground"}`}>{value.toLocaleString("es-CL")}</p>
             </div>
           );
         })}
       </div>
-      <div className="rounded-xl border border-border bg-background p-4 text-sm shadow-sm"><p className="flex items-center gap-2 font-medium text-foreground"><span className="icon-chip size-7 rounded-lg" data-tone="amber" aria-hidden="true"><CalendarClock size={14} /></span>Próximo seguimiento</p><p className="mt-1 text-muted-foreground">Próxima agenda: {formatDate(row.next_agenda_at)}</p><p className="mt-1 text-muted-foreground">Última señal Mail: {formatDate(row.last_event_at)}</p><p className="mt-1 text-muted-foreground">Sin próxima acción: {row.no_next_action_leads.toLocaleString("es-CL")}</p></div>
+      <div className="rounded-xl border border-border bg-background p-4 text-sm shadow-sm"><p className="flex items-center gap-2 font-medium text-foreground"><CalendarClock size={16} className="text-muted-foreground" aria-hidden="true" />Próximo seguimiento</p><p className="mt-1 text-muted-foreground">Próxima agenda: {formatDate(row.next_agenda_at)}</p><p className="mt-1 text-muted-foreground">Última señal Mail: {formatDate(row.last_event_at)}</p><p className="mt-1 text-muted-foreground">Sin próxima acción: {row.no_next_action_leads.toLocaleString("es-CL")}</p></div>
     </div>
   );
 }

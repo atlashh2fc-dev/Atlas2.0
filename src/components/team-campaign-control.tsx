@@ -121,9 +121,7 @@ export function TeamCampaignControl({
                     {row.campaigns.map((campaign, index) => (
                       <li key={campaign.campaign_id} className="flex items-center gap-2 text-xs">
                         <span
-                          className="icon-chip size-5 rounded-full text-[10px] font-semibold tabular-nums"
-                          data-tone={index === 0 ? "rose" : "slate"}
-                          data-active={index === 0 ? "true" : undefined}
+                          className={`w-4 text-xs font-semibold tabular-nums ${index === 0 ? "text-primary" : "text-muted-foreground"}`}
                           aria-label={`Prioridad ${index + 1}`}
                         >
                           {index + 1}

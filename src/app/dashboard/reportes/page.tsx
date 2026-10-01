@@ -222,7 +222,7 @@ function MetricCard({
   const body = (
     <>
       <div className="flex items-start justify-between gap-2">
-        <p className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <p className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
           {label}
           {definition && <InfoTooltip text={definition.definition} formula={definition.formula} />}
         </p>
@@ -249,7 +249,7 @@ function MetricCard({
   return (
     <Link
       href={href}
-      className={`${base} transition-[border-color,box-shadow,transform] hover:-translate-y-0.5 hover:border-border-strong hover:shadow-md`}
+      className={`${base} transition-[border-color,box-shadow] hover:border-border-strong hover:shadow-md`}
     >
       {body}
     </Link>
@@ -583,9 +583,7 @@ export default async function ReportesPage({
 
         <section>
           <h2 className="mb-3 flex items-center gap-2.5 text-sm font-semibold text-foreground">
-            <span className="icon-chip size-7 rounded-lg" data-tone="blue" aria-hidden="true">
-              <Users size={14} />
-            </span>
+            <Users size={16} className="text-muted-foreground" aria-hidden="true" />
             Métricas por ejecutivo
           </h2>
           <SupervisorAgentMetricsTable

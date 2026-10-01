@@ -32,9 +32,7 @@ export default async function ReportesIntegridadPage({
       </p>
 
       <Callout tone="info" className="flex gap-3">
-        <span className="icon-chip size-8 rounded-lg" data-tone="violet" aria-hidden="true">
-          <ShieldCheck size={16} />
-        </span>
+        <ShieldCheck size={16} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />
         <p>
         Estas señales las produce el servidor —duración real de la gestión, eventos de conexión del
         discador y cadencia entre cierres—, así que una extensión del navegador no puede falsearlas.

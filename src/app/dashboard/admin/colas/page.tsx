@@ -35,14 +35,6 @@ const CHANNEL_LABELS: Record<string, string> = {
 };
 
 /** Color del canal, igual que en el menú: voz en marca, WhatsApp verde, texto en turquesa. */
-const CHANNEL_TONES: Record<string, string> = {
-  voice: "primary",
-  whatsapp: "green",
-  email: "teal",
-  chat: "teal",
-  instagram: "rose",
-};
-
 export default async function ContactCenterQueuesPage() {
   await requireProfile(["admin"]);
   const supabase = await createClient();
@@ -192,13 +184,11 @@ export default async function ContactCenterQueuesPage() {
                     <Tr key={queue.id}>
                       <Td strong className="min-w-64">
                         <div className="flex items-start gap-3">
-                          <span
-                            className={`icon-chip mt-0.5 size-8 rounded-lg ${queue.is_active ? "" : "opacity-50"}`}
-                            data-tone="rose"
+                          <Layers
+                            size={16}
+                            className={`mt-0.5 shrink-0 text-muted-foreground ${queue.is_active ? "" : "opacity-50"}`}
                             aria-hidden="true"
-                          >
-                            <Layers size={15} />
-                          </span>
+                          />
                           <div className="min-w-0">
                             <Link
                               href={`/dashboard/admin/colas/${queue.id}`}
@@ -215,7 +205,7 @@ export default async function ContactCenterQueuesPage() {
                         </div>
                       </Td>
                       <Td className="min-w-64">
-                        <div className="flex flex-wrap gap-1">
+                        <div className="flex flex-wrap gap-x-3 gap-y-1">
                           {sourcesUnavailable ? (
                             <span className="text-xs text-muted-foreground">
                               No disponible
@@ -240,12 +230,9 @@ export default async function ContactCenterQueuesPage() {
                                 ? one(route.whatsapp_channels)
                                 : null;
                               return (
-                                <span
+                                <Badge
                                   key={`${source.channel_type}-${index}`}
-                                  className="icon-chip rounded-full px-2 py-0.5 text-xs font-medium"
-                                  data-tone={
-                                    CHANNEL_TONES[source.channel_type] ?? "slate"
-                                  }
+                                  tone="neutral"
                                 >
                                   {CHANNEL_LABELS[source.channel_type] ??
                                     source.channel_type}{" "}
@@ -253,7 +240,7 @@ export default async function ContactCenterQueuesPage() {
                                   {campaign?.name ??
                                     channel?.display_phone_number ??
                                     "Sin origen"}
-                                </span>
+                                </Badge>
                               );
                             })
                           )}

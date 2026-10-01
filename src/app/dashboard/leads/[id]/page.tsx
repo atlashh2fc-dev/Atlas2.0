@@ -54,10 +54,10 @@ function InfoRow({ label, children }: { label: ReactNode; children: ReactNode })
 
 type ChipTone = "primary" | "blue" | "teal" | "green" | "amber" | "violet" | "rose" | "slate";
 
-/** Cabecera de tarjeta de la ficha: chip de color del dominio + título + ayuda. */
+/** Cabecera de tarjeta de la ficha: icono + título + ayuda. El tono queda
+ *  en la firma por compatibilidad, pero ya no se pinta. */
 function CardHeading({
   icon: Icon,
-  tone,
   title,
   description,
   className,
@@ -70,7 +70,7 @@ function CardHeading({
 }) {
   return (
     <div className={`flex min-w-0 items-start gap-3 ${className ?? ""}`}>
-      <span className="icon-chip size-8 shrink-0 rounded-lg" data-tone={tone} aria-hidden="true">
+      <span className="mt-0.5 inline-flex shrink-0 text-muted-foreground" aria-hidden="true">
         <Icon size={16} />
       </span>
       <div className="min-w-0">
@@ -923,8 +923,8 @@ export default async function LeadDetailPage({
             {/* Cierra la medición de cuánto tardó la ficha en aparecer. */}
             {profile.role === "agente" && <ScreenPopTiming leadId={lead.id} />}
             {call.management_channel && (
-              <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-border-strong bg-surface px-3 py-1 text-xs font-medium text-foreground">
-                Gestión sin llamada · {OFFLINE_CHANNEL_LABEL[call.management_channel] ?? "Otro canal"}
+              <p className="mb-3">
+                <Badge tone="info">Gestión sin llamada · {OFFLINE_CHANNEL_LABEL[call.management_channel] ?? "Otro canal"}</Badge>
               </p>
             )}
             <CallTypificationForm
@@ -1055,7 +1055,7 @@ export default async function LeadDetailPage({
                   <CalendarClock size={16} />
                 </span>
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Próxima acción</p>
+                  <p className="text-xs font-medium text-muted-foreground">Próxima acción</p>
                   <p className={`text-sm font-medium ${overdue ? "text-danger" : "text-foreground"}`}>
                     {lead.next_action_at
                       ? `${overdue ? "Vencida · " : ""}${formatDateTime(lead.next_action_at)}`

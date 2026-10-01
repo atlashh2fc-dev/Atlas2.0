@@ -10,7 +10,8 @@ import { AgendaBell } from "@/components/agenda-reminder";
 import { DemoRoleSwitcher } from "@/components/demo-role-switcher";
 import type { DemoViewAccount } from "@/lib/demo-view";
 import { signOut } from "@/app/actions/auth";
-import { LogOut } from "lucide-react";
+import Link from "next/link";
+import { LayoutGrid, LogOut } from "lucide-react";
 
 export function Header({
   profile,
@@ -33,14 +34,25 @@ export function Header({
   duenio?: boolean;
 }) {
   return (
-    <header className="flex h-16 flex-shrink-0 items-center justify-between border-b border-border bg-surface px-6">
+    <header className="flex h-14 flex-shrink-0 items-center justify-between border-b border-border bg-background px-6">
       <div className="flex min-w-0 items-center gap-3">
         <MobileNav profile={profile} badges={badges} modules={modules} edicion={edicion} duenio={duenio} />
         <WorkspaceContext role={profile.role} />
       </div>
 
-      <div className="flex items-center gap-3">
-        <SelectorEmpresa empresas={empresas} actual={profile.viewing_organization_id ?? null} />
+      <div className="flex items-center gap-2">
+        {/* La administración de Atlas vive fuera del CRM de cada empresa: el
+            dueño de la plataforma entra a ella desde acá, no desde el menú. */}
+        {duenio && (
+          <Link
+            href="/plataforma"
+            className="hidden h-9 items-center gap-2 rounded-lg px-2.5 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground sm:flex"
+          >
+            <LayoutGrid size={16} aria-hidden="true" />
+            Plataforma
+          </Link>
+        )}
+        <SelectorEmpresa empresas={empresas} actual={profile.viewing_organization_id ?? null} unaALaVez={duenio} />
         {profile.is_demo && <DemoRoleSwitcher accounts={demoAccounts} currentId={profile.id} />}
         <QuickSearch role={profile.role} userId={profile.id} modules={modules} edicion={edicion} />
         {profile.role === "agente" && <AgendaBell />}
@@ -48,7 +60,7 @@ export function Header({
         <form action={signOut}>
           <button
             type="submit"
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground"
             title="Cerrar sesión"
             aria-label="Cerrar sesión"
           >

@@ -3,33 +3,44 @@ import { cn } from "@/lib/utils";
 
 export type BadgeTone = "neutral" | "success" | "warning" | "danger" | "info";
 
-// Pill con borde del mismo tono, como los badges de Atlas Suite.
-const TONES: Record<BadgeTone, string> = {
-  neutral: "border-border-strong bg-surface-muted text-muted-foreground",
-  success: "border-success/35 bg-success-bg text-success",
-  warning: "border-warning/35 bg-warning-bg text-warning",
-  danger: "border-danger/35 bg-danger-bg text-danger",
-  info: "border-primary/35 bg-primary/10 text-primary",
+const DOT: Record<BadgeTone, string> = {
+  neutral: "bg-muted-foreground/45",
+  success: "bg-success",
+  warning: "bg-warning",
+  danger: "bg-danger",
+  info: "bg-primary",
 };
 
-/** Pill semántico para estados, prioridades y etiquetas. */
+/**
+ * Estado o etiqueta: un punto de color y el texto, sin cápsula.
+ *
+ * Antes era una píldora con fondo y borde; con diez por fila la tabla parecía
+ * un tablero de fichas y nada destacaba. El punto lleva el color, el texto
+ * dice lo que significa (no se depende solo del color) y la fila respira.
+ * `neutral` es una etiqueta sin estado: va sin punto, en gris.
+ */
 export function Badge({
   tone = "neutral",
+  dot = tone !== "neutral",
   className,
   children,
 }: {
   tone?: BadgeTone;
+  /** Mostrar el punto de color. Por defecto solo en tonos con estado. */
+  dot?: boolean;
   className?: string;
   children: ReactNode;
 }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium",
-        TONES[tone],
+        "inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-medium",
+        tone === "neutral" ? "text-muted-foreground" : "text-foreground",
+        tone === "danger" && "text-danger",
         className
       )}
     >
+      {dot && <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", DOT[tone])} />}
       {children}
     </span>
   );
@@ -37,15 +48,5 @@ export function Badge({
 
 /** Punto de estado (registro SIP, disponibilidad de agente, salud de cola). */
 export function StatusDot({ tone = "neutral", className }: { tone?: BadgeTone; className?: string }) {
-  const color =
-    tone === "success"
-      ? "bg-success"
-      : tone === "warning"
-        ? "bg-warning"
-        : tone === "danger"
-          ? "bg-danger"
-          : tone === "info"
-            ? "bg-primary"
-            : "bg-muted-foreground";
-  return <span className={cn("inline-block h-2.5 w-2.5 flex-shrink-0 rounded-full", color, className)} />;
+  return <span className={cn("inline-block h-2 w-2 flex-shrink-0 rounded-full", DOT[tone], className)} />;
 }

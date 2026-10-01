@@ -222,7 +222,7 @@ async function BandejaDelEjecutivo({ profileId, params }: { profileId: string; p
                   >
                     <span className="flex items-baseline justify-between gap-2">
                       <span className="truncate text-sm font-medium text-foreground">{c.nombre}</span>
-                      {c.pendientes > 1 && <span className="shrink-0 rounded-full bg-primary px-1.5 text-[11px] font-semibold text-primary-foreground">{c.pendientes}</span>}
+                      {c.pendientes > 1 && <span className="shrink-0 text-xs font-semibold tabular-nums text-primary">{c.pendientes}</span>}
                     </span>
                     <span className="mt-0.5 block truncate text-xs text-foreground/80">{c.asunto}</span>
                     {c.vistaPrevia && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{c.vistaPrevia}</span>}
@@ -248,7 +248,7 @@ async function BandejaDelEjecutivo({ profileId, params }: { profileId: string; p
             {...{ [OPEN_CALL_FORM_ATTRIBUTE]: gestion.id }}
             className="scroll-mt-4 rounded-2xl border-2 border-primary/20 bg-primary/[0.025] p-3 sm:p-5"
           >
-            <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-border-strong bg-surface px-3 py-1 text-xs font-medium text-foreground">
+            <p className="mb-3 text-sm font-medium text-foreground">
               Tipificación de la conversación por correo
             </p>
             <CallTypificationForm
@@ -358,9 +358,7 @@ async function BuzonesDeSupervision() {
               className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-surface-muted"
             >
               <span className="flex min-w-0 items-center gap-3">
-                <span className="icon-chip size-8 rounded-lg" data-tone="teal" aria-hidden="true">
-                  <Mail size={15} />
-                </span>
+                <Mail size={16} className="flex-shrink-0 text-muted-foreground" aria-hidden="true" />
                 <span className="min-w-0">
                   <span className="block truncate font-medium text-foreground">{mailbox.label ?? mailbox.address}</span>
                   <span className="block truncate text-xs text-muted-foreground">{mailbox.address}</span>

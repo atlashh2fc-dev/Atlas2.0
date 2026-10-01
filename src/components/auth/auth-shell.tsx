@@ -47,7 +47,7 @@ export function AuthShell({
           {/* La barra azul es lo que ancla la marca: el panel es oscuro por
               contraste, pero el color corporativo sigue presente. */}
           <div className="border-l-2 border-primary pl-4">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-accent">Omnicanal</p>
+            <p className="text-xs font-medium text-accent">Omnicanal</p>
             <p className="mt-2 text-xl leading-snug lg:text-[26px] lg:leading-tight">
               Llamadas, WhatsApp, correo y web. Una sola ficha del cliente.
             </p>

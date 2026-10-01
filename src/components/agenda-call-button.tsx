@@ -107,7 +107,7 @@ export function AgendaCallButton({
             event.stopPropagation();
           }}
         >
-          <span className="block px-2 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <span className="block px-2 pb-1 pt-0.5 text-xs font-medium text-muted-foreground">
             ¿A qué número llamas?
           </span>
           {options.map((option, index) => (

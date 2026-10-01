@@ -256,14 +256,14 @@ export function AgentQuotationsTable({ rows, campaigns }: { rows: QuotationRow[]
             aria-selected={filter === option.value}
             onClick={() => setFilter(option.value)}
             className={cn(
-              "rounded-full border px-3 py-1 text-sm transition-colors",
+              "inline-flex h-8 items-center rounded-lg px-2.5 text-[13px] font-medium transition-colors",
               filter === option.value
-                ? "border-primary bg-primary/10 font-medium text-primary"
-                : "border-border bg-surface text-muted-foreground hover:border-border-strong hover:text-foreground"
+                ? "bg-surface text-foreground shadow-sm ring-1 ring-border"
+                : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"
             )}
           >
             {option.label}
-            <span className="ml-1.5 tabular-nums">{counts[option.value].toLocaleString("es-CL")}</span>
+            <span className="ml-1.5 text-xs font-semibold tabular-nums text-muted-foreground">{counts[option.value].toLocaleString("es-CL")}</span>
           </button>
         ))}
       </div>

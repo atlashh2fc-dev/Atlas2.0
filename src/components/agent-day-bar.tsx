@@ -88,7 +88,7 @@ export function AgentDayBar() {
 /** `dot` marca el tipo de cifra con un punto de color (verde conectado, violeta gestiones, ámbar tiempos). */
 function Chip({ label, value, strong = false, dot }: { label: string; value: string; strong?: boolean; dot?: string }) {
   return (
-    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-surface-muted/60 px-2.5 py-0.5 text-foreground">
+    <span className="inline-flex shrink-0 items-center gap-1.5 px-1.5 text-foreground">
       {dot && <span className="size-1.5 rounded-full" style={{ backgroundColor: dot }} aria-hidden="true" />}
       <span className="text-muted-foreground">{label}</span>
       <span className={cn("font-mono tabular-nums", strong && "font-semibold")}>{value}</span>

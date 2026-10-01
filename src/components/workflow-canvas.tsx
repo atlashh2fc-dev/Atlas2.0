@@ -27,6 +27,7 @@ import { WORKFLOW_FIELD_TYPES } from "@/lib/types";
 import { buildCallReasonCatalogFromWorkflow } from "@/lib/call-typification";
 import { validateWorkflow } from "@/lib/workflow-validation";
 import { TypificationPreview } from "@/components/typification-preview";
+import { Badge } from "@/components/ui";
 import {
   createWorkflowStepNode,
   deleteBranch,
@@ -95,16 +96,6 @@ function StepNode({ data }: NodeProps<StepFlowNode>) {
         data.selected ? "border-primary ring-2 ring-ring" : "border-border"
       }`}
     >
-      {/* Línea de acento como las secciones: rosa (flujos) y verde en el paso de inicio.
-          Va absoluta para no cambiar el alto que usan los Handles. */}
-      <div
-        aria-hidden="true"
-        className={`pointer-events-none absolute inset-x-0 top-0 h-0.5 rounded-t-xl ${
-          step.is_start
-            ? "bg-[linear-gradient(90deg,var(--success),transparent_85%)]"
-            : "bg-[linear-gradient(90deg,var(--tone-rose),transparent_85%)]"
-        }`}
-      />
       <Handle
         type="target"
         position={Position.Left}
@@ -137,19 +128,11 @@ function StepNode({ data }: NodeProps<StepFlowNode>) {
       <div className="border-b border-border px-3 py-2.5" style={{ height: HEADER_HEIGHT }}>
         <div className="flex items-center gap-1.5">
           {step.is_start && (
-            <span className="rounded-full border border-success/35 bg-success-bg px-1.5 py-0.5 text-[10px] font-semibold text-success">
-              INICIO
-            </span>
+            <Badge tone="success">Inicio</Badge>
           )}
-          <span
-            className={`rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${
-              step.is_mandatory
-                ? "border-warning/35 bg-warning-bg text-warning"
-                : "border-border-strong bg-surface-muted text-muted-foreground"
-            }`}
-          >
+          <Badge tone={step.is_mandatory ? "warning" : "neutral"}>
             {step.is_mandatory ? "Obligatorio" : "Opcional"}
-          </span>
+          </Badge>
         </div>
         <p className="mt-1 truncate text-sm font-semibold text-foreground">{step.name}</p>
         <p className="truncate text-[11px] text-muted-foreground">{fieldTypeLabel(step.field_type)}</p>
@@ -943,9 +926,7 @@ function StepEditorPanel({
     <div className="absolute right-0 top-0 flex h-full w-80 flex-col border-l border-border bg-surface-solid shadow-xl">
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-          <span className="icon-chip size-7 rounded-lg" data-tone="rose" aria-hidden="true">
-            <ListChecks size={14} />
-          </span>
+          <ListChecks size={16} className="text-muted-foreground" aria-hidden="true" />
           Editar paso
         </h3>
         <button onClick={onClose} className="text-muted-foreground hover:text-foreground">

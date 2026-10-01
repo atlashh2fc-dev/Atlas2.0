@@ -82,9 +82,7 @@ export default async function TeamsAdminPage() {
               <Tr key={team.id}>
                 <Td strong>
                   <span className="flex items-center gap-3">
-                    <span className="icon-chip size-8 rounded-lg" data-tone="blue" aria-hidden="true">
-                      <UsersRound size={15} />
-                    </span>
+                    <UsersRound size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
                     {team.name}
                   </span>
                 </Td>

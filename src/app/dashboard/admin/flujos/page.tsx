@@ -120,13 +120,7 @@ export default async function WorkflowsPage({
                 <Tr key={w.id}>
                   <Td strong>
                     <div className="flex items-start gap-3">
-                      <span
-                        className={`icon-chip mt-0.5 size-8 rounded-lg ${w.is_active ? "" : "opacity-50"}`}
-                        data-tone="rose"
-                        aria-hidden="true"
-                      >
-                        <Workflow size={15} />
-                      </span>
+                      <Workflow size={16} className={`mt-0.5 flex-shrink-0 text-muted-foreground ${w.is_active ? "" : "opacity-50"}`} aria-hidden="true" />
                       <div className="min-w-0">
                         <Link href={`/dashboard/admin/flujos/${w.id}`} className="hover:text-primary">
                           {w.name}

@@ -16,6 +16,7 @@ import {
 } from "@/lib/campaign-vertical";
 import { bulkAssignLeads, bulkRescheduleLeads } from "@/app/actions/leads";
 import {
+  Badge,
   Button,
   DataTable,
   Field,
@@ -99,13 +100,13 @@ function queueState(lead: LeadQueueRow, now: Date): QueueState {
   };
 }
 
-/** Pill con borde del mismo tono, igual que `Badge`. */
-function stateClass(tone: QueueState["tone"]) {
-  if (tone === "danger") return "border-danger/35 bg-danger-bg text-danger";
-  if (tone === "warning") return "border-warning/35 bg-warning-bg text-warning";
-  if (tone === "success") return "border-success/35 bg-success-bg text-success";
-  if (tone === "primary") return "border-primary/35 bg-primary/10 text-primary";
-  return "border-border-strong bg-surface-muted text-muted-foreground";
+/** El icono del estado lleva el color del tono; el texto va en `Badge`. */
+function stateIconClass(tone: QueueState["tone"]) {
+  if (tone === "danger") return "text-danger";
+  if (tone === "warning") return "text-warning";
+  if (tone === "success") return "text-success";
+  if (tone === "primary") return "text-primary";
+  return "text-muted-foreground";
 }
 
 export function LeadsQueue({
@@ -195,12 +196,10 @@ export function LeadsQueue({
           const Icon = state.icon;
           return (
             <span className="inline-flex flex-col gap-1">
-              <span
-                className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${stateClass(state.tone)}`}
-              >
-                <Icon size={13} />
+              <Badge tone={state.tone === "muted" ? "neutral" : state.tone === "primary" ? "info" : state.tone} dot={false} className="w-fit">
+                <Icon size={13} className={stateIconClass(state.tone)} />
                 {state.label}
-              </span>
+              </Badge>
               <span className="text-xs text-muted-foreground">{state.detail}</span>
             </span>
           );
@@ -316,18 +315,14 @@ export function LeadsQueue({
               key={item.id}
               href={withParam("view", item.id)}
               aria-current={active ? "page" : undefined}
-              className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
+              className={`inline-flex h-8 items-center gap-2 rounded-lg px-2.5 text-[13px] font-medium transition-colors ${
                 active
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border bg-surface text-muted-foreground shadow-sm hover:border-border-strong hover:bg-surface-muted hover:text-foreground"
+                  ? "bg-surface text-foreground shadow-sm ring-1 ring-border"
+                  : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"
               }`}
             >
               {item.label}
-              <span
-                className={`rounded-full px-1.5 py-0.5 text-[10px] tabular-nums ${
-                  active ? "bg-primary-foreground/20" : "bg-surface-muted"
-                }`}
-              >
+              <span className="text-xs font-semibold tabular-nums text-muted-foreground">
                 {counts[item.id].toLocaleString("es-CL")}
               </span>
             </Link>

@@ -120,7 +120,7 @@ function DataNumber({
   const style = DATA_TONE[value === null ? "default" : tone];
   return (
     <div className={`rounded-lg border border-border border-l-2 bg-background px-3 py-2.5 ${style.edge}`}>
-      <dt className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</dt>
+      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
       <dd className={`mt-1 text-2xl font-semibold tracking-tight tabular-nums ${value === null ? "text-base text-muted-foreground" : style.value}`}>
         {typeof value === "number" ? value.toLocaleString("es-CL") : (value ?? "No disponible")}
       </dd>

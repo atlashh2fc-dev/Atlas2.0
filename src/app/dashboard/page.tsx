@@ -242,9 +242,7 @@ export default async function DashboardPage() {
               <li key={agent.agent_id} className="flex items-center justify-between gap-3 px-5 py-3 transition-colors hover:bg-surface-muted/50">
                 <div className="flex min-w-0 items-center gap-3">
                 <span
-                  className="icon-chip size-7 rounded-full text-xs font-semibold tabular-nums"
-                  data-tone={index === 0 ? "green" : "blue"}
-                  data-active={index === 0 ? "true" : undefined}
+                  className="w-5 shrink-0 text-center text-xs font-semibold tabular-nums text-muted-foreground"
                   aria-hidden="true"
                 >
                   {index + 1}
@@ -335,13 +333,13 @@ export default async function DashboardPage() {
 
         <div className="grid gap-3 lg:grid-cols-3">
           {[
-            { href: "/dashboard/operacion", title: "Operación", description: "Colas de Voice y WhatsApp, carga de ejecutivos y excepciones. Sin abrir conversaciones.", icon: Activity, tone: "teal" },
-            { href: "/dashboard/admin/colas", title: "Configuración", description: "Enrutamiento, capacidad y miembros. Revisa las reglas que organizan la atención.", icon: Settings2, tone: "slate" },
-            { href: "/dashboard/reportes", title: "Resultados", description: "Indicadores de gestión y discador, con período y filtros explícitos.", icon: BarChart3, tone: "violet" },
-          ].map(({ href, title, description, icon: Icon, tone }) => (
-            <Link key={href} href={href} className="group rounded-xl border border-border bg-surface p-5 shadow-sm transition-[border-color,box-shadow,transform] hover:-translate-y-0.5 hover:border-border-strong hover:shadow-md">
+            { href: "/dashboard/operacion", title: "Operación", description: "Colas de Voice y WhatsApp, carga de ejecutivos y excepciones. Sin abrir conversaciones.", icon: Activity },
+            { href: "/dashboard/admin/colas", title: "Configuración", description: "Enrutamiento, capacidad y miembros. Revisa las reglas que organizan la atención.", icon: Settings2 },
+            { href: "/dashboard/reportes", title: "Resultados", description: "Indicadores de gestión y discador, con período y filtros explícitos.", icon: BarChart3 },
+          ].map(({ href, title, description, icon: Icon }) => (
+            <Link key={href} href={href} className="group rounded-xl border border-border bg-surface p-5 shadow-sm transition-[border-color,box-shadow] hover:border-border-strong hover:shadow-md">
               <div className="flex items-center justify-between">
-                <span className="icon-chip size-9 rounded-lg" data-tone={tone} aria-hidden="true"><Icon size={18} /></span>
+                <Icon size={16} className="text-muted-foreground" aria-hidden="true" />
                 <ArrowUpRight size={16} className="text-muted-foreground transition-colors group-hover:text-primary" aria-hidden="true" />
               </div>
               <h2 className="mt-3 text-sm font-semibold text-foreground">{title}</h2>

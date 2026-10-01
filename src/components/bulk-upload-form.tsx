@@ -539,13 +539,13 @@ export function BulkUploadForm({
             </p>
             <div className="mt-3 overflow-x-auto">
               <table className="w-full min-w-[560px] text-left text-xs">
-                <thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
+                <thead className="border-b border-border text-left text-xs text-muted-foreground">
                   <tr>
-                    <th className="py-1.5 pr-3 font-semibold">Nombre</th>
-                    <th className="py-1.5 pr-3 font-semibold">RUT</th>
-                    <th className="py-1.5 pr-3 font-semibold">Teléfono</th>
-                    <th className="py-1.5 pr-3 font-semibold">Correo</th>
-                    <th className="py-1.5 font-semibold">Estado</th>
+                    <th className="py-1.5 pr-3 font-medium">Nombre</th>
+                    <th className="py-1.5 pr-3 font-medium">RUT</th>
+                    <th className="py-1.5 pr-3 font-medium">Teléfono</th>
+                    <th className="py-1.5 pr-3 font-medium">Correo</th>
+                    <th className="py-1.5 font-medium">Estado</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -581,10 +581,8 @@ export function BulkUploadForm({
 
       {result && (
         <div className="rounded-xl border border-border bg-surface p-5 shadow-sm">
-          <h3 className="mb-3 flex items-center gap-2.5 text-sm font-semibold text-foreground">
-            <span className="icon-chip size-8 rounded-lg" data-tone="slate" aria-hidden="true">
-              <FileCheck2 size={16} />
-            </span>
+          <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
+            <FileCheck2 size={16} className="text-muted-foreground" aria-hidden="true" />
             Resultado de la carga
           </h3>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
@@ -632,7 +630,7 @@ function Stat({ label, value, highlight }: { label: string; value: number; highl
         highlight ? "border-l-success" : "border-l-border-strong"
       }`}
     >
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <p className={`mt-1 text-xl font-semibold tabular-nums tracking-tight ${highlight ? "text-success" : "text-foreground"}`}>
         {value.toLocaleString("es-CL")}
       </p>

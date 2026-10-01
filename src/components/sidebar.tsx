@@ -9,7 +9,6 @@ import { PACIENTES_POR_EDICION, VENTAS_POR_EDICION, type Edicion } from "@/lib/e
 import type { AppModule } from "@/lib/modules";
 import type { AppRole, Profile } from "@/lib/types";
 import { useViewPreference } from "@/lib/use-view-preference";
-import { navTone } from "@/lib/nav-tone";
 import {
   HELP_HREF,
   ROLE_LABEL,
@@ -179,9 +178,10 @@ function sectionsFor(
   }));
 }
 
-const NAV_ROW_ACTIVE =
-  "bg-surface-muted text-foreground ring-1 ring-inset ring-border before:absolute before:-left-2 before:top-1/2 before:h-6 before:w-[3px] before:-translate-y-1/2 before:rounded-full before:bg-primary";
-const NAV_ROW_IDLE = "text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground";
+// Activo: la fila se levanta en blanco sobre el plano del menú. Sin barra de
+// color ni chip encendido: el lugar se lee por contraste, no por adorno.
+const NAV_ROW_ACTIVE = "bg-surface text-foreground shadow-sm ring-1 ring-inset ring-border";
+const NAV_ROW_IDLE = "text-muted-foreground hover:bg-foreground/[0.045] hover:text-foreground";
 
 const ITEM_ACTION =
   "flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/[0.07] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -221,24 +221,18 @@ function NavLink({
         onClick={onNavigate}
         aria-label={rail ? label : undefined}
         aria-current={active ? "page" : undefined}
-        className={`relative flex items-center gap-3 rounded-lg text-sm font-medium transition-colors duration-150 ${
-          rail ? "justify-center px-2 py-2" : "px-3 py-2"
+        className={`relative flex h-8 items-center gap-2.5 rounded-lg text-[13px] font-medium transition-colors duration-150 ${
+          rail ? "justify-center px-2" : "px-2.5"
         } ${showActions ? (editing ? "pr-20" : "group-hover:pr-9") : ""} ${
           active ? NAV_ROW_ACTIVE : NAV_ROW_IDLE
         }`}
       >
-        <span
-          className="icon-chip h-7 w-7 rounded-md transition-shadow"
-          data-tone={navTone(item.id)}
-          data-active={active}
-        >
-          <Icon size={16} />
-        </span>
+        <Icon size={16} aria-hidden="true" className={`shrink-0 ${active ? "text-foreground" : "text-muted-foreground/80"}`} />
 
         {!rail && <span className="truncate">{label}</span>}
 
         {!rail && !editing && badge !== undefined && badge > 0 && (
-          <span className="ml-auto rounded-full bg-primary/12 px-1.5 py-0.5 text-[11px] font-semibold text-primary group-hover:hidden">
+          <span className="ml-auto text-xs font-semibold tabular-nums text-primary group-hover:hidden">
             {badge}
           </span>
         )}
@@ -386,8 +380,8 @@ export function NavTree({
           onClick={onNavigate}
           aria-label={rail ? "Volver a la operación" : undefined}
           title={rail ? "Volver a la operación" : undefined}
-          className={`mb-2 flex items-center gap-2 rounded-lg border border-border text-xs font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.045] hover:text-foreground ${
-            rail ? "justify-center px-2 py-2" : "px-3 py-2"
+          className={`mb-2 flex h-8 items-center gap-2 rounded-lg text-[13px] font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.045] hover:text-foreground ${
+            rail ? "justify-center px-2" : "px-2.5"
           }`}
         >
           <ArrowLeft size={14} />
@@ -398,9 +392,7 @@ export function NavTree({
       {favorites.length > 0 && (
         <div className="mb-1">
           {!rail && (
-            <p className="flex items-center gap-1.5 px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-              <Star size={11} fill="currentColor" className="text-warning" /> Favoritos
-            </p>
+            <p className="px-2.5 pb-1 pt-2 text-xs font-medium text-muted-foreground/80">Favoritos</p>
           )}
           <div className="space-y-0.5">
             {favorites.map((item, index) =>
@@ -429,10 +421,10 @@ export function NavTree({
                 type="button"
                 onClick={() => personalization?.toggleCollapsed(section.id)}
                 aria-expanded={!isCollapsed}
-                className="flex w-full items-center gap-1.5 px-3 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 transition-colors hover:text-muted-foreground"
+                className="group/section flex w-full items-center gap-1.5 px-2.5 pb-1 pt-4 text-xs font-medium text-muted-foreground/80 transition-colors hover:text-foreground"
               >
                 <span>{section.label}</span>
-                <ChevronDown size={13} className={`ml-auto transition-transform ${isCollapsed ? "-rotate-90" : ""}`} />
+                <ChevronDown size={13} className={`ml-auto opacity-0 transition group-hover/section:opacity-100 ${isCollapsed ? "-rotate-90 opacity-100" : ""}`} />
               </button>
             )}
 
@@ -445,7 +437,7 @@ export function NavTree({
 }
 
 const FOOTER_LINK =
-  "group relative flex w-full items-center gap-3 rounded-lg text-sm font-medium transition-colors";
+  "group relative flex h-8 w-full items-center gap-2.5 rounded-lg text-[13px] font-medium transition-colors";
 
 function FooterEntry({
   href,
@@ -454,7 +446,6 @@ function FooterEntry({
   rail,
   icon: Icon,
   label,
-  tone = "slate",
 }: {
   href?: string;
   onClick?: () => void;
@@ -462,16 +453,13 @@ function FooterEntry({
   rail: boolean;
   icon: typeof Settings;
   label: string;
-  tone?: string;
 }) {
-  const className = `${FOOTER_LINK} ${rail ? "justify-center px-2 py-2" : "px-3 py-2"} ${
+  const className = `${FOOTER_LINK} ${rail ? "justify-center px-2" : "px-2.5"} ${
     active ? NAV_ROW_ACTIVE : NAV_ROW_IDLE
   }`;
   const body = (
     <>
-      <span className="icon-chip h-7 w-7 rounded-md transition-shadow" data-tone={tone} data-active={active}>
-        <Icon size={16} />
-      </span>
+      <Icon size={16} aria-hidden="true" className={`shrink-0 ${active ? "text-foreground" : "text-muted-foreground/80"}`} />
       {!rail && label}
     </>
   );
@@ -555,11 +543,11 @@ export function NavFooter({
       {personalization && onToggleEditing && !rail && !editing && (
         <FooterEntry onClick={onToggleEditing} rail={rail} icon={SlidersHorizontal} label="Personalizar menú" />
       )}
-      <FooterEntry href={HELP_HREF} onClick={onNavigate} active={helpActive} rail={rail} icon={CircleHelp} label="Ayuda" tone="blue" />
+      <FooterEntry href={HELP_HREF} onClick={onNavigate} active={helpActive} rail={rail} icon={CircleHelp} label="Ayuda" />
 
       <div className={`mt-1 flex items-center gap-2.5 border-t border-border pt-3 ${rail ? "justify-center" : "px-1"}`}>
         <div className="relative flex-shrink-0">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full border border-primary/30 bg-gradient-to-br from-primary/20 to-accent/20 text-xs font-semibold text-primary">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-foreground/[0.07] text-xs font-semibold text-foreground">
             {initials(profile.full_name)}
           </div>
         </div>
@@ -596,24 +584,24 @@ export function Sidebar({
   return (
     <aside
       aria-label="Navegación principal"
-      className={`atlas-sidebar hidden flex-shrink-0 flex-col border-r border-border bg-surface transition-[width] duration-200 md:flex ${
+      className={`atlas-sidebar hidden flex-shrink-0 flex-col border-r border-border transition-[width] duration-200 md:flex ${
         rail ? "w-16" : "w-64"
       }`}
     >
-      <div className={`flex h-16 items-center gap-2 border-b border-border ${rail ? "justify-center px-2" : "px-4"}`}>
+      <div className={`flex h-14 items-center gap-2 ${rail ? "justify-center px-2" : "px-4"}`}>
         <Image
           src="/atlas-logo.png"
           alt="Atlas"
           width={32}
           height={32}
-          className="size-8 flex-shrink-0 rounded-full object-contain shadow-sm"
+          className="size-7 flex-shrink-0 rounded-full object-contain"
           priority
         />
         {!rail && (
           <>
             <div className="leading-none">
               <MarcaAtlas edicion={edicion} />
-              <p className="mt-0.5 text-[10px] text-muted-foreground">
+              <p className="mt-1 text-[11px] text-muted-foreground">
                 {workspaceLabel(profile.role, space)} · {ROLE_LABEL[profile.role]}
               </p>
             </div>

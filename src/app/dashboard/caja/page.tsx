@@ -179,11 +179,11 @@ export default async function CajaPage({ searchParams }: { searchParams: Promise
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-2 font-medium">{voc.singular}</th>
-                  <th className="px-3 py-2 font-medium">Atenciones</th>
-                  <th className="px-3 py-2 font-medium text-right">Saldo</th>
-                  <th className="px-4 py-2 font-medium">Cobrar</th>
+                <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                  <th className="h-10 px-4 font-medium">{voc.singular}</th>
+                  <th className="h-10 px-4 font-medium">Atenciones</th>
+                  <th className="h-10 px-4 font-medium text-right">Saldo</th>
+                  <th className="h-10 px-4 font-medium">Cobrar</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -195,13 +195,13 @@ export default async function CajaPage({ searchParams }: { searchParams: Promise
                       </Link>
                       {cuenta.telefono && <p className="text-xs text-muted-foreground">{cuenta.telefono}</p>}
                     </td>
-                    <td className="max-w-xs px-3 py-3 text-muted-foreground">
+                    <td className="max-w-xs px-4 py-3 text-muted-foreground">
                       <p className="truncate">{cuenta.lineas.map((linea) => linea.descripcion).join(" · ")}</p>
                       <p className="text-xs">
                         {cuenta.lineas.length} {cuenta.lineas.length === 1 ? "atención" : "atenciones"} · desde {fecha.format(new Date(`${cuenta.lineas[0].fecha}T12:00:00`))}
                       </p>
                     </td>
-                    <td className="px-3 py-3 text-right tabular-nums text-foreground">{pesos.format(cuenta.total)}</td>
+                    <td className="px-4 py-3 text-right tabular-nums text-foreground">{pesos.format(cuenta.total)}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-2">
                         <form action={registrarPago} className="flex flex-wrap items-center gap-1.5">
@@ -244,13 +244,13 @@ export default async function CajaPage({ searchParams }: { searchParams: Promise
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-2 font-medium">Cuándo</th>
-                  <th className="px-3 py-2 font-medium">{voc.singular}</th>
-                  <th className="px-3 py-2 font-medium">Medio</th>
-                  <th className="px-3 py-2 font-medium">Referencia</th>
-                  <th className="px-3 py-2 font-medium">Estado</th>
-                  <th className="px-4 py-2 font-medium text-right">Monto</th>
+                <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                  <th className="h-10 px-4 font-medium">Cuándo</th>
+                  <th className="h-10 px-4 font-medium">{voc.singular}</th>
+                  <th className="h-10 px-4 font-medium">Medio</th>
+                  <th className="h-10 px-4 font-medium">Referencia</th>
+                  <th className="h-10 px-4 font-medium">Estado</th>
+                  <th className="h-10 px-4 font-medium text-right">Monto</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -258,24 +258,24 @@ export default async function CajaPage({ searchParams }: { searchParams: Promise
                   const etiqueta = ETIQUETA_ESTADO_PAGO[pago.estado];
                   return (
                     <tr key={pago.id}>
-                      <td className="px-4 py-2.5 text-muted-foreground">{fechaHora.format(new Date(pago.pagado_at ?? pago.created_at))}</td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-4 py-3 text-muted-foreground">{fechaHora.format(new Date(pago.pagado_at ?? pago.created_at))}</td>
+                      <td className="px-4 py-3">
                         <Link href={`/dashboard/pacientes/${pago.cuenta_id}`} className="font-medium text-foreground hover:text-primary hover:underline">
                           {primero(pago.sales_companies)?.name ?? "—"}
                         </Link>
                       </td>
-                      <td className="px-3 py-2.5 text-muted-foreground">{ETIQUETA_MEDIO[pago.medio] ?? pago.medio}</td>
-                      <td className="px-3 py-2.5 text-muted-foreground">
+                      <td className="px-4 py-3 text-muted-foreground">{ETIQUETA_MEDIO[pago.medio] ?? pago.medio}</td>
+                      <td className="px-4 py-3 text-muted-foreground">
                         {pago.referencia ?? (pago.estado === "pendiente" ? (
                           <Link href={`/dashboard/caja?enlace=${pago.id}`} className="text-primary hover:underline">
                             Ver enlace
                           </Link>
                         ) : "—")}
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-4 py-3">
                         <Badge tone={etiqueta.tone}>{etiqueta.label}</Badge>
                       </td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-foreground">{pesos.format(Number(pago.monto))}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-foreground">{pesos.format(Number(pago.monto))}</td>
                     </tr>
                   );
                 })}

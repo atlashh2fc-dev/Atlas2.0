@@ -67,7 +67,7 @@ export default async function IntegracionesPage() {
           if (grupo.length === 0) return null;
           return (
             <section key={categoria} className="space-y-3">
-              <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{categoria}</h2>
+              <h2 className="text-xs font-medium text-muted-foreground">{categoria}</h2>
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {grupo.map((integracion) => (
                   <TarjetaDeIntegracion key={integracion.id} integracion={integracion} />
@@ -91,8 +91,7 @@ function TarjetaDeIntegracion({ integracion }: { integracion: Integracion }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <p className="truncate font-semibold text-foreground">{integracion.nombre}</p>
-            <Badge tone={estado.tone} className="shrink-0 gap-1.5">
-              <Punto tone={estado.tone} />
+            <Badge tone={estado.tone} dot className="shrink-0">
               {estado.label}
             </Badge>
           </div>

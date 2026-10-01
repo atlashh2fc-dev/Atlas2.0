@@ -64,13 +64,11 @@ const TONE_TEXT: Record<"success" | "warning" | "danger" | "neutral" | "info", s
   info: "text-primary",
 };
 
-/** Encabezado de bloque con chip de color. */
-function BlockTitle({ icon: Icon, tone, children }: { icon: typeof ListChecks; tone: string; children: string }) {
+/** Encabezado de bloque con icono plano; `tone` se conserva por compatibilidad. */
+function BlockTitle({ icon: Icon, children }: { icon: typeof ListChecks; tone: string; children: string }) {
   return (
     <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-      <span className="icon-chip size-6 rounded-md" data-tone={tone} aria-hidden="true">
-        <Icon size={13} />
-      </span>
+      <Icon size={16} className="text-muted-foreground" aria-hidden="true" />
       {children}
     </h3>
   );
@@ -278,7 +276,7 @@ export function RecordingQualityEvaluationControl({
               className={`flex flex-wrap items-end justify-between gap-3 rounded-xl border border-border border-l-2 bg-surface-muted/40 p-4 ${TONE_EDGE[verdictMeta?.tone ?? "neutral"]}`}
             >
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Puntaje normalizado</p>
+                <p className="text-xs font-medium text-muted-foreground">Puntaje normalizado</p>
                 <p className={`mt-1 text-3xl font-semibold tracking-tight tabular-nums ${TONE_TEXT[verdictMeta?.tone ?? "neutral"]}`}>
                   {evaluation.score?.toLocaleString("es-CL", { maximumFractionDigits: 1 }) ?? "—"}
                   <span className="text-base font-normal text-muted-foreground">/100</span>

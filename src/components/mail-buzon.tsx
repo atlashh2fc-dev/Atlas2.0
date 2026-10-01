@@ -138,7 +138,7 @@ export function MailBuzon({ rows, agents, ahora }: { rows: BuzonRow[]; agents: B
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{baldosa.label}</span>
+                  <span className="text-xs font-medium text-muted-foreground">{baldosa.label}</span>
                   <span className={`text-xl font-semibold leading-none tracking-tight tabular-nums ${baldosa.count > 0 ? estilo.value : "text-muted-foreground"}`}>
                     {baldosa.count.toLocaleString("es-CL")}
                   </span>
@@ -310,7 +310,7 @@ function DetalleCorreo({ row, agents, onClose }: { row: BuzonRow | null; agents:
 function Dato({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-border bg-background p-3">
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <p className="mt-0.5 text-sm font-medium text-foreground">{value}</p>
     </div>
   );

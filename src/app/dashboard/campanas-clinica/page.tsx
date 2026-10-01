@@ -29,7 +29,7 @@ type Resultado = { origen_ref: string | null; cuenta_id: string | null; estado: 
 function Baldosa({ label, valor, detalle }: { label: string; valor: number; detalle: string }) {
   return (
     <div className="rounded-lg border border-border border-l-2 border-l-border-strong bg-background px-3 py-2.5">
-      <dt className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</dt>
+      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
       <dd className="mt-1 text-2xl font-semibold tracking-tight tabular-nums text-foreground">{valor.toLocaleString("es-CL")}</dd>
       <p className="mt-1 text-xs text-muted-foreground">{detalle}</p>
     </div>

@@ -40,12 +40,10 @@ const CHANNEL_CHIP: Record<AgendaRow["channel"], { icon: typeof Phone; tone: str
 };
 
 function ChannelCell({ channel }: { channel: AgendaRow["channel"] }) {
-  const { icon: Icon, tone } = CHANNEL_CHIP[channel];
+  const { icon: Icon } = CHANNEL_CHIP[channel];
   return (
     <span className="inline-flex items-center gap-2 text-sm text-foreground">
-      <span className="icon-chip size-6 rounded-md" data-tone={tone} aria-hidden="true">
-        <Icon size={13} />
-      </span>
+      <Icon size={16} className="text-muted-foreground" aria-hidden="true" />
       {channelLabel(channel)}
     </span>
   );

@@ -43,7 +43,7 @@ export function EditorMapa({
     <div className="space-y-4">
       {(["pelo", "barba"] as const).map((grupo) => (
         <fieldset key={grupo} className="space-y-1.5">
-          <legend className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{grupo === "pelo" ? "Pelo" : "Barba"}</legend>
+          <legend className="mb-1 text-xs font-medium text-muted-foreground">{grupo === "pelo" ? "Pelo" : "Barba"}</legend>
           {ZONAS.filter((zona) => INFO_ZONA[zona].grupo === grupo).map((zona) => {
             const activa = seleccionada === zona;
             const opcion = opcionMasCercana(mapa[zona].mm);

@@ -76,10 +76,10 @@ export function OfflineManagementButton({ leadId }: { leadId: string }) {
                 type="button"
                 aria-pressed={channel === option.value}
                 onClick={() => setChannel(option.value)}
-                className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                className={`rounded-lg h-8 px-2.5 text-[13px] font-medium ${
                   channel === option.value
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border bg-background text-foreground hover:border-primary/50"
+                    ? "bg-surface text-foreground shadow-sm ring-1 ring-border"
+                    : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"
                 }`}
               >
                 {option.label}

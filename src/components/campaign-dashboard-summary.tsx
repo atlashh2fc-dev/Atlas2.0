@@ -38,7 +38,7 @@ import {
   gradientUrl,
   useChartId,
 } from "@/components/chart-theme";
-import { EmptyState, MetricIconChip, SectionCard, type IconTone } from "@/components/ui";
+import { Badge, EmptyState, MetricIconChip, SectionCard, type IconTone } from "@/components/ui";
 import type {
   CampaignDashboardSummary as CampaignDashboardSummaryData,
   CampaignDashboardSummaryMetric,
@@ -147,10 +147,10 @@ function ContactabilityByHour({ data }: { data: ContactabilityHour[] }) {
       tone="amber"
       actions={
         best && (
-          <span className="shrink-0 rounded-full border border-success/30 bg-success-bg px-2.5 py-1 text-[11px] font-medium text-success">
+          <Badge tone="success" className="shrink-0">
             Mejor franja: <span className="font-semibold">{best.label}</span> ·{" "}
             {fmtPct((best.contactabilidad ?? 0) / 100)}
-          </span>
+          </Badge>
         )
       }
     >
@@ -267,13 +267,10 @@ function FunnelStages({
                   <span>Sin desglose disponible</span>
                 ) : (
                   stage.origins?.map((origin) => (
-                    <span
-                      key={origin.name}
-                      className="rounded-full border border-border bg-surface-muted px-2 py-0.5"
-                    >
+                    <Badge key={origin.name} tone="neutral">
                       {origin.name}: <span className="font-semibold text-foreground">{fmtInt(origin.value)}</span>
                       {stage.value > 0 && ` · ${fmtPct(origin.value / stage.value)}`}
-                    </span>
+                    </Badge>
                   ))
                 )}
               </div>
@@ -331,7 +328,7 @@ function KpiCard({
       className={`rounded-xl border bg-surface p-4 shadow-sm ${highlight ? "border-success/40 ring-1 ring-success/20" : "border-border"}`}
     >
       <div className="flex items-start justify-between gap-2">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+        <p className="text-xs font-medium text-muted-foreground">{label}</p>
         <MetricIconChip icon={icon} tone={iconTone} />
       </div>
       <p className={`mt-1.5 text-2xl font-semibold tabular-nums tracking-tight ${highlight ? "text-success" : "text-foreground"}`}>
@@ -410,9 +407,9 @@ function ChannelFunnelTable({
     >
       <div className="overflow-x-auto px-5 pt-2">
         <table className="w-full min-w-[560px] text-left text-sm">
-          <thead className="border-b border-border text-[11px] uppercase tracking-wider text-muted-foreground">
+          <thead className="border-b border-border text-left text-xs text-muted-foreground">
             <tr>
-              <th className="py-2 font-semibold">Canal</th>
+              <th className="h-10 font-medium">Canal</th>
               <th className="py-2 text-right font-semibold">Base</th>
               <th className="py-2 text-right font-semibold">Contactados</th>
               <th className="py-2 text-right font-semibold">Interesados</th>
@@ -499,9 +496,7 @@ export function CampaignDashboardSummary({
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-xs text-muted-foreground shadow-sm">
-        <span className="icon-chip size-7 rounded-lg" data-tone="amber" aria-hidden="true">
-          <CalendarRange size={14} />
-        </span>
+        <CalendarRange size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
         {/* Con la zona del navegador, quien mire desde otro huso vería un día
             distinto al del reporte. El período es el de la operación. */}
         <span>
@@ -573,14 +568,14 @@ export function CampaignDashboardSummary({
         <SectionCard title={vocabulary.agendaTitle} icon={CalendarClock} tone="amber">
           <div className="max-h-80 overflow-y-auto px-5 pb-4">
             <table className="w-full text-left text-xs">
-              <thead className="sticky top-0 bg-surface text-[11px] uppercase tracking-wider text-muted-foreground">
+              <thead className="sticky top-0 border-b border-border bg-surface text-left text-xs text-muted-foreground">
                 <tr>
-                  <th className="py-2 font-semibold">
+                  <th className="h-10 font-medium">
                     {vertical === "cobranza" ? "Deudor" : "Lead"}
                   </th>
-                  <th className="py-2 font-semibold">Ejecutivo</th>
-                  <th className="py-2 font-semibold">Resultado</th>
-                  <th className="py-2 font-semibold">Próxima acción</th>
+                  <th className="h-10 font-medium">Ejecutivo</th>
+                  <th className="h-10 font-medium">Resultado</th>
+                  <th className="h-10 font-medium">Próxima acción</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -615,13 +610,13 @@ export function CampaignDashboardSummary({
         <SectionCard title="Ranking de ejecutivos" icon={Users} tone="blue">
           <div className="max-h-80 overflow-y-auto px-5 pb-4">
             <table className="w-full text-left text-xs">
-              <thead className="sticky top-0 bg-surface text-[11px] uppercase tracking-wider text-muted-foreground">
+              <thead className="sticky top-0 border-b border-border bg-surface text-left text-xs text-muted-foreground">
                 <tr>
-                  <th className="py-2 font-semibold">Ejecutivo</th>
-                  <th className="py-2 font-semibold text-right">Gestiones</th>
-                  <th className="py-2 font-semibold text-right">Contactos</th>
-                  <th className="py-2 font-semibold text-right">{vocabulary.kpi.cierreNota}</th>
-                  <th className="py-2 font-semibold text-right">UF</th>
+                  <th className="h-10 font-medium">Ejecutivo</th>
+                  <th className="h-10 font-medium text-right">Gestiones</th>
+                  <th className="h-10 font-medium text-right">Contactos</th>
+                  <th className="h-10 font-medium text-right">{vocabulary.kpi.cierreNota}</th>
+                  <th className="h-10 font-medium text-right">UF</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">

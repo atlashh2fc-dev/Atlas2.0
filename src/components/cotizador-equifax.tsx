@@ -538,7 +538,7 @@ function PrecioLinea({ cotizada, valorUf }: { cotizada: LineaCotizada; valorUf: 
   }
   return (
     <div className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-1 border-t border-border pt-3 text-sm">
-      <span className="text-xs uppercase tracking-wide text-muted-foreground">{etiquetaCobro(cotizada)}</span>
+      <span className="text-xs font-medium text-muted-foreground">{etiquetaCobro(cotizada)}</span>
       {cotizada.descuento > 0 && cotizada.ufLista != null && (
         <span className="text-muted-foreground"><s>{formatoUf(cotizada.ufLista)} UF</s> −{cotizada.descuento}%</span>
       )}

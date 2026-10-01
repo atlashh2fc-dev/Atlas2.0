@@ -91,7 +91,7 @@ export function CanalesDigitales({ abierto }: { abierto: boolean }) {
               <span className="block text-sm text-foreground">
                 {label}
                 {pendientes > 0 && (
-                  <span className="ml-1.5 rounded-full bg-primary px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-primary-foreground">
+                  <span className="ml-1.5 text-xs font-semibold tabular-nums text-primary">
                     {pendientes}
                   </span>
                 )}

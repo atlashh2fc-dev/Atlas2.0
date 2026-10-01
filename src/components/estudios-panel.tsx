@@ -98,7 +98,7 @@ export function EstudiosPanel({
   return (
     <div>
       <div className="mb-2 flex items-center justify-between gap-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <p className="text-xs font-medium text-muted-foreground">
           {titulo} {estudios.length > 0 && <span className="font-normal">({estudios.length})</span>}
         </p>
         <button type="button" onClick={() => setFormulario((valor) => !valor)} className="flex items-center gap-1 text-xs font-medium text-primary hover:underline">

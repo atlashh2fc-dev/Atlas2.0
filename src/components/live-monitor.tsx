@@ -54,6 +54,7 @@ import {
   useChartId,
 } from "@/components/chart-theme";
 import {
+  Badge,
   Button,
   Callout,
   Card,
@@ -209,33 +210,33 @@ const WIDGET_TITLE: Record<WidgetId, string> = {
 };
 
 const WIDGET_KICKER: Record<WidgetId, string> = {
-  occupancy: "CAPACIDAD",
-  connected: "PRESENCIA",
-  available: "PREPARADOS",
-  "on-call": "CONVERSACIÓN",
-  "wrap-up": "POST-LLAMADA",
-  paused: "AUXILIAR",
-  alerts: "ATENCIÓN",
-  campaigns: "OPERACIÓN",
-  answered: "CONECTADO ÷ RECORRIDO",
-  completed: "RESULTADO",
-  "abandon-rate": "GUARDARRAÍL",
-  "no-answer-rate": "CONTACTO",
-  "contact-rate": "ALÓ ÷ RECORRIDO",
-  "effective-contacts": "TITULAR ÷ RECORRIDO",
-  "attempts-per-contact": "COSTO DE CONTACTO",
-  "sales-today": "RESULTADO COMERCIAL",
-  funnel: "COPC OUTBOUND",
-  tmo: "TIEMPO MEDIO DE OPERACIÓN",
-  tmc: "CONVERSACIÓN",
-  production: "PRODUCCIÓN",
-  "technical-failures": "TELEFONÍA",
-  hourly: "RITMO DE LA JORNADA",
-  "pause-reasons": "AUXILIARES",
-  "status-chart": "LECTURA DEL EQUIPO",
-  "campaign-chart": "PULSO DE CAMPAÑAS",
-  queues: "SALUD OPERACIONAL",
-  agents: "SEGUIMIENTO EN VIVO",
+  occupancy: "Capacidad",
+  connected: "Presencia",
+  available: "Preparados",
+  "on-call": "Conversación",
+  "wrap-up": "Post-llamada",
+  paused: "Auxiliar",
+  alerts: "Atención",
+  campaigns: "Operación",
+  answered: "Conectado ÷ recorrido",
+  completed: "Resultado",
+  "abandon-rate": "Guardarraíl",
+  "no-answer-rate": "Contacto",
+  "contact-rate": "Aló ÷ recorrido",
+  "effective-contacts": "Titular ÷ recorrido",
+  "attempts-per-contact": "Costo de contacto",
+  "sales-today": "Resultado comercial",
+  funnel: "COPC outbound",
+  tmo: "Tiempo medio de operación",
+  tmc: "Conversación",
+  production: "Producción",
+  "technical-failures": "Telefonía",
+  hourly: "Ritmo de la jornada",
+  "pause-reasons": "Auxiliares",
+  "status-chart": "Lectura del equipo",
+  "campaign-chart": "Pulso de campañas",
+  queues: "Salud operacional",
+  agents: "Seguimiento en vivo",
 };
 
 /**
@@ -273,17 +274,6 @@ const WIDGET_ICON: Record<WidgetId, { icon: LucideIcon; tone: IconTone }> = {
   agents: { icon: Users, tone: "blue" },
 };
 
-const TONE_VAR: Record<IconTone, string> = {
-  primary: "var(--primary)",
-  blue: "var(--tone-blue)",
-  teal: "var(--tone-teal)",
-  green: "var(--tone-green)",
-  amber: "var(--tone-amber)",
-  violet: "var(--tone-violet)",
-  rose: "var(--tone-rose)",
-  slate: "var(--tone-slate)",
-};
-
 /** Con estado de alerta el chip toma el color del estado, como MetricCard. */
 const ALERT_CHIP: Partial<Record<"default" | "warn" | "danger" | "good", IconTone>> = { warn: "amber", danger: "rose" };
 
@@ -296,13 +286,14 @@ function WidgetChip({ id, tone }: { id: WidgetId; tone?: IconTone }) {
   );
 }
 
-/** Cabecera de las tarjetas grandes: chip, antetítulo en el tono y título. */
+/** Cabecera de las tarjetas grandes: icono plano, antetítulo y título. */
 function WidgetHeader({ id, title, description }: { id: WidgetId; title: string; description: ReactNode }) {
+  const { icon: Icon } = WIDGET_ICON[id];
   return (
     <div>
-      <div className="flex items-center gap-2.5">
-        <WidgetChip id={id} />
-        <p className="text-[10px] font-semibold tracking-[0.18em]" style={{ color: TONE_VAR[WIDGET_ICON[id].tone] }}>
+      <div className="flex items-center gap-2">
+        <Icon size={16} className="text-muted-foreground" aria-hidden="true" />
+        <p className="text-xs font-medium text-muted-foreground">
           {WIDGET_KICKER[id]}
         </p>
       </div>
@@ -398,11 +389,11 @@ function MetricWidget({ id, label, value, hint, tone = "default", metric, childr
       <div>
         <div className="mb-3 flex items-center gap-2.5">
           <WidgetChip id={id} tone={chipTone} />
-          <p className="min-w-0 truncate text-[9px] font-semibold tracking-[0.2em]" style={{ color: TONE_VAR[chipTone] }}>
+          <p className="min-w-0 truncate text-xs text-muted-foreground">
             {WIDGET_KICKER[id]}
           </p>
         </div>
-        <p className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+        <p className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
           {metric ? <MetricLabel id={metric} /> : label}
         </p>
         <p className={cn("mt-1.5 text-4xl font-semibold tabular-nums tracking-[-0.06em]", color)}>{value}</p>
@@ -443,11 +434,11 @@ function QueueHealthCard({ queue, funnel }: { queue: QueueHealth; funnel?: Embud
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <div>
           <p className="text-sm font-semibold text-foreground">{queue.campaign_name}</p>
-          <p className="mt-0.5 text-[11px] uppercase tracking-[0.12em] text-muted-foreground">Cola · {queue.queue_name}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">Cola · {queue.queue_name}</p>
         </div>
         <div className="flex flex-wrap gap-1.5">
-          <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-1 text-[11px] font-semibold text-primary">Contactabilidad {formatPercent(funnel?.contactabilidad)}</span>
-          <span className={cn("rounded-full border px-2 py-1 text-[11px] font-semibold", overThreshold ? "border-danger/30 bg-danger-bg text-danger" : "border-border bg-surface text-muted-foreground")}>Abandono {abandonRate}%</span>
+          <Badge tone="info">Contactabilidad {formatPercent(funnel?.contactabilidad)}</Badge>
+          <Badge tone={overThreshold ? "danger" : "neutral"}>Abandono {abandonRate}%</Badge>
         </div>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
@@ -471,7 +462,7 @@ function QueueHealthCard({ queue, funnel }: { queue: QueueHealth; funnel?: Embud
 function QueueNumber({ label, value, edge }: { label: string; value: number; edge?: string }) {
   return (
     <div className="rounded-lg border border-border border-l-2 bg-background px-3 py-2" style={{ borderLeftColor: edge ?? "var(--border-strong)" }}>
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <p className="mt-0.5 text-xl font-semibold tabular-nums tracking-tight text-foreground">{formatInt(value)}</p>
     </div>
   );
@@ -808,7 +799,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
             <WidgetHeader id="status-chart" title="Distribución del equipo" description="Lectura de disponibilidad en este instante." />
           </div>
           <div className="rounded-lg border border-border border-r-2 border-r-[color:var(--tone-blue)] bg-background px-3 py-2 text-right">
-            <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">Conectados</p>
+            <p className="text-xs font-medium text-muted-foreground">Conectados</p>
             <p className="mt-0.5 text-xl font-semibold tabular-nums tracking-tight text-foreground">{connected}<span className="text-sm text-muted-foreground">/{agents.length}</span></p>
           </div>
         </div>
@@ -839,7 +830,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
           <div>
             <WidgetHeader id="campaign-chart" title="Actividad por campaña" description="Acumulado de jornada y carga que sigue activa." />
           </div>
-          <div className="flex flex-col gap-1 text-right text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+          <div className="flex flex-col gap-1 text-right text-xs font-medium text-muted-foreground">
             <span className="inline-flex items-center justify-end gap-1.5"><i className="size-2 rounded-sm" style={{ backgroundColor: CHART_COLOR.teal }} />En curso</span>
             <span className="inline-flex items-center justify-end gap-1.5"><i className="size-2 rounded-sm" style={{ backgroundColor: CHART_COLOR.primary }} />Conectadas</span>
             <span className="inline-flex items-center justify-end gap-1.5"><i className="size-2 rounded-sm" style={{ backgroundColor: CHART_COLOR.green }} />Completadas</span>
@@ -861,7 +852,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
       </div>
     ),
     queues: (
-      <SectionCard className="rounded-xl border-border" icon={Layers} tone="rose" title={<span className="text-base tracking-tight">Salud de las colas</span>} description={`Actualizado automáticamente cada ${POLL_MS / 1000} segundos.`} actions={<span className="hidden items-center gap-1 text-[10px] font-semibold tracking-[0.14em] text-success sm:inline-flex"><span className="size-1.5 rounded-full bg-success" />LIVE</span>}>
+      <SectionCard className="rounded-xl border-border" icon={Layers} tone="rose" title={<span className="text-base tracking-tight">Salud de las colas</span>} description={`Actualizado automáticamente cada ${POLL_MS / 1000} segundos.`} actions={<span className="hidden sm:inline-flex"><Badge tone="success">En vivo</Badge></span>}>
         <div className="space-y-3 p-4">{queues.length === 0 ? <EmptyState icon={Megaphone} title="No hay campañas activas para el motor de discado." className="py-8" /> : queues.map((queue) => <QueueHealthCard key={queue.campaign_id} queue={queue} funnel={funnelByCampaign.get(queue.campaign_id)} />)}</div>
       </SectionCard>
     ),
@@ -897,7 +888,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
         onClose={() => setLogoutTarget(null)}
       >
         <div className="border-b border-border px-5 py-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-danger">Cierre de sesión forzado</p>
+          <p className="text-xs font-medium text-danger">Cierre de sesión forzado</p>
           <h2 className="mt-1 text-lg font-semibold">Cerrar sesión de {logoutTarget?.full_name}</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Se cortará una llamada activa, el teléfono WebRTC y las sesiones actuales. La cuenta, extensión,

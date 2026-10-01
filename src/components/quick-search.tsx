@@ -8,6 +8,7 @@ import type { AppRole } from "@/lib/types";
 import type { AppModule } from "@/lib/modules";
 import type { Edicion } from "@/lib/ediciones";
 import { allItemsForRole, navLabel } from "@/lib/nav.config";
+import { Badge } from "@/components/ui";
 
 interface QuickResult {
   id: string;
@@ -256,7 +257,7 @@ export function QuickSearch({
 
         {visibleDestinations.length > 0 && (
           <div className="max-h-[26rem] overflow-y-auto p-3">
-            <p className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Ir a</p>
+            <p className="px-2 pb-2 pt-1 text-xs font-medium text-muted-foreground">Ir a</p>
             <div className="space-y-1">
               {visibleDestinations.map((item) => {
                 const Icon = item.icon;
@@ -275,7 +276,7 @@ export function QuickSearch({
 
             {isEmpty && recentLeads.length > 0 && (
               <>
-                <p className="mt-5 px-2 pb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Últimos registros abiertos</p>
+                <p className="mt-5 px-2 pb-2 text-xs font-medium text-muted-foreground">Últimos registros abiertos</p>
                 <div className="space-y-1">
                   {recentLeads.map((lead) => (
                     <button key={lead.id} onClick={() => goToLead(lead)} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-surface-muted">
@@ -305,7 +306,7 @@ export function QuickSearch({
                     <span className="block font-medium text-foreground">{result.full_name}</span>
                     <span className="block text-xs text-muted-foreground">{result.rut ?? "—"} · {result.phone ?? "—"}</span>
                   </span>
-                  <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-medium text-accent-foreground">{MATCH_LABEL[result.match_type]}</span>
+                  <Badge tone="neutral">{MATCH_LABEL[result.match_type]}</Badge>
                 </button>
               </li>
             ))}

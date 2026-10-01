@@ -199,7 +199,7 @@ export function MailControlCenter({
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{bucket.label}</span>
+                  <span className="text-xs font-medium text-muted-foreground">{bucket.label}</span>
                   <span className={`text-xl font-semibold leading-none tracking-tight tabular-nums ${bucket.count > 0 ? style.value : "text-muted-foreground"}`}>
                     {bucket.count.toLocaleString("es-CL")}
                   </span>
@@ -315,9 +315,7 @@ export function MailControlCenter({
             </div>
             <div className="rounded-xl border border-border bg-background p-4 text-sm shadow-sm">
               <p className="flex items-center gap-2 font-medium text-foreground">
-                <span className="icon-chip size-7 rounded-lg" data-tone="primary" aria-hidden="true">
-                  <Phone size={14} />
-                </span>
+                <Phone size={16} className="text-muted-foreground" aria-hidden="true" />
                 Contacto
               </p>
               <p className="mt-1 text-muted-foreground">{inspected.phone ?? inspected.email ?? "No hay teléfono ni correo registrado."}</p>
@@ -373,7 +371,6 @@ function Detail({
   label,
   value,
   icon: Icon,
-  tone = "slate",
 }: {
   label: string;
   value: string;
@@ -382,13 +379,9 @@ function Detail({
 }) {
   return (
     <div className="flex items-start gap-3 rounded-lg border border-border bg-background p-3">
-      {Icon && (
-        <span className="icon-chip size-8 rounded-lg" data-tone={tone} aria-hidden="true">
-          <Icon size={15} />
-        </span>
-      )}
+      {Icon && <Icon size={16} className="mt-0.5 flex-shrink-0 text-muted-foreground" aria-hidden="true" />}
       <div className="min-w-0">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+        <p className="text-xs font-medium text-muted-foreground">{label}</p>
         <p className="mt-0.5 text-sm font-medium text-foreground">{value}</p>
       </div>
     </div>

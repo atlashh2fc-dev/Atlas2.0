@@ -349,7 +349,7 @@ export function SaleValidationsTable({
               </div>
             )}
             <div>
-              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Productos</p>
+              <p className="mb-1.5 text-xs font-medium text-muted-foreground">Productos</p>
               <div className="flex flex-wrap gap-1.5">
                 {detail.products.length > 0 ? (
                   detail.products.map((product) => (
@@ -364,13 +364,13 @@ export function SaleValidationsTable({
             </div>
             {detail.agentNotes && (
               <div>
-                <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Observación del ejecutivo</p>
+                <p className="mb-1.5 text-xs font-medium text-muted-foreground">Observación del ejecutivo</p>
                 <p className="whitespace-pre-wrap rounded-lg border border-border bg-surface-muted px-3 py-2">{detail.agentNotes}</p>
               </div>
             )}
             {detail.decidedAt && (
               <div>
-                <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Decisión</p>
+                <p className="mb-1.5 text-xs font-medium text-muted-foreground">Decisión</p>
                 <p>
                   {decidedBy(detail)} · {dateTime.format(new Date(detail.decidedAt))}
                 </p>

@@ -481,8 +481,8 @@ function PasoCaptura({
                 role="tab"
                 aria-selected={cual === opcion}
                 onClick={() => setCual(opcion)}
-                className={`inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-sm transition-colors ${
-                  cual === opcion ? "border-primary bg-primary text-primary-foreground" : "border-border bg-surface text-muted-foreground hover:text-foreground"
+                className={`inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium transition-colors ${
+                  cual === opcion ? "bg-surface text-foreground shadow-sm ring-1 ring-border" : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"
                 }`}
               >
                 {(opcion === "frente" ? frente : perfil) && <Check size={14} aria-hidden="true" />}
@@ -530,7 +530,7 @@ function PasoCaptura({
                   key={rapido}
                   type="button"
                   onClick={() => setPedido((actualPedido) => (actualPedido.includes(rapido) ? actualPedido : `${actualPedido ? `${actualPedido}. ` : ""}${rapido}`))}
-                  className="min-h-9 rounded-full border border-border bg-surface px-3 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
+                  className="min-h-9 rounded-lg px-2.5 text-[13px] font-medium text-muted-foreground ring-1 ring-border transition-colors hover:bg-surface-muted hover:text-foreground"
                 >
                   {rapido}
                 </button>
@@ -1335,7 +1335,7 @@ function Historial({ looks, actual, onAbrir, cuentaId }: { looks: LookFicha[]; a
                 key={look.id}
                 type="button"
                 onClick={() => onAbrir(look.id)}
-                className={`flex h-9 flex-shrink-0 items-center gap-2 rounded-full border pl-1 pr-3 text-xs transition-colors ${actual === look.id ? "border-primary bg-primary/5" : "border-border hover:bg-surface-muted"}`}
+                className={`flex h-9 flex-shrink-0 items-center gap-2 rounded-lg pl-1 pr-2.5 text-[13px] font-medium transition-colors ${actual === look.id ? "bg-surface text-foreground shadow-sm ring-1 ring-border" : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"}`}
               >
                 <span className="size-7 overflow-hidden rounded-full bg-surface-muted">
                   {(aprobada?.vistas.frontal ?? look.foto) && (

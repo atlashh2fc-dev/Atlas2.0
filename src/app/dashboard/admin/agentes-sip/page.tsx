@@ -2,7 +2,7 @@ import { Headset, PhoneCall } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { listAgentSipRows, setAgentExtensionActive } from "@/app/actions/agent-sip";
 import { RevealSipCredentialButton } from "@/components/reveal-sip-credential-button";
-import { ActionForm, ActionSubmit, Callout, EmptyState, PageHeader, SectionCard } from "@/components/ui";
+import { ActionForm, ActionSubmit, Badge, Callout, EmptyState, PageHeader, SectionCard, type BadgeTone } from "@/components/ui";
 import { getAgentSipSyncHealth } from "@/lib/dialer-health";
 
 function formatHealthDate(value: string | null): string {
@@ -29,10 +29,10 @@ export default async function AgentesSipPage() {
     return "Pendiente de Asterisk";
   };
 
-  const stateClassName = (row: Awaited<ReturnType<typeof listAgentSipRows>>[number]): string => {
-    if (!row.is_active || row.provisioning_status === "error") return "border-danger/35 bg-danger-bg text-danger";
-    if (row.provisioning_status === "synced") return "border-success/35 bg-success-bg text-success";
-    return "border-warning/35 bg-warning-bg text-warning";
+  const stateTone = (row: Awaited<ReturnType<typeof listAgentSipRows>>[number]): BadgeTone => {
+    if (!row.is_active || row.provisioning_status === "error") return "danger";
+    if (row.provisioning_status === "synced") return "success";
+    return "warning";
   };
 
   const failureLabel = (code: string | null): string => {
@@ -94,13 +94,9 @@ export default async function AgentesSipPage() {
               <div className="flex flex-wrap items-center justify-end gap-3">
                 {row.extension ? (
                   <>
-                    <span
-                      className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
-                        stateClassName(row)
-                      }`}
-                    >
+                    <Badge tone={stateTone(row)}>
                       Ext. {row.extension} · {stateLabel(row)}
-                    </span>
+                    </Badge>
                     {row.provisioning_status === "error" && (
                       <span className="max-w-52 text-xs text-danger">
                         {failureLabel(row.provisioning_failure_code)}

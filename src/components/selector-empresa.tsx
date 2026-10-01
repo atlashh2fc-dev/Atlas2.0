@@ -24,9 +24,17 @@ export type EmpresaDisponible = { id: string; name: string };
 export function SelectorEmpresa({
   empresas,
   actual,
+  unaALaVez = false,
 }: {
   empresas: EmpresaDisponible[];
   actual: string | null;
+  /**
+   * Sin la opción «Todas». El dueño de la plataforma pertenece a todas las
+   * empresas, así que «todas» le mezclaba en un mismo CRM los leads de Altius,
+   * Geimser y cada cliente. El CRM mira una empresa; la vista de todas es la
+   * consola de plataforma.
+   */
+  unaALaVez?: boolean;
 }) {
   const [pendiente, startTransition] = useTransition();
   const { toast } = useToast();
@@ -39,7 +47,7 @@ export function SelectorEmpresa({
       <Building2 aria-hidden className="h-4 w-4" />
       <span className="sr-only">Empresa que estás mirando</span>
       <select
-        className="h-9 rounded-lg border border-border bg-surface px-2 text-xs text-foreground disabled:opacity-60"
+        className="h-9 max-w-52 rounded-lg border border-border bg-surface px-2 text-[13px] font-medium text-foreground shadow-sm disabled:opacity-60"
         defaultValue={actual ?? ""}
         disabled={pendiente}
         onChange={(event) => {
@@ -67,7 +75,15 @@ export function SelectorEmpresa({
           });
         }}
       >
-        <option value="">Todas mis empresas</option>
+        {unaALaVez ? (
+          actual === null && (
+            <option value="" disabled>
+              Elige una empresa
+            </option>
+          )
+        ) : (
+          <option value="">Todas mis empresas</option>
+        )}
         {empresas.map((empresa) => (
           <option key={empresa.id} value={empresa.id}>
             {empresa.name}

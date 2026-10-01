@@ -90,22 +90,20 @@ export default async function OperationalCampaignsPage() {
                 href={`/dashboard/campanas/${campaign.id}`}
                 className="group flex items-center gap-4 px-5 py-4 transition-colors hover:bg-surface-muted/60"
               >
-                <span className="icon-chip h-10 w-10 rounded-lg" data-tone="rose" aria-hidden="true">
-                  <Megaphone size={19} />
-                </span>
+                <Megaphone size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-foreground group-hover:text-primary">{campaign.name}</p>
                   <p className="mt-0.5 truncate text-sm text-muted-foreground">
                     {campaign.description ?? "Campaña operativa"}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-1.5">
-                    <Badge tone="neutral" className="gap-1.5 pl-1">
-                      <span className="icon-chip size-4 rounded" data-tone="blue" aria-hidden="true"><Users size={10} /></span>
+                    <Badge tone="neutral">
+                      <Users size={12} aria-hidden="true" />
                       Registros
                     </Badge>
-                    {channels.map(({ label, icon: Icon, tone }) => (
-                      <Badge key={label} tone="neutral" className="gap-1.5 pl-1">
-                        <span className="icon-chip size-4 rounded" data-tone={tone} aria-hidden="true"><Icon size={10} /></span>
+                    {channels.map(({ label, icon: Icon }) => (
+                      <Badge key={label} tone="neutral">
+                        <Icon size={12} aria-hidden="true" />
                         {label}
                       </Badge>
                     ))}

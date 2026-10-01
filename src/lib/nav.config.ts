@@ -2,7 +2,6 @@ import {
   Activity,
   BadgeCheck,
   BarChart3,
-  Building2,
   Handshake,
   CalendarClock,
   CircleHelp,
@@ -397,7 +396,10 @@ const WORKSPACE_SECTIONS: Record<AppRole, Record<NavSpaceId, SectionSpec[]>> = {
     admin: [
       { id: "setup-contact-center", label: "Contact center", itemIds: ["campanas", "colas", "flujos", "estados-agente", "cargas", "correo-empresa"] },
       { id: "setup-clinic", label: "Clínica", itemIds: ["aranceles", "insumos", "correo-clinica"] },
-      { id: "setup-platform", label: "Plataforma", itemIds: ["empresas", "usuarios", "extensiones", "integraciones"] },
+      // Lo de la cuenta de esta empresa. Crear empresas, contratar
+      // aplicaciones y mover personas entre empresas no es de ninguna empresa:
+      // vive en la consola de plataforma (/plataforma), fuera de este menú.
+      { id: "setup-platform", label: "Cuenta", itemIds: ["usuarios", "extensiones", "integraciones"] },
     ],
   },
   supervisor: {
@@ -522,16 +524,8 @@ const ADMIN: NavSpace = {
     },
     {
       id: "admin-plataforma",
-      label: "Plataforma",
+      label: "Cuenta",
       items: [
-        {
-          id: "empresas",
-          label: "Empresas",
-          href: "/dashboard/admin/empresas",
-          icon: Building2,
-          roles: ["admin"],
-          description: "Empresas del CRM, sus personas y su aislamiento",
-        },
         {
           id: "usuarios",
           label: "Usuarios y equipos",

@@ -15,6 +15,7 @@ import {
   type FichaFormFields,
 } from "@/lib/bigdata-ficha";
 import { toDateTimeInput } from "@/lib/report-range";
+import { Badge } from "@/components/ui";
 import { compactRut, isValidRut } from "@/lib/rut";
 
 const INPUT_CLASS =
@@ -36,10 +37,10 @@ function FieldLabel({ children, fromBigdata }: { children: string; fromBigdata?:
     <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
       {children}
       {fromBigdata && (
-        <span className="inline-flex items-center gap-1 rounded bg-surface-muted px-1.5 py-0.5 text-[10px] font-medium text-primary">
-          <Database size={10} />
+        <Badge tone="info" dot={false} className="gap-1 text-primary">
+          <Database size={10} aria-hidden="true" />
           Bigdata
-        </span>
+        </Badge>
       )}
     </span>
   );
@@ -323,13 +324,13 @@ export function ManualLeadRecordForm({
                   : "Encontrado en Bigdata. Los campos ya tenían datos, no se cambió nada."}
               </span>
               {lookup.bigdata.ficha.clienteEquifax && (
-                <span className="rounded-full border border-border-strong bg-surface px-2 py-0.5 text-xs font-medium text-foreground">Ya es cliente Equifax</span>
+                <Badge tone="info">Ya es cliente Equifax</Badge>
               )}
               {lookup.bigdata.ficha.activaSii === false && (
-                <span className="rounded-full border border-warning/35 bg-surface px-2 py-0.5 text-xs font-medium text-warning">Con término de giro en SII</span>
+                <Badge tone="warning">Con término de giro en SII</Badge>
               )}
               {lookup.bigdata.ficha.noContactar && (
-                <span className="rounded-full border border-danger/35 bg-surface px-2 py-0.5 text-xs font-medium text-danger">Marcado no contactar</span>
+                <Badge tone="danger">Marcado no contactar</Badge>
               )}
             </div>
           )}

@@ -589,7 +589,7 @@ export function CallTypificationForm({
           aria-label={node.label}
           className="rounded-xl border border-border/70 bg-surface-muted/40 p-3"
         >
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{node.label}</p>
+          <p className="mb-2 text-xs font-medium text-muted-foreground">{node.label}</p>
           {renderReasonNodes(node.children, `${keyPrefix}-${node.label}`)}
         </div>
       );
@@ -611,10 +611,10 @@ export function CallTypificationForm({
                 depth === 0 ? [label] : [selectedStateLabel ?? "", ...current.slice(1, depth), label]
               )
             }
-            className={`min-h-10 rounded-full border px-4 py-1.5 text-xs font-bold uppercase transition-colors ${
+            className={`rounded-lg h-8 px-2.5 text-[13px] font-medium uppercase transition-colors ${
               selected === label
-                ? "border-primary bg-primary text-primary-foreground shadow-sm"
-                : "border-border bg-background text-foreground hover:border-primary/50 hover:bg-surface-muted"
+                ? "bg-surface text-foreground shadow-sm ring-1 ring-border"
+                : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"
             }`}
           >
             {label}
@@ -729,9 +729,7 @@ export function CallTypificationForm({
       )}
       {!revision && !call.notes && lead.observacion_actual?.trim() && (
         <div className="flex items-start gap-3 rounded-2xl border border-border bg-surface-muted px-4 py-3">
-          <span className="icon-chip mt-0.5 size-8 rounded-lg" data-tone="teal" aria-hidden="true">
-            <MessageSquare size={17} aria-hidden="true" />
-          </span>
+          <MessageSquare size={16} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />
           <div className="min-w-0">
             <p className="text-sm font-bold text-foreground">Última observación registrada</p>
             <p className="mt-0.5 text-xs text-muted-foreground">
@@ -917,15 +915,13 @@ export function CallTypificationForm({
         </div>
         <div className="rounded-xl border border-border bg-surface p-5 shadow-sm">
         <h2 className="mb-4 flex items-center gap-2.5 text-sm font-semibold text-foreground">
-          <span className="icon-chip size-8 rounded-lg" data-tone="primary" aria-hidden="true">
-            <ClipboardCheck size={16} />
-          </span>
+          <ClipboardCheck size={16} className="text-muted-foreground" aria-hidden="true" />
           {adding ? "Nueva tipificación" : revision ? "Corregir tipificación" : "Tipificar"}
         </h2>
 
         <div className="space-y-5">
           <section aria-labelledby={`${fieldId}-state`} className="space-y-3">
-            <h3 id={`${fieldId}-state`} className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <h3 id={`${fieldId}-state`} className="text-xs font-medium text-muted-foreground">
               Categoría
             </h3>
             {renderStepChips(
@@ -947,9 +943,7 @@ export function CallTypificationForm({
             <div className="rounded-lg border border-border border-l-2 border-l-[var(--tone-amber)] bg-background p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <span className="icon-chip size-7 rounded-lg" data-tone="amber" aria-hidden="true">
-                    <CalendarClock size={15} />
-                  </span>
+                  <CalendarClock size={16} className="text-muted-foreground" aria-hidden="true" />
                   <h3 className="text-sm font-semibold text-foreground">Agenda</h3>
                   {reasonConfig?.agenda === "optional" && (
                     <span className="text-xs font-medium text-muted-foreground">Opcional</span>
@@ -997,9 +991,7 @@ export function CallTypificationForm({
           {showEquifaxBlock && (
             <div className="rounded-lg border border-border border-l-2 border-l-[var(--tone-green)] bg-background p-4">
               <div className="mb-3 flex items-center gap-2">
-                <span className="icon-chip size-7 rounded-lg" data-tone="green" aria-hidden="true">
-                  <BadgeDollarSign size={15} />
-                </span>
+                <BadgeDollarSign size={16} className="text-muted-foreground" aria-hidden="true" />
                 <h3 className="text-sm font-semibold text-foreground">Datos comerciales Equifax</h3>
               </div>
               <div className="mb-3">

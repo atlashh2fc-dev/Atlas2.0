@@ -33,14 +33,14 @@ export function StatCard({
           : "bg-primary";
 
   return (
-    <div className={cn("rounded-xl border border-border bg-surface p-4 shadow-sm", className)}>
+    <div className={cn("rounded-xl border border-border bg-surface p-5 shadow-sm", className)}>
       <div className="flex items-start justify-between gap-2">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+        <p className="text-[13px] font-medium text-muted-foreground">{label}</p>
         {icon && <MetricIconChip icon={icon} tone={iconTone} />}
       </div>
       <p
         className={cn(
-          "mt-1.5 text-2xl font-semibold tabular-nums tracking-tight",
+          "mt-2 text-[28px] font-semibold leading-none tabular-nums tracking-tight",
           tone === "good" ? "text-success" : tone === "warn" ? "text-warning" : tone === "danger" ? "text-danger" : "text-foreground"
         )}
       >

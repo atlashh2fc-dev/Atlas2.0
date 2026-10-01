@@ -336,13 +336,13 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-2 font-medium">Hora</th>
-                  <th className="px-3 py-2 font-medium">{esVet ? "Mascota y tutor" : voc.singular}</th>
-                  <th className="px-3 py-2 font-medium">Motivo</th>
-                  <th className="px-3 py-2 font-medium">{at.profesional}</th>
-                  <th className="px-3 py-2 font-medium">Estado</th>
-                  <th className="px-4 py-2 font-medium text-right">Acciones</th>
+                <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                  <th className="h-10 px-4 font-medium">Hora</th>
+                  <th className="h-10 px-4 font-medium">{esVet ? "Mascota y tutor" : voc.singular}</th>
+                  <th className="h-10 px-4 font-medium">Motivo</th>
+                  <th className="h-10 px-4 font-medium">{at.profesional}</th>
+                  <th className="h-10 px-4 font-medium">Estado</th>
+                  <th className="h-10 px-4 font-medium text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -353,30 +353,30 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
                   const yaPaso = new Date(cita.inicio) <= ahora;
                   return (
                     <tr key={cita.id} className={ocupaHorario(cita.estado) ? "" : "text-muted-foreground"}>
-                      <td className="px-4 py-2.5 tabular-nums">
+                      <td className="px-4 py-3 tabular-nums">
                         {hora.format(new Date(cita.inicio))}
                         <span className="text-xs text-muted-foreground"> – {hora.format(new Date(cita.fin))}</span>
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-4 py-3">
                         <Link href={`/dashboard/pacientes/${cita.cuenta_id}`} className="font-medium text-foreground hover:text-primary hover:underline">
                           {quien(cita)}
                         </Link>
                         {telefono && <p className="text-xs text-muted-foreground">{telefono}</p>}
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-4 py-3">
                         {cita.motivo}
                         {cita.nota && <p className="text-xs text-muted-foreground">{cita.nota}</p>}
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-4 py-3">
                         <span className="inline-flex items-center gap-1.5">
                           <span className="h-2 w-2 rounded-full" style={{ backgroundColor: profesional?.color }} aria-hidden="true" />
                           {profesional?.nombre ?? "—"}
                         </span>
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-4 py-3">
                         <Badge tone={etiqueta.tone}>{etiqueta.label}</Badge>
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td className="px-4 py-3">
                         <div className="flex flex-wrap justify-end gap-1.5">
                           {cita.estado === "reservada" && <Accion cita={cita} estado="confirmada" label="Confirmar" dia={dia} variant="primary" />}
                           {(cita.estado === "reservada" || cita.estado === "confirmada") && (

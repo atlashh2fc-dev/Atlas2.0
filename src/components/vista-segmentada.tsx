@@ -27,8 +27,8 @@ export function VistaSegmentada({ opciones, activa, etiqueta }: { opciones: Opci
             {opcion.cuenta !== undefined && (
               <span
                 className={cn(
-                  "rounded-full px-1.5 text-xs tabular-nums",
-                  esta ? "bg-primary-foreground/20" : opcion.cuenta > 0 ? "bg-primary/12 text-primary" : "bg-surface-muted",
+                  "text-xs font-semibold tabular-nums",
+                  esta ? "text-primary-foreground/80" : opcion.cuenta > 0 ? "text-primary" : "text-muted-foreground",
                 )}
               >
                 {opcion.cuenta}

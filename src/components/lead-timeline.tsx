@@ -75,18 +75,14 @@ export function LeadTimeline({ entries }: { entries: TimelineEntry[] }) {
                 key={item.id}
                 type="button"
                 onClick={() => setFilter(item.id)}
-                className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors ${
+                className={`inline-flex items-center gap-1.5 rounded-lg h-8 px-2.5 text-[13px] font-medium transition-colors ${
                   active
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border bg-surface text-muted-foreground hover:border-border-strong hover:bg-surface-muted hover:text-foreground"
+                    ? "bg-surface text-foreground shadow-sm ring-1 ring-border"
+                    : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"
                 }`}
               >
                 {item.label}
-                <span
-                  className={`rounded-full px-1.5 text-[10px] tabular-nums ${
-                    active ? "bg-primary-foreground/20" : "bg-surface-muted"
-                  }`}
-                >
+                <span className="text-xs font-semibold tabular-nums text-muted-foreground">
                   {counts[item.id]}
                 </span>
               </button>

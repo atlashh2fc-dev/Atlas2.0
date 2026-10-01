@@ -91,20 +91,16 @@ export default async function MyAgendaPage({
       ) : (
         <>
           <section className="space-y-3">
-            <h2 className="flex items-center gap-2.5 text-sm font-semibold text-foreground">
-              <span className="icon-chip size-7 rounded-lg" data-tone="amber" aria-hidden="true">
-                <CalendarClock size={15} />
-              </span>
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              <CalendarClock size={16} className="text-muted-foreground" aria-hidden="true" />
               Próximas ({upcoming.length})
             </h2>
             <AgendaTable rows={upcoming} storageKey="agenda" />
           </section>
           {overdueCount > 0 && (
             <section className="space-y-3">
-              <h2 className="flex items-center gap-2.5 text-sm font-semibold text-danger">
-                <span className="icon-chip size-7 rounded-lg" data-tone="rose" aria-hidden="true">
-                  <CalendarX2 size={15} />
-                </span>
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-danger">
+                <CalendarX2 size={16} aria-hidden="true" />
                 Vencidas por recuperar ({overdueCount})
               </h2>
               <AgendaTable rows={overdueRows} storageKey="agenda-vencidas" />

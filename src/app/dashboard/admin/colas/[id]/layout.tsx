@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { notFound } from "next/navigation";
 
-import { Badge, NavTabs, PageHeader } from "@/components/ui";
+import { Badge, NavTabs, PageHeader, type BadgeTone } from "@/components/ui";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
@@ -16,13 +16,10 @@ const CHANNEL_LABELS: Record<string, string> = {
   instagram: "Instagram",
 };
 
-/** Color del canal, igual que en el menú: voz en marca, WhatsApp verde, texto en turquesa. */
-const CHANNEL_TONES: Record<string, string> = {
-  voice: "primary",
-  whatsapp: "green",
-  email: "teal",
-  chat: "teal",
-  instagram: "rose",
+/** Tono del canal: voz en azul, WhatsApp en verde; el resto sin punto. */
+const CHANNEL_TONES: Record<string, BadgeTone> = {
+  voice: "info",
+  whatsapp: "success",
 };
 
 function one<T>(value: Relation<T>): T | null {
@@ -47,7 +44,7 @@ export default async function ContactCenterQueueLayout({ children, params }: { c
         title={queue.name}
         description={queue.description ?? "Cola ACD omnicanal"}
         className="border-b-0 pb-0"
-        actions={<div className="flex flex-wrap gap-2"><Badge tone={queue.is_active ? "success" : "danger"}>{queue.is_active ? "Cola activa" : "Cola inactiva"}</Badge>{(sources ?? []).map((source, index) => { const campaign = one(source.campaigns as Relation<{ name: string }>); return <span key={`${source.channel_type}-${index}`} className="icon-chip rounded-full px-2 py-0.5 text-xs font-medium" data-tone={CHANNEL_TONES[source.channel_type] ?? "slate"}>{CHANNEL_LABELS[source.channel_type] ?? source.channel_type} · {campaign?.name ?? "Sin campaña"}</span>; })}</div>}
+        actions={<div className="flex flex-wrap gap-x-4 gap-y-2"><Badge tone={queue.is_active ? "success" : "danger"}>{queue.is_active ? "Cola activa" : "Cola inactiva"}</Badge>{(sources ?? []).map((source, index) => { const campaign = one(source.campaigns as Relation<{ name: string }>); return <Badge key={`${source.channel_type}-${index}`} tone={CHANNEL_TONES[source.channel_type] ?? "neutral"}>{CHANNEL_LABELS[source.channel_type] ?? source.channel_type} · {campaign?.name ?? "Sin campaña"}</Badge>; })}</div>}
       />
       <NavTabs tabs={[
         { label: "Resumen de configuración", href: base },

@@ -51,7 +51,7 @@ import {
 } from "lucide-react";
 
 import { ReportRangePicker } from "@/components/report-range-picker";
-import { PageHeader } from "@/components/ui";
+import { Badge, PageHeader } from "@/components/ui";
 import { CLINIC_PRESETS } from "@/lib/report-range";
 import { cn } from "@/lib/utils";
 import {
@@ -315,7 +315,7 @@ export function TableroClinica({
       {/* Segmentadores */}
       <div className="z-20 -mx-1 rounded-xl lg:sticky lg:top-0 border border-border bg-surface-solid/95 px-3 py-2.5 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-surface-solid/80">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="flex items-center gap-1.5 pr-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          <span className="flex items-center gap-1.5 pr-1 text-xs font-medium text-muted-foreground">
             <SlidersHorizontal className="size-3.5" aria-hidden="true" /> Filtros
           </span>
           {opciones.map(({ dimension, valores }) => (
@@ -672,7 +672,7 @@ function VistaProduccion({
     { clave: "procedimiento", titulo: "Procedimiento", valor: (a) => a.procedimiento },
     { clave: "monto", titulo: "Monto", valor: (a) => a.monto, formato: "clp", alinear: "derecha" },
     { clave: "costo", titulo: "Materiales", valor: (a) => a.costo, formato: "clp", alinear: "derecha" },
-    { clave: "pagado", titulo: "Estado", valor: (a) => (a.pagado ? "Pagada" : "Por cobrar"), mostrar: (a) => <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium", a.pagado ? "bg-success-bg text-success" : "bg-warning-bg text-warning")}>{a.pagado ? "Pagada" : "Por cobrar"}</span> },
+    { clave: "pagado", titulo: "Estado", valor: (a) => (a.pagado ? "Pagada" : "Por cobrar"), mostrar: (a) => <Badge tone={a.pagado ? "success" : "warning"}>{a.pagado ? "Pagada" : "Por cobrar"}</Badge> },
   ];
 
   return (
@@ -979,7 +979,7 @@ function VistaPlanes({
     { clave: "persona", titulo: voc.persona, valor: (p) => nombreDe(p.cuentaId), mostrar: (p) => <Link href={`/dashboard/pacientes/${p.cuentaId}`} className="font-medium hover:text-primary hover:underline">{nombreDe(p.cuentaId)}</Link> },
     { clave: "nombre", titulo: voc.plan, valor: (p) => p.nombre },
     { clave: "monto", titulo: "Monto", valor: (p) => p.monto, formato: "clp", alinear: "derecha" },
-    { clave: "estado", titulo: "Estado", valor: (p) => p.estado, mostrar: (p) => <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium", p.estado === "ganada" ? "bg-success-bg text-success" : p.estado === "perdida" ? "bg-danger-bg text-danger" : "bg-surface-muted text-foreground")}>{p.estado === "ganada" ? "Aceptado" : p.estado === "perdida" ? "Perdido" : p.etapa ?? "Abierto"}</span> },
+    { clave: "estado", titulo: "Estado", valor: (p) => p.estado, mostrar: (p) => <Badge tone={p.estado === "ganada" ? "success" : p.estado === "perdida" ? "danger" : "neutral"}>{p.estado === "ganada" ? "Aceptado" : p.estado === "perdida" ? "Perdido" : p.etapa ?? "Abierto"}</Badge> },
     { clave: "origen", titulo: "Canal", valor: (p) => origenDe(p) },
   ];
   return (
@@ -1131,7 +1131,7 @@ function VistaPacientes({
               ["sin_dato", "Sin registro", "border-l-border-strong", "text-foreground"],
             ] as const).map(([clave, etiqueta, borde, cifra]) => (
               <div key={clave} className={cn("rounded-lg border border-l-2 border-border bg-background px-3 py-2.5", borde)}>
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{etiqueta}</p>
+                <p className="text-xs font-medium text-muted-foreground">{etiqueta}</p>
                 <p className={cn("mt-1 text-2xl font-semibold tracking-tight tabular-nums", vacunas[clave] > 0 ? cifra : "text-foreground")}>{entero.format(vacunas[clave])}</p>
               </div>
             ))}

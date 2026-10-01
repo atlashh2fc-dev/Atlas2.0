@@ -134,9 +134,9 @@ export function TableroDeColas({ colas, ahora, puedeMover }: { colas: ColaEnVivo
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="text-sm font-semibold text-foreground">{cola.nombre}</h3>
                     {cola.canales.map((canal) => (
-                      <span key={canal} className="icon-chip rounded-full px-2 py-0.5 text-xs font-medium" data-tone={CANAL[canal]?.tono ?? "slate"}>
+                      <Badge key={canal} tone="neutral">
                         {CANAL[canal]?.texto ?? canal}
-                      </span>
+                      </Badge>
                     ))}
                     <span className="text-xs text-muted-foreground">
                       {cola.modo === "manual" ? "Reparto manual" : "Reparto automático"} · {conectados} de {cola.miembros.length} conectados
@@ -196,35 +196,35 @@ export function TableroDeColas({ colas, ahora, puedeMover }: { colas: ColaEnVivo
                 {cola.miembros.length > 0 && (
                   <div className="overflow-x-auto rounded-xl border border-border">
                     <table className="w-full min-w-[36rem] text-sm">
-                      <thead className="bg-surface-muted text-left text-xs text-muted-foreground">
+                      <thead className="border-b border-border text-left text-xs text-muted-foreground">
                         <tr>
-                          <th scope="col" className="px-3 py-2 font-medium">Ejecutivo</th>
-                          <th scope="col" className="px-3 py-2 font-medium">Voz</th>
-                          {tieneCorreo && <th scope="col" className="px-3 py-2 font-medium">Correo</th>}
-                          {tieneWhatsapp && <th scope="col" className="px-3 py-2 font-medium">WhatsApp</th>}
+                          <th scope="col" className="h-10 px-4 font-medium">Ejecutivo</th>
+                          <th scope="col" className="h-10 px-4 font-medium">Voz</th>
+                          {tieneCorreo && <th scope="col" className="h-10 px-4 font-medium">Correo</th>}
+                          {tieneWhatsapp && <th scope="col" className="h-10 px-4 font-medium">WhatsApp</th>}
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-border">
+                      <tbody className="divide-y divide-border/70">
                         {cola.miembros.map((miembro) => (
                           <tr key={miembro.id} className={cn(!miembro.conectado && "text-muted-foreground")}>
-                            <td className="px-3 py-2">
+                            <td className="px-4 py-3">
                               <span className="inline-flex items-center gap-2">
                                 <span className={cn("size-2 rounded-full", miembro.conectado ? (miembro.en_pausa ? "bg-warning" : "bg-success") : "bg-border-strong")} aria-hidden="true" />
                                 <span className="font-medium">{miembro.nombre}</span>
                               </span>
                             </td>
-                            <td className="px-3 py-2 text-xs">
+                            <td className="px-4 py-3 text-xs">
                               {miembro.conectado
                                 ? `${miembro.estado ?? "Sin estado"}${miembro.telefono && TELEFONO[miembro.telefono] ? ` · ${TELEFONO[miembro.telefono]}` : ""}`
                                 : "Desconectado"}
                             </td>
                             {tieneCorreo && (
-                              <td className="px-3 py-2">
+                              <td className="px-4 py-3">
                                 <CanalDelMiembro prendido={miembro.correo_prendido} recibe={miembro.recibe_correo} carga={miembro.correos} tope={cola.max_correos} />
                               </td>
                             )}
                             {tieneWhatsapp && (
-                              <td className="px-3 py-2">
+                              <td className="px-4 py-3">
                                 <CanalDelMiembro prendido={miembro.whatsapp_prendido} recibe={miembro.recibe_whatsapp} carga={miembro.whatsapp} tope={cola.max_whatsapp} />
                               </td>
                             )}

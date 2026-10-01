@@ -178,7 +178,7 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
                     </div>
                     <div className="mt-0.5 flex items-center justify-between gap-2">
                       <p className="truncate text-xs text-muted-foreground">{hilo.asunto || hilo.direccion}</p>
-                      {hilo.sinLeer > 0 && <span className="rounded-full bg-primary px-1.5 py-0.5 text-[11px] font-semibold text-primary-foreground">{hilo.sinLeer}</span>}
+                      {hilo.sinLeer > 0 && <span className="text-xs font-semibold tabular-nums text-primary">{hilo.sinLeer}</span>}
                     </div>
                   </Link>
                 </li>
@@ -208,7 +208,7 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
                         <p className="truncate text-xs text-muted-foreground">
                           {ultimo ? `${ultimo.direction === "outbound" ? "Tú: " : ""}${ultimo.text_body ?? `[${ultimo.message_type}]`}` : conversacion.contact_phone}
                         </p>
-                        {conversacion.unread_count > 0 && <span className="rounded-full bg-primary px-1.5 py-0.5 text-[11px] font-semibold text-primary-foreground">{conversacion.unread_count}</span>}
+                        {conversacion.unread_count > 0 && <span className="text-xs font-semibold tabular-nums text-primary">{conversacion.unread_count}</span>}
                       </div>
                     </Link>
                   </li>
@@ -296,7 +296,7 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
             <SectionCard icon={UserRound} tone="blue" title={voc.singular}>
               <div className="space-y-3 px-4 py-3 text-sm">
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Ficha</p>
+                  <p className="text-xs font-medium text-muted-foreground">Ficha</p>
                   <Link href={`/dashboard/pacientes/${actual.company_id}`} className="font-medium text-foreground hover:text-primary hover:underline">
                     {nombreDe(actual)}
                   </Link>
@@ -305,7 +305,7 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
                 </div>
                 {esVet && (
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Mascotas</p>
+                    <p className="text-xs font-medium text-muted-foreground">Mascotas</p>
                     {ficha.mascotas.length === 0 ? (
                       <p className="text-muted-foreground">Sin mascotas registradas</p>
                     ) : (
@@ -320,7 +320,7 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
                   </div>
                 )}
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Por cobrar</p>
+                  <p className="text-xs font-medium text-muted-foreground">Por cobrar</p>
                   <p className={`tabular-nums ${ficha.saldo > 0 ? "text-foreground" : "text-muted-foreground"}`}>{pesos.format(ficha.saldo)}</p>
                 </div>
                 <div className="flex flex-wrap gap-1.5 pt-1">

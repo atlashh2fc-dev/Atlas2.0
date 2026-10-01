@@ -73,10 +73,8 @@ export default async function CalidadAnalisisPage({
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="flex items-center gap-2.5 text-sm font-semibold text-foreground">
-            <span className="icon-chip size-7 rounded-lg" data-tone="violet" aria-hidden="true">
-              <BarChart3 size={14} />
-            </span>
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <BarChart3 size={16} className="text-muted-foreground" aria-hidden="true" />
             Reportes y análisis
           </h2>
           <p className="mt-1 text-xs text-muted-foreground">

@@ -136,7 +136,7 @@ export default async function InsumosPage() {
 
       {[...grupos.entries()].map(([categoria, items]) => (
         <SectionCard key={categoria} icon={Package} tone="slate" title={categoria} description={`${items.length} ${items.length === 1 ? "material" : "materiales"}`}>
-          <div className="hidden grid-cols-[minmax(0,1fr)_110px_110px_90px_90px_auto_auto] gap-3 border-b border-border bg-surface-muted px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground lg:grid">
+          <div className="hidden grid-cols-[minmax(0,1fr)_110px_110px_90px_90px_auto_auto] h-10 items-center gap-3 border-b border-border px-4 text-xs font-medium text-muted-foreground lg:grid">
             <span>Material</span>
             <span className="text-right">Costo</span>
             <span className="text-right">Precio venta</span>
@@ -145,7 +145,7 @@ export default async function InsumosPage() {
             <span />
             <span />
           </div>
-          <div className="divide-y divide-border">
+          <div className="divide-y divide-border/70">
             {items.map((insumo) => {
               const uso = consumo.get(insumo.id);
               const bajo = insumo.stock !== null && Number(insumo.stock) <= Number(insumo.stock_minimo ?? 0);
@@ -154,7 +154,7 @@ export default async function InsumosPage() {
                   key={insumo.id}
                   action={guardarInsumo}
                   success={`${insumo.nombre} guardado`}
-                  className={`grid items-center gap-3 px-4 py-2.5 lg:grid-cols-[minmax(0,1fr)_110px_110px_90px_90px_auto_auto] ${insumo.activo ? "" : "opacity-60"}`}
+                  className={`grid items-center gap-3 px-4 py-3 lg:grid-cols-[minmax(0,1fr)_110px_110px_90px_90px_auto_auto] ${insumo.activo ? "" : "opacity-60"}`}
                 >
                   <input type="hidden" name="id" value={insumo.id} />
                   <div className="min-w-0">

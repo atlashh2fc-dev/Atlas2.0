@@ -142,12 +142,8 @@ export default async function CampaignAgentsPage({ params }: { params: Promise<{
 
                 <div className="mt-2 flex flex-wrap items-center gap-2 pl-11">
                   {memberSchedules.map((schedule) => (
-                    <span
-                      key={schedule.id}
-                      className="icon-chip gap-1 rounded-full px-2 py-1 text-[11px] font-medium"
-                      data-tone="amber"
-                    >
-                      <Clock size={11} aria-hidden="true" />
+                    <Badge key={schedule.id} tone="neutral" dot={false} className="gap-1">
+                      <Clock size={12} aria-hidden="true" />
                       {schedule.days_of_week.map((day) => DAY_LABELS[day]).join(" · ")}{" "}
                       {schedule.start_time.slice(0, 5)}–{schedule.end_time.slice(0, 5)}
                       <ActionForm action={removeCampaignAgentSchedule} success="Horario eliminado">
@@ -157,7 +153,7 @@ export default async function CampaignAgentsPage({ params }: { params: Promise<{
                           ×
                         </button>
                       </ActionForm>
-                    </span>
+                    </Badge>
                   ))}
 
                   {memberSchedules.length === 0 && (

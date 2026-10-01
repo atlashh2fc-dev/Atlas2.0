@@ -364,23 +364,23 @@ export default async function RecordatoriosPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-2 font-medium">Cuándo</th>
-                  <th className="px-3 py-2 font-medium">Para</th>
-                  <th className="px-3 py-2 font-medium">Motivo</th>
-                  <th className="px-3 py-2 font-medium">Mensaje</th>
-                  <th className="px-3 py-2 font-medium">Estado</th>
-                  <th className="px-4 py-2 font-medium text-right">Acciones</th>
+                <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                  <th className="h-10 px-4 font-medium">Cuándo</th>
+                  <th className="h-10 px-4 font-medium">Para</th>
+                  <th className="h-10 px-4 font-medium">Motivo</th>
+                  <th className="h-10 px-4 font-medium">Mensaje</th>
+                  <th className="h-10 px-4 font-medium">Estado</th>
+                  <th className="h-10 px-4 font-medium text-right">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border">
+              <tbody className="divide-y divide-border/70">
                 {mensajes.slice(0, 80).map((mensaje) => {
                   const etiqueta = ETIQUETA_ESTADO_MENSAJE[mensaje.estado];
                   const cuerpo = mensaje.cuerpo ?? renderizarPlantilla(mensaje.plantilla, mensaje.variables ?? {});
                   return (
                     <tr key={mensaje.id} className="align-top">
-                      <td className="px-4 py-2.5 text-muted-foreground">{fechaHora.format(new Date(mensaje.enviado_at ?? mensaje.programado_para))}</td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-4 py-3 text-muted-foreground">{fechaHora.format(new Date(mensaje.enviado_at ?? mensaje.programado_para))}</td>
+                      <td className="px-4 py-3">
                         {mensaje.cuenta_id ? (
                           <Link href={`/dashboard/pacientes/${mensaje.cuenta_id}`} className="font-medium text-foreground hover:text-primary hover:underline">
                             {mensaje.nombre_destinatario ?? mensaje.destinatario}
@@ -390,21 +390,21 @@ export default async function RecordatoriosPage() {
                         )}
                         <p className="text-xs text-muted-foreground">{mensaje.destinatario}</p>
                       </td>
-                      <td className="px-3 py-2.5 text-muted-foreground">
+                      <td className="px-4 py-3 text-muted-foreground">
                         {ETIQUETA_REGLA[mensaje.regla] ?? PLANTILLAS[mensaje.plantilla as ClavePlantilla]?.nombre ?? mensaje.regla}
                         <p className="text-xs">{mensaje.canal === "correo" ? "correo" : "WhatsApp"}</p>
                       </td>
-                      <td className="max-w-md px-3 py-2.5 text-muted-foreground">
+                      <td className="max-w-md px-4 py-3 text-muted-foreground">
                         <p className="line-clamp-2" title={cuerpo}>
                           {cuerpo}
                         </p>
                         {mensaje.error && <p className="text-xs text-danger">{mensaje.error}</p>}
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-4 py-3">
                         <Badge tone={etiqueta.tone}>{etiqueta.label}</Badge>
                         {mensaje.proveedor === "simulado" && <p className="text-xs text-muted-foreground">simulado</p>}
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td className="px-4 py-3">
                         <div className="flex justify-end gap-1.5">
                           {mensaje.estado === "fallido" && (
                             <form action={reintentarMensaje}>

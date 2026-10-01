@@ -193,9 +193,7 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
               }`}
             >
               <div className="flex items-start justify-between gap-2">
-                <span className="icon-chip size-8 rounded-lg" data-tone={item.tone} aria-hidden="true">
-                  <item.icon size={15} />
-                </span>
+                <item.icon size={16} className="mt-0.5 text-muted-foreground" aria-hidden="true" />
                 <Badge tone={item.done ? "success" : "warning"} className="text-[11px]">
                   {item.done ? "Listo" : "Pendiente"}
                 </Badge>

@@ -55,7 +55,7 @@ function PreviewNodes({ nodes }: { nodes: ReasonOptionNode[] }) {
     flushRun();
     blocks.push(
       <div key={`group-${node.label}`} className="rounded-xl border border-border/70 bg-surface-muted/40 p-3">
-        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{node.label}</p>
+        <p className="mb-2 text-xs font-medium text-muted-foreground">{node.label}</p>
         <PreviewNodes nodes={node.children} />
       </div>
     );
@@ -117,7 +117,7 @@ export function TypificationPreview({
           ) : (
             states.map((state) => (
               <div key={state.label}>
-                <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{state.label}</h3>
+                <h3 className="mb-2 text-xs font-medium text-muted-foreground">{state.label}</h3>
                 <PreviewNodes nodes={nestReasonOptions(state.reasons)} />
               </div>
             ))

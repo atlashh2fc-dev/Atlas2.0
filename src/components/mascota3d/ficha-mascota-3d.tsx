@@ -151,8 +151,8 @@ export function FichaMascota3D({
                 setRegion(null);
                 setPunto(null);
               }}
-              className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition-colors ${
-                item.id === mascota.id ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground hover:text-foreground"
+              className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium transition-colors ${
+                item.id === mascota.id ? "bg-surface text-foreground shadow-sm ring-1 ring-border" : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"
               }`}
             >
               <PawPrint size={14} aria-hidden="true" /> {item.nombre}
@@ -267,11 +267,11 @@ export function FichaMascota3D({
                   <p className="px-4 py-8 text-center text-sm text-muted-foreground">Sin registros. Toca una zona del cuerpo para registrar un hallazgo.</p>
                 ) : (
                   <ul className="max-h-[520px] divide-y divide-border overflow-y-auto">
-                    {abiertos.length > 0 && <li className="bg-surface-muted/60 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">En curso o por hacer</li>}
+                    {abiertos.length > 0 && <li className="bg-surface-muted/60 px-4 py-1.5 text-xs font-medium text-muted-foreground">En curso o por hacer</li>}
                     {[...abiertos, ...historia.filter((registro) => registro.avance === "terminado")].map((registro, indice) => (
                       <li key={registro.id}>
                         {indice === abiertos.length && abiertos.length > 0 && (
-                          <p className="bg-surface-muted/60 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Historia</p>
+                          <p className="bg-surface-muted/60 px-4 py-1.5 text-xs font-medium text-muted-foreground">Historia</p>
                         )}
                         <button type="button" onClick={() => elegirZona(registro.region, registro.punto)} className="flex w-full items-start gap-3 px-4 py-2.5 text-left transition-colors hover:bg-surface-muted/60">
                           <span className="mt-1 size-2.5 flex-shrink-0 rounded-full" style={{ background: INFO_TIPO[registro.tipo].color }} />
@@ -368,7 +368,7 @@ export function FichaMascota3D({
               </div>
 
               <div className="border-b border-border px-4 py-3">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Historia de la zona</p>
+                <p className="mb-2 text-xs font-medium text-muted-foreground">Historia de la zona</p>
                 {deLaZona.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Sin registros en esta zona.</p>
                 ) : (
@@ -435,8 +435,8 @@ export function FichaMascota3D({
                         key={item}
                         type="button"
                         onClick={() => setTipo(item)}
-                        className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors ${
-                          tipo === item ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground hover:text-foreground"
+                        className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium transition-colors ${
+                          tipo === item ? "bg-surface text-foreground shadow-sm ring-1 ring-border" : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"
                         }`}
                       >
                         <span className="size-2 rounded-full" style={{ background: INFO_TIPO[item].color }} />

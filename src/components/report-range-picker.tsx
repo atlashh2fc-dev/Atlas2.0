@@ -74,10 +74,8 @@ function RangeControls({ range, presets }: { range: ReportRange; presets: readon
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-        <span className="icon-chip size-7 rounded-lg" data-tone="amber" aria-hidden="true">
-          <CalendarRange size={14} />
-        </span>
+      <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+        <CalendarRange size={16} aria-hidden="true" />
         Período
       </span>
 

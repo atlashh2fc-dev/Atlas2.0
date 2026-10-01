@@ -63,7 +63,7 @@ function Baldosa({ label, valor, tono = "default" }: { label: string; valor: num
         : { borde: "border-l-border-strong", cifra: "text-foreground" };
   return (
     <div className={`rounded-lg border border-border border-l-2 bg-background px-3 py-2.5 ${estilo.borde}`}>
-      <dt className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</dt>
+      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
       <dd className={`mt-1 text-2xl font-semibold tracking-tight tabular-nums ${estilo.cifra}`}>{valor.toLocaleString("es-CL")}</dd>
     </div>
   );
@@ -428,19 +428,19 @@ function TablaConversion({
   return (
     <table className="w-full text-sm">
       <thead>
-        <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-          <th className="px-4 py-2 font-medium">Nombre</th>
-          <th className="px-2 py-2 text-right font-medium">Total</th>
-          <th className="px-2 py-2 text-right font-medium">Aceptación</th>
-          <th className="px-4 py-2 text-right font-medium">Aceptado</th>
+        <tr className="border-b border-border text-left text-xs text-muted-foreground">
+          <th className="h-10 px-4 font-medium">Nombre</th>
+          <th className="h-10 px-4 text-right font-medium">Total</th>
+          <th className="h-10 px-4 text-right font-medium">Aceptación</th>
+          <th className="h-10 px-4 text-right font-medium">Aceptado</th>
         </tr>
       </thead>
-      <tbody className="divide-y divide-border">
+      <tbody className="divide-y divide-border/70">
         {filas.map((fila) => (
           <tr key={fila.llave}>
-            <td className="px-4 py-2.5 text-foreground">{fila.llave}</td>
-            <td className="px-2 py-2.5 text-right tabular-nums text-muted-foreground">{fila.total}</td>
-            <td className="px-2 py-2.5 text-right">
+            <td className="px-4 py-3 text-foreground">{fila.llave}</td>
+            <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">{fila.total}</td>
+            <td className="px-4 py-3 text-right">
               {fila.tasa === null ? (
                 <span className="text-muted-foreground">—</span>
               ) : (
@@ -452,7 +452,7 @@ function TablaConversion({
                 </div>
               )}
             </td>
-            <td className="px-4 py-2.5 text-right font-medium tabular-nums text-foreground">{pesos.format(fila.monto)}</td>
+            <td className="px-4 py-3 text-right font-medium tabular-nums text-foreground">{pesos.format(fila.monto)}</td>
           </tr>
         ))}
       </tbody>

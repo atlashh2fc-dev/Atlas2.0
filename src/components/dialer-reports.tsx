@@ -311,11 +311,9 @@ export function DialerReports() {
     <div className="space-y-6">
       <Card className="flex flex-wrap items-end gap-3">
         <div className="flex items-center gap-2.5">
-          <span className="icon-chip size-8 rounded-lg" data-tone="amber" aria-hidden="true">
-            <CalendarRange size={16} />
-          </span>
+          <CalendarRange size={16} className="text-muted-foreground" aria-hidden="true" />
           <div className="flex flex-col gap-0.5">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Período analizado</span>
+            <span className="text-xs font-medium text-muted-foreground">Período analizado</span>
             <span className="text-sm font-semibold text-foreground">{formatReportRangeLabel(range)}</span>
           </div>
         </div>
@@ -339,7 +337,7 @@ export function DialerReports() {
 
         {selectedCampaign && (
           <div className="flex flex-col gap-0.5">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Dirección</span>
+            <span className="text-xs font-medium text-muted-foreground">Dirección</span>
             <span className="text-sm font-semibold text-foreground">
               {CAMPAIGN_DIRECTION_LABELS[selectedCampaign.direction]}
             </span>

@@ -239,7 +239,6 @@ function conversationsHref({
 function ContextSection({
   title,
   icon: Icon,
-  tone = "slate",
   children,
 }: {
   title: string;
@@ -249,10 +248,10 @@ function ContextSection({
 }) {
   return (
     <section className="border-b border-border p-4 last:border-b-0">
-      <h3 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <h3 className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
         {Icon && (
-          <span className="icon-chip size-6 rounded-md" data-tone={tone} aria-hidden="true">
-            <Icon size={13} />
+          <span className="inline-flex" aria-hidden="true">
+            <Icon size={16} />
           </span>
         )}
         {title}
@@ -568,7 +567,7 @@ export default async function WhatsAppInboxPage({
                           </p>
                         </div>
                         {conversation.unread_count > 0 && (
-                          <span className="min-w-5 rounded-full bg-primary px-1.5 py-0.5 text-center text-[11px] font-semibold text-primary-foreground">
+                          <span className="text-xs font-semibold tabular-nums text-primary">
                             {conversation.unread_count}
                           </span>
                         )}
@@ -959,9 +958,7 @@ export default async function WhatsAppInboxPage({
               <ContextSection title="Asistente IA" icon={Bot} tone="violet">
                 <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface-muted p-2.5">
                   <div className="flex min-w-0 items-center gap-2">
-                    <span className="icon-chip size-7 rounded-lg" data-tone="violet" aria-hidden="true">
-                      <Bot size={14} />
-                    </span>
+                    <Bot size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
                     <div className="min-w-0">
                       <p className="text-xs font-medium text-foreground">
                         Mercury 2

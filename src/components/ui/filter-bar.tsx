@@ -69,10 +69,10 @@ export function FilterBar({
               type="button"
               onClick={() => go(view.query)}
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors",
+                "inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium transition-colors",
                 currentQuery === view.query
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border bg-surface text-muted-foreground hover:bg-surface-muted hover:text-foreground"
+                  ? "bg-surface text-foreground shadow-sm ring-1 ring-border"
+                  : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"
               )}
             >
               {view.name}
@@ -83,10 +83,10 @@ export function FilterBar({
             <span
               key={view.id}
               className={cn(
-                "group inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors",
+                "group inline-flex h-8 items-center gap-1 rounded-lg px-2.5 text-[13px] font-medium transition-colors",
                 currentQuery === view.query
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border bg-surface text-muted-foreground hover:bg-surface-muted hover:text-foreground"
+                  ? "bg-surface text-foreground shadow-sm ring-1 ring-border"
+                  : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"
               )}
             >
               <button type="button" onClick={() => go(view.query)} className="inline-flex items-center gap-1.5">

@@ -45,7 +45,7 @@ test("Control opera por tarea y deja la configuración en su propio espacio", ()
     "Reportes",
     "Grabaciones y calidad",
   ]);
-  assert.deepEqual(sectionLabels("admin", "admin"), ["Contact center", "Clínica", "Plataforma"]);
+  assert.deepEqual(sectionLabels("admin", "admin"), ["Contact center", "Clínica", "Cuenta"]);
   assert.deepEqual(labels("admin", "admin"), [
     "Campañas",
     "Colas y enrutamiento",
@@ -55,7 +55,6 @@ test("Control opera por tarea y deja la configuración en su propio espacio", ()
     "Correo de envío",
     "Procedimientos y precios",
     "Materiales e insumos",
-    "Empresas",
     "Usuarios y equipos",
     "Telefonía · diagnóstico",
     "Integraciones",

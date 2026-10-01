@@ -132,7 +132,7 @@ export default async function OperationalCampaignPage({ params }: { params: Prom
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {capabilities.map(({ title, description, href, icon: Icon, tone, badge }) => (
           <Link key={title} href={href} className="group">
-            <Card className="flex h-full items-start gap-4 transition-[border-color,box-shadow,transform] group-hover:-translate-y-0.5 group-hover:border-border-strong group-hover:shadow-md">
+            <Card className="flex h-full items-start gap-4 transition-[border-color,box-shadow] group-hover:border-border-strong group-hover:shadow-md">
               <span className="icon-chip h-10 w-10 shrink-0 rounded-lg" data-tone={tone} aria-hidden="true">
                 <Icon size={19} />
               </span>

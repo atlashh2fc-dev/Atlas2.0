@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Clock } from "lucide-react";
+import { Badge } from "@/components/ui";
 
 function formatElapsed(ms: number): string {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
@@ -31,14 +32,10 @@ export function CallTimer({ startedAt, endedAt }: { startedAt: string; endedAt: 
   const elapsed = formatElapsed(end - start);
 
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium tabular-nums ${
-        endedAt ? "border-border-strong bg-surface-muted text-muted-foreground" : "border-success/35 bg-success-bg text-success"
-      }`}
-    >
-      <Clock size={12} />
+    <Badge tone={endedAt ? "neutral" : "success"} dot={false} className="tabular-nums">
+      <Clock size={12} className={endedAt ? undefined : "text-success"} aria-hidden="true" />
       {elapsed}
       {!endedAt && <span className="ml-0.5">en curso</span>}
-    </span>
+    </Badge>
   );
 }

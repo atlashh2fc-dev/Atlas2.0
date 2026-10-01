@@ -28,7 +28,7 @@ export function NavTabs({ tabs, className }: { tabs: NavTabItem[]; className?: s
   const activeHref = exacta?.href ?? matches.sort((a, b) => b.href.length - a.href.length)[0]?.href;
 
   return (
-    <div className={cn("-mt-1 flex items-center gap-1 border-b border-border", className)}>
+    <div className={cn("-mt-1 flex flex-wrap items-center gap-x-5 border-b border-border", className)}>
       {tabs.map((tab) => {
         const active = tab.href === activeHref;
         return (
@@ -37,15 +37,15 @@ export function NavTabs({ tabs, className }: { tabs: NavTabItem[]; className?: s
             href={tab.href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "-mb-px rounded-t-md border-b-2 px-3 py-2 text-sm font-medium transition-colors",
+              "-mb-px inline-flex items-center whitespace-nowrap border-b-2 py-2.5 text-sm font-medium transition-colors",
               active
-                ? "border-primary bg-gradient-to-t from-primary/12 to-transparent text-foreground"
-                : "border-transparent text-muted-foreground hover:border-border-strong hover:text-foreground"
+                ? "border-foreground text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
             )}
           >
             {tab.label}
             {tab.badge ? (
-              <span className="ml-1.5 rounded-full bg-primary px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-primary-foreground">
+              <span className="ml-1.5 text-xs font-semibold tabular-nums text-primary">
                 <span className="sr-only">, pendientes: </span>
                 {tab.badge}
               </span>

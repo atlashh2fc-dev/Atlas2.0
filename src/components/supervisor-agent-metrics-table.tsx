@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { CalendarClock, ExternalLink, FileText, Mail, MousePointerClick, Phone, SearchX, ShoppingCart, X } from "lucide-react";
-import { Callout, EmptyState, Input, LoadingState, Select, buttonClasses } from "@/components/ui";
+import { Badge, Callout, EmptyState, Input, LoadingState, Select, buttonClasses } from "@/components/ui";
 import { getCampaignVocabulary, type CampaignVertical } from "@/lib/campaign-vertical";
 
 export type SupervisorAgentMetric = {
@@ -382,7 +382,7 @@ export function SupervisorAgentMetricsTable({
           </Select>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Priorizar</span>
+          <span className="text-xs font-medium text-muted-foreground">Priorizar</span>
           {priorityFilters.map((filter) => {
             const isActive = priority === filter.key;
             return (
@@ -390,10 +390,10 @@ export function SupervisorAgentMetricsTable({
                 key={filter.key}
                 type="button"
                 onClick={() => selectPriority(filter)}
-                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                className={`rounded-lg h-8 px-2.5 text-[13px] font-medium transition ${
                   isActive
-                    ? "border-primary bg-primary text-primary-foreground shadow-sm"
-                    : "border-border bg-background text-muted-foreground hover:border-border-strong hover:text-foreground"
+                    ? "bg-surface text-foreground shadow-sm ring-1 ring-border"
+                    : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"
                 }`}
               >
                 {filter.label}
@@ -409,16 +409,16 @@ export function SupervisorAgentMetricsTable({
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1040px] text-sm">
           <thead>
-            <tr className="border-b border-border bg-surface-muted/40 text-left text-[11px] uppercase tracking-wider text-muted-foreground">
+            <tr className="border-b border-border text-left text-xs text-muted-foreground">
               {columns.map((column) => (
                 <th
                   key={column.key}
-                  className={`px-5 py-3 font-semibold ${column.align === "right" ? "text-right" : ""}`}
+                  className={`h-10 px-4 font-medium ${column.align === "right" ? "text-right" : ""}`}
                 >
                   <button
                     type="button"
                     onClick={() => setSort(column.key)}
-                    className={`inline-flex items-center gap-1 rounded-md text-[11px] font-semibold uppercase tracking-wider hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                    className={`inline-flex items-center gap-1 rounded-md font-medium hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                       column.align === "right" ? "justify-end" : ""
                     }`}
                   >
@@ -444,7 +444,7 @@ export function SupervisorAgentMetricsTable({
                 {columns.map((column) => (
                   <td
                     key={column.key}
-                    className={`px-5 py-3 ${
+                    className={`px-4 py-3 ${
                       column.align === "right" ? "text-right tabular-nums text-muted-foreground" : "font-medium text-foreground"
                     }`}
                   >
@@ -452,9 +452,9 @@ export function SupervisorAgentMetricsTable({
                       <>
                         <span>{agent.full_name}</span>
                         {agent.is_historical_only && (
-                          <span className="ml-2 rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                          <Badge tone="neutral" className="ml-2">
                             Histórico
-                          </span>
+                          </Badge>
                         )}
                       </>
                     ) : drilldownColumns.has(column.key) && numberValue(agent[column.key]) > 0 ? (
@@ -565,19 +565,19 @@ export function SupervisorAgentMetricsTable({
 
                     <div className="grid gap-3 md:grid-cols-3">
                       <div className="rounded-lg border border-border border-l-2 border-l-[color:var(--tone-violet)] bg-background p-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Última tipificación</p>
+                        <p className="text-xs font-medium text-muted-foreground">Última tipificación</p>
                         <p className="mt-1 text-sm font-medium text-foreground">
                           {selectedItem.lead.tipificacion_actual ?? selectedItem.reason ?? "-"}
                         </p>
                       </div>
                       <div className="rounded-lg border border-border border-l-2 border-l-[color:var(--tone-amber)] bg-background p-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Próxima agenda</p>
+                        <p className="text-xs font-medium text-muted-foreground">Próxima agenda</p>
                         <p className="mt-1 text-sm font-medium text-foreground">
                           {formatDateTime(selectedItem.lead.next_action_at ?? selectedItem.next_action_at)}
                         </p>
                       </div>
                       <div className="rounded-lg border border-border border-l-2 border-l-[color:var(--tone-green)] bg-background p-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">UF / Venta</p>
+                        <p className="text-xs font-medium text-muted-foreground">UF / Venta</p>
                         <p className="mt-1 text-sm font-medium text-foreground">
                           {selectedItem.equifax_uf_amount
                             ? `UF ${formatDecimal(selectedItem.equifax_uf_amount, 2)}`
@@ -617,21 +617,21 @@ export function SupervisorAgentMetricsTable({
                       <h5 className="text-sm font-semibold text-foreground">Gestión seleccionada</h5>
                       <dl className="mt-3 grid gap-3 text-sm md:grid-cols-2">
                         <div>
-                          <dt className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Fecha gestión</dt>
+                          <dt className="text-xs font-medium text-muted-foreground">Fecha gestión</dt>
                           <dd className="text-foreground">{formatDateTime(selectedItem.activity_at)}</dd>
                         </div>
                         <div>
-                          <dt className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Ejecutivo</dt>
+                          <dt className="text-xs font-medium text-muted-foreground">Ejecutivo</dt>
                           <dd className="text-foreground">{selectedItem.agent_name}</dd>
                         </div>
                         <div>
-                          <dt className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Estado / resultado</dt>
+                          <dt className="text-xs font-medium text-muted-foreground">Estado / resultado</dt>
                           <dd className="text-foreground">
                             {[selectedItem.status, selectedItem.outcome].filter(Boolean).join(" / ") || "-"}
                           </dd>
                         </div>
                         <div>
-                          <dt className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Motivo</dt>
+                          <dt className="text-xs font-medium text-muted-foreground">Motivo</dt>
                           <dd className="text-foreground">{selectedItem.reason ?? "-"}</dd>
                         </div>
                       </dl>

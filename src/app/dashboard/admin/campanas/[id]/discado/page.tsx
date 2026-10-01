@@ -252,9 +252,7 @@ export default async function CampaignDialerPage({ params }: { params: Promise<{
             <>
               <div className="sm:col-span-2 border-t border-border pt-4">
                 <p className="flex items-center gap-2 text-sm font-medium text-foreground">
-                  <span className="icon-chip size-6 rounded-md" data-tone="amber" aria-hidden="true">
-                    <Timer size={13} />
-                  </span>
+                  <Timer size={16} className="text-muted-foreground" aria-hidden="true" />
                   Conexiones cortas
                 </p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
@@ -317,9 +315,7 @@ export default async function CampaignDialerPage({ params }: { params: Promise<{
 
           <div className="sm:col-span-2 border-t border-border pt-4">
             <p className="flex items-center gap-2 text-sm font-medium text-foreground">
-              <span className="icon-chip size-6 rounded-md" data-tone="amber" aria-hidden="true">
-                <CalendarClock size={13} />
-              </span>
+              <CalendarClock size={16} className="text-muted-foreground" aria-hidden="true" />
               Compromisos agendados
             </p>
             <p className="mt-0.5 text-xs text-muted-foreground">

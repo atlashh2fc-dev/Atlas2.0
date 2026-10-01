@@ -107,12 +107,12 @@ export function WorkflowCreatePanel({
                 className="flex flex-col rounded-xl border border-border bg-background p-3 transition-colors hover:border-border-strong"
               >
                 <input type="hidden" name="template_id" value={template.id} />
-                <span className="icon-chip size-9 rounded-lg text-lg" data-tone="rose" aria-hidden="true">
+                <span className="text-lg leading-none" aria-hidden="true">
                   {template.icon}
                 </span>
                 <span className="mt-1 text-sm font-medium text-foreground">{template.name}</span>
                 <span className="mt-0.5 flex-1 text-xs text-muted-foreground">{template.description}</span>
-                <span className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{template.steps.length} pasos</span>
+                <span className="mt-1 text-xs font-medium text-muted-foreground">{template.steps.length} pasos</span>
                 <SubmitButton variant="secondary" size="sm" className="mt-2" pendingLabel="Creando…">
                   Usar plantilla
                 </SubmitButton>

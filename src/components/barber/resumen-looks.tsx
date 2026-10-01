@@ -58,20 +58,20 @@ export async function ResumenLooks({ desde, hasta }: { desde: string; hasta: str
       <div className="grid gap-4 p-4 md:grid-cols-2">
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-              <th className="py-1 font-medium">Barbero</th>
-              <th className="py-1 text-right font-medium">Looks</th>
-              <th className="py-1 text-right font-medium">Aprobados</th>
+            <tr className="border-b border-border text-left text-xs text-muted-foreground">
+              <th className="h-10 font-medium">Barbero</th>
+              <th className="h-10 text-right font-medium">Looks</th>
+              <th className="h-10 text-right font-medium">Aprobados</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-border">
+          <tbody className="divide-y divide-border/70">
             {[...porBarbero.entries()]
               .sort((a, b) => b[1].looks - a[1].looks)
               .map(([barbero, fila]) => (
                 <tr key={barbero}>
-                  <td className="py-1.5 text-foreground">{barbero}</td>
-                  <td className="py-1.5 text-right tabular-nums">{fila.looks}</td>
-                  <td className="py-1.5 text-right tabular-nums">{fila.aprobados}</td>
+                  <td className="py-3 text-foreground">{barbero}</td>
+                  <td className="py-3 text-right tabular-nums">{fila.looks}</td>
+                  <td className="py-3 text-right tabular-nums">{fila.aprobados}</td>
                 </tr>
               ))}
           </tbody>

@@ -19,8 +19,8 @@ const TONE_CHIP: Partial<Record<MetricTone, IconTone>> = { warn: "amber", danger
 /** Chip de icono de las tarjetas de métrica, arriba a la derecha. */
 export function MetricIconChip({ icon: Icon, tone }: { icon: MetricIcon; tone: IconTone }) {
   return (
-    <span className="icon-chip size-8 rounded-full" data-tone={tone} aria-hidden="true">
-      <Icon size={16} aria-hidden="true" />
+    <span className="icon-chip size-7 rounded-md" data-tone={tone} aria-hidden="true">
+      <Icon size={15} aria-hidden="true" />
     </span>
   );
 }
@@ -112,7 +112,7 @@ export function MetricCard({
   const body = (
     <>
       <div className="flex items-start justify-between gap-2">
-        <p className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <p className="flex items-center gap-1 text-[13px] font-medium text-muted-foreground">
           {label ?? definition?.label}
           {(tooltip || definition) && (
             <InfoTooltip text={tooltip ?? definition!.definition} formula={definition?.formula} />
@@ -121,7 +121,7 @@ export function MetricCard({
         {icon && <MetricIconChip icon={icon} tone={TONE_CHIP[tone] ?? iconTone} />}
       </div>
 
-      <p className={cn("mt-1.5 text-2xl font-semibold tabular-nums tracking-tight", TONE_TEXT[tone])}>{value}</p>
+      <p className={cn("mt-2 text-[28px] font-semibold leading-none tabular-nums tracking-tight", TONE_TEXT[tone])}>{value}</p>
 
       {(delta || target) && (
         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -147,14 +147,14 @@ export function MetricCard({
     </>
   );
 
-  const base = "block rounded-xl border border-border bg-surface p-4 shadow-sm";
+  const base = "block rounded-xl border border-border bg-surface p-5 shadow-sm";
 
   if (!href) return <div className={cn(base, className)}>{body}</div>;
 
   return (
     <Link
       href={href}
-      className={cn(base, "transition-[border-color,box-shadow,transform] hover:-translate-y-0.5 hover:border-border-strong hover:shadow-md", className)}
+      className={cn(base, "transition-[border-color,box-shadow] hover:border-border-strong hover:shadow-md", className)}
     >
       {body}
     </Link>

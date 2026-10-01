@@ -166,11 +166,8 @@ export function InboundMailbox({
   return (
     <>
       <section className="relative overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
-        <div aria-hidden="true" className="absolute inset-x-0 top-0 h-0.5 bg-[linear-gradient(90deg,var(--tone-teal),transparent_85%)]" />
         <header className="flex flex-wrap items-center gap-3 border-b border-border bg-surface-muted/40 px-5 py-4">
-          <div className="icon-chip h-10 w-10 rounded-lg" data-tone="teal" aria-hidden="true">
-            <Mail size={20} aria-hidden />
-          </div>
+          <Mail size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="font-semibold text-foreground">{mailbox?.label ?? campaignName}</h2>
@@ -334,9 +331,7 @@ export function InboundMailbox({
               <div className="space-y-4 border-t border-border pt-5">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="icon-chip size-8 rounded-lg" data-tone="blue" aria-hidden="true">
-                      <UserRoundPlus size={16} />
-                    </span>
+                    <UserRoundPlus size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
                     <h3 className="font-semibold text-foreground">Convertir para contacto telefónico</h3>
                   </div>
                   <p className="mt-1 text-sm text-muted-foreground">Se creará o reutilizará un registro en la campaña {campaignName} y quedará asignado de inmediato.</p>

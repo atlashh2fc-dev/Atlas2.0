@@ -210,10 +210,10 @@ export default async function PacientesPage({
             <Link
               key={opcion.id}
               href={hrefVista(opcion.id)}
-              className={`rounded-full border px-3 py-1 text-sm transition-colors ${
+              className={`inline-flex h-8 items-center rounded-lg px-2.5 text-[13px] font-medium transition-colors ${
                 vista === opcion.id || (opcion.id === "todos" && !vistas.some((otra) => otra.id === vista))
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border bg-surface text-muted-foreground hover:text-foreground"
+                  ? "bg-surface text-foreground shadow-sm ring-1 ring-border"
+                  : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"
               }`}
             >
               {opcion.label}
@@ -245,12 +245,12 @@ export default async function PacientesPage({
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-2 font-medium">{voc.singular}</th>
-                  <th className="px-3 py-2 font-medium">Contacto</th>
-                  <th className="px-3 py-2 font-medium">{esVet ? "Mascotas" : esBarber ? atencion.profesional : "Previsión"}</th>
-                  <th className="px-3 py-2 font-medium">{ventas.negocio} abierto</th>
-                  <th className="px-4 py-2 font-medium">Próxima acción</th>
+                <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                  <th className="h-10 px-4 font-medium">{voc.singular}</th>
+                  <th className="h-10 px-4 font-medium">Contacto</th>
+                  <th className="h-10 px-4 font-medium">{esVet ? "Mascotas" : esBarber ? atencion.profesional : "Previsión"}</th>
+                  <th className="h-10 px-4 font-medium">{ventas.negocio} abierto</th>
+                  <th className="h-10 px-4 font-medium">Próxima acción</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -260,7 +260,7 @@ export default async function PacientesPage({
                   const vencida = abierto?.next_action_at && new Date(abierto.next_action_at) < ahora;
                   return (
                     <tr key={ficha.id} className="transition-colors hover:bg-surface-muted/50">
-                      <td className="px-4 py-2.5">
+                      <td className="px-4 py-3">
                         <Link href={`/dashboard/pacientes/${ficha.id}`} className="font-medium text-foreground hover:text-primary hover:underline">
                           {ficha.name}
                         </Link>
@@ -269,11 +269,11 @@ export default async function PacientesPage({
                           {aceptados > 0 ? ` · ${aceptados} aceptado${aceptados === 1 ? "" : "s"}` : ""}
                         </p>
                       </td>
-                      <td className="px-3 py-2.5 text-muted-foreground">
+                      <td className="px-4 py-3 text-muted-foreground">
                         <p>{ficha.phone ?? "—"}</p>
                         <p className="truncate text-xs">{ficha.email ?? ""}</p>
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-4 py-3">
                         {esVet ? (
                           <div className="flex flex-wrap gap-1">
                             {(ficha.mascotas ?? []).map((mascota) => {
@@ -292,7 +292,7 @@ export default async function PacientesPage({
                           <span className="text-muted-foreground">{String(ficha.metadata?.[esBarber ? "profesional" : "prevision"] ?? "—")}</span>
                         )}
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-4 py-3">
                         {abierto ? (
                           <>
                             <p className="text-foreground">{abierto.name}</p>
@@ -302,7 +302,7 @@ export default async function PacientesPage({
                           <span className="text-muted-foreground">—</span>
                         )}
                       </td>
-                      <td className={`px-4 py-2.5 ${vencida ? "text-danger" : "text-muted-foreground"}`}>
+                      <td className={`px-4 py-3 ${vencida ? "text-danger" : "text-muted-foreground"}`}>
                         {abierto?.next_action_at
                           ? `${vencida ? "Vencida · " : ""}${fecha.format(new Date(abierto.next_action_at))}`
                           : "—"}
