@@ -1,4 +1,4 @@
-import { Clock, Headset, UserPlus, Users } from "lucide-react";
+import { Clock, Headset, UserPlus, Users, X } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -75,7 +75,7 @@ export default async function CampaignAgentsPage({ params }: { params: Promise<{
             <ActionForm action={setCampaignManualDialForAll} success="Modo híbrido habilitado para todos">
               <input type="hidden" name="campaign_id" value={id} />
               <input type="hidden" name="enabled" value="true" />
-              <ActionSubmit size="sm" pendingLabel="Habilitando…">Habilitar todos</ActionSubmit>
+              <ActionSubmit variant="secondary" size="sm" pendingLabel="Habilitando…">Habilitar todos</ActionSubmit>
             </ActionForm>
             <ActionForm action={setCampaignManualDialForAll} success="Modo híbrido deshabilitado para todos">
               <input type="hidden" name="campaign_id" value={id} />
@@ -130,10 +130,22 @@ export default async function CampaignAgentsPage({ params }: { params: Promise<{
                         {member.manual_dial_enabled ? "Deshabilitar híbrido" : "Habilitar híbrido"}
                       </ActionSubmit>
                     </ActionForm>
-                    <ActionForm action={removeCampaignAgent} success="Ejecutivo quitado de la campaña">
+                    {/* Quitar desprovisiona extensión y colas: va aparte y pide confirmar. */}
+                    <ActionForm
+                      action={removeCampaignAgent}
+                      success="Ejecutivo quitado de la campaña"
+                      className="ml-3"
+                      confirm={{
+                        title: `¿Quitar a ${profile?.full_name ?? "este ejecutivo"} de la campaña?`,
+                        description:
+                          "Atlas le retira la extensión y las colas de esta campaña: deja de recibir sus llamadas desde ahora. Puedes volver a agregarlo más abajo, en Agregar ejecutivos.",
+                        confirmLabel: "Quitar de la campaña",
+                        tone: "danger",
+                      }}
+                    >
                       <input type="hidden" name="campaign_id" value={id} />
                       <input type="hidden" name="membership_id" value={member.id} />
-                      <ActionSubmit variant="secondary" size="sm" pendingLabel="Quitando…">
+                      <ActionSubmit variant="ghost" size="sm" pendingLabel="Quitando…" className="text-danger hover:text-danger">
                         Quitar
                       </ActionSubmit>
                     </ActionForm>
@@ -141,20 +153,31 @@ export default async function CampaignAgentsPage({ params }: { params: Promise<{
                 </div>
 
                 <div className="mt-2 flex flex-wrap items-center gap-2 pl-11">
-                  {memberSchedules.map((schedule) => (
-                    <Badge key={schedule.id} tone="neutral" dot={false} className="gap-1">
-                      <Clock size={12} aria-hidden="true" />
-                      {schedule.days_of_week.map((day) => DAY_LABELS[day]).join(" · ")}{" "}
-                      {schedule.start_time.slice(0, 5)}–{schedule.end_time.slice(0, 5)}
-                      <ActionForm action={removeCampaignAgentSchedule} success="Horario eliminado">
-                        <input type="hidden" name="campaign_id" value={id} />
-                        <input type="hidden" name="schedule_id" value={schedule.id} />
-                        <button type="submit" aria-label="Eliminar horario" className="font-semibold hover:text-danger">
-                          ×
-                        </button>
-                      </ActionForm>
-                    </Badge>
-                  ))}
+                  {memberSchedules.map((schedule) => {
+                    const days = schedule.days_of_week.map((day) => DAY_LABELS[day]).join(" · ");
+                    const range = `${schedule.start_time.slice(0, 5)}–${schedule.end_time.slice(0, 5)}`;
+                    return (
+                      <span key={schedule.id} className="inline-flex items-center gap-0.5">
+                        <Badge tone="neutral" dot={false} className="gap-1">
+                          <Clock size={12} aria-hidden="true" />
+                          {days} {range}
+                        </Badge>
+                        {/* Botón propio de 32 px fuera de la etiqueta: la × dentro del Badge era un blanco de 10 px. */}
+                        <ActionForm action={removeCampaignAgentSchedule} success="Horario eliminado">
+                          <input type="hidden" name="campaign_id" value={id} />
+                          <input type="hidden" name="schedule_id" value={schedule.id} />
+                          <button
+                            type="submit"
+                            aria-label={`Eliminar horario ${days} ${range}`}
+                            title="Eliminar horario"
+                            className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-muted hover:text-danger focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            <X size={14} aria-hidden="true" />
+                          </button>
+                        </ActionForm>
+                      </span>
+                    );
+                  })}
 
                   {memberSchedules.length === 0 && (
                     <span className="text-[11px] text-muted-foreground">
@@ -205,7 +228,7 @@ export default async function CampaignAgentsPage({ params }: { params: Promise<{
                         className="ml-1 rounded-md border border-border bg-background px-1 py-0.5 text-xs text-foreground"
                       />
                     </label>
-                    <ActionSubmit size="sm" pendingLabel="Agregando…">
+                    <ActionSubmit variant="secondary" size="sm" pendingLabel="Agregando…">
                       Agregar
                     </ActionSubmit>
                   </ActionForm>
@@ -222,27 +245,32 @@ export default async function CampaignAgentsPage({ params }: { params: Promise<{
         title="Agregar ejecutivos"
         description={
           availableAgents.length > 0
-            ? "Usa Ctrl o Cmd + clic para elegir varios. Atlas completa automáticamente la habilitación operativa."
+            ? "Marca a quienes quieres sumar. Atlas completa automáticamente la habilitación operativa."
             : "Todos los ejecutivos activos ya están en esta campaña."
         }
       >
-        <ActionForm action={addCampaignAgent} success="Ejecutivos agregados" className="max-w-xl p-4">
+        <ActionForm action={addCampaignAgent} success="Ejecutivos agregados" className="p-4">
           <input type="hidden" name="campaign_id" value={id} />
-          <select
-            name="profile_ids"
-            multiple
-            size={Math.min(Math.max(availableAgents.length, 2), 8)}
-            required
-            disabled={availableAgents.length === 0}
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
-          >
-            {availableAgents.map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.full_name} ({agent.email})
-              </option>
-            ))}
-          </select>
-          <ActionSubmit className="mt-3" disabled={availableAgents.length === 0} pendingLabel="Agregando…">
+          {/* Tarjetas con casilla, como en Miembros de la cola: el multiselect
+              nativo exigía Ctrl/Cmd + clic y un clic suelto borraba la selección. */}
+          {availableAgents.length > 0 && (
+            <fieldset className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              <legend className="sr-only">Ejecutivos disponibles</legend>
+              {availableAgents.map((agent) => (
+                <label
+                  key={agent.id}
+                  className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-border bg-background p-3 transition-colors hover:border-border-strong has-[:checked]:border-primary has-[:checked]:bg-primary/5"
+                >
+                  <input type="checkbox" name="profile_ids" value={agent.id} className="accent-primary" />
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium text-foreground">{agent.full_name}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{agent.email}</span>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+          )}
+          <ActionSubmit className="mt-4" disabled={availableAgents.length === 0} pendingLabel="Agregando…">
             Agregar seleccionados
           </ActionSubmit>
         </ActionForm>

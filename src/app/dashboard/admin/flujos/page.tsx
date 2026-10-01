@@ -23,6 +23,7 @@ export default async function WorkflowsPage({
     .from("workflows")
     .select("*")
     .order("created_at", { ascending: true });
+  if (workflowsError) console.error("[admin/flujos] carga de flujos", workflowsError);
 
   const { data: campaigns } = await supabase
     .from("campaigns")
@@ -85,7 +86,9 @@ export default async function WorkflowsPage({
       </div>
 
       {workflowsError && (
-        <Callout tone="danger">No se pudieron cargar los flujos: {workflowsError.message}</Callout>
+        <Callout tone="danger">
+          No se pudieron cargar los flujos. Actualiza la página en unos segundos; si sigue igual, avisa a soporte.
+        </Callout>
       )}
 
       <SectionCard
@@ -154,6 +157,22 @@ export default async function WorkflowsPage({
                     <ActionForm
                       action={toggleWorkflowActive}
                       success={w.is_active ? "Flujo desactivado" : "Flujo activado"}
+                      confirm={
+                        w.is_active
+                          ? {
+                              title: `¿Desactivar el flujo «${w.name}»?`,
+                              // Desactivar no lo desasigna: la tipificación lee
+                              // campaigns.workflow_id sin mirar is_active. Mejor
+                              // decirlo que prometer un efecto que no ocurre.
+                              description:
+                                usedBy.length > 0
+                                  ? `Lo usan ${usedBy.join(", ")}. Esas campañas siguen mostrando este guion a sus ejecutivos hasta que les asignes otro flujo desde su Resumen.`
+                                  : "Ninguna campaña lo usa hoy. Puedes volver a activarlo cuando quieras.",
+                              confirmLabel: "Desactivar flujo",
+                              tone: "danger",
+                            }
+                          : undefined
+                      }
                     >
                       <input type="hidden" name="workflow_id" value={w.id} />
                       <input type="hidden" name="active" value={String(w.is_active)} />

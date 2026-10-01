@@ -55,7 +55,7 @@ export default async function BulkUploadPage({
   const [{ data: teams }, { data: workflows }, { data: campaigns }, { data: uploads }] = await Promise.all([
     teamsQuery,
     supabase.from("workflows").select("id, name").eq("is_active", true).eq("status", "published").order("name"),
-    supabase.from("campaigns").select("id, name").eq("is_active", true).order("name"),
+    supabase.from("campaigns").select("id, name, workflow_id").eq("is_active", true).order("name"),
     supabase
       .from("lead_uploads")
       .select(

@@ -18,6 +18,8 @@ import {
 interface Option {
   id: string;
   name: string;
+  /** Solo campañas: si trae flujo, ese manda sobre el elegido a mano. */
+  workflow_id?: string | null;
 }
 
 type SingleFieldKey = "full_name" | "rut" | "status";
@@ -119,6 +121,11 @@ export function BulkUploadForm({
   const [teamId, setTeamId] = useState("");
   const [campaignId, setCampaignId] = useState(defaultCampaignId ?? "");
   const [workflowId, setWorkflowId] = useState("");
+
+  // La campaña con flujo manda sobre el flujo elegido a mano (ver submit):
+  // el selector se bloquea y lo dice, en vez de aceptar algo que se ignora.
+  const campaignWorkflowId = campaigns.find((c) => c.id === campaignId)?.workflow_id ?? null;
+  const campaignWorkflowName = workflows.find((w) => w.id === campaignWorkflowId)?.name ?? null;
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -271,9 +278,10 @@ export function BulkUploadForm({
         const { data, error: rpcError } = await supabase.rpc("bulk_insert_leads", { payload });
 
         if (rpcError) {
+          console.error(`[carga masiva] lote ${i + 1}`, rpcError);
           partialResult.errors.push({
             row: 0,
-            message: `Error al insertar el lote ${i + 1} (${batches[i].length} filas): ${rpcError.message}`,
+            message: `No se pudo guardar el lote ${i + 1} (${batches[i].length} filas). Vuelve a cargar el mismo archivo: lo que ya entró no se duplica. Si se repite, avisa a soporte.`,
           });
         } else {
           const insertedInBatch = (data as { inserted: number } | null)?.inserted ?? 0;
@@ -304,9 +312,10 @@ export function BulkUploadForm({
       });
 
       if (historyError) {
+        console.error("[carga masiva] historial de cargas", historyError);
         partialResult.errors.push({
           row: 0,
-          message: `Los registros se cargaron, pero no se pudo guardar el archivo en el historial de cargas: ${historyError.message}`,
+          message: "Los registros se cargaron, pero este archivo no quedó anotado en el historial de cargas.",
         });
       }
 
@@ -461,8 +470,8 @@ export function BulkUploadForm({
             ))}
           </select>
           <p className="mt-1 text-xs text-muted-foreground">
-            Si eliges una campaña, estos leads quedan en su BBDD y heredan su flujo productivo
-            (anula el flujo elegido abajo).
+            Si eliges una campaña, estos registros quedan en su base y, si la campaña tiene flujo,
+            heredan ese flujo.
           </p>
         </div>
 
@@ -490,11 +499,17 @@ export function BulkUploadForm({
               Flujo de gestión (opcional)
             </label>
             <select
-              value={workflowId}
+              value={campaignWorkflowId ? "__campaign__" : workflowId}
               onChange={(e) => setWorkflowId(e.target.value)}
-              disabled={busy}
+              disabled={busy || Boolean(campaignWorkflowId)}
+              aria-describedby={campaignWorkflowId ? "flujo-de-la-campana" : undefined}
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-60"
             >
+              {campaignWorkflowId && (
+                <option value="__campaign__">
+                  {campaignWorkflowName ? `Flujo de la campaña · ${campaignWorkflowName}` : "Flujo de la campaña"}
+                </option>
+              )}
               <option value="">Sin flujo</option>
               {workflows.map((w) => (
                 <option key={w.id} value={w.id}>
@@ -502,6 +517,11 @@ export function BulkUploadForm({
                 </option>
               ))}
             </select>
+            {campaignWorkflowId && (
+              <p id="flujo-de-la-campana" className="mt-1 text-xs text-muted-foreground">
+                Se usa el flujo de la campaña elegida. Para cambiarlo, edítalo en el Resumen de la campaña.
+              </p>
+            )}
           </div>
         </div>
 

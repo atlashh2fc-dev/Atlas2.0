@@ -25,6 +25,16 @@ import {
   Thead,
   Tr,
 } from "@/components/ui";
+import { FormularioConEncendido } from "../formulario-con-encendido";
+
+/** Estados de lead_orchestrator_assignments en el idioma de quien supervisa. */
+const ASSIGNMENT_STATUS: Record<string, { label: string; tone: "success" | "warning" | "danger" | "neutral" | "info" }> = {
+  delivered: { label: "Entregado", tone: "info" },
+  opened: { label: "Abierto por el ejecutivo", tone: "warning" },
+  completed: { label: "Gestionado", tone: "success" },
+  expired: { label: "Vencido sin abrir", tone: "danger" },
+  cancelled: { label: "Cancelado", tone: "neutral" },
+};
 
 const OPERATOR_LABELS: Record<string, string> = {
   eq: "es igual a",
@@ -78,10 +88,26 @@ export default async function CampaignPriorityPage({ params }: { params: Promise
         title="Motor de asignación"
         description="Solo entrega registros a ejecutivos asignados a esta campaña, disponibles y con Atlas abierto."
       >
-        <ActionForm
+        <FormularioConEncendido
           action={saveLeadOrchestratorConfig}
           success="Configuración del motor guardada"
           className="grid gap-4 p-4 sm:grid-cols-2 xl:grid-cols-4"
+          toggleName="is_active"
+          savedOn={config?.is_active ?? false}
+          turnOn={{
+            title: "¿Encender el motor de leads?",
+            description:
+              "Al guardar, el motor empezará a entregar registros de esta campaña a los ejecutivos asignados que estén disponibles.",
+            confirmLabel: "Guardar y encender motor",
+            tone: "primary",
+          }}
+          turnOff={{
+            title: "¿Detener el motor de leads?",
+            description:
+              "Al guardar, el motor deja de entregar registros nuevos de esta campaña. Lo que ya está entregado sigue en manos de cada ejecutivo.",
+            confirmLabel: "Guardar y detener motor",
+            tone: "danger",
+          }}
         >
           <input type="hidden" name="campaign_id" value={id} />
           <Field label="Intervalo de revisión (segundos)">
@@ -106,7 +132,7 @@ export default async function CampaignPriorityPage({ params }: { params: Promise
           <div className="flex items-center sm:col-span-2 sm:justify-end">
             <ActionSubmit pendingLabel="Guardando…">Guardar configuración</ActionSubmit>
           </div>
-        </ActionForm>
+        </FormularioConEncendido>
       </SectionCard>
 
       <SectionCard
@@ -137,17 +163,30 @@ export default async function CampaignPriorityPage({ params }: { params: Promise
                   </Td>
                   <Td><Badge tone={rule.is_active ? "success" : "neutral"}>{rule.is_active ? "Activa" : "Pausada"}</Badge></Td>
                   <Td align="right">
-                    <div className="flex justify-end gap-2">
+                    {/* Eliminar va separado de Pausar y pide confirmar: no se deshace. */}
+                    <div className="flex justify-end gap-5">
                       <ActionForm action={toggleLeadPriorityRule} success={rule.is_active ? "Regla pausada" : "Regla activada"}>
                         <input type="hidden" name="campaign_id" value={id} />
                         <input type="hidden" name="rule_id" value={rule.id} />
                         <input type="hidden" name="active" value={String(rule.is_active)} />
                         <ActionSubmit variant="secondary" size="sm" pendingLabel="…">{rule.is_active ? "Pausar" : "Activar"}</ActionSubmit>
                       </ActionForm>
-                      <ActionForm action={deleteLeadPriorityRule} success="Regla eliminada">
+                      <ActionForm
+                        action={deleteLeadPriorityRule}
+                        success="Regla eliminada"
+                        confirm={{
+                          title: `¿Eliminar la regla «${rule.name}»?`,
+                          description:
+                            "Los registros que priorizaba pasan a la siguiente regla o al fallback. No se puede deshacer: si la necesitas de nuevo, tendrás que crearla otra vez. Para dejarla sin efecto por un tiempo, usa Pausar.",
+                          confirmLabel: "Eliminar regla",
+                          tone: "danger",
+                        }}
+                      >
                         <input type="hidden" name="campaign_id" value={id} />
                         <input type="hidden" name="rule_id" value={rule.id} />
-                        <ActionSubmit variant="danger" size="sm" pendingLabel="…">Eliminar</ActionSubmit>
+                        <ActionSubmit variant="ghost" size="sm" pendingLabel="…" className="text-danger hover:text-danger">
+                          Eliminar
+                        </ActionSubmit>
                       </ActionForm>
                     </div>
                   </Td>
@@ -221,7 +260,11 @@ export default async function CampaignPriorityPage({ params }: { params: Promise
                     <Td strong>{lead?.full_name ?? "—"}</Td>
                     <Td>{agent?.full_name ?? "—"}</Td>
                     <Td muted>{assignment.priority_reason}</Td>
-                    <Td><Badge>{assignment.status}</Badge></Td>
+                    <Td>
+                      <Badge tone={ASSIGNMENT_STATUS[assignment.status]?.tone ?? "neutral"}>
+                        {ASSIGNMENT_STATUS[assignment.status]?.label ?? assignment.status}
+                      </Badge>
+                    </Td>
                   </Tr>
                 );
               })}

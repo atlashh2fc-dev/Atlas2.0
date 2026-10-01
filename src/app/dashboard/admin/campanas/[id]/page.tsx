@@ -93,6 +93,8 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
     supabase.from("campaign_agents").select("profile_id").eq("campaign_id", id),
   ]);
 
+  if (summaryError) console.error("[admin/campanas/resumen] get_campaign_dashboard_summary", summaryError);
+
   const memberProfileIds = [...new Set((campaignMemberships ?? []).map((row) => row.profile_id))];
   const { data: memberProfiles } = memberProfileIds.length > 0
     ? await supabase
@@ -261,7 +263,6 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
         </div>
       </SectionCard>
 
-      {!aiVoice && <div id="flujo" />}
       <SectionCard
         icon={Briefcase}
         tone="slate"
@@ -290,7 +291,9 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
         </ActionForm>
       </SectionCard>
 
-      {!aiVoice && <SectionCard
+      {/* El ancla #flujo (tarjeta de preparación e Inicio) va pegada a la
+          sección del flujo; antes caía sobre «Vertical de negocio». */}
+      {!aiVoice && <div id="flujo" className="scroll-mt-4"><SectionCard
         icon={Workflow}
         tone="rose"
         title="Flujo de gestión"
@@ -320,10 +323,13 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
             Editar o crear un flujo
           </Link>
         </ActionForm>
-      </SectionCard>}
+      </SectionCard></div>}
 
       {summaryError ? (
-        <Callout tone="danger">No se pudo cargar el resumen: {summaryError.message}</Callout>
+        <Callout tone="danger">
+          No se pudieron calcular los indicadores de la campaña. La configuración de arriba sigue disponible;
+          actualiza la página en unos minutos y, si sigue igual, avisa a soporte.
+        </Callout>
       ) : (
         <CampaignDashboardSummary
           summary={summary as CampaignDashboardSummaryData}

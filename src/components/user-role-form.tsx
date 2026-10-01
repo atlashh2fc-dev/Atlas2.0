@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { updateUserRole } from "@/app/actions/admin";
 import type { AppRole } from "@/lib/types";
 import { Button, Select } from "@/components/ui";
@@ -27,6 +28,7 @@ export function UserRoleForm({
   initialSupervisorTeamIds: string[];
   teams: TeamOption[];
 }) {
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [role, setRole] = useState<AppRole>(initialRole);
   const [supervisorTeamIds, setSupervisorTeamIds] = useState(() => new Set(initialSupervisorTeamIds));
@@ -41,10 +43,10 @@ export function UserRoleForm({
       try {
         await updateUserRole(formData);
         setMessage("Guardado");
-        // El Router Cache puede conservar la lista anterior incluso después de
-        // revalidatePath. Una recarga completa obliga a consultar el rol que
-        // acaba de persistirse antes de volver a pintar la tabla.
-        window.location.reload();
+        // router.refresh() vuelve a pedir la ruta actual al servidor sin pasar
+        // por el Router Cache, así la tabla muestra el rol recién guardado sin
+        // la recarga completa que perdía filtros, scroll y selección.
+        router.refresh();
       } catch (reason) {
         setError(reason instanceof Error ? reason.message : "No se pudo guardar el cambio.");
       }
@@ -117,7 +119,7 @@ export function UserRoleForm({
         </label>
       )}
       <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
-        <Button type="submit" size="sm" disabled={isPending}>
+        <Button type="submit" variant="secondary" size="sm" disabled={isPending}>
           {isPending ? "Guardando…" : "Guardar cambios"}
         </Button>
         <span aria-live="polite" className="text-xs">

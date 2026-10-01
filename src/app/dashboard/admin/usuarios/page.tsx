@@ -33,6 +33,7 @@ export default async function UsersAdminPage({
     supabase.from("campaign_agents").select("profile_id, campaign_id"),
   ]);
 
+  if (usersError) console.error("[admin/usuarios] carga de usuarios", usersError);
   const supervisors = (users ?? []).filter((user) => user.role === "supervisor");
   const selectedCampaign = (campaigns ?? []).find((campaign) => campaign.id === requestedCampaignId) ?? null;
 
@@ -136,7 +137,9 @@ export default async function UsersAdminPage({
       )}
 
       {usersError ? (
-        <Callout tone="danger">No se pudieron cargar los usuarios: {usersError.message}</Callout>
+        <Callout tone="danger">
+          No se pudieron cargar los usuarios. Actualiza la página en unos segundos; si sigue igual, avisa a soporte.
+        </Callout>
       ) : (
         <UsersTable rows={rows} teams={teams ?? []} campaigns={campaigns ?? []} />
       )}

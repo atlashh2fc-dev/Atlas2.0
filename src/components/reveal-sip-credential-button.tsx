@@ -3,8 +3,17 @@
 import { useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { revealAgentSipCredential } from "@/app/actions/agent-sip";
+import { Button, actionErrorMessage, useToast } from "@/components/ui";
 
-export function RevealSipCredentialButton({ profileId }: { profileId: string }) {
+export function RevealSipCredentialButton({
+  profileId,
+  disabled = false,
+}: {
+  profileId: string;
+  /** Con la sincronización caída la clave mostrada puede no ser la que tiene Asterisk. */
+  disabled?: boolean;
+}) {
+  const { toast } = useToast();
   const [credential, setCredential] = useState<{ extension: string; sip_password: string } | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -17,6 +26,10 @@ export function RevealSipCredentialButton({ profileId }: { profileId: string }) 
     try {
       const result = await revealAgentSipCredential(profileId);
       setCredential(result);
+    } catch (error) {
+      // Sin esto un fallo dejaba el botón sin respuesta y sin explicación.
+      console.error("[agentes-sip] revelar credencial", error);
+      toast({ tone: "danger", message: `No se pudo mostrar la clave. ${actionErrorMessage(error)}` });
     } finally {
       setLoading(false);
     }
@@ -24,15 +37,10 @@ export function RevealSipCredentialButton({ profileId }: { profileId: string }) 
 
   return (
     <div className="flex items-center gap-2">
-      <button
-        type="button"
-        onClick={handleClick}
-        disabled={loading}
-        className="flex items-center gap-1 rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-medium text-foreground shadow-sm transition-colors hover:border-border-strong hover:bg-surface-muted disabled:opacity-40"
-      >
-        {credential ? <EyeOff size={12} /> : <Eye size={12} />}
-        {credential ? "Ocultar clave" : "Ver clave"}
-      </button>
+      <Button type="button" variant="secondary" size="sm" onClick={handleClick} disabled={loading || disabled}>
+        {credential ? <EyeOff size={12} aria-hidden="true" /> : <Eye size={12} aria-hidden="true" />}
+        {loading ? "Buscando…" : credential ? "Ocultar clave" : "Ver clave"}
+      </Button>
       {credential && (
         <code className="rounded-md border border-border bg-surface-muted px-2 py-1 text-xs text-foreground">
           {credential.extension} / {credential.sip_password}

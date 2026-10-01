@@ -5,9 +5,10 @@ import { upsertDialerCampaignConfig } from "@/app/actions/dialer-config";
 import type { DialerCampaignConfig } from "@/lib/types";
 import { MAX_CALLER_IDS } from "@/lib/caller-ids";
 import { DialModeSelect } from "@/components/dial-mode-select";
+import { FormularioConEncendido } from "../formulario-con-encendido";
 import { fetchCampaignReasonCatalog } from "@/lib/campaign-reason-catalog";
 import { shortCallDispositionOptions } from "@/lib/short-call-closure";
-import { ActionForm, ActionSubmit, Callout, Field, InfoTooltip, Input, SectionCard, Select } from "@/components/ui";
+import { ActionSubmit, Callout, Field, InfoTooltip, Input, SectionCard, Select } from "@/components/ui";
 
 /** Etiqueta con la explicación al lado: esta es la pantalla más técnica del producto. */
 function LabelWithHelp({ label, help }: { label: string; help: string }) {
@@ -68,10 +69,26 @@ export default async function CampaignDialerPage({ params }: { params: Promise<{
         title="Configuración de discado"
         description="Define cómo el motor maneja esta campaña. Los ejecutivos asignados en la pestaña Ejecutivos son los que se sincronizan como miembros de la cola."
       >
-        <ActionForm
+        <FormularioConEncendido
           action={upsertDialerCampaignConfig}
           success="Configuración de discado guardada"
           className="grid gap-4 p-4 sm:grid-cols-2"
+          toggleName="is_active"
+          savedOn={config?.is_active ?? false}
+          turnOn={{
+            title: "¿Activar la campaña en el motor de discado?",
+            description:
+              "Al guardar, el discador empezará a marcar a la base de esta campaña y a entregar las llamadas a los ejecutivos disponibles.",
+            confirmLabel: "Guardar y activar discado",
+            tone: "primary",
+          }}
+          turnOff={{
+            title: "¿Sacar la campaña del motor de discado?",
+            description:
+              "Al guardar, el discador deja de marcar nuevos números de esta campaña. Las llamadas conectadas siguen hasta que terminen.",
+            confirmLabel: "Guardar y detener discado",
+            tone: "danger",
+          }}
         >
           <input type="hidden" name="campaign_id" value={id} />
 
@@ -391,7 +408,7 @@ export default async function CampaignDialerPage({ params }: { params: Promise<{
           <div className="sm:col-span-2 flex items-center gap-3">
             <ActionSubmit pendingLabel="Guardando…">Guardar configuración</ActionSubmit>
           </div>
-        </ActionForm>
+        </FormularioConEncendido>
       </SectionCard>
     </div>
   );

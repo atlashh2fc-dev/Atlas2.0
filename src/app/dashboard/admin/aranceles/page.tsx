@@ -3,7 +3,7 @@ import { Scissors, Stethoscope } from "lucide-react";
 
 import { crearProcedimiento, guardarProcedimiento } from "@/app/actions/atenciones";
 import { CreatePanel } from "@/components/create-panel";
-import { ActionForm, ActionSubmit, Badge, Callout, Field, Input, PageHeader, SectionCard, Select } from "@/components/ui";
+import { ActionForm, ActionSubmit, Badge, Callout, EmptyState, Field, Input, PageHeader, SectionCard, Select } from "@/components/ui";
 import { InsumosProvider } from "@/components/insumos-context";
 import { RecetaEditor } from "@/components/receta-editor";
 import { APLICA_POR_EDICION, CATEGORIAS, ETIQUETA_APLICA_A, porCategoria, type Insumo, type Procedimiento } from "@/lib/arancel";
@@ -106,6 +106,17 @@ export default async function ArancelesPage() {
       />
 
       {error && <Callout tone="danger">No se pudo leer el arancel. Vuelve a cargar para reintentar.</Callout>}
+
+      {!error && grupos.length === 0 && (
+        <SectionCard icon={esBarber ? Scissors : Stethoscope} tone="green" title={nombre.titulo}>
+          <EmptyState
+            icon={esBarber ? Scissors : Stethoscope}
+            title={`Todavía no hay ${nombre.plural}`}
+            description={`Agrega el primero con «${nombre.nuevo}». De esta lista salen los ${esBarber ? "paquetes" : "presupuestos"} y las atenciones.`}
+            className="py-8"
+          />
+        </SectionCard>
+      )}
 
       {grupos.map(([categoria, items]) => (
         <SectionCard key={categoria} icon={esBarber ? Scissors : Stethoscope} tone="green" title={categoria} description={`${items.length} ${items.length === 1 ? nombre.singular : nombre.plural}`}>

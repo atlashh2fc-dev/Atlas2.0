@@ -195,10 +195,24 @@ export async function toggleStatusReasonActive(formData: FormData) {
   const active = formData.get("active") === "true";
 
   const supabase = await createClient();
+  // Los estados de sistema (Disponible, En llamada, Tipificando…) los usa el
+  // CTI para funcionar: apagarlos deja a los ejecutivos sin estado válido.
+  const { data: reason, error: readError } = await supabase
+    .from("agent_status_reasons")
+    .select("is_system")
+    .eq("id", id)
+    .maybeSingle();
+  if (readError) throw new Error(readError.message);
+  if (!reason) throw new Error("No se encontró el motivo o no es de tu empresa.");
+  if (reason.is_system) {
+    throw new Error("Los estados del sistema no se pueden desactivar: el teléfono los necesita para funcionar.");
+  }
+
   const { error } = await supabase
     .from("agent_status_reasons")
     .update({ is_active: !active })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("is_system", false);
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/admin/estados-agente");
 }

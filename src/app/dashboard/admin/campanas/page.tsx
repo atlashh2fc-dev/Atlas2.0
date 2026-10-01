@@ -40,6 +40,7 @@ export default async function CampaignsPage({
     .select("*, workflows(name)")
     .order("created_at", { ascending: true });
 
+  if (campaignsError) console.error("[admin/campanas] carga de campañas", campaignsError);
   const list = campaigns ?? [];
 
   // Conteos por campaña con `head: true`: antes esta pantalla se traía el
@@ -81,7 +82,7 @@ export default async function CampaignsPage({
 
       {campaignsError && (
         <Callout tone="danger">
-          No se pudieron cargar las campañas: {campaignsError.message}
+          No se pudieron cargar las campañas. Actualiza la página en unos segundos; si sigue igual, avisa a soporte.
         </Callout>
       )}
 
@@ -198,7 +199,10 @@ export default async function CampaignsPage({
                     )}
                   </Td>
                   <Td align="right">
-                    <div className="flex items-center justify-end gap-2">
+                    {/* Operar el discador y apagar la campaña completa son
+                        decisiones distintas: van separadas y la segunda pide
+                        confirmar, porque saca la campaña de Reportes. */}
+                    <div className="flex items-center justify-end gap-4">
                       {aiVoice ? (
                         <Link
                           href={`/dashboard/admin/campanas/${campaign.id}/ia`}
@@ -211,11 +215,22 @@ export default async function CampaignsPage({
                         <ActionForm
                           action={setDialerCampaignActive}
                           success={dialer.is_active ? "Discado detenido" : "Discado iniciado"}
+                          confirm={
+                            dialer.is_active
+                              ? {
+                                  title: `¿Detener el discado de ${campaign.name}?`,
+                                  description:
+                                    "El discador deja de marcar nuevos números. Las llamadas ya conectadas siguen hasta que terminen. Puedes iniciarlo otra vez cuando quieras.",
+                                  confirmLabel: "Detener discado",
+                                  tone: "danger",
+                                }
+                              : undefined
+                          }
                         >
                           <input type="hidden" name="campaign_id" value={campaign.id} />
                           <input type="hidden" name="desired_active" value={String(!dialer.is_active)} />
                           <ActionSubmit
-                            variant={dialer.is_active ? "danger" : "primary"}
+                            variant={dialer.is_active ? "danger" : "secondary"}
                             size="sm"
                             pendingLabel="…"
                             title={
@@ -244,11 +259,22 @@ export default async function CampaignsPage({
                       <ActionForm
                         action={toggleCampaignActive}
                         success={campaign.is_active ? "Campaña deshabilitada" : "Campaña habilitada"}
+                        confirm={
+                          campaign.is_active
+                            ? {
+                                title: `¿Deshabilitar ${campaign.name}?`,
+                                description:
+                                  "La campaña sale de Reportes y del alcance de supervisión: su historial deja de verse hasta que la vuelvas a habilitar.",
+                                confirmLabel: "Deshabilitar campaña",
+                                tone: "danger",
+                              }
+                            : undefined
+                        }
                       >
                         <input type="hidden" name="campaign_id" value={campaign.id} />
                         <input type="hidden" name="active" value={String(campaign.is_active)} />
                         <ActionSubmit
-                          variant="secondary"
+                          variant="ghost"
                           size="sm"
                           pendingLabel="…"
                           title="Habilita o deshabilita la campaña completa"

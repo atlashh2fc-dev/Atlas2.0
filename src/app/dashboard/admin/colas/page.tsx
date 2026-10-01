@@ -82,6 +82,10 @@ export default async function ContactCenterQueuesPage() {
     conversationsResult.error || conversationsResult.data === null,
   );
 
+  if (stockUnavailable) {
+    console.error("[admin/colas] stock de WhatsApp", conversationsResult.error);
+  }
+
   const memberCount = new Map<string, number>();
   for (const member of membersResult.data ?? []) {
     memberCount.set(
@@ -141,9 +145,12 @@ export default async function ContactCenterQueuesPage() {
       )}
       {stockUnavailable && (
         <Callout tone="warning">
-          {conversationsResult.error ??
-            "El stock de WhatsApp no está disponible."}{" "}
-          Consulta Operación con una campaña o cola seleccionada.
+          No se pudo calcular el stock de WhatsApp de todas las colas a la vez,
+          por eso esas columnas dicen «No disponible». Para ver las cifras, abre{" "}
+          <Link href="/dashboard/operacion" className="font-medium text-primary hover:underline">
+            Operación
+          </Link>{" "}
+          y elige una campaña o cola.
         </Callout>
       )}
 
@@ -173,7 +180,22 @@ export default async function ContactCenterQueuesPage() {
               ) : (
                 (queuesResult.data ?? []).length === 0 && (
                   <TableEmpty colSpan={8}>
-                    <EmptyState icon={Layers} title="Aún no hay colas configuradas." className="py-6" />
+                    {/* No hay acción para crear colas desde aquí: nacen al
+                        conectar un canal digital a una campaña. */}
+                    <EmptyState
+                      icon={Layers}
+                      title="Aún no hay colas configuradas."
+                      description="Las colas nacen al conectar un canal digital (WhatsApp, Instagram, Messenger o correo) a una campaña. Conecta el canal en Integraciones y pide a soporte de Atlas que habilite la cola."
+                      action={
+                        <Link
+                          href="/dashboard/admin/integraciones"
+                          className={buttonClasses({ variant: "secondary", size: "sm" })}
+                        >
+                          Ir a Integraciones <ArrowUpRight size={13} />
+                        </Link>
+                      }
+                      className="py-6"
+                    />
                   </TableEmpty>
                 )
               )}

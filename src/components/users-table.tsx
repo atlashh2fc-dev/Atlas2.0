@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useTransition } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Headset, KeyRound, ShieldCheck, type LucideIcon } from "lucide-react";
 import { bulkSetUserActive, toggleUserActive } from "@/app/actions/admin";
@@ -12,6 +12,7 @@ import {
   ActionForm,
   ActionSubmit,
   Badge,
+  ConfirmDialog,
   DataTable,
   useToast,
   type BulkAction,
@@ -59,6 +60,9 @@ export function UsersTable({
   const router = useRouter();
   const { toast } = useToast();
   const [pending, startTransition] = useTransition();
+  // Desactivar en lote deja a varias personas sin acceso: se confirma con el
+  // número exacto antes de aplicar.
+  const [toDeactivate, setToDeactivate] = useState<UserRow[] | null>(null);
 
   const campaignNameById = useMemo(
     () => new Map(campaigns.map((campaign) => [campaign.id, campaign.name])),
@@ -152,6 +156,17 @@ export function UsersTable({
             <ActionForm
               action={toggleUserActive}
               success={row.active ? "Usuario desactivado" : "Usuario activado"}
+              confirm={
+                row.active
+                  ? {
+                      title: `¿Desactivar a ${row.full_name}?`,
+                      description:
+                        "No podrá entrar a Atlas ni recibir llamadas hasta que lo actives de nuevo. Su historial se conserva.",
+                      confirmLabel: "Desactivar cuenta",
+                      tone: "danger",
+                    }
+                  : undefined
+              }
             >
               <input type="hidden" name="user_id" value={row.id} />
               <input type="hidden" name="active" value={String(row.active)} />
@@ -201,16 +216,39 @@ export function UsersTable({
         onAction: (selected) => apply(selected.map((row) => row.id), true),
       },
       {
+        // Va al final y en rojo, lejos de Activar, y pide confirmar.
         id: "deactivate",
         label: pending ? "Aplicando…" : "Desactivar",
-        variant: "ghost",
-        onAction: (selected) => apply(selected.map((row) => row.id), false),
+        variant: "danger",
+        onAction: (selected) => setToDeactivate(selected),
       },
     ],
     [apply, pending]
   );
 
+  const deactivateCount = toDeactivate?.length ?? 0;
+  const cuentas = deactivateCount === 1 ? "cuenta" : "cuentas";
+
   return (
+    <>
+    <ConfirmDialog
+      open={toDeactivate !== null}
+      options={{
+        title: `¿Desactivar ${deactivateCount} ${cuentas}?`,
+        description:
+          deactivateCount === 1
+            ? "Esa persona no podrá entrar a Atlas ni recibir llamadas hasta que la actives de nuevo. Su historial se conserva."
+            : `Esas ${deactivateCount} personas no podrán entrar a Atlas ni recibir llamadas hasta que las actives de nuevo. Su historial se conserva.`,
+        confirmLabel: `Desactivar ${deactivateCount} ${cuentas}`,
+        tone: "danger",
+      }}
+      onCancel={() => setToDeactivate(null)}
+      onConfirm={() => {
+        const ids = (toDeactivate ?? []).map((row) => row.id);
+        setToDeactivate(null);
+        apply(ids, false);
+      }}
+    />
     <DataTable
       rows={rows}
       columns={columns}
@@ -222,5 +260,6 @@ export function UsersTable({
       emptyTitle="No hay usuarios con estos filtros"
       emptyDescription="Cambia el rol, el estado o la campaña que estás revisando."
     />
+    </>
   );
 }

@@ -1,4 +1,4 @@
-import { CheckCircle2, CircleAlert, Copy, MessageCircle, Send, Smartphone, Webhook, type LucideIcon } from "lucide-react";
+import { CheckCircle2, CircleAlert, MessageCircle, Send, Smartphone, Webhook, type LucideIcon } from "lucide-react";
 
 import { saveWhatsAppChannelConfig } from "@/app/actions/whatsapp";
 import { ConectarWhatsAppMeta } from "@/components/conectar-whatsapp-meta";
@@ -7,6 +7,7 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { isWhatsAppProviderConfigured, whatsappProvider } from "@/lib/whatsapp-provider";
 import { ActionForm, ActionSubmit, Badge, Field, Input, SectionCard, Select } from "@/components/ui";
+import { BotonCopiar } from "./boton-copiar";
 
 const META_WEBHOOK_URL = "https://atlascrm.geimser.cl/api/integrations/meta/whatsapp/webhook";
 const YCLOUD_WEBHOOK_URL = "https://atlascrm.geimser.cl/api/integrations/ycloud/whatsapp/webhook";
@@ -77,9 +78,17 @@ export default async function WhatsAppIntegrationPage() {
         <StatusCard
           icon={Webhook}
           label="Webhook de Atlas"
-          value={ready ? "Conectado" : "Pendiente"}
-          ok={ready}
+          value={channel?.last_error ? "Con error" : ready ? "Conectado" : "Pendiente"}
+          ok={ready && !channel?.last_error}
           detail={`Último evento: ${formatDateTime(channel?.last_webhook_at ?? null)}`}
+          error={
+            channel?.last_error
+              ? {
+                  resumen: `${provider === "ycloud" ? "YCloud" : "Meta"} informó un error en la última conexión. Vuelve a conectar el número; si sigue, avisa a soporte.`,
+                  detalle: channel.last_error,
+                }
+              : null
+          }
         />
         <StatusCard
           icon={Send}
@@ -110,8 +119,8 @@ export default async function WhatsAppIntegrationPage() {
               <ConectarWhatsAppMeta appId={registro.appId} configId={registro.configId} version={registro.version} />
             ) : (
               <p className="text-sm text-muted-foreground">
-                La conexión con Meta todavía no está habilitada en este servidor: falta la configuración de la app de Altius
-                (<code>ATLAS_META_ES_CONFIG_ID</code> y <code>ATLAS_META_APP_SECRET</code>).
+                La conexión con Meta todavía no está habilitada para tu cuenta. Avisa a soporte de Atlas para que
+                terminen de activarla; mientras tanto puedes usar la configuración manual de abajo.
               </p>
             )}
           </div>
@@ -186,7 +195,7 @@ export default async function WhatsAppIntegrationPage() {
           <p className="text-xs font-medium text-muted-foreground">URL de devolución de llamada</p>
           <div className="mt-1 flex items-center gap-2">
             <code className="min-w-0 flex-1 truncate text-sm text-foreground">{webhookUrl}</code>
-            <Copy size={14} className="text-muted-foreground" aria-hidden />
+            <BotonCopiar texto={webhookUrl} etiqueta="URL del webhook" />
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -203,11 +212,6 @@ export default async function WhatsAppIntegrationPage() {
             </>
           )}
         </div>
-        {channel?.last_error && (
-          <p className="rounded-lg border border-danger/30 bg-danger-bg p-3 text-sm text-danger">
-            {channel.last_error}
-          </p>
-        )}
         </div>
       </SectionCard>
     </div>
@@ -221,17 +225,20 @@ function StatusCard({
   value,
   detail,
   ok,
+  error = null,
 }: {
   icon: LucideIcon;
   label: string;
   value: string;
   detail: string;
   ok: boolean;
+  /** Lo que reportó el proveedor, junto al estado y no al final de la página. */
+  error?: { resumen: string; detalle: string } | null;
 }) {
   const StateIcon = ok ? CheckCircle2 : CircleAlert;
   return (
     <div
-      className={`rounded-xl border border-border border-l-2 bg-surface p-4 shadow-sm ${ok ? "border-l-success" : "border-l-warning"}`}
+      className={`rounded-xl border border-border border-l-2 bg-surface p-4 shadow-sm ${ok ? "border-l-success" : error ? "border-l-danger" : "border-l-warning"}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
@@ -242,9 +249,15 @@ function StatusCard({
             <p className="text-xs font-medium text-muted-foreground">{label}</p>
             <p className="mt-1 text-lg font-semibold tracking-tight text-foreground">{value}</p>
             <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
+            {error && (
+              <div className="mt-2 space-y-1">
+                <p className="text-xs text-danger">{error.resumen}</p>
+                <p className="break-words text-[11px] text-muted-foreground">Detalle del proveedor: {error.detalle}</p>
+              </div>
+            )}
           </div>
         </div>
-        <StateIcon size={18} className={ok ? "text-success" : "text-warning"} aria-hidden="true" />
+        <StateIcon size={18} className={ok ? "text-success" : error ? "text-danger" : "text-warning"} aria-hidden="true" />
       </div>
     </div>
   );

@@ -25,6 +25,7 @@ import {
 } from "@/components/ui";
 import { Bot, Download, FileSpreadsheet, History, PhoneOutgoing } from "lucide-react";
 import Link from "next/link";
+import { FormularioConEncendido } from "../formulario-con-encendido";
 
 const STATUS_LABELS: Record<string, string> = {
   queued: "En cola",
@@ -109,8 +110,12 @@ export default async function AiVoiceCampaignPage({ params }: { params: Promise<
       .limit(25),
   ]);
 
-  if (configResult.error) throw new Error(configResult.error.message);
-  if (testCallsResult.error) throw new Error(testCallsResult.error.message);
+  if (configResult.error || testCallsResult.error) {
+    console.error("[admin/campanas/ia] carga de configuración", configResult.error ?? testCallsResult.error);
+    throw new Error(
+      "No se pudo cargar la configuración del agente IA. Actualiza la página en unos segundos; si sigue igual, avisa a soporte."
+    );
+  }
   const config = configResult.data as AiVoiceCampaignConfig | null;
   const leadCount = leadCountResult.count ?? 0;
   const memberCount = memberCountResult.count ?? 0;
@@ -145,10 +150,24 @@ export default async function AiVoiceCampaignPage({ params }: { params: Promise<
           </Badge>
         }
       >
-        <ActionForm
+        <FormularioConEncendido
           action={upsertAiVoiceCampaignConfig}
           success="Configuración IA guardada"
           className="grid gap-4 p-4 sm:grid-cols-2"
+          toggleName="is_active"
+          savedOn={config?.is_active ?? false}
+          turnOn={{
+            title: "¿Iniciar las llamadas automáticas?",
+            description: `El agente IA empezará a llamar a los ${leadCount.toLocaleString("es-CL")} contacto(s) de la base, hasta ${config?.max_concurrent_calls ?? 1} a la vez. Puedes detenerlo desmarcando la casilla y guardando.`,
+            confirmLabel: "Guardar e iniciar llamadas",
+            tone: "primary",
+          }}
+          turnOff={{
+            title: "¿Detener las llamadas automáticas?",
+            description: "El agente IA deja de iniciar llamadas nuevas en esta campaña. Las conversaciones en curso terminan normalmente.",
+            confirmLabel: "Guardar y detener",
+            tone: "danger",
+          }}
         >
           <input type="hidden" name="campaign_id" value={id} />
 
@@ -210,7 +229,7 @@ export default async function AiVoiceCampaignPage({ params }: { params: Promise<
           <div className="sm:col-span-2">
             <ActionSubmit pendingLabel="Guardando…">Guardar configuración</ActionSubmit>
           </div>
-        </ActionForm>
+        </FormularioConEncendido>
       </SectionCard>
 
       {config?.survey_schema === "prever_v1" && (

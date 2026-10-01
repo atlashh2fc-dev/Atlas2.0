@@ -6,9 +6,6 @@ import Link from "next/link";
 import type { AgentPerformance, HomeDashboardSummary, Profile } from "@/lib/types";
 import { endOfDay, REPORT_TIME_ZONE, startOfDay } from "@/lib/report-range";
 import {
-  Activity,
-  ArrowUpRight,
-  BarChart3,
   CalendarClock,
   CalendarX2,
   CircleCheck,
@@ -27,6 +24,7 @@ import { getSupervisedTeamIds } from "@/lib/supervisor-scope";
 import { InicioClinica } from "@/components/inicio-clinica";
 import { InicioComercial } from "@/components/inicio-comercial";
 import { contextoDeMiEmpresa, puedeLeerConversaciones } from "@/lib/modules.server";
+import { setupEntryHref } from "@/lib/nav.config";
 
 function countValue(result: { count: number | null; error?: unknown }): string {
   return result.error || result.count === null ? "Sin datos" : result.count.toLocaleString("es-CL");
@@ -300,6 +298,7 @@ export default async function DashboardPage() {
       supabase.from("ai_voice_campaign_configs").select("campaign_id"),
     ]);
 
+    const setupHref = setupEntryHref(profile.role, contexto.modulos, contexto.edicion);
     const campaigns = campaignsResult.data ?? [];
     const configurationAvailable = !campaignsResult.error && !campaignAgentsResult.error && !aiVoiceConfigsResult.error;
     const hasDataError = Boolean(activeUsersResult.error || activeCampaignsResult.error || unassignedLeadsResult.error || !configurationAvailable);
@@ -322,31 +321,20 @@ export default async function DashboardPage() {
               <Link href="/dashboard/operacion" className={buttonClasses()}>
                 Ver operación
               </Link>
-              <Link href="/dashboard/admin/campanas" className={buttonClasses({ variant: "secondary" })}>
-                Administración
-              </Link>
+              {/* Una sola puerta a Configuración, la misma del menú lateral:
+                  antes había un botón «Administración» y una tarjeta
+                  «Configuración» que llevaban a pantallas distintas. */}
+              {setupHref && (
+                <Link href={setupHref} className={buttonClasses({ variant: "secondary" })}>
+                  <Settings2 size={15} aria-hidden="true" />
+                  Configuración
+                </Link>
+              )}
             </div>
           }
         />
 
         <SnapshotContext scope="Alcance global · Todas las campañas y usuarios autorizados" at={loadedAt} />
-
-        <div className="grid gap-3 lg:grid-cols-3">
-          {[
-            { href: "/dashboard/operacion", title: "Operación", description: "Colas de Voice y WhatsApp, carga de ejecutivos y excepciones. Sin abrir conversaciones.", icon: Activity },
-            { href: "/dashboard/admin/colas", title: "Configuración", description: "Enrutamiento, capacidad y miembros. Revisa las reglas que organizan la atención.", icon: Settings2 },
-            { href: "/dashboard/reportes", title: "Resultados", description: "Indicadores de gestión y discador, con período y filtros explícitos.", icon: BarChart3 },
-          ].map(({ href, title, description, icon: Icon }) => (
-            <Link key={href} href={href} className="group rounded-xl border border-border bg-surface p-5 shadow-sm transition-[border-color,box-shadow] hover:border-border-strong hover:shadow-md">
-              <div className="flex items-center justify-between">
-                <Icon size={16} className="text-muted-foreground" aria-hidden="true" />
-                <ArrowUpRight size={16} className="text-muted-foreground transition-colors group-hover:text-primary" aria-hidden="true" />
-              </div>
-              <h2 className="mt-3 text-sm font-semibold text-foreground">{title}</h2>
-              <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-            </Link>
-          ))}
-        </div>
 
         {hasDataError && (
           <div role="status">

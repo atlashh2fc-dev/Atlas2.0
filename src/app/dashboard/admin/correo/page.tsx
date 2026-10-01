@@ -4,7 +4,7 @@ import { Inbox, Mail } from "lucide-react";
 
 import { guardarBuzon, guardarBuzonDeEnvio } from "@/app/actions/buzon";
 import { CampanasDelBuzon, type OpcionCampana } from "@/components/campanas-del-buzon";
-import { ActionForm, ActionSubmit, Badge, Callout, Field, Input, PageHeader, SectionCard, SubmitButton, buttonClasses } from "@/components/ui";
+import { ActionForm, ActionSubmit, Badge, Callout, Field, Input, PageHeader, SectionCard, buttonClasses } from "@/components/ui";
 import { ZONA_CLINICA } from "@/lib/citas";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
 import { createClient } from "@/lib/supabase/server";
@@ -14,6 +14,31 @@ import { createClient } from "@/lib/supabase/server";
  * (cada diez minutos), lo liga a la ficha y responde desde el mismo buzón.
  * La clave se guarda en el Vault de la base; acá nunca se vuelve a mostrar.
  */
+
+/**
+ * La lectura guarda el mensaje crudo del servidor IMAP («Command failed»,
+ * «getaddrinfo ENOTFOUND…»). A quien administra le sirve la causa probable y
+ * qué corregir; el detalle técnico queda en el log del servidor.
+ */
+function causaDeLectura(error: string, address: string): string {
+  console.error(`[admin/correo] última lectura de ${address} falló`, error);
+  if (/auth|credential|login|password|invalid user|AUTHENTICATIONFAILED|Command failed/i.test(error)) {
+    return "El servidor de correo rechazó el usuario o la clave. Revisa ambos (Gmail y Outlook piden una contraseña de aplicación) y guarda.";
+  }
+  if (/ENOTFOUND|getaddrinfo|EAI_AGAIN/i.test(error)) {
+    return "No se encontró el servidor de correo. Revisa que el servidor IMAP esté bien escrito y guarda.";
+  }
+  if (/ECONNREFUSED|ETIMEDOUT|timeout|ECONNRESET|Connection not available/i.test(error)) {
+    return "El servidor de correo no respondió. Revisa el servidor y el puerto IMAP (normalmente 993) y guarda; si están bien, Atlas reintenta en diez minutos.";
+  }
+  if (/certificate|TLS|SSL/i.test(error)) {
+    return "El servidor de correo no aceptó la conexión segura. Revisa el puerto IMAP (normalmente 993) y guarda.";
+  }
+  if (/secreto/i.test(error)) {
+    return "Falta la clave del buzón. Escríbela y guarda.";
+  }
+  return "El servidor de correo devolvió un error al leer. Revisa el usuario, la clave y el servidor IMAP y guarda; si sigue igual, avisa a soporte.";
+}
 
 const cuando = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 
@@ -50,7 +75,7 @@ export default async function CorreoPage() {
           </p>
           <p>
             {buzon.last_sync_error
-              ? `Última lectura falló: ${buzon.last_sync_error}`
+              ? `Última lectura falló. ${causaDeLectura(buzon.last_sync_error, buzon.address)}`
               : buzon.last_synced_at
                 ? `Última lectura ${cuando.format(new Date(buzon.last_synced_at))}.`
                 : "Todavía no se ha leído. Se lee cada diez minutos."}
@@ -68,7 +93,7 @@ export default async function CorreoPage() {
       )}
 
       <SectionCard icon={Mail} tone="teal" title="Buzón" description="Los datos que te entrega tu proveedor de correo. Si el servidor IMAP y el SMTP son el mismo, repítelo. Gmail y Outlook exigen una contraseña de aplicación.">
-        <form action={guardarBuzon} className="grid gap-4 px-4 py-4 sm:grid-cols-2">
+        <ActionForm action={guardarBuzon} success="Buzón guardado" className="grid gap-4 px-4 py-4 sm:grid-cols-2">
           <Field label="Dirección">
             <Input name="address" type="email" required defaultValue={buzon?.address ?? ""} placeholder={clinica ? "contacto@clinica.cl" : "propuestas@empresa.cl"} />
           </Field>
@@ -97,9 +122,9 @@ export default async function CorreoPage() {
             <Input name="label" defaultValue={buzon?.label ?? (clinica ? "Correo de la clínica" : "Correo de envío")} />
           </Field>
           <div className="flex items-end">
-            <SubmitButton pendingLabel="Guardando…">Guardar buzón</SubmitButton>
+            <ActionSubmit pendingLabel="Guardando…">Guardar buzón</ActionSubmit>
           </div>
-        </form>
+        </ActionForm>
       </SectionCard>
     </div>
   );
@@ -189,7 +214,7 @@ async function BuzonesDeEnvio({ empresa }: { empresa: string | null }) {
             {buzon.last_sync_error && (
               <Callout tone="danger" className="mx-4 mt-4">
                 <p className="font-medium">No se pudo leer el buzón</p>
-                <p>{buzon.last_sync_error}. Casi siempre es la clave o el usuario: corrígelos y guarda.</p>
+                <p>{causaDeLectura(buzon.last_sync_error, buzon.address)}</p>
               </Callout>
             )}
             <FormularioBuzon buzon={buzon} opciones={opcionesPara(buzon.id)} marcadas={marcadas} empresa={empresa} />

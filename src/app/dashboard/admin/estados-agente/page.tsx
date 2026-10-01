@@ -165,7 +165,7 @@ export default async function EstadosAgentePage() {
                             {canal.texto}
                           </label>
                         ))}
-                        <ActionSubmit variant="ghost" size="sm" pendingLabel="…">
+                        <ActionSubmit variant="secondary" size="sm" pendingLabel="…">
                           Guardar
                         </ActionSubmit>
                       </ActionForm>
@@ -219,16 +219,21 @@ export default async function EstadosAgentePage() {
                   </Badge>
                 </Td>
                 <Td align="right">
-                  <ActionForm
-                    action={toggleStatusReasonActive}
-                    success={reason.is_active ? "Motivo desactivado" : "Motivo activado"}
-                  >
-                    <input type="hidden" name="id" value={reason.id} />
-                    <input type="hidden" name="active" value={String(reason.is_active)} />
-                    <ActionSubmit variant="secondary" size="sm" pendingLabel="…">
-                      {reason.is_active ? "Desactivar" : "Activar"}
-                    </ActionSubmit>
-                  </ActionForm>
+                  {/* Los estados de sistema los necesita el CTI: no se apagan. */}
+                  {reason.is_system ? (
+                    <span className="text-xs text-muted-foreground">Siempre activo</span>
+                  ) : (
+                    <ActionForm
+                      action={toggleStatusReasonActive}
+                      success={reason.is_active ? "Motivo desactivado" : "Motivo activado"}
+                    >
+                      <input type="hidden" name="id" value={reason.id} />
+                      <input type="hidden" name="active" value={String(reason.is_active)} />
+                      <ActionSubmit variant="secondary" size="sm" pendingLabel="…">
+                        {reason.is_active ? "Desactivar" : "Activar"}
+                      </ActionSubmit>
+                    </ActionForm>
+                  )}
                 </Td>
               </Tr>
             ))}

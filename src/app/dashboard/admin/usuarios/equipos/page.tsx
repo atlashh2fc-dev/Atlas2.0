@@ -107,7 +107,7 @@ export default async function TeamsAdminPage() {
                         </label>
                       ))}
                     </fieldset>
-                    <ActionSubmit size="sm" pendingLabel="Guardando…">
+                    <ActionSubmit variant="secondary" size="sm" pendingLabel="Guardando…">
                       Guardar
                     </ActionSubmit>
                   </ActionForm>

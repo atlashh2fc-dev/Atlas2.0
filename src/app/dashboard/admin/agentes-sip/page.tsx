@@ -21,6 +21,18 @@ export default async function AgentesSipPage() {
     getAgentSipSyncHealth(),
   ]);
   const syncHealthy = syncHealth.status === "ok";
+  // Lo que hay que atender va primero: errores de aprovisionamiento, luego
+  // extensiones activas que Asterisk aún no confirma. El resto en su orden.
+  const urgency = (row: (typeof rows)[number]): number => {
+    if (!row.extension) return 3;
+    if (row.provisioning_status === "error") return 0;
+    if (row.is_active && row.provisioning_status !== "synced") return 1;
+    return 2;
+  };
+  const sortedRows = rows
+    .map((row, index) => ({ row, index }))
+    .sort((a, b) => urgency(a.row) - urgency(b.row) || a.index - b.index)
+    .map(({ row }) => row);
 
   const stateLabel = (row: Awaited<ReturnType<typeof listAgentSipRows>>[number]): string => {
     if (!row.is_active) return "Inactiva";
@@ -56,7 +68,7 @@ export default async function AgentesSipPage() {
           <p className="mt-1">
             Las extensiones activas de la lista existen en Atlas, pero no se pueden considerar
             operativas en Asterisk hasta recuperar la sincronización. Evita activar, desactivar o
-            revelar credenciales mientras aparezca este aviso.
+            revelar credenciales mientras aparezca este aviso: esas acciones quedan bloqueadas hasta que vuelva.
           </p>
           <p className="mt-2 text-xs">
             Estado: {syncHealth.status === "failed" ? "fallando" : syncHealth.status === "stale" ? "sin reporte reciente" : "sin confirmar"}
@@ -75,7 +87,7 @@ export default async function AgentesSipPage() {
       >
         <div className="divide-y divide-border">
           {rows.length === 0 && <EmptyState icon={Headset} title="No hay ejecutivos con rol “agente”." />}
-          {rows.map((row) => (
+          {sortedRows.map((row) => (
             <div key={row.profile_id} className="flex flex-wrap items-center justify-between gap-4 p-4">
               <div className="flex min-w-0 items-center gap-3">
                 <span
@@ -107,14 +119,30 @@ export default async function AgentesSipPage() {
                         Acciones de contingencia
                       </summary>
                       <div className="mt-2 flex flex-wrap items-center justify-end gap-2 rounded-lg border border-border bg-background p-2">
-                        <RevealSipCredentialButton profileId={row.profile_id} />
+                        <RevealSipCredentialButton profileId={row.profile_id} disabled={!syncHealthy} />
                         <ActionForm
                           action={setAgentExtensionActive}
                           success={row.is_active ? "Extensión desactivada" : "Extensión activada"}
+                          confirm={
+                            row.is_active
+                              ? {
+                                  title: `¿Desactivar la extensión de ${row.full_name}?`,
+                                  description: `La extensión ${row.extension} deja de recibir y hacer llamadas hasta que la reactives desde aquí.`,
+                                  confirmLabel: "Desactivar extensión",
+                                  tone: "danger",
+                                }
+                              : undefined
+                          }
                         >
                           <input type="hidden" name="profile_id" value={row.profile_id} />
                           <input type="hidden" name="active" value={String(row.is_active)} />
-                          <ActionSubmit variant="secondary" size="sm" pendingLabel="Guardando…">
+                          <ActionSubmit
+                            variant="secondary"
+                            size="sm"
+                            pendingLabel="Guardando…"
+                            disabled={!syncHealthy}
+                            title={syncHealthy ? undefined : "Bloqueado mientras la central no confirme las extensiones"}
+                          >
                             {row.is_active ? "Desactivar por contingencia" : "Reactivar extensión"}
                           </ActionSubmit>
                         </ActionForm>

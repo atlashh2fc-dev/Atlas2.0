@@ -66,11 +66,23 @@ export default async function CampaignDetailLayout({
               <ActionForm
                 action={setDialerCampaignActive}
                 success={dialer.is_active ? "Discado detenido" : "Discado iniciado"}
+                confirm={
+                  dialer.is_active
+                    ? {
+                        title: "¿Detener el discado de esta campaña?",
+                        description:
+                          "El discador deja de marcar nuevos números. Las llamadas ya conectadas siguen hasta que terminen. Puedes iniciarlo otra vez cuando quieras.",
+                        confirmLabel: "Detener discado",
+                        tone: "danger",
+                      }
+                    : undefined
+                }
               >
                 <input type="hidden" name="campaign_id" value={id} />
                 <input type="hidden" name="desired_active" value={String(!dialer.is_active)} />
+                {/* Secundario: el primario de la vista es el «Guardar» de cada pestaña. */}
                 <ActionSubmit
-                  variant={dialer.is_active ? "danger" : "primary"}
+                  variant={dialer.is_active ? "danger" : "secondary"}
                   size="sm"
                   pendingLabel={dialer.is_active ? "Deteniendo…" : "Iniciando…"}
                   title={
@@ -89,13 +101,26 @@ export default async function CampaignDetailLayout({
               </ActionForm>
             )}
 
+            {/* Apagar la campaña completa va aparte del discador y pide confirmar. */}
+            <span aria-hidden="true" className="mx-1 h-5 w-px bg-border" />
             <ActionForm
               action={toggleCampaignActive}
               success={campaign.is_active ? "Campaña deshabilitada" : "Campaña habilitada"}
+              confirm={
+                campaign.is_active
+                  ? {
+                      title: `¿Deshabilitar ${campaign.name}?`,
+                      description:
+                        "La campaña sale de Reportes y del alcance de supervisión: su historial deja de verse hasta que la vuelvas a habilitar.",
+                      confirmLabel: "Deshabilitar campaña",
+                      tone: "danger",
+                    }
+                  : undefined
+              }
             >
               <input type="hidden" name="campaign_id" value={id} />
               <input type="hidden" name="active" value={String(campaign.is_active)} />
-              <ActionSubmit variant="secondary" size="sm" pendingLabel="Guardando…">
+              <ActionSubmit variant="ghost" size="sm" pendingLabel="Guardando…">
                 {campaign.is_active ? "Deshabilitar" : "Habilitar"}
               </ActionSubmit>
             </ActionForm>

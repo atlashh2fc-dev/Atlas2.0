@@ -3,17 +3,33 @@ import { Coins, Package, PackageX, Receipt, Wallet } from "lucide-react";
 
 import { crearInsumo, guardarInsumo } from "@/app/actions/insumos";
 import { CreatePanel } from "@/components/create-panel";
-import { ActionForm, ActionSubmit, Badge, Callout, Field, Input, PageHeader, SectionCard, StatCard } from "@/components/ui";
+import { ActionForm, ActionSubmit, Badge, Callout, EmptyState, Field, Input, PageHeader, SectionCard, StatCard } from "@/components/ui";
 import { pesos, type Insumo } from "@/lib/arancel";
+import { ATENCION_POR_EDICION, PACIENTES_POR_EDICION, clinicaDe, type Clinica } from "@/lib/ediciones";
+import { contextoDeMiEmpresa } from "@/lib/modules.server";
 import { createClient } from "@/lib/supabase/server";
 
 /**
- * Materiales e insumos de la clínica.
+ * Materiales e insumos de la clínica (productos, en la barbería).
  *
  * Cada material tiene su costo (para el margen), su precio si se cobra aparte
  * y su stock, que baja solo con cada atención. Arriba, lo que se gastó en los
  * últimos 30 días y lo que hay que reponer.
  */
+
+/**
+ * En una barbería lo que se gasta son productos (pomada, cuchillas), no
+ * materiales clínicos: el texto sigue a la edición, como en el arancel.
+ */
+const VOCABULARIO: Record<Clinica, { singular: string; plural: string; nombre: string; categoria: string; unidad: string }> = {
+  dental: { singular: "material", plural: "materiales", nombre: "Resina bulk fill", categoria: "Operatoria", unidad: "unidad, ml, dosis" },
+  vet: { singular: "material", plural: "materiales", nombre: "Vacuna óctuple", categoria: "Vacunas", unidad: "unidad, ml, dosis" },
+  barber: { singular: "producto", plural: "productos", nombre: "Pomada mate", categoria: "Peinado", unidad: "unidad, gramos, ml" },
+};
+
+function mayuscula(texto: string) {
+  return `${texto[0].toUpperCase()}${texto.slice(1)}`;
+}
 
 const numero = new Intl.NumberFormat("es-CL", { maximumFractionDigits: 2 });
 
@@ -24,6 +40,11 @@ function hace30Dias() {
 
 export default async function InsumosPage() {
   noStore();
+  const { edicion } = await contextoDeMiEmpresa();
+  const clinica = clinicaDe(edicion);
+  const voc = VOCABULARIO[clinica];
+  const lugar = ATENCION_POR_EDICION[clinica].lugar;
+  const cliente = PACIENTES_POR_EDICION[clinica].singular.toLowerCase();
   const supabase = await createClient();
   const desde = hace30Dias();
   const [{ data, error }, { data: usos }] = await Promise.all([
@@ -62,26 +83,26 @@ export default async function InsumosPage() {
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Materiales e insumos"
-        description="Lo que usa la clínica: el costo alimenta el margen de cada atención, los cobrables se suman a la cuenta y el stock baja solo al atender."
+        title={`${mayuscula(voc.plural)} e insumos`}
+        description={`Lo que usa ${lugar}: el costo alimenta el margen de cada atención, los cobrables se suman a la cuenta y el stock baja solo al atender.`}
         actions={
           <CreatePanel
-            label="Nuevo material"
-            title="Nuevo material"
+            label={`Nuevo ${voc.singular}`}
+            title={`Nuevo ${voc.singular}`}
             description="Queda disponible para las recetas y las atenciones."
             action={crearInsumo}
-            submitLabel="Agregar material"
-            successLabel="Material agregado"
+            submitLabel={`Agregar ${voc.singular}`}
+            successLabel={`${mayuscula(voc.singular)} agregado`}
           >
             <Field label="Nombre">
-              <Input name="nombre" required placeholder="Resina bulk fill" data-autofocus />
+              <Input name="nombre" required placeholder={voc.nombre} data-autofocus />
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Categoría">
-                <Input name="categoria" placeholder="Operatoria" />
+                <Input name="categoria" placeholder={voc.categoria} />
               </Field>
               <Field label="Unidad">
-                <Input name="unidad" placeholder="unidad, ml, dosis" />
+                <Input name="unidad" placeholder={voc.unidad} />
               </Field>
               <Field label="Costo por unidad (CLP)">
                 <Input name="costo" inputMode="numeric" placeholder="2500" />
@@ -97,18 +118,18 @@ export default async function InsumosPage() {
               </Field>
             </div>
             <label className="flex items-center gap-2 text-sm text-foreground">
-              <input type="checkbox" name="cobrable" value="si" className="size-4 accent-[var(--primary)]" /> Se cobra aparte al paciente
+              <input type="checkbox" name="cobrable" value="si" className="size-4 accent-[var(--primary)]" /> Se cobra aparte al {cliente}
             </label>
           </CreatePanel>
         }
       />
 
-      {error && <Callout tone="danger">No se pudieron leer los materiales. Vuelve a cargar para reintentar.</Callout>}
+      {error && <Callout tone="danger">No se pudieron leer los {voc.plural}. Vuelve a cargar para reintentar.</Callout>}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Costo de materiales · 30 días" value={pesos.format(costoMes)} hint={`${(usos ?? []).length} usos registrados`} icon={Wallet} iconTone="green" />
-        <StatCard label="Materiales cobrados · 30 días" value={pesos.format(cobradoMes)} hint="Sumados a la cuenta del paciente" tone="good" icon={Receipt} iconTone="green" />
-        <StatCard label="Inventario valorizado" value={pesos.format(inventario)} hint={`${insumos.filter((insumo) => insumo.activo).length} materiales activos`} icon={Package} iconTone="slate" />
+        <StatCard label={`Costo de ${voc.plural} · 30 días`} value={pesos.format(costoMes)} hint={`${(usos ?? []).length} usos registrados`} icon={Wallet} iconTone="green" />
+        <StatCard label={`${mayuscula(voc.plural)} cobrados · 30 días`} value={pesos.format(cobradoMes)} hint={`Sumados a la cuenta del ${cliente}`} tone="good" icon={Receipt} iconTone="green" />
+        <StatCard label="Inventario valorizado" value={pesos.format(inventario)} hint={`${insumos.filter((insumo) => insumo.activo).length} ${voc.plural} activos`} icon={Package} iconTone="slate" />
         <StatCard
           label="Por reponer"
           icon={PackageX}
@@ -120,11 +141,11 @@ export default async function InsumosPage() {
       </div>
 
       {masUsados.length > 0 && (
-        <SectionCard icon={Coins} tone="green" title="Dónde se va el gasto" description="Los materiales que más costaron en los últimos 30 días.">
+        <SectionCard icon={Coins} tone="green" title="Dónde se va el gasto" description={`Los ${voc.plural} que más costaron en los últimos 30 días.`}>
           <ul className="divide-y divide-border">
             {masUsados.map(([id, uso]) => (
               <li key={id} className="flex items-center justify-between gap-3 px-4 py-2 text-sm">
-                <span className="truncate text-foreground">{nombre.get(id) ?? "Material eliminado"}</span>
+                <span className="truncate text-foreground">{nombre.get(id) ?? `${mayuscula(voc.singular)} eliminado`}</span>
                 <span className="flex-shrink-0 tabular-nums text-muted-foreground">
                   {numero.format(uso.cantidad)} usados · <span className="text-foreground">{pesos.format(uso.costo)}</span>
                 </span>
@@ -134,10 +155,21 @@ export default async function InsumosPage() {
         </SectionCard>
       )}
 
+      {!error && insumos.length === 0 && (
+        <SectionCard icon={Package} tone="slate" title={mayuscula(voc.plural)}>
+          <EmptyState
+            icon={Package}
+            title={`Todavía no hay ${voc.plural}`}
+            description={`Agrega el primero con «Nuevo ${voc.singular}». Con su costo, cada atención muestra su margen y el stock baja solo al atender.`}
+            className="py-8"
+          />
+        </SectionCard>
+      )}
+
       {[...grupos.entries()].map(([categoria, items]) => (
-        <SectionCard key={categoria} icon={Package} tone="slate" title={categoria} description={`${items.length} ${items.length === 1 ? "material" : "materiales"}`}>
+        <SectionCard key={categoria} icon={Package} tone="slate" title={categoria} description={`${items.length} ${items.length === 1 ? voc.singular : voc.plural}`}>
           <div className="hidden grid-cols-[minmax(0,1fr)_110px_110px_90px_90px_auto_auto] h-10 items-center gap-3 border-b border-border px-4 text-xs font-medium text-muted-foreground lg:grid">
-            <span>Material</span>
+            <span>{mayuscula(voc.singular)}</span>
             <span className="text-right">Costo</span>
             <span className="text-right">Precio venta</span>
             <span className="text-right">Stock</span>
