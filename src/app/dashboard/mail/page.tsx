@@ -2,7 +2,7 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getSupervisedTeamIds } from "@/lib/supervisor-scope";
 import { redirect } from "next/navigation";
-import { CircleCheck, Flame, MailOpen, MousePointerClick, Send, UserRoundCheck } from "lucide-react";
+import { CircleCheck, Flame, Mail, MailOpen, MousePointerClick, Send, UserRoundCheck } from "lucide-react";
 import {
   MailControlCenter,
   type MailControlBucket,
@@ -114,12 +114,13 @@ function CampaignFilterForm({
   compact?: boolean;
 }) {
   return (
-    <form className="flex flex-wrap items-center gap-2">
+    <form className="flex items-center gap-2">
       {campaignId && <input type="hidden" name="campaign" value={campaignId} />}
       {campaignContextId && <input type="hidden" name="campaignContext" value={campaignContextId} />}
       {umbrella && <input type="hidden" name="umbrella" value={umbrella} />}
       <Select
         name="mailCampaign"
+        aria-label="Campaña de correo"
         defaultValue={selectedMailCampaignId ?? ""}
         className={compact ? "w-72" : "w-64"}
       >
@@ -550,6 +551,7 @@ export default async function MailDashboardPage({
     <div className="space-y-6">
       <PageHeader
         title={selectedCampaign ? `Correo · ${selectedCampaign.name}` : "Correo"}
+        icon={Mail}
         description="Cola de las campañas de correo (aperturas, clicks, respuestas) y el buzón de la cuenta, donde los clientes responden las cotizaciones."
         actions={
           <CampaignFilterForm

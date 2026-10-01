@@ -45,7 +45,8 @@ export function CampanasDelBuzon({ opciones, marcadas }: { opciones: OpcionCampa
 
   return (
     <fieldset className="space-y-3 sm:col-span-2">
-      <legend className="text-sm font-medium text-foreground">Campañas que usan este buzón</legend>
+      {/* El título visible lo pone el grupo "Campañas" del formulario. */}
+      <legend className="sr-only">Campañas que usan este buzón</legend>
       <p className="text-xs text-muted-foreground">
         {seleccion.size === 0
           ? "Sin campañas marcadas, este buzón es el de respaldo: lo usan las campañas que no tienen uno propio."

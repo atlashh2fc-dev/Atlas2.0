@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Check, ChevronLeft, ChevronRight, FileCheck2 } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, FileCheck2, FileSpreadsheet, UploadCloud } from "lucide-react";
 import { Callout, LoadingState, buttonClasses } from "@/components/ui";
 import {
   buildCandidates,
@@ -132,6 +132,7 @@ export function BulkUploadForm({
   const [stepError, setStepError] = useState<string | null>(null);
   // Cambia tras una carga completa para vaciar el selector de archivo.
   const [fileInputKey, setFileInputKey] = useState(0);
+  const [dragging, setDragging] = useState(false);
 
   const [teamId, setTeamId] = useState("");
   const [campaignId, setCampaignId] = useState(defaultCampaignId ?? "");
@@ -143,7 +144,23 @@ export function BulkUploadForm({
   const campaignWorkflowName = workflows.find((w) => w.id === campaignWorkflowId)?.name ?? null;
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+    await readFile(e.target.files?.[0]);
+  }
+
+  // Arrastrar y soltar sobre la zona: mismo camino que elegir con el diálogo.
+  function handleDrop(e: React.DragEvent<HTMLLabelElement>) {
+    e.preventDefault();
+    setDragging(false);
+    if (busy) return;
+    const file = e.dataTransfer.files?.[0];
+    if (file && !/\.(csv|xlsx|xls)$/i.test(file.name)) {
+      setError("Ese archivo no es CSV ni Excel. Sube un .csv, .xlsx o .xls.");
+      return;
+    }
+    void readFile(file);
+  }
+
+  async function readFile(file: File | undefined) {
     setResult(null);
     setError(null);
     setStepError(null);
@@ -429,9 +446,9 @@ export function BulkUploadForm({
 
   return (
     <div className="space-y-4">
-      <form onSubmit={onFormSubmit} className="space-y-5 rounded-xl border border-border bg-surface p-5 shadow-sm" aria-busy={busy}>
+      <form onSubmit={onFormSubmit} className="atlas-panel space-y-5 rounded-xl border border-border bg-surface p-5 shadow-sm" aria-busy={busy}>
         {/* Progreso: tres pasos unidos por una línea, el actual marcado. */}
-        <ol className="flex items-center gap-2" aria-label="Pasos de la carga">
+        <ol className="-mx-5 -mt-5 flex items-center gap-2 rounded-t-xl border-b border-border bg-surface-raised px-4 py-1" aria-label="Pasos de la carga">
           {STEPS.map((item, index) => {
             const done = item.id < step;
             const current = item.id === step;
@@ -473,10 +490,22 @@ export function BulkUploadForm({
           <h3 id="paso-archivo" className="text-sm font-semibold text-foreground">
             Elige el archivo
           </h3>
-          <div>
-            <label htmlFor="carga-archivo" className="mb-1.5 block text-xs font-medium text-muted-foreground">
-              Archivo (.csv, .xlsx)
-            </label>
+          <label
+            htmlFor="carga-archivo"
+            onDragOver={(event) => {
+              event.preventDefault();
+              if (!busy) setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={handleDrop}
+            className={`group flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border border-dashed px-6 py-10 text-center transition-colors focus-within:ring-2 focus-within:ring-ring ${
+              dragging
+                ? "border-primary bg-primary/[0.06]"
+                : headers && rows
+                  ? "border-success/40 bg-success/[0.04]"
+                  : "border-border-strong bg-surface-raised hover:border-primary/60 hover:bg-primary/[0.03]"
+            } ${busy ? "pointer-events-none opacity-60" : ""}`}
+          >
             <input
               key={fileInputKey}
               id="carga-archivo"
@@ -485,16 +514,36 @@ export function BulkUploadForm({
               accept=".csv,.xlsx,.xls"
               disabled={busy}
               onChange={handleFileChange}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-60"
+              className="sr-only"
             />
-            {parsing && <LoadingState label="Estamos leyendo el archivo" compact className="mt-2" />}
-          </div>
-          {headers && rows && (
-            <p className="flex items-center gap-2 text-sm text-foreground">
-              <FileCheck2 size={16} className="text-success" aria-hidden="true" />
-              {fileName}: {rows.length.toLocaleString("es-CL")} fila(s) y {headers.length} columna(s).
-            </p>
-          )}
+            {headers && rows ? (
+              <>
+                <span className="icon-chip size-12 rounded-xl" data-tone="green">
+                  <FileSpreadsheet size={22} aria-hidden="true" />
+                </span>
+                <span>
+                  <span className="block text-sm font-medium text-foreground">{fileName}</span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    {rows.length.toLocaleString("es-CL")} {rows.length === 1 ? "fila" : "filas"} · {headers.length}{" "}
+                    {headers.length === 1 ? "columna" : "columnas"} · haz clic o arrastra otro para cambiarlo
+                  </span>
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="icon-chip size-12 rounded-xl transition-transform group-hover:-translate-y-0.5" data-tone="primary">
+                  <UploadCloud size={22} aria-hidden="true" />
+                </span>
+                <span>
+                  <span className="block text-sm font-medium text-foreground">
+                    Arrastra tu archivo acá o <span className="text-primary underline-offset-2 group-hover:underline">elígelo</span>
+                  </span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">CSV o Excel (.csv, .xlsx, .xls)</span>
+                </span>
+              </>
+            )}
+          </label>
+          {parsing && <LoadingState label="Estamos leyendo el archivo" compact />}
           <p className="text-xs text-muted-foreground">
             Funciona con cualquier archivo: en el paso siguiente indicas qué columna corresponde a cada dato, sin tener que
             renombrar nada.

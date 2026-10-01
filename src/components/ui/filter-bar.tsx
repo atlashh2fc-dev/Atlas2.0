@@ -106,7 +106,7 @@ export function FilterBar({
         </div>
       )}
 
-      <form className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-surface p-4 shadow-sm">
+      <form className="atlas-panel flex flex-wrap items-end gap-2.5 rounded-xl border border-border bg-surface p-3 shadow-sm">
         {children}
 
         <div className="ml-auto flex items-end gap-2">

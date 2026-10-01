@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
-import { Plus, Search, Upload } from "lucide-react";
+import { Contact, Plus, Search, Upload } from "lucide-react";
 import Link from "next/link";
 import { LEAD_STATUSES } from "@/lib/types";
 import { resolveCampaignScope } from "@/lib/campaign-scope";
@@ -172,7 +172,8 @@ export default async function LeadsPage({
       {/* Las acciones son botones de la página, no ítems de menú (docs/arquitectura-navegacion.md §4.3). */}
       <PageHeader
         title={copy.title}
-        description={`Hola, ${profile.full_name.split(" ")[0]}. ${copy.description}`}
+        icon={Contact}
+        description={copy.description}
         className={tracksQuotations ? "border-b-0 pb-0" : undefined}
         actions={
           canManage ? (
@@ -220,21 +221,21 @@ export default async function LeadsPage({
       )}
 
       <FilterBar storageKey="registros">
-        <Field label="Buscar" className="min-w-64 flex-1">
+        <Field label="Buscar" hideLabel className="min-w-64 flex-1">
           <span className="relative block">
             <Search
               size={15}
               className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
             />
-            <Input name="q" defaultValue={filters.q} placeholder="RUT, teléfono o nombre" className="pl-8" />
+            <Input name="q" defaultValue={filters.q} placeholder="Buscar por RUT, teléfono o nombre" className="pl-8" />
           </span>
         </Field>
 
         {canManage && (
           <>
-            <Field label="Ejecutivo" className="w-48">
+            <Field label="Ejecutivo" hideLabel className="w-48">
               <Select name="agent" defaultValue={filters.agent}>
-                <option value="">Todos</option>
+                <option value="">Todos los ejecutivos</option>
                 {((agentOptions ?? []) as FilterOption[]).map((option) => (
                   <option key={option.id} value={option.id}>
                     {option.full_name}
@@ -243,9 +244,9 @@ export default async function LeadsPage({
               </Select>
             </Field>
 
-            <Field label="Campaña" className="w-48">
+            <Field label="Campaña" hideLabel className="w-48">
               <Select name="campaign" defaultValue={filters.campaign}>
-                <option value="">Todas</option>
+                <option value="">Todas las campañas</option>
                 {((campaignOptions ?? []) as FilterOption[]).map((option) => (
                   <option key={option.id} value={option.id}>
                     {option.name}
@@ -257,9 +258,9 @@ export default async function LeadsPage({
             {/* Los estados salen de lo que existe en la base: el catálogo fijo
                 ofrecía seis valores sin resultados y omitía el que tiene el 90 %
                 de los registros. */}
-            <Field label="Estado" className="w-52">
+            <Field label="Estado" hideLabel className="w-52">
               <Select name="status" defaultValue={filters.status}>
-                <option value="">Todos</option>
+                <option value="">Todos los estados</option>
                 {statusOptions.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}

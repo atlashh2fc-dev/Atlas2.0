@@ -4,17 +4,18 @@ import { cn } from "@/lib/utils";
 type Align = "left" | "right";
 
 export function Table({ className, children }: { className?: string; children: ReactNode }) {
-  return <table className={cn("w-full border-collapse text-sm tabular-nums", className)}>{children}</table>;
+  return <table className={cn("w-full border-collapse text-[13px] tabular-nums", className)}>{children}</table>;
 }
 
 /**
- * Cabecera de tabla: sticky, en gris y en caja normal. Sin franja tintada ni
- * versalitas: eso es lo que hacía que cada lista pareciera una planilla.
+ * Cabecera de tabla: sticky, en caja normal y sobre la franja `surface-raised`,
+ * apenas distinta de la superficie. Sin versalitas ni colores: solo marca dónde
+ * empieza la tabla, como en HubSpot o Attio.
  */
 export function Thead({ children }: { children: ReactNode }) {
   return (
     <thead className="sticky top-0 z-10">
-      <tr className="border-b border-border bg-surface text-left text-xs text-muted-foreground">
+      <tr className="border-b border-border bg-surface-raised text-left text-xs text-muted-foreground">
         {children}
       </tr>
     </thead>
@@ -42,7 +43,7 @@ export function Tbody({ children }: { children: ReactNode }) {
 }
 
 export function Tr({ className, children }: { className?: string; children: ReactNode }) {
-  return <tr className={cn("transition-colors hover:bg-surface-muted/60", className)}>{children}</tr>;
+  return <tr className={cn("group transition-colors hover:bg-surface-muted/55", className)}>{children}</tr>;
 }
 
 export function Td({

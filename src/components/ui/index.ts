@@ -2,6 +2,8 @@ export { Button, buttonClasses, type ButtonProps, type ButtonVariant, type Butto
 export { Card, SectionCard, Callout, type SectionTone } from "./card";
 export { Input, Select, Field, type InputProps, type SelectProps, type FieldSize } from "./field";
 export { Badge, StatusDot, type BadgeTone } from "./badge";
+export { Avatar, avatarTone, initials, type AvatarTone } from "./avatar";
+export { SegmentTabs, type SegmentTab } from "./segment-tabs";
 export { PageHeader } from "./page-header";
 export { NavTabs, type NavTabItem } from "./nav-tabs";
 export { DataTable, type Column, type BulkAction, type CellValue } from "./data-table";

@@ -4,16 +4,20 @@ import { cn } from "@/lib/utils";
 /** Etiqueta + control en columna. Envuelve un Input/Select con su label. */
 export function Field({
   label,
+  hideLabel = false,
   className,
   children,
 }: {
   label: ReactNode;
+  /** Barras de filtros: el control ya dice qué es ("Todas las campañas"); la
+   *  etiqueta queda para lectores de pantalla. */
+  hideLabel?: boolean;
   className?: string;
   children: ReactNode;
 }) {
   return (
     <label className={cn("flex flex-col gap-1.5", className)}>
-      <span className="text-[13px] font-medium text-foreground">{label}</span>
+      <span className={hideLabel ? "sr-only" : "text-[13px] font-medium text-foreground"}>{label}</span>
       {children}
     </label>
   );

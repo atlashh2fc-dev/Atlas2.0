@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useMemo, useState, useTransition } from "react";
-import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ComponentType } from "react";
 import { AlertTriangle, CalendarClock, CheckCircle2, PhoneCall } from "lucide-react";
@@ -16,15 +15,15 @@ import {
 } from "@/lib/campaign-vertical";
 import { bulkAssignLeads, bulkRescheduleLeads } from "@/app/actions/leads";
 import {
-  Badge,
+  Avatar,
   Button,
   ConfirmDialog,
   DataTable,
   Field,
   Input,
   Select,
+  SegmentTabs,
   SlideOver,
-  buttonClasses,
   useToast,
   type BulkAction,
   type Column,
@@ -67,11 +66,60 @@ function hasPhone(lead: LeadQueueRow) {
   return Boolean(lead.phone?.trim());
 }
 
+const ZONA = "America/Santiago";
+
 function dateTimeLabel(value: string | null) {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short" });
+  return `${dayLabel(date)}, ${timeLabel(date)}`;
+}
+
+/** "22 may" (con año solo si no es el actual), en hora de Chile. */
+function dayLabel(date: Date) {
+  const sameYear =
+    date.toLocaleDateString("es-CL", { year: "numeric", timeZone: ZONA }) ===
+    new Date().toLocaleDateString("es-CL", { year: "numeric", timeZone: ZONA });
+  return date
+    .toLocaleDateString("es-CL", { day: "numeric", month: "short", year: sameYear ? undefined : "numeric", timeZone: ZONA })
+    .replace(".", "");
+}
+
+function timeLabel(date: Date) {
+  return date.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: ZONA });
+}
+
+/** Fecha en dos líneas: el día manda, la hora acompaña. */
+function DateCell({ value }: { value: string | null }) {
+  if (!value) return <span className="text-muted-foreground/60">—</span>;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return <span className="text-muted-foreground/60">—</span>;
+  return (
+    <span className="block whitespace-nowrap">
+      <span className="block text-foreground">{dayLabel(date)}</span>
+      <span className="block text-xs text-muted-foreground">{timeLabel(date)}</span>
+    </span>
+  );
+}
+
+/** "hace 3 días": lo que importa de "Actualizado" es cuánto lleva quieto. */
+function relativeLabel(value: string, now: Date) {
+  const date = new Date(value);
+  const days = Math.floor((now.getTime() - date.getTime()) / 86_400_000);
+  if (Number.isNaN(days)) return "—";
+  if (days <= 0) return "Hoy";
+  if (days === 1) return "Ayer";
+  if (days < 30) return `Hace ${days} días`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return months === 1 ? "Hace 1 mes" : `Hace ${months} meses`;
+  return dayLabel(date);
+}
+
+/** Las tipificaciones llegan en mayúsculas desde el flujo; se leen mejor así. */
+function sentenceCase(value: string) {
+  if (value !== value.toUpperCase()) return value;
+  const lower = value.toLocaleLowerCase("es-CL");
+  return lower.charAt(0).toLocaleUpperCase("es-CL") + lower.slice(1);
 }
 
 function endOfToday() {
@@ -95,19 +143,19 @@ function queueState(lead: LeadQueueRow, now: Date): QueueState {
   if (valid) return { label: "Agenda futura", detail: dateTimeLabel(lead.next_action_at), tone: "muted", icon: CalendarClock };
   return {
     label: "Gestionado",
-    detail: lead.tipificacion_actual ?? "Sin próxima acción",
+    detail: lead.tipificacion_actual ? sentenceCase(lead.tipificacion_actual) : "Sin próxima acción",
     tone: "success",
     icon: CheckCircle2,
   };
 }
 
-/** El icono del estado lleva el color del tono; el texto va en `Badge`. */
-function stateIconClass(tone: QueueState["tone"]) {
-  if (tone === "danger") return "text-danger";
-  if (tone === "warning") return "text-warning";
-  if (tone === "success") return "text-success";
-  if (tone === "primary") return "text-primary";
-  return "text-muted-foreground";
+/** Tono del chip de icono del estado (ver `.icon-chip` en globals.css). */
+function stateChipTone(tone: QueueState["tone"]) {
+  if (tone === "danger") return "rose";
+  if (tone === "warning") return "amber";
+  if (tone === "success") return "green";
+  if (tone === "primary") return "primary";
+  return "slate";
 }
 
 export function LeadsQueue({
@@ -193,6 +241,28 @@ export function LeadsQueue({
 
     return [
       {
+        id: "registro",
+        header: "Registro",
+        value: (row) => row.full_name,
+        cell: (row) => {
+          const debt = vertical === "cobranza" ? readDebtSnapshot(row.extra) : null;
+          return (
+            <span className="flex min-w-0 items-center gap-3">
+              <Avatar name={row.full_name} seed={row.rut ?? row.full_name} size="md" shape="square" />
+              <span className="min-w-0">
+                <span className="block max-w-[16rem] truncate font-medium text-foreground group-hover:text-primary" title={row.full_name}>
+                  {row.full_name}
+                </span>
+                <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                  {statusText(vertical, row.status)}
+                  {debt?.curso ? ` · ${debt.curso}` : ""}
+                </span>
+              </span>
+            </span>
+          );
+        },
+      },
+      {
         id: "estado",
         header: "Estado operativo",
         value: (row) => queueState(row, now).label,
@@ -200,28 +270,15 @@ export function LeadsQueue({
           const state = queueState(row, now);
           const Icon = state.icon;
           return (
-            <span className="inline-flex flex-col gap-1">
-              <Badge tone={state.tone === "muted" ? "neutral" : state.tone === "primary" ? "info" : state.tone} dot={false} className="w-fit">
-                <Icon size={13} className={stateIconClass(state.tone)} />
-                {state.label}
-              </Badge>
-              <span className="text-xs text-muted-foreground">{state.detail}</span>
-            </span>
-          );
-        },
-      },
-      {
-        id: "registro",
-        header: "Registro",
-        value: (row) => row.full_name,
-        cell: (row) => {
-          const debt = vertical === "cobranza" ? readDebtSnapshot(row.extra) : null;
-          return (
-            <span className="block">
-              <span className="font-medium text-foreground">{row.full_name}</span>
-              <span className="mt-0.5 block text-xs text-muted-foreground">
-                {statusText(vertical, row.status)}
-                {debt?.curso ? ` · ${debt.curso}` : ""}
+            <span className="flex items-center gap-2.5">
+              <span className="icon-chip size-7 rounded-lg" data-tone={stateChipTone(state.tone)}>
+                <Icon size={14} />
+              </span>
+              <span className="min-w-0">
+                <span className={state.tone === "danger" ? "block font-medium text-danger" : "block font-medium text-foreground"}>
+                  {state.label}
+                </span>
+                <span className="block max-w-[14rem] truncate text-xs text-muted-foreground">{state.detail}</span>
               </span>
             </span>
           );
@@ -232,9 +289,9 @@ export function LeadsQueue({
         header: "RUT / teléfono",
         value: (row) => row.rut ?? row.phone ?? "",
         cell: (row) => (
-          <span className="block text-muted-foreground">
-            <span className="block">{row.rut ?? "—"}</span>
-            <span className={hasPhone(row) ? "block" : "block font-medium text-danger"}>
+          <span className="block whitespace-nowrap">
+            <span className="block text-foreground">{row.rut ?? "—"}</span>
+            <span className={hasPhone(row) ? "block text-xs text-muted-foreground" : "block text-xs font-medium text-danger"}>
               {row.phone?.trim() ? row.phone : "Sin teléfono"}
             </span>
           </span>
@@ -245,36 +302,38 @@ export function LeadsQueue({
         id: "agenda",
         header: vertical === "cobranza" ? "Próximo compromiso" : "Próxima agenda",
         value: (row) => row.next_action_at ?? "",
-        cell: (row) => dateTimeLabel(row.next_action_at),
+        exportValues: (row) => ({
+          [vertical === "cobranza" ? "Próximo compromiso" : "Próxima agenda"]: dateTimeLabel(row.next_action_at),
+        }),
+        cell: (row) => <DateCell value={row.next_action_at} />,
       },
       {
         id: "tipificacion",
         header: vertical === "cobranza" ? "Último resultado" : "Última tipificación",
         value: (row) => row.tipificacion_actual ?? (row.managed_at ? "Gestionado" : ""),
-        className: "text-muted-foreground",
+        cell: (row) => {
+          const text = row.tipificacion_actual ?? (row.managed_at ? "Gestionado" : null);
+          return text ? (
+            <span className="block max-w-[13rem] truncate text-foreground" title={text}>
+              {sentenceCase(text)}
+            </span>
+          ) : (
+            <span className="text-muted-foreground/60">Sin gestión</span>
+          );
+        },
       },
       {
         id: "actualizado",
         header: "Actualizado",
         value: (row) => row.updated_at,
-        cell: (row) => new Date(row.updated_at).toLocaleDateString("es-CL"),
-        className: "text-muted-foreground",
-      },
-      {
-        id: "accion",
-        header: "",
-        align: "right",
-        sortable: false,
-        // Acción por fila: secundaria e igual en todas, con o sin teléfono. El
-        // primario de la vista es la acción de la página, no cada registro.
         cell: (row) => (
-          <Link href={`/dashboard/leads/${row.id}`} className={buttonClasses({ variant: "secondary", size: "sm" })}>
-            {hasPhone(row) ? action : "Revisar"}
-          </Link>
+          <span className="whitespace-nowrap text-muted-foreground" title={dateTimeLabel(row.updated_at)}>
+            {relativeLabel(row.updated_at, now)}
+          </span>
         ),
       },
     ];
-  }, [now, action, vertical]);
+  }, [now, vertical]);
 
   const report = useCallback(
     (ok: number, skipped: number, error: string | null, title: string) => {
@@ -309,34 +368,25 @@ export function LeadsQueue({
 
   return (
     <>
-      <div className="flex flex-wrap gap-2">
-        {LEAD_VIEWS.map((item) => {
-          const active = item.id === view;
-          return (
-            <Link
-              key={item.id}
-              href={withParam("view", item.id)}
-              aria-current={active ? "page" : undefined}
-              className={`inline-flex h-8 items-center gap-2 rounded-lg px-2.5 text-[13px] font-medium transition-colors ${
-                active
-                  ? "bg-surface text-foreground shadow-sm ring-1 ring-border"
-                  : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"
-              }`}
-            >
-              {item.label}
-              <span className="text-xs font-semibold tabular-nums text-muted-foreground">
-                {counts[item.id].toLocaleString("es-CL")}
-              </span>
-            </Link>
-          );
-        })}
-      </div>
-
       <DataTable
         rows={leads}
         columns={columns}
         getRowId={(row) => row.id}
         rowHref={(row) => `/dashboard/leads/${row.id}`}
+        rowActionLabel={(row) => (hasPhone(row) ? action : "Revisar")}
+        toolbar={
+          <SegmentTabs
+            label="Vistas de registros"
+            activeId={view}
+            tabs={LEAD_VIEWS.map((item) => ({
+              id: item.id,
+              label: item.label,
+              href: withParam("view", item.id),
+              count: counts[item.id],
+              tone: item.id === "vencidas" ? "danger" : item.id === "bloqueados" ? "warning" : undefined,
+            }))}
+          />
+        }
         selectable={canManage}
         bulkActions={bulkActions}
         storageKey="registros"

@@ -1,10 +1,11 @@
+import type { ReactNode } from "react";
 import { connection } from "next/server";
 import Link from "next/link";
-import { Inbox, Mail } from "lucide-react";
+import { Inbox, Mail, Send } from "lucide-react";
 
 import { guardarBuzon, guardarBuzonDeEnvio } from "@/app/actions/buzon";
 import { CampanasDelBuzon, type OpcionCampana } from "@/components/campanas-del-buzon";
-import { ActionForm, ActionSubmit, Badge, Callout, Field, Input, PageHeader, SectionCard, buttonClasses } from "@/components/ui";
+import { ActionForm, ActionSubmit, Avatar, Badge, Callout, Field, Input, PageHeader, SectionCard, buttonClasses } from "@/components/ui";
 import { ZONA_CLINICA } from "@/lib/citas";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
 import { createClient } from "@/lib/supabase/server";
@@ -182,6 +183,7 @@ async function BuzonesDeEnvio({ empresa }: { empresa: string | null }) {
     <div className="space-y-5">
       <PageHeader
         title="Correo de envío"
+        icon={Send}
         description={`Un buzón por cuenta de ${empresa ?? "la empresa"}. Las propuestas y respuestas de sus campañas salen de ahí con el nombre y la firma de cada ejecutivo; lo que llega se lee cada diez minutos, se liga al registro y se asigna a quien tiene la agenda o envió la propuesta.`}
         actions={
           buzones.length > 0 ? (
@@ -197,10 +199,15 @@ async function BuzonesDeEnvio({ empresa }: { empresa: string | null }) {
         return (
           <SectionCard
             key={buzon.id}
-            icon={Mail}
-            tone="teal"
-            title={buzon.label || buzon.address}
-            description={buzon.address}
+            title={
+              <span className="flex items-center gap-3">
+                <Avatar name={buzon.label || buzon.address} icon={Mail} size="md" shape="square" />
+                <span className="min-w-0">
+                  <span className="block truncate">{buzon.label || buzon.address}</span>
+                  <span className="block truncate text-[13px] font-normal text-muted-foreground">{buzon.address}</span>
+                </span>
+              </span>
+            }
             actions={
               buzon.last_sync_error ? (
                 <Badge tone="danger">Falló la lectura</Badge>
@@ -212,7 +219,7 @@ async function BuzonesDeEnvio({ empresa }: { empresa: string | null }) {
             }
           >
             {buzon.last_sync_error && (
-              <Callout tone="danger" className="mx-4 mt-4">
+              <Callout tone="danger" className="mx-5 mb-4">
                 <p className="font-medium">No se pudo leer el buzón</p>
                 <p>{causaDeLectura(buzon.last_sync_error, buzon.address)}</p>
               </Callout>
@@ -227,11 +234,11 @@ async function BuzonesDeEnvio({ empresa }: { empresa: string | null }) {
           <FormularioBuzon buzon={null} opciones={opcionesPara(null)} marcadas={[]} empresa={empresa} />
         </SectionCard>
       ) : (
-        <details className="group rounded-xl border border-dashed border-border bg-surface">
+        <details className="group rounded-xl border border-dashed border-border-strong bg-surface">
           <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium text-primary">
             <Mail size={15} aria-hidden="true" /> Conectar otro buzón para otra cuenta
           </summary>
-          <div className="border-t border-border">
+          <div>
             <FormularioBuzon buzon={null} opciones={opcionesPara(null)} marcadas={[]} empresa={empresa} />
           </div>
         </details>
@@ -240,40 +247,66 @@ async function BuzonesDeEnvio({ empresa }: { empresa: string | null }) {
   );
 }
 
+/**
+ * Un grupo del formulario: a la izquierda qué es y para qué sirve, a la
+ * derecha los campos. Diez campos seguidos en dos columnas se leían como una
+ * planilla; en grupos con nombre se entiende qué falta llenar (Stripe, Vercel).
+ */
+function Grupo({ titulo, descripcion, children }: { titulo: string; descripcion: string; children: ReactNode }) {
+  return (
+    <div className="grid gap-4 px-5 py-5 md:grid-cols-[minmax(0,15rem)_minmax(0,1fr)] md:gap-8">
+      <div>
+        <h3 className="text-sm font-medium text-foreground">{titulo}</h3>
+        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{descripcion}</p>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">{children}</div>
+    </div>
+  );
+}
+
 function FormularioBuzon({ buzon, opciones, marcadas, empresa }: { buzon: BuzonDeEnvio | null; opciones: OpcionCampana[]; marcadas: string[]; empresa: string | null }) {
   return (
-    <ActionForm action={guardarBuzonDeEnvio} success={buzon ? "Buzón guardado" : "Buzón conectado"} className="grid gap-4 px-4 py-4 sm:grid-cols-2">
+    <ActionForm action={guardarBuzonDeEnvio} success={buzon ? "Buzón guardado" : "Buzón conectado"} className="divide-y divide-border border-t border-border">
       {buzon && <input type="hidden" name="id" value={buzon.id} />}
-      <Field label="Dirección">
-        <Input name="address" type="email" required defaultValue={buzon?.address ?? ""} placeholder="ventas@empresa.cl" />
-      </Field>
-      <Field label="Nombre para mostrar">
-        <Input name="remitente" defaultValue={buzon?.remitente ?? ""} placeholder={empresa ?? "Empresa"} />
-      </Field>
-      <Field label="Servidor IMAP (lectura)">
-        <Input name="imap_host" required defaultValue={buzon?.imap_host ?? ""} placeholder="mail.empresa.cl" />
-      </Field>
-      <Field label="Puerto IMAP">
-        <Input name="imap_port" inputMode="numeric" defaultValue={buzon?.imap_port ?? 993} />
-      </Field>
-      <Field label="Servidor SMTP (envío)">
-        <Input name="smtp_host" required defaultValue={buzon?.smtp_host ?? ""} placeholder="mail.empresa.cl" />
-      </Field>
-      <Field label="Puerto SMTP">
-        <Input name="smtp_port" inputMode="numeric" defaultValue={buzon?.smtp_port ?? 465} />
-      </Field>
-      <Field label="Usuario">
-        <Input name="usuario" defaultValue={buzon?.usuario ?? ""} placeholder="La dirección completa" />
-      </Field>
-      <Field label={buzon?.clave_secreto ? "Clave (deja vacío para mantenerla)" : "Clave"}>
-        <Input name="clave" type="password" autoComplete="new-password" required={!buzon} placeholder="••••••••" />
-      </Field>
-      <Field label="Etiqueta">
-        <Input name="label" defaultValue={buzon?.label ?? ""} placeholder="Buzón Equifax" />
-      </Field>
-      <div />
-      <CampanasDelBuzon opciones={opciones} marcadas={marcadas} />
-      <div className="flex justify-end sm:col-span-2">
+      <Grupo titulo="Remitente" descripcion="Cómo ven los clientes los correos que salen de este buzón.">
+        <Field label="Dirección">
+          <Input name="address" type="email" required defaultValue={buzon?.address ?? ""} placeholder="ventas@empresa.cl" />
+        </Field>
+        <Field label="Nombre para mostrar">
+          <Input name="remitente" defaultValue={buzon?.remitente ?? ""} placeholder={empresa ?? "Empresa"} />
+        </Field>
+        <Field label="Etiqueta interna">
+          <Input name="label" defaultValue={buzon?.label ?? ""} placeholder="Buzón Equifax" />
+        </Field>
+      </Grupo>
+      <Grupo titulo="Servidores" descripcion="Lo entrega tu proveedor de correo. Atlas lee por IMAP cada diez minutos y envía por SMTP; si son el mismo servidor, repítelo.">
+        <div className="grid grid-cols-[minmax(0,1fr)_6rem] gap-3 sm:col-span-2">
+          <Field label="Servidor IMAP (lectura)">
+            <Input name="imap_host" required defaultValue={buzon?.imap_host ?? ""} placeholder="mail.empresa.cl" />
+          </Field>
+          <Field label="Puerto">
+            <Input name="imap_port" inputMode="numeric" defaultValue={buzon?.imap_port ?? 993} />
+          </Field>
+          <Field label="Servidor SMTP (envío)">
+            <Input name="smtp_host" required defaultValue={buzon?.smtp_host ?? ""} placeholder="mail.empresa.cl" />
+          </Field>
+          <Field label="Puerto">
+            <Input name="smtp_port" inputMode="numeric" defaultValue={buzon?.smtp_port ?? 465} />
+          </Field>
+        </div>
+      </Grupo>
+      <Grupo titulo="Acceso" descripcion="La clave se guarda cifrada y no se vuelve a mostrar. Gmail y Outlook piden una contraseña de aplicación.">
+        <Field label="Usuario">
+          <Input name="usuario" defaultValue={buzon?.usuario ?? ""} placeholder="La dirección completa" />
+        </Field>
+        <Field label={buzon?.clave_secreto ? "Clave (deja vacío para mantenerla)" : "Clave"}>
+          <Input name="clave" type="password" autoComplete="new-password" required={!buzon} placeholder="••••••••" />
+        </Field>
+      </Grupo>
+      <Grupo titulo="Campañas" descripcion="Sus propuestas y respuestas salen por este buzón, y lo que llega se asigna a quien tiene el registro.">
+        <CampanasDelBuzon opciones={opciones} marcadas={marcadas} />
+      </Grupo>
+      <div className="flex justify-end bg-surface-raised px-5 py-3">
         <ActionSubmit pendingLabel="Guardando…">{buzon ? "Guardar buzón" : "Conectar buzón"}</ActionSubmit>
       </div>
     </ActionForm>

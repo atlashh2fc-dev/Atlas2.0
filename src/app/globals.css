@@ -54,6 +54,15 @@
   --tone-violet: #6d28d9;
   --tone-rose: #be123c;
   --tone-slate: #475569;
+  --tone-indigo: #4338ca;
+  --tone-orange: #c2410c;
+  --tone-cyan: #0e7490;
+  --tone-pink: #be185d;
+
+  /* Franja de cabeceras de tabla y barras de herramienta dentro de tarjetas:
+     un plano apenas distinto de la superficie, para que la tabla tenga
+     cabecera y pie propios y no flote como una planilla. */
+  --surface-raised: #f9fafb;
 
   /* Panel de marca de las pantallas de acceso. Va sobre black-dark y no sobre
      blue-corp porque el blanco sobre #049dd9 da 3.07:1 de contraste y no llega
@@ -88,7 +97,7 @@
   --ring: #79f2e6;
   --shadow-contact: rgba(0, 0, 0, 0.4);
   --shadow-ambient: rgba(0, 0, 0, 0.2);
-  --shadow-highlight: rgba(255, 255, 255, 0.03);
+  --shadow-highlight: rgba(255, 255, 255, 0.045);
   --halo-a: transparent;
   --halo-b: transparent;
   --tone-blue: #38bdf8;
@@ -98,6 +107,11 @@
   --tone-violet: #a78bfa;
   --tone-rose: #fb7185;
   --tone-slate: #cbd5e1;
+  --tone-indigo: #818cf8;
+  --tone-orange: #fb923c;
+  --tone-cyan: #22d3ee;
+  --tone-pink: #f472b6;
+  --surface-raised: #121925;
   --auth-panel: #05080f;
   --auth-panel-foreground: #f2f2f2;
 }
@@ -210,6 +224,11 @@
   --color-tone-violet: var(--tone-violet);
   --color-tone-rose: var(--tone-rose);
   --color-tone-slate: var(--tone-slate);
+  --color-tone-indigo: var(--tone-indigo);
+  --color-tone-orange: var(--tone-orange);
+  --color-tone-cyan: var(--tone-cyan);
+  --color-tone-pink: var(--tone-pink);
+  --color-surface-raised: var(--surface-raised);
   --color-auth-panel: var(--auth-panel);
   --color-auth-panel-foreground: var(--auth-panel-foreground);
   --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
@@ -321,6 +340,41 @@ table {
 
 .icon-chip[data-active="true"] {
   background: color-mix(in srgb, var(--chip) 16%, transparent);
+}
+
+/* Avatar: iniciales sobre un degradado del tono que le toca a ese nombre. Da
+   identidad a personas, empresas y archivos sin pintar la fila entera: es lo
+   que separa una lista de un CRM de una planilla. */
+.avatar {
+  --chip: var(--tone-slate);
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--chip);
+  background: linear-gradient(140deg, color-mix(in srgb, var(--chip) 24%, transparent), color-mix(in srgb, var(--chip) 9%, transparent));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--chip) 22%, transparent);
+}
+
+.avatar[data-tone="primary"] { --chip: var(--primary); }
+.avatar[data-tone="blue"] { --chip: var(--tone-blue); }
+.avatar[data-tone="teal"] { --chip: var(--tone-teal); }
+.avatar[data-tone="green"] { --chip: var(--tone-green); }
+.avatar[data-tone="amber"] { --chip: var(--tone-amber); }
+.avatar[data-tone="violet"] { --chip: var(--tone-violet); }
+.avatar[data-tone="rose"] { --chip: var(--tone-rose); }
+.avatar[data-tone="indigo"] { --chip: var(--tone-indigo); }
+.avatar[data-tone="orange"] { --chip: var(--tone-orange); }
+.avatar[data-tone="cyan"] { --chip: var(--tone-cyan); }
+.avatar[data-tone="pink"] { --chip: var(--tone-pink); }
+.avatar[data-tone="slate"] { --chip: var(--tone-slate); }
+
+/* Tarjeta con luz de borde: en oscuro el canto superior recibe un brillo
+   apenas perceptible y la tarjeta se despega del fondo sin sombra sucia. */
+.dark .atlas-panel {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.022), transparent 120px);
 }
 
 ::selection {

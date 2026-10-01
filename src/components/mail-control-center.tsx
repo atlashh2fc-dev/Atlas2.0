@@ -5,7 +5,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarClock, CheckCheck, ChevronRight, Clock3, History, Inbox, Mail, MessageCircleReply, MousePointerClick, Phone, UserRound } from "lucide-react";
 import { bulkAssignMailEngagementLeads } from "@/app/actions/mail";
-import { Badge, Button, Callout, EmptyState, SectionCard, Select, SlideOver, buttonClasses } from "@/components/ui";
+import { Avatar, Badge, Button, Callout, EmptyState, SectionCard, Select, SlideOver, buttonClasses } from "@/components/ui";
 import { useToast } from "@/components/ui/toast";
 
 export type MailQueueRow = {
@@ -65,24 +65,25 @@ function formatDate(value: string | null | undefined) {
   });
 }
 
-/** Borde izquierdo y color de la cifra de cada prioridad (baldosa de estado). */
+/** Punto y color de la cifra de cada prioridad. El color solo aparece cuando
+ *  hay algo que atender: una baldosa en cero queda gris. */
 function bucketTone(tone: MailControlBucket["tone"] = "neutral") {
   return tone === "danger"
-    ? { edge: "border-l-danger", value: "text-danger" }
+    ? { dot: "bg-danger", value: "text-danger" }
     : tone === "warning"
-      ? { edge: "border-l-warning", value: "text-warning" }
+      ? { dot: "bg-warning", value: "text-warning" }
       : tone === "success"
-        ? { edge: "border-l-success", value: "text-success" }
+        ? { dot: "bg-success", value: "text-success" }
         : tone === "info"
-          ? { edge: "border-l-primary", value: "text-primary" }
-          : { edge: "border-l-border-strong", value: "text-foreground" };
+          ? { dot: "bg-primary", value: "text-foreground" }
+          : { dot: "bg-muted-foreground/50", value: "text-foreground" };
 }
 
 function queueState(row: MailQueueRow) {
-  if (row.queue_bucket === "customer_replied") return { label: "Respuesta cliente", tone: "warning" as const, icon: MessageCircleReply };
-  if (row.queue_bucket === "agent_replied") return { label: "Respondido", tone: "success" as const, icon: CheckCheck };
-  if (row.clicked) return { label: "Click", tone: "success" as const, icon: MousePointerClick };
-  return { label: "Apertura", tone: "warning" as const, icon: Mail };
+  if (row.queue_bucket === "customer_replied") return { label: "Respuesta cliente", chip: "amber", icon: MessageCircleReply };
+  if (row.queue_bucket === "agent_replied") return { label: "Respondido", chip: "green", icon: CheckCheck };
+  if (row.clicked) return { label: "Click", chip: "violet", icon: MousePointerClick };
+  return { label: "Apertura", chip: "blue", icon: Mail };
 }
 
 /**
@@ -174,62 +175,57 @@ export function MailControlCenter({
     <SectionCard
       title="Centro de control mail"
       description="Elige una prioridad, revisa el contexto y asigna trabajo en bloque."
-      icon={Mail}
-      tone="teal"
-      actions={
-        <Badge tone="info">
-          <span className="tabular-nums">{total.toLocaleString("es-CL")}</span>&nbsp;oportunidades priorizadas
-        </Badge>
-      }
     >
-      <div className="border-b border-border px-4 py-4">
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          {buckets.map((bucket) => {
-            const active = activeBucket === bucket.id;
-            const style = bucketTone(bucket.tone);
-            return (
-              <Link
-                key={bucket.id}
-                href={bucket.href}
-                aria-current={active ? "page" : undefined}
-                className={`rounded-lg border border-l-2 px-3 py-2.5 text-left transition-[border-color,background-color,box-shadow] focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${style.edge} ${
-                  active
-                    ? "border-primary/50 bg-primary/10 shadow-sm ring-1 ring-primary/40"
-                    : "border-border bg-background hover:border-border-strong hover:bg-surface-muted"
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <span className="text-xs font-medium text-muted-foreground">{bucket.label}</span>
-                  <span className={`text-xl font-semibold leading-none tracking-tight tabular-nums ${bucket.count > 0 ? style.value : "text-muted-foreground"}`}>
-                    {bucket.count.toLocaleString("es-CL")}
-                  </span>
-                </div>
-                <p className="mt-1.5 text-xs text-muted-foreground">{bucket.description}</p>
-              </Link>
-            );
-          })}
-        </div>
+      <div className="grid gap-px border-y border-border bg-border sm:grid-cols-2 lg:grid-cols-5">
+        {buckets.map((bucket) => {
+          const active = activeBucket === bucket.id;
+          const style = bucketTone(bucket.tone);
+          return (
+            <Link
+              key={bucket.id}
+              href={bucket.href}
+              aria-current={active ? "page" : undefined}
+              className={`group relative flex flex-col gap-2 px-4 py-3.5 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
+                active ? "bg-primary/[0.07]" : "bg-surface hover:bg-surface-muted/70"
+              }`}
+            >
+              {active && <span aria-hidden="true" className="absolute inset-x-0 top-0 h-0.5 bg-primary" />}
+              <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground group-hover:text-foreground">
+                <span aria-hidden="true" className={`size-1.5 shrink-0 rounded-full ${bucket.count > 0 ? style.dot : "bg-muted-foreground/30"}`} />
+                <span className={active ? "text-foreground" : undefined}>{bucket.label}</span>
+              </span>
+              <span className={`text-2xl font-semibold leading-none tracking-tight tabular-nums ${bucket.count > 0 ? style.value : "text-muted-foreground/60"}`}>
+                {bucket.count.toLocaleString("es-CL")}
+              </span>
+              <span className="truncate text-[11px] text-muted-foreground" title={bucket.description}>
+                {bucket.description}
+              </span>
+            </Link>
+          );
+        })}
       </div>
 
-      <div className="border-b border-border bg-surface-muted/30 px-4 py-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-surface-raised px-4 py-2.5">
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          {rows.length > 0 && (
+            <input
+              type="checkbox"
+              checked={allVisibleSelected}
+              onChange={toggleVisible}
+              aria-label="Seleccionar el bloque cargado"
+              className="accent-primary"
+            />
+          )}
+          <span>
             <span className="font-medium text-foreground">{rows.length.toLocaleString("es-CL")} listos para gestionar</span>
-            <span>ordenados por prioridad</span>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {rows.length > 0 && (
-              <Button type="button" variant="ghost" size="sm" onClick={toggleVisible}>
-                {allVisibleSelected ? "Quitar selección" : "Seleccionar bloque"}
-              </Button>
-            )}
-            {selectedIds.length > 0 && (
-              <Button type="button" size="sm" onClick={() => openAssignment(selectedIds)}>
-                Asignar {selectedIds.length.toLocaleString("es-CL")}
-              </Button>
-            )}
-          </div>
+            {" · "}ordenados por prioridad, de {total.toLocaleString("es-CL")} en la cola
+          </span>
         </div>
+        {selectedIds.length > 0 && (
+          <Button type="button" size="sm" onClick={() => openAssignment(selectedIds)}>
+            Asignar {selectedIds.length.toLocaleString("es-CL")}
+          </Button>
+        )}
       </div>
 
       <div className="max-h-[34rem] divide-y divide-border overflow-y-auto">
@@ -245,36 +241,47 @@ export function MailControlCenter({
             const StateIcon = state.icon;
             const checked = selectedIds.includes(row.lead_id);
             return (
-              <article key={`${row.mail_campaign_id ?? row.campaign_id}-${row.lead_id}`} className="group flex gap-3 px-4 py-3 transition-colors hover:bg-surface-muted/60">
-                <label className="mt-1 flex h-5 w-5 flex-none cursor-pointer items-center justify-center">
+              <article key={`${row.mail_campaign_id ?? row.campaign_id}-${row.lead_id}`} className={`group flex items-center gap-3 px-4 py-3 transition-colors ${checked ? "bg-primary/[0.06]" : "hover:bg-surface-muted/55"}`}>
+                <label className="flex size-5 flex-none cursor-pointer items-center justify-center">
                   <input
                     type="checkbox"
                     checked={checked}
                     onChange={() => toggleLead(row.lead_id)}
                     aria-label={`Seleccionar ${row.full_name}`}
-                    className="h-4 w-4 rounded border-border text-primary focus:ring-ring"
+                    className="accent-primary"
                   />
                 </label>
-                <button type="button" onClick={() => setInspected(row)} className="min-w-0 flex-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-medium text-foreground group-hover:text-primary">{row.full_name}</p>
-                    <Badge tone={state.tone}>
-                      <StateIcon size={12} className="mr-1" aria-hidden />
-                      {state.label}
-                    </Badge>
-                    {!row.assigned_to && <Badge tone="warning">Sin responsable</Badge>}
-                    {row.attention_reason && <Badge tone="info">{row.attention_reason}</Badge>}
-                  </div>
-                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                    <span>{row.rut ?? "Sin RUT"}</span>
-                    <span>{row.phone ?? row.email ?? "Sin contacto"}</span>
-                    <span>{row.mail_campaign_name}</span>
-                    <span className="inline-flex items-center gap-1"><Clock3 size={12} aria-hidden /> {formatDate(row.last_event_at)}</span>
-                  </div>
+                <button type="button" onClick={() => setInspected(row)} className="flex min-w-0 flex-1 items-center gap-3 text-left text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <Avatar name={row.full_name} seed={row.rut ?? row.full_name} size="md" />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                      <span className="truncate font-medium text-foreground group-hover:text-primary">{row.full_name}</span>
+                      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground">
+                        <span className="icon-chip size-5 rounded-md" data-tone={state.chip}>
+                          <StateIcon size={11} aria-hidden />
+                        </span>
+                        {state.label}
+                      </span>
+                      {row.attention_reason && <span className="text-xs text-muted-foreground">{row.attention_reason}</span>}
+                    </span>
+                    <span className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                      <span className="tabular-nums">{row.rut ?? "Sin RUT"}</span>
+                      <span className="tabular-nums">{row.phone ?? row.email ?? "Sin contacto"}</span>
+                      <span className="truncate">{row.mail_campaign_name}</span>
+                      <span className="inline-flex items-center gap-1 tabular-nums"><Clock3 size={12} aria-hidden /> {formatDate(row.last_event_at)}</span>
+                    </span>
+                  </span>
                 </button>
                 <div className="hidden shrink-0 items-center gap-2 sm:flex">
-                  <span className="max-w-36 truncate text-xs text-muted-foreground">{row.assigned_to_name ?? "Sin asignar"}</span>
-                  <ChevronRight size={16} className="text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden />
+                  {row.assigned_to_name ? (
+                    <span className="flex max-w-44 items-center gap-2 text-xs text-foreground">
+                      <Avatar name={row.assigned_to_name} size="xs" />
+                      <span className="truncate">{row.assigned_to_name}</span>
+                    </span>
+                  ) : (
+                    <Badge tone="warning">Sin responsable</Badge>
+                  )}
+                  <ChevronRight size={16} className="text-muted-foreground/60 transition-transform group-hover:translate-x-0.5 group-hover:text-foreground" aria-hidden />
                 </div>
               </article>
             );
