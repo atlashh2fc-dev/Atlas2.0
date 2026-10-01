@@ -358,3 +358,45 @@ test("Secretaria Virtual 2026-10-01: la opción no se pierde por una mayúscula 
   ]).filter((issue) => issue.kind === "orphan_branch");
   assert.deepEqual(orphan.map((issue) => [issue.level, issue.option, issue.branchId]), [["error", "Contrata", "e5"]]);
 });
+
+test("Secretaria Virtual 2026-10-01: un motivo repetido en dos ramas se valida contra la rama elegida", () => {
+  const steps = [
+    step({ id: "call", name: "Llamada", is_start: true, options: ["Conecta", "No Conecta"] }),
+    step({ id: "con", name: "Conecta", field_type: "combobox", options: ["Cotización Enviada", "No interesa"] }),
+    step({ id: "nocon", name: "No Conecta", field_type: "combobox", options: ["No Contesta"] }),
+    step({ id: "noint", name: "No Interesa", field_type: "combobox", options: ["No lo Necesita", "Ya tiene el servicio"] }),
+    step({ id: "acepta", name: "Acepta", options: ["Si", "No"] }),
+    step({ id: "venta", name: "Venta en validación", options: ["Venta en Validación"] }),
+    step({ id: "rechazo", name: "Rechazo", options: ["Precio", "Ya tiene el servicio"] }),
+  ];
+  const branches = [
+    branch({ id: "e1", from_step_id: "call", from_option: "Conecta", to_step_id: "con" }),
+    branch({ id: "e2", from_step_id: "call", from_option: "No Conecta", to_step_id: "nocon" }),
+    branch({ id: "e3", from_step_id: "con", from_option: "No Interesa", to_step_id: "noint" }),
+    branch({ id: "e4", from_step_id: "con", from_option: "Cotización Enviada", to_step_id: "acepta" }),
+    branch({ id: "e5", from_step_id: "acepta", from_option: "Si", to_step_id: "venta" }),
+    branch({ id: "e6", from_step_id: "acepta", from_option: "No", to_step_id: "rechazo" }),
+  ];
+  const catalog = buildCallReasonCatalogFromWorkflow(steps, branches);
+  const repeated = catalog.filter((reason) => reason.value === "YA TIENE EL SERVICIO");
+  assert.equal(repeated.length, 2);
+
+  for (const option of repeated) {
+    const errors = validateCallClosure(
+      {
+        status: option.status,
+        outcome: option.outcome,
+        reason: option.value,
+        notes: "no lo necesita",
+        next_action_at: null,
+        equifax_products: [],
+        equifax_uf_amount: null,
+        equifax_recipient_email: null,
+        lead_email: null,
+        contact_email: null,
+      },
+      catalog
+    );
+    assert.deepEqual(errors, [], `rama ${(option.groupPath ?? []).join(" > ")}`);
+  }
+});

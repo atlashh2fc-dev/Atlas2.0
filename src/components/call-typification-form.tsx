@@ -197,7 +197,10 @@ export function CallTypificationForm({
           })),
     [equifaxCommercialFieldsEnabled, reasonCatalog]
   );
-  const initialReason = getReasonConfigFrom(catalog, call.reason);
+  const initialReason = getReasonConfigFrom(catalog, call.reason, {
+    status: call.status as CallStatus | null,
+    outcome: call.outcome as CallOutcome | null,
+  });
   const [status, setStatus] = useState<CallStatus | null>((call.status as CallStatus | null) ?? initialReason?.status ?? null);
   const [outcome, setOutcome] = useState<CallOutcome | null>((call.outcome as CallOutcome | null) ?? initialReason?.outcome ?? null);
   const [reason, setReason] = useState<string>(call.reason ?? "");
@@ -277,7 +280,7 @@ export function CallTypificationForm({
   // Con una sola categoría no hay nada que elegir: se abre sola.
   const selectedStateLabel = reasonGroups.length === 1 ? reasonGroups[0].label : reasonPath[0];
   const selectedState = reasonGroups.find((state) => state.label === selectedStateLabel);
-  const reasonConfig = getReasonConfigFrom(catalog, reason);
+  const reasonConfig = getReasonConfigFrom(catalog, reason, { status, outcome });
   const showAgendaBlock = reasonConfig?.agenda === "required" || reasonConfig?.agenda === "optional";
   // Una corrección puede partir de una gestión que sí tenía agenda. Si la
   // nueva tipificación no la admite, la fecha antigua nunca debe viajar oculta
@@ -616,6 +619,11 @@ export function CallTypificationForm({
     }
   }
 
+  // El mismo motivo puede estar en dos ramas: se marca solo el de la rama elegida.
+  function isSelectedOption(option: CallReasonConfig) {
+    return reason === option.value && option.status === status && option.outcome === outcome;
+  }
+
   function renderReasonOption(option: CallReasonConfig) {
     return (
       <div
@@ -625,9 +633,9 @@ export function CallTypificationForm({
         <button
           type="button"
           onClick={() => handleReasonSelect(option)}
-          aria-pressed={reason === option.value}
+          aria-pressed={isSelectedOption(option)}
           className={`min-h-11 min-w-0 flex-1 rounded-lg border px-3 py-2 text-left text-xs font-semibold uppercase transition-colors ${
-            reason === option.value
+            isSelectedOption(option)
               ? "border-primary bg-primary text-primary-foreground shadow-sm"
               : "border-border bg-background text-foreground hover:border-primary/50 hover:bg-surface-muted"
           }`}

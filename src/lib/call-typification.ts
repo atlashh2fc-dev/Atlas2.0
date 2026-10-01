@@ -387,9 +387,26 @@ export function getReasonConfig(reason: string | null | undefined): CallReasonCo
   return getReasonConfigFrom(CALL_REASONS, reason);
 }
 
-export function getReasonConfigFrom(catalog: CallReasonConfig[], reason: string | null | undefined): CallReasonConfig | null {
+/**
+ * Un mismo motivo puede colgar de dos ramas del flujo con distinto resultado
+ * (Secretaria Virtual, 2026-10-01: «Ya tiene el servicio» bajo «No interesa» y
+ * bajo «Cotización Enviada > No»). La gestión guarda solo el nombre, así que se
+ * toma la rama que coincide con el estado y el resultado elegidos; sin eso se
+ * validaba contra la primera y el cierre quedaba bloqueado.
+ */
+export function getReasonConfigFrom(
+  catalog: CallReasonConfig[],
+  reason: string | null | undefined,
+  chosen?: { status?: CallStatus | null; outcome?: CallOutcome | null }
+): CallReasonConfig | null {
   if (!reason) return null;
-  return catalog.find((r) => r.value === reason) ?? null;
+  const matches = catalog.filter((r) => r.value === reason);
+  if (matches.length <= 1 || !chosen) return matches[0] ?? null;
+  return (
+    matches.find((r) => r.status === chosen.status && r.outcome === chosen.outcome) ??
+    matches.find((r) => r.outcome === chosen.outcome) ??
+    matches[0]
+  );
 }
 
 export function getAutoReasonForStatus(status: CallStatus): string | null {
@@ -1043,7 +1060,7 @@ export function validateCallClosure(
     return errors;
   }
 
-  const reasonConfig = getReasonConfigFrom(catalog, payload.reason);
+  const reasonConfig = getReasonConfigFrom(catalog, payload.reason, payload);
   if (!reasonConfig) {
     errors.push("La tipificacion seleccionada no pertenece al flujo de la campaña.");
     return errors;
