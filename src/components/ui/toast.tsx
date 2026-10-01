@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { CheckCircle2, AlertTriangle, Info, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -21,10 +21,10 @@ export function useToast(): ToastContextValue {
   return ctx;
 }
 
-const TONE_STYLES: Record<ToastTone, { icon: typeof Info; className: string; iconClass: string }> = {
-  success: { icon: CheckCircle2, className: "border-success/30", iconClass: "text-success" },
-  danger: { icon: AlertTriangle, className: "border-danger/30", iconClass: "text-danger" },
-  info: { icon: Info, className: "border-border", iconClass: "text-primary" },
+const TONE_STYLES: Record<ToastTone, { icon: typeof Info; iconClass: string }> = {
+  success: { icon: CheckCircle2, iconClass: "text-success" },
+  danger: { icon: AlertTriangle, iconClass: "text-danger" },
+  info: { icon: Info, iconClass: "text-primary" },
 };
 
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -48,27 +48,39 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div className="pointer-events-none fixed bottom-4 left-1/2 z-[100] flex w-full max-w-sm -translate-x-1/2 flex-col gap-2 px-4">
-        {items.map((t) => {
-          const { icon: Icon, className, iconClass } = TONE_STYLES[t.tone];
+      {/* Pila abajo a la derecha, como Sonner: la más nueva adelante y las
+          anteriores asomando detrás; al pasar el mouse se despliegan. Abajo al
+          centro chocaba con la barra de acciones masivas. */}
+      <div
+        aria-live="polite"
+        className="group/toasts pointer-events-none fixed bottom-5 right-5 z-[100] flex w-[min(24rem,calc(100vw-2.5rem))] flex-col-reverse"
+      >
+        {[...items].reverse().map((t, index) => {
+          const { icon: Icon, iconClass } = TONE_STYLES[t.tone];
+          const depth = Math.min(index, 3);
           return (
             <div
               key={t.id}
               role="status"
+              style={{ "--depth": depth, zIndex: 10 - depth } as CSSProperties}
               className={cn(
-                "pointer-events-auto flex items-start gap-2.5 rounded-lg border bg-surface p-3 shadow-md",
-                className
+                "toast-in pointer-events-auto relative flex items-start gap-3 rounded-xl border border-border-strong bg-surface-solid p-3.5 shadow-xl transition-all duration-300 ease-out",
+                index === 0 ? "" : "-mt-[3.4rem] group-hover/toasts:mt-2",
+                index > 0 && "origin-bottom scale-[calc(1-var(--depth)*0.05)] opacity-90 group-hover/toasts:scale-100 group-hover/toasts:opacity-100",
+                index > 2 && "opacity-0 group-hover/toasts:opacity-100"
               )}
             >
-              <Icon size={17} className={cn("mt-0.5 flex-shrink-0", iconClass)} />
-              <p className="flex-1 text-sm text-foreground">{t.message}</p>
+              <span className={cn("mt-px flex size-6 flex-shrink-0 items-center justify-center rounded-full", iconClass)} style={{ background: "color-mix(in srgb, currentColor 14%, transparent)" }}>
+                <Icon size={14} aria-hidden="true" />
+              </span>
+              <p className="flex-1 pt-0.5 text-[13px] leading-snug text-foreground">{t.message}</p>
               <button
                 type="button"
                 onClick={() => remove(t.id)}
-                aria-label="Cerrar"
-                className="flex-shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+                aria-label="Cerrar aviso"
+                className="flex size-6 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground"
               >
-                <X size={15} />
+                <X size={14} aria-hidden="true" />
               </button>
             </div>
           );

@@ -414,6 +414,30 @@ table {
   .progress-indeterminate { animation: none; transform: none; opacity: 0.5; }
 }
 
+/* Entrada de los avisos: suben y aparecen, sin rebote. */
+@keyframes atlas-toast-in {
+  from { transform: translateY(12px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.toast-in {
+  animation: atlas-toast-in 220ms ease-out;
+}
+
+/* Tarjeta flotante: aparece con un leve zoom desde su disparador. */
+@keyframes atlas-hover-card-in {
+  from { opacity: 0; scale: 0.97; }
+  to { opacity: 1; scale: 1; }
+}
+
+.hover-card-in {
+  animation: atlas-hover-card-in 160ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast-in, .hover-card-in { animation: none; }
+}
+
 ::selection {
   background: var(--accent);
   color: var(--accent-foreground);

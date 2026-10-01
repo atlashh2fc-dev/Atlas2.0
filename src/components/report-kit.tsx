@@ -3,6 +3,8 @@ import type { ComponentType, ReactNode } from "react";
 import { ArrowUpRight, Minus, TrendingDown, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, InfoTooltip } from "@/components/ui";
+import { HoverCard } from "@/components/ui/hover-card";
+import { CountUp } from "@/components/ui/count-up";
 
 /*
  * Sin "use client": la vista del supervisor es de servidor y le pasa iconos a
@@ -306,7 +308,7 @@ export function KpiStripItem({
           />
         )}
       </div>
-      <p className={cn("mt-2.5 text-[28px] font-semibold leading-none tracking-tight tabular-nums", KPI_VALUE[tone])}>{value}</p>
+      <p className={cn("mt-2.5 text-[28px] font-semibold leading-none tracking-tight tabular-nums", KPI_VALUE[tone])}><CountUp value={String(value)} /></p>
       {(delta || detail) && (
         <div className="mt-2 space-y-1">
           {delta && <div>{delta}</div>}
@@ -389,7 +391,32 @@ export function Leaderboard({
             </span>
             <Avatar name={row.name} size="sm" />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] font-medium text-foreground" title={row.name}>{row.name}</p>
+              <HoverCard
+                content={
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <Avatar name={row.name} size="lg" />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-foreground">{row.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Puesto {index + 1} de {rows.length}
+                          {row.caption ? ` · ${row.caption}` : ""}
+                        </p>
+                      </div>
+                    </div>
+                    <dl className="grid grid-cols-2 gap-2 border-t border-border pt-3">
+                      {[{ label: primaryLabel, value: fmtInt(row.primary) }, ...row.stats].map((stat) => (
+                        <div key={stat.label} className="rounded-lg bg-surface-raised px-2.5 py-2">
+                          <dt className="text-[10px] text-muted-foreground">{stat.label}</dt>
+                          <dd className="text-sm font-semibold tabular-nums text-foreground">{stat.value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </div>
+                }
+              >
+                <span className="truncate text-[13px] font-medium text-foreground">{row.name}</span>
+              </HoverCard>
               <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-surface-muted">
                 <div
                   className="h-full rounded-full"

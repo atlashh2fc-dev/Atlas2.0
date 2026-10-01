@@ -10,6 +10,7 @@ import { PACIENTES_POR_EDICION, VENTAS_POR_EDICION, type Edicion } from "@/lib/e
 import type { AppModule } from "@/lib/modules";
 import type { AppRole, Profile } from "@/lib/types";
 import { useViewPreference } from "@/lib/use-view-preference";
+import { usePersistentState } from "@/lib/persistent-state";
 import {
   HELP_HREF,
   ROLE_LABEL,
@@ -213,17 +214,23 @@ function NavLink({
       <Link
         href={item.href}
         onClick={onNavigate}
-        aria-label={rail ? label : undefined}
+        title={rail ? label : undefined}
         aria-current={active ? "page" : undefined}
-        className={`relative flex h-8 items-center gap-2.5 rounded-lg text-[13px] font-medium transition-colors duration-150 ${
-          rail ? "justify-center px-2" : "px-2.5"
+        className={`relative flex items-center rounded-lg font-medium transition-colors duration-150 ${
+          // Menú angosto al estilo Vambe: el ícono arriba y el nombre chico
+          // debajo; deja casi todo el ancho al trabajo sin volverse adivinanza.
+          rail ? "min-h-14 flex-col justify-center gap-1 px-1 py-1.5 text-[10px] leading-tight" : "h-8 gap-2.5 px-2.5 text-[13px]"
         } ${showActions ? (editing ? "pr-20" : "group-hover:pr-9") : ""} ${
           active ? NAV_ROW_ACTIVE : NAV_ROW_IDLE
         }`}
       >
         <Icon size={16} aria-hidden="true" className={`shrink-0 transition-colors ${active ? "text-primary" : "text-muted-foreground/75 group-hover:text-foreground"}`} />
 
-        {!rail && <span className="truncate">{label}</span>}
+        {rail ? (
+          <span className="line-clamp-2 w-full text-center">{label}</span>
+        ) : (
+          <span className="truncate">{label}</span>
+        )}
 
         {!rail && !editing && badge !== undefined && badge > 0 && (
           <span className="ml-auto rounded-md bg-primary/15 px-1.5 py-px text-[11px] font-semibold tabular-nums text-primary group-hover:hidden">
@@ -234,14 +241,10 @@ function NavLink({
         {rail && (
           <>
             {badge !== undefined && badge > 0 && (
-              <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary" />
+              <span className="absolute right-2 top-1.5 min-w-4 rounded-md bg-primary px-1 text-center text-[9px] font-semibold leading-4 text-primary-foreground">
+                {badge > 99 ? "99+" : badge}
+              </span>
             )}
-            <span
-              role="tooltip"
-              className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-surface px-2 py-1 text-xs font-medium text-foreground opacity-0 shadow-md transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-            >
-              {label}
-            </span>
           </>
         )}
       </Link>
@@ -431,7 +434,7 @@ export function NavTree({
 }
 
 const FOOTER_LINK =
-  "group relative flex h-8 w-full items-center gap-2.5 rounded-lg text-[13px] font-medium transition-colors";
+  "group relative flex w-full items-center rounded-lg font-medium transition-colors";
 
 function FooterEntry({
   href,
@@ -448,13 +451,13 @@ function FooterEntry({
   icon: typeof Settings;
   label: string;
 }) {
-  const className = `${FOOTER_LINK} ${rail ? "justify-center px-2" : "px-2.5"} ${
+  const className = `${FOOTER_LINK} ${rail ? "min-h-12 flex-col justify-center gap-1 px-1 py-1.5 text-[10px] leading-tight" : "h-8 gap-2.5 px-2.5 text-[13px]"} ${
     active ? NAV_ROW_ACTIVE : NAV_ROW_IDLE
   }`;
   const body = (
     <>
       <Icon size={16} aria-hidden="true" className={`shrink-0 ${active ? "text-primary" : "text-muted-foreground/75"}`} />
-      {!rail && label}
+      {rail ? <span className="line-clamp-2 w-full text-center">{label}</span> : label}
     </>
   );
   if (href) {
@@ -570,7 +573,8 @@ export function Sidebar({
   duenio?: boolean;
 }) {
   const pathname = usePathname();
-  const [rail, setRail] = useState(false);
+  // Se recuerda por navegador: quien prefiere el menú angosto lo encuentra así.
+  const [rail, setRail] = usePersistentState<boolean>("atlas.sidebar.rail", false);
   const [editing, setEditing] = useState(false);
   const personalization = useNavPersonalization(profile);
   const space = spaceForPath(pathname, profile.role);
@@ -579,7 +583,7 @@ export function Sidebar({
     <aside
       aria-label="Navegación principal"
       className={`atlas-sidebar hidden flex-shrink-0 flex-col border-r border-border transition-[width] duration-200 md:flex ${
-        rail ? "w-16" : "w-64"
+        rail ? "w-[84px]" : "w-64"
       }`}
     >
       <div className={`flex h-14 items-center gap-2.5 border-b border-border ${rail ? "justify-center px-2" : "px-3.5"}`}>

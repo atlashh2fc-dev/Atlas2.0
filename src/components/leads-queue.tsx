@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ComponentType } from "react";
 import { AlertTriangle, CalendarClock, CheckCircle2, PhoneCall } from "lucide-react";
@@ -17,6 +18,7 @@ import { bulkAssignLeads, bulkRescheduleLeads } from "@/app/actions/leads";
 import {
   Avatar,
   Button,
+  HoverCard,
   ConfirmDialog,
   DataTable,
   Field,
@@ -24,6 +26,7 @@ import {
   Select,
   SegmentTabs,
   SlideOver,
+  buttonClasses,
   useToast,
   type BulkAction,
   type Column,
@@ -158,6 +161,56 @@ function stateChipTone(tone: QueueState["tone"]) {
   return "slate";
 }
 
+/** Contenido de la tarjeta flotante de un registro. */
+function LeadPreview({
+  lead,
+  vertical,
+  now,
+}: {
+  lead: LeadQueueRow;
+  vertical: CampaignVertical;
+  now: Date;
+}) {
+  const state = queueState(lead, now);
+  const Icon = state.icon;
+  const debt = vertical === "cobranza" ? readDebtSnapshot(lead.extra) : null;
+  const rows: [string, string][] = [
+    ["RUT", lead.rut ?? "—"],
+    ["Teléfono", lead.phone?.trim() ? lead.phone : "Sin teléfono"],
+    [vertical === "cobranza" ? "Próximo compromiso" : "Próxima agenda", dateTimeLabel(lead.next_action_at)],
+    [vertical === "cobranza" ? "Último resultado" : "Última tipificación", lead.tipificacion_actual ? sentenceCase(lead.tipificacion_actual) : "Sin gestión"],
+    ...(debt ? ([["Deuda", formatClp(debt.monto)]] as [string, string][]) : []),
+    ["Actualizado", relativeLabel(lead.updated_at, now)],
+  ];
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-3">
+        <Avatar name={lead.full_name} seed={lead.rut ?? lead.full_name} size="lg" shape="square" />
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-foreground">{lead.full_name}</p>
+          <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="icon-chip size-5 rounded-md" data-tone={stateChipTone(state.tone)}>
+              <Icon size={11} />
+            </span>
+            <span className={state.tone === "danger" ? "font-medium text-danger" : "text-foreground"}>{state.label}</span>
+          </p>
+        </div>
+      </div>
+      <dl className="space-y-1.5 border-t border-border pt-3 text-xs">
+        {rows.map(([label, value]) => (
+          <div key={label} className="flex justify-between gap-3">
+            <dt className="text-muted-foreground">{label}</dt>
+            <dd className="truncate text-right font-medium tabular-nums text-foreground">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      <Link href={`/dashboard/leads/${lead.id}`} className={buttonClasses({ variant: "secondary", size: "sm", className: "w-full" })}>
+        Abrir ficha
+      </Link>
+    </div>
+  );
+}
+
 export function LeadsQueue({
   leads,
   view,
@@ -250,9 +303,12 @@ export function LeadsQueue({
             <span className="flex min-w-0 items-center gap-3">
               <Avatar name={row.full_name} seed={row.rut ?? row.full_name} size="md" shape="square" />
               <span className="min-w-0">
-                <span className="block max-w-[16rem] truncate font-medium text-foreground group-hover:text-primary" title={row.full_name}>
-                  {row.full_name}
-                </span>
+                {/* Al pasar el mouse: el resumen del registro sin abrir la ficha. */}
+                <HoverCard content={<LeadPreview lead={row} vertical={vertical} now={now} />}>
+                  <span className="block max-w-[16rem] truncate font-medium text-foreground group-hover:text-primary" title={row.full_name}>
+                    {row.full_name}
+                  </span>
+                </HoverCard>
                 <span className="mt-0.5 block truncate text-xs text-muted-foreground">
                   {statusText(vertical, row.status)}
                   {debt?.curso ? ` · ${debt.curso}` : ""}

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowUpRight, Minus, TrendingDown, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { InfoTooltip } from "./info-tooltip";
+import { CountUp } from "./count-up";
 import type { MetricId } from "@/lib/metric-definitions";
 import { metricDefinition } from "@/lib/metric-definitions";
 
@@ -126,7 +127,7 @@ export function MetricCard({
         {href && <ArrowUpRight size={14} className="shrink-0 text-muted-foreground/50 transition-colors group-hover:text-primary" aria-hidden="true" />}
       </div>
 
-      <p className={cn("mt-3 text-[28px] font-semibold leading-none tabular-nums tracking-tight", TONE_TEXT[tone])}>{value}</p>
+      <p className={cn("mt-3 text-[28px] font-semibold leading-none tabular-nums tracking-tight", TONE_TEXT[tone])}><CountUp value={String(value)} /></p>
 
       {(delta || target) && (
         <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">

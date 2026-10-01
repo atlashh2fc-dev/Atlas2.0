@@ -20,3 +20,5 @@ export { ConfirmDialog, type ConfirmOptions } from "./confirm-dialog";
 export { SubmitButton } from "./submit-button";
 export { LoadingState } from "./loading-state";
 export { PageSkeleton, Skeleton } from "./page-skeleton";
+export { HoverCard } from "./hover-card";
+export { CountUp } from "./count-up";

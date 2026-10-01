@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { CountUp } from "./count-up";
 import { type IconTone, type MetricIconChip } from "./metric-card";
 import type { ComponentProps } from "react";
 
@@ -44,7 +45,7 @@ export function StatCard({
           tone === "good" ? "text-success" : tone === "warn" ? "text-warning" : tone === "danger" ? "text-danger" : "text-foreground"
         )}
       >
-        {value}
+        <CountUp value={String(value)} />
       </p>
       {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
       {clampedProgress !== null && (
