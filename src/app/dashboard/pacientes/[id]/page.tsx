@@ -49,6 +49,7 @@ import {
   sentenceCase,
 } from "@/components/record-kit";
 import { ATENCION_POR_EDICION, PACIENTES_POR_EDICION, VENTAS_POR_EDICION, clinicaDe } from "@/lib/ediciones";
+import { BUCKET_MASCOTA_MODELOS, claveDeRaza } from "@/lib/mascota-modelos";
 import { ETIQUETA_VACUNA, edad, estadoVacuna } from "@/lib/mascotas";
 import { denticionPorEdad, type RegistroOdontograma } from "@/lib/odontograma";
 import { costoDeReceta, porCategoria, type Atencion, type Insumo, type Procedimiento } from "@/lib/arancel";
@@ -176,6 +177,7 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
     { data: consentimientoData },
     { data: looksData },
     { data: mapasData },
+    { data: modelosData },
   ] =
     await Promise.all([
       supabase
@@ -251,6 +253,9 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
       esBarber
         ? supabase.from("mapas_de_corte").select("id, look_id, nombre, mapa, nota, profesional, fecha, created_at").eq("cuenta_id", id).order("created_at", { ascending: false }).limit(20)
         : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+      esVet
+        ? supabase.from("mascota_modelos").select("especie, raza, modelo_path, giro").eq("elegido", true)
+        : Promise.resolve({ data: [] as { especie: string; raza: string; modelo_path: string | null; giro: number }[] }),
     ]);
 
   // Estudio de Look: las fotos del bucket privado, firmadas por una hora.
@@ -551,6 +556,14 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
           profesionales={profesionales}
           estudios={estudios}
           organizationId={ficha.organization_id as string}
+          modelos={Object.fromEntries(
+            ((modelosData ?? []) as { especie: string; raza: string; modelo_path: string | null; giro: number }[])
+              .filter((modelo) => modelo.modelo_path)
+              .map((modelo) => [
+                claveDeRaza(modelo.especie, modelo.raza),
+                { url: supabase.storage.from(BUCKET_MASCOTA_MODELOS).getPublicUrl(modelo.modelo_path!).data.publicUrl, giro: modelo.giro },
+              ]),
+          )}
         />
       )}
 

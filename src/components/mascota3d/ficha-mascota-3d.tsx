@@ -22,6 +22,7 @@ import {
   type Region,
   type TipoRegistro,
 } from "@/lib/anatomia";
+import { claveDeRaza, type ModeloElegido } from "@/lib/mascota-modelos";
 import { ETIQUETA_VACUNA, edad, estadoVacuna } from "@/lib/mascotas";
 import { AVANCES, INFO_AVANCE, type Avance } from "@/lib/odontograma";
 
@@ -82,9 +83,12 @@ export function FichaMascota3D({
   profesionales,
   estudios,
   organizationId,
+  modelos = {},
 }: {
   estudios: Estudio[];
   organizationId: string;
+  /** Modelo realista elegido por raza ("Perro/Labrador"); la raza sin modelo usa el procedural. */
+  modelos?: Record<string, ModeloElegido>;
   cuentaId: string;
   mascotas: MascotaFicha[];
   registros: RegistroMascota[];
@@ -200,6 +204,7 @@ export function FichaMascota3D({
               onSelect={(zona, lugar) => elegirZona(zona, lugar)}
               onHover={setEncima}
               vista={vista}
+              modelo={modelos[claveDeRaza(raza.especie, raza.nombre)] ?? null}
             />
             <div className="pointer-events-none absolute left-3 top-3 flex flex-col gap-1">
               <span className="w-fit rounded-full bg-white/80 px-2.5 py-0.5 text-xs font-medium text-slate-700 shadow-sm backdrop-blur">

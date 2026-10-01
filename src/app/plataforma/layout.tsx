@@ -36,6 +36,12 @@ export default async function PlataformaLayout({ children }: { children: React.R
 
             <div className="ml-auto flex items-center gap-1">
               <Link
+                href="/plataforma/mascotas"
+                className="flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground"
+              >
+                Mascotas 3D
+              </Link>
+              <Link
                 href="/dashboard"
                 className="flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground"
               >

@@ -1,13 +1,15 @@
 "use client";
 
 import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber";
-import { CameraControls, ContactShadows, Environment, Lightformer } from "@react-three/drei";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { CameraControls, ContactShadows, Environment, Html, Lightformer, useGLTF } from "@react-three/drei";
+import { Component, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
 import { INFO_TIPO, largoDePelo, type Raza, type Region, type TipoRegistro } from "@/lib/anatomia";
+import type { ModeloElegido } from "@/lib/mascota-modelos";
 
-import { construirCuerpo, geometriaCola, type Parte } from "./cuerpo";
+import { construirCuerpo, geometriaCola, type Cuerpo, type Parte } from "./cuerpo";
+import { enderezarModelo, regionDeCara } from "./modelo-real";
 import { crearPiel, vaEnLaPiel } from "./piel";
 
 /**
@@ -197,24 +199,19 @@ function Encuadre({ controles, vista }: { controles: React.RefObject<CameraContr
   return null;
 }
 
-export function Animal3D({
-  raza,
-  etapa,
-  marcadores,
-  seleccionada,
-  onSelect,
-  onHover,
-  vista,
-}: {
-  raza: Raza;
-  etapa: "cachorro" | "adulto" | "senior";
-  marcadores: Marcador[];
-  seleccionada: Region | null;
+type Toque = {
+  raiz: React.RefObject<THREE.Group | null>;
+  resaltada: Region | null;
+  setResaltada: (region: Region | null) => void;
   onSelect: (region: Region, punto: [number, number, number]) => void;
   onHover: (region: Region | null) => void;
-  vista: { nombre: VistaAnimal; clave: number };
-}) {
-  const cuerpo = useMemo(() => construirCuerpo(raza, etapa), [raza, etapa]);
+};
+
+const redondear = (punto: THREE.Vector3): [number, number, number] => [Number(punto.x.toFixed(4)), Number(punto.y.toFixed(4)), Number(punto.z.toFixed(4))];
+
+/** El cuerpo dibujado con formas: una piel continua con pelo, y ojos, orejas y cola aparte. */
+function CuerpoProcedural({ cuerpo, raza, seleccionada, toque }: { cuerpo: Cuerpo; raza: Raza; seleccionada: Region | null; toque: Toque }) {
+  const { raiz, resaltada, setResaltada, onSelect, onHover } = toque;
   // El cuerpo es una sola piel; ojos, nariz, orejas y cola van aparte.
   const piel = useMemo(() => crearPiel(cuerpo.partes, cuerpo.manto), [cuerpo]);
   // Ojos y pupilas se asientan sobre la piel ya fundida (si no, el pelo los tapa).
@@ -251,28 +248,12 @@ export function Animal3D({
     [],
   );
   useEffect(() => () => materialPiel.dispose(), [materialPiel]);
-  const raiz = useRef<THREE.Group>(null);
-  const controles = useRef<CameraControls>(null);
-  const [resaltada, setResaltada] = useState<Region | null>(null);
-
-  // Todas las razas se ven a un tamaño cómodo; las chicas, algo más chicas.
-  // Se encuadra por la dimensión mayor: un bulldog es corto pero alto.
-  const escala = (2.4 / Math.max(cuerpo.largo, cuerpo.alto * 1.15)) * (0.84 + 0.16 * Math.min(1.2, raza.tamano));
-  const centroY = (cuerpo.alto * escala) / 2;
-
-
-  useEffect(() => {
-    document.body.style.cursor = resaltada ? "pointer" : "";
-    return () => {
-      document.body.style.cursor = "";
-    };
-  }, [resaltada]);
 
   const eventos = (region: Region) => ({
     onClick: (event: ThreeEvent<MouseEvent>) => {
       event.stopPropagation();
       const local = raiz.current ? raiz.current.worldToLocal(event.point.clone()) : event.point;
-      onSelect(region, [Number(local.x.toFixed(4)), Number(local.y.toFixed(4)), Number(local.z.toFixed(4))]);
+      onSelect(region, redondear(local));
     },
     onPointerOver: (event: ThreeEvent<PointerEvent>) => {
       event.stopPropagation();
@@ -285,8 +266,140 @@ export function Animal3D({
     },
   });
 
+  return (
+    <>
+      <group position={piel.malla.position} scale={escalaPiel}>
+        <Pelaje geometria={superficie} largo={largoPelo} densidad={densidadPelo} />
+      </group>
+      <mesh
+        geometry={superficie}
+        material={materialPiel}
+        position={piel.malla.position}
+        scale={escalaPiel}
+        castShadow
+        receiveShadow
+        onClick={(event: ThreeEvent<MouseEvent>) => {
+          event.stopPropagation();
+          const local = raiz.current ? raiz.current.worldToLocal(event.point.clone()) : event.point.clone();
+          const region = piel.regionEn(local);
+          if (region) onSelect(region, redondear(local));
+        }}
+        onPointerMove={(event: ThreeEvent<PointerEvent>) => {
+          event.stopPropagation();
+          const local = raiz.current ? raiz.current.worldToLocal(event.point.clone()) : event.point.clone();
+          const region = piel.regionEn(local);
+          if (region !== resaltada) {
+            setResaltada(region);
+            onHover(region);
+          }
+        }}
+        onPointerOut={() => {
+          setResaltada(null);
+          onHover(null);
+        }}
+      />
+      {sueltas.map((parte, indice) => {
+        const brillo = seleccionada === parte.region ? 0.3 : resaltada === parte.region ? 0.14 : 0;
+        return <ParteMesh key={`${raza.nombre}-${indice}`} parte={parte} resaltado={brillo} onPointer={eventos(parte.region)} />;
+      })}
+    </>
+  );
+}
+
+const materialZona = new THREE.MeshBasicMaterial({ color: "#38bdf8", transparent: true, opacity: 0.32, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+const materialZonaSuave = materialZona.clone();
+materialZonaSuave.opacity = 0.16;
+
+/** El modelo realista de la raza (hecho con IA), con las mismas zonas que el procedural. */
+function CuerpoReal({ modelo, cuerpo, seleccionada, toque }: { modelo: ModeloElegido; cuerpo: Cuerpo; seleccionada: Region | null; toque: Toque }) {
+  const { raiz, resaltada, setResaltada, onSelect, onHover } = toque;
+  const { scene } = useGLTF(modelo.url);
+  const real = useMemo(() => enderezarModelo(scene, cuerpo.partes, modelo.giro), [scene, cuerpo, modelo.giro]);
+  useEffect(() => () => real.dispose(), [real]);
+
+  const zonaDe = (event: ThreeEvent<PointerEvent | MouseEvent>, indice: number) => regionDeCara(real.mallas[indice].regiones, event.face);
+  const pintadas = [
+    ...(seleccionada ? real.zona(seleccionada).map((geometria) => ({ geometria, material: materialZona })) : []),
+    ...(resaltada && resaltada !== seleccionada ? real.zona(resaltada).map((geometria) => ({ geometria, material: materialZonaSuave })) : []),
+  ];
+
+  return (
+    <>
+      {real.mallas.map(({ geometria, material }, indice) => (
+        <mesh
+          key={indice}
+          geometry={geometria}
+          material={material}
+          castShadow
+          receiveShadow
+          onClick={(event: ThreeEvent<MouseEvent>) => {
+            event.stopPropagation();
+            const region = zonaDe(event, indice);
+            const local = raiz.current ? raiz.current.worldToLocal(event.point.clone()) : event.point.clone();
+            if (region) onSelect(region, redondear(local));
+          }}
+          onPointerMove={(event: ThreeEvent<PointerEvent>) => {
+            event.stopPropagation();
+            const region = zonaDe(event, indice);
+            if (region !== resaltada) {
+              setResaltada(region);
+              onHover(region);
+            }
+          }}
+          onPointerOut={() => {
+            setResaltada(null);
+            onHover(null);
+          }}
+        />
+      ))}
+      {pintadas.map(({ geometria, material }, indice) => (
+        <mesh key={`zona-${indice}`} geometry={geometria} material={material} raycast={() => null} renderOrder={2} />
+      ))}
+    </>
+  );
+}
+
+export function Animal3D({
+  raza,
+  etapa,
+  marcadores,
+  seleccionada,
+  onSelect,
+  onHover,
+  vista,
+  modelo = null,
+}: {
+  raza: Raza;
+  etapa: "cachorro" | "adulto" | "senior";
+  marcadores: Marcador[];
+  seleccionada: Region | null;
+  onSelect: (region: Region, punto: [number, number, number]) => void;
+  onHover: (region: Region | null) => void;
+  vista: { nombre: VistaAnimal; clave: number };
+  /** Modelo realista elegido para la raza; sin él se dibuja el procedural. */
+  modelo?: ModeloElegido | null;
+}) {
+  const cuerpo = useMemo(() => construirCuerpo(raza, etapa), [raza, etapa]);
+  const raiz = useRef<THREE.Group>(null);
+  const controles = useRef<CameraControls>(null);
+  const [resaltada, setResaltada] = useState<Region | null>(null);
+  const toque: Toque = { raiz, resaltada, setResaltada, onSelect, onHover };
+
+  // Todas las razas se ven a un tamaño cómodo; las chicas, algo más chicas.
+  // Se encuadra por la dimensión mayor: un bulldog es corto pero alto.
+  const escala = (2.4 / Math.max(cuerpo.largo, cuerpo.alto * 1.15)) * (0.84 + 0.16 * Math.min(1.2, raza.tamano));
+  const centroY = (cuerpo.alto * escala) / 2;
+
+  useEffect(() => {
+    document.body.style.cursor = resaltada ? "pointer" : "";
+    return () => {
+      document.body.style.cursor = "";
+    };
+  }, [resaltada]);
+
   // Registros de la misma zona sin punto: se apilan un poco para que no se tapen.
   const apilados = new Map<Region, number>();
+  const procedural = <CuerpoProcedural cuerpo={cuerpo} raza={raza} seleccionada={seleccionada} toque={toque} />;
 
   return (
     <Canvas
@@ -306,40 +419,21 @@ export function Animal3D({
       </Environment>
 
       <group ref={raiz} scale={escala} position={[-0.1, -centroY, 0]}>
-        <group position={piel.malla.position} scale={escalaPiel}>
-          <Pelaje geometria={superficie} largo={largoPelo} densidad={densidadPelo} />
-        </group>
-        <mesh
-          geometry={superficie}
-          material={materialPiel}
-          position={piel.malla.position}
-          scale={escalaPiel}
-          castShadow
-          receiveShadow
-          onClick={(event: ThreeEvent<MouseEvent>) => {
-            event.stopPropagation();
-            const local = raiz.current ? raiz.current.worldToLocal(event.point.clone()) : event.point.clone();
-            const region = piel.regionEn(local);
-            if (region) onSelect(region, [Number(local.x.toFixed(4)), Number(local.y.toFixed(4)), Number(local.z.toFixed(4))]);
-          }}
-          onPointerMove={(event: ThreeEvent<PointerEvent>) => {
-            event.stopPropagation();
-            const local = raiz.current ? raiz.current.worldToLocal(event.point.clone()) : event.point.clone();
-            const region = piel.regionEn(local);
-            if (region !== resaltada) {
-              setResaltada(region);
-              onHover(region);
-            }
-          }}
-          onPointerOut={() => {
-            setResaltada(null);
-            onHover(null);
-          }}
-        />
-        {sueltas.map((parte, indice) => {
-          const brillo = seleccionada === parte.region ? 0.3 : resaltada === parte.region ? 0.14 : 0;
-          return <ParteMesh key={`${raza.nombre}-${indice}`} parte={parte} resaltado={brillo} onPointer={eventos(parte.region)} />;
-        })}
+        {modelo ? (
+          <ErrorDelModelo key={modelo.url} respaldo={procedural}>
+            <Suspense
+              fallback={
+                <Html center>
+                  <span className="whitespace-nowrap rounded-full bg-white/85 px-3 py-1 text-xs font-medium text-slate-600 shadow-sm">Cargando la mascota…</span>
+                </Html>
+              }
+            >
+              <CuerpoReal modelo={modelo} cuerpo={cuerpo} seleccionada={seleccionada} toque={toque} />
+            </Suspense>
+          </ErrorDelModelo>
+        ) : (
+          procedural
+        )}
 
         {marcadores.map((marcador) => {
           const orden = apilados.get(marcador.region) ?? 0;
@@ -370,4 +464,15 @@ export function Animal3D({
       <CameraControls ref={controles} makeDefault minDistance={2.6} maxDistance={24} smoothTime={0.35} maxPolarAngle={Math.PI * 0.62} />
     </Canvas>
   );
+}
+
+/** Si el modelo realista no carga (enlace roto, archivo dañado), se vuelve al procedural. */
+class ErrorDelModelo extends Component<{ respaldo: React.ReactNode; children: React.ReactNode }, { fallo: boolean }> {
+  state = { fallo: false };
+  static getDerivedStateFromError() {
+    return { fallo: true };
+  }
+  render() {
+    return this.state.fallo ? this.props.respaldo : this.props.children;
+  }
 }
