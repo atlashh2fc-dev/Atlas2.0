@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { AlertCircle, AlertTriangle, Eye } from "lucide-react";
+import { Eye } from "lucide-react";
 import {
   CALL_STATUSES,
   groupReasonsByState,
@@ -8,7 +8,6 @@ import {
   type CallReasonConfig,
   type ReasonOptionNode,
 } from "@/lib/call-typification";
-import type { WorkflowIssue } from "@/lib/workflow-validation";
 import { Badge, SectionCard } from "@/components/ui";
 
 const OUTCOME_LABEL: Record<CallOutcome, string> = {
@@ -70,13 +69,7 @@ function PreviewNodes({ nodes }: { nodes: ReasonOptionNode[] }) {
  * cualquier diferencia entre lo configurado y lo que se opera se ve aquí antes
  * de que llegue a una llamada.
  */
-export function TypificationPreview({
-  catalog,
-  issues,
-}: {
-  catalog: CallReasonConfig[];
-  issues: WorkflowIssue[];
-}) {
+export function TypificationPreview({ catalog }: { catalog: CallReasonConfig[] }) {
   const states = groupReasonsByState(catalog);
 
   return (
@@ -92,23 +85,6 @@ export function TypificationPreview({
           </Badge>
         }
       >
-        {issues.length > 0 && (
-          <ul className="space-y-1.5 border-b border-border px-4 py-3 text-sm">
-            {issues.map((issue, index) => (
-              <li key={`${issue.stepId ?? "flow"}-${index}`} className="flex items-start gap-2">
-                {issue.level === "error" ? (
-                  <AlertTriangle size={15} className="mt-0.5 flex-shrink-0 text-danger" aria-hidden="true" />
-                ) : (
-                  <AlertCircle size={15} className="mt-0.5 flex-shrink-0 text-warning" aria-hidden="true" />
-                )}
-                <span className={issue.level === "error" ? "text-foreground" : "text-muted-foreground"}>
-                  {issue.message}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-
         <div className="space-y-4 p-4">
           {states.length === 0 ? (
             <p className="text-sm font-medium text-danger">

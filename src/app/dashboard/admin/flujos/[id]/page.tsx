@@ -107,8 +107,8 @@ export default async function WorkflowDetailPage({
         }
       />
 
-      {/* La revisión del flujo vive bajo el lienzo, junto a la vista previa, y
-          se recalcula con cada edición en vez de quedar fija desde la carga. */}
+      {/* La revisión del flujo vive dentro del lienzo, marcada sobre cada paso,
+          y se recalcula con cada edición en vez de quedar fija desde la carga. */}
       <Callout tone={activeCampaigns.length > 0 ? "warning" : "info"}>
         <p className="font-medium text-foreground">Los cambios de este editor se aplican al instante.</p>
         <p className="mt-1 text-sm">

@@ -20,18 +20,19 @@ import {
   type NodeHandle,
   useReactFlow,
 } from "@xyflow/react";
-import { ListChecks, Redo2, Undo2, X } from "lucide-react";
+import { AlertCircle, AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, ListChecks, Redo2, Undo2, X } from "lucide-react";
 import "@xyflow/react/dist/style.css";
 import type { WorkflowFieldType, WorkflowStep, WorkflowStepBranch } from "@/lib/types";
 import { WORKFLOW_FIELD_TYPES } from "@/lib/types";
-import { buildCallReasonCatalogFromWorkflow } from "@/lib/call-typification";
-import { validateWorkflow } from "@/lib/workflow-validation";
+import { buildCallReasonCatalogFromWorkflow, workflowOptionKey } from "@/lib/call-typification";
+import { validateWorkflow, type WorkflowIssue } from "@/lib/workflow-validation";
 import { TypificationPreview } from "@/components/typification-preview";
 import { Badge, Input, Select, buttonClasses } from "@/components/ui";
 import {
   createWorkflowStepNode,
   deleteBranch,
   deleteWorkflowStepNode,
+  renameBranchOption,
   restoreBranch,
   restoreWorkflowStepNode,
   setStartStep,
@@ -69,6 +70,32 @@ function stepRows(step: WorkflowStep): { id: string; label: string }[] {
 interface StepNodeData extends Record<string, unknown> {
   step: WorkflowStep;
   selected: boolean;
+  /** Problemas de la revisión que tocan a este paso. */
+  issues: WorkflowIssue[];
+  /** Fila (respuesta) -> nombre del paso al que lleva. Sin entrada, es un cierre. */
+  routes: Record<string, string>;
+}
+
+const NO_ISSUES: WorkflowIssue[] = [];
+const NO_ROUTES: Record<string, string> = {};
+
+function IssueIcon({ level, size = 14 }: { level: WorkflowIssue["level"]; size?: number }) {
+  return level === "error" ? (
+    <AlertTriangle size={size} className="mt-0.5 flex-shrink-0 text-danger" aria-hidden="true" />
+  ) : (
+    <AlertCircle size={size} className="mt-0.5 flex-shrink-0 text-warning" aria-hidden="true" />
+  );
+}
+
+function issueCountLabel(issues: WorkflowIssue[]) {
+  const errors = issues.filter((issue) => issue.level === "error").length;
+  const warnings = issues.length - errors;
+  return [
+    errors > 0 ? `${errors} ${errors === 1 ? "error" : "errores"}` : null,
+    warnings > 0 ? `${warnings} ${warnings === 1 ? "aviso" : "avisos"}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 // Las acciones de la tarjeta llegan por contexto y no dentro de `data`: así los
@@ -85,16 +112,23 @@ function fieldTypeLabel(t: WorkflowFieldType) {
 }
 
 function StepNode({ data }: NodeProps<StepFlowNode>) {
-  const { step } = data;
+  const { step, issues, routes } = data;
   const actions = useContext(StepActionsContext);
   const rows = stepRows(step);
+  const hasError = issues.some((issue) => issue.level === "error");
+  const missingOptions = issues.some((issue) => issue.kind === "no_options");
+  const frame = data.selected
+    ? `ring-2 ${hasError ? "border-danger ring-danger/30" : issues.length > 0 ? "border-warning ring-warning/30" : "border-primary ring-ring"}`
+    : hasError
+      ? "border-danger"
+      : issues.length > 0
+        ? "border-warning"
+        : "border-border";
 
   return (
     <div
       onClick={() => actions.onSelect(step.id)}
-      className={`group relative w-64 cursor-pointer rounded-xl border bg-surface-solid shadow-sm transition-shadow hover:shadow-md ${
-        data.selected ? "border-primary ring-2 ring-ring" : "border-border"
-      }`}
+      className={`group relative w-64 cursor-pointer rounded-xl border bg-surface-solid shadow-sm transition-shadow hover:shadow-md ${frame}`}
     >
       <Handle
         type="target"
@@ -133,23 +167,67 @@ function StepNode({ data }: NodeProps<StepFlowNode>) {
           <Badge tone={step.is_mandatory ? "warning" : "neutral"}>
             {step.is_mandatory ? "Obligatorio" : "Opcional"}
           </Badge>
+          {issues.length > 0 && (
+            <span
+              title={issues.map((issue) => issue.message).join("\n")}
+              className={`ml-auto mr-6 inline-flex items-center gap-1 text-[11px] font-semibold ${
+                hasError ? "text-danger" : "text-warning"
+              }`}
+            >
+              {hasError ? (
+                <AlertTriangle size={12} aria-hidden="true" />
+              ) : (
+                <AlertCircle size={12} aria-hidden="true" />
+              )}
+              {issueCountLabel(issues)}
+            </span>
+          )}
         </div>
         <p className="mt-1 truncate text-sm font-semibold text-foreground">{step.name}</p>
-        <p className="truncate text-[11px] text-muted-foreground">{fieldTypeLabel(step.field_type)}</p>
+        {missingOptions ? (
+          <p className="truncate text-[11px] font-medium text-danger">Sin opciones: haz clic para agregarlas</p>
+        ) : (
+          <p className="truncate text-[11px] text-muted-foreground">{fieldTypeLabel(step.field_type)}</p>
+        )}
       </div>
 
       <div className="py-1">
-        {rows.map((row) => (
-          <div
-            key={row.id}
-            className="relative flex items-center px-3 text-xs text-foreground"
-            style={{ height: ROW_HEIGHT }}
-          >
-            <span className={`truncate ${row.id === DEFAULT_OPTION_ID ? "italic text-muted-foreground" : ""}`}>
-              {row.label}
-            </span>
-          </div>
-        ))}
+        {rows.map((row) => {
+          const route = routes[row.id];
+          const rowIssue = issues.find(
+            (issue) => issue.option !== undefined && `opt::${issue.option}` === row.id && issue.kind === "hidden_closure"
+          );
+          return (
+            <div
+              key={row.id}
+              title={rowIssue?.message}
+              className="relative flex items-center gap-2 px-3 text-xs text-foreground"
+              style={{ height: ROW_HEIGHT }}
+            >
+              <span
+                className={`min-w-0 flex-1 truncate ${
+                  row.id === DEFAULT_OPTION_ID ? "italic text-muted-foreground" : ""
+                }`}
+              >
+                {row.label}
+              </span>
+              {route && (
+                <span
+                  className={`flex max-w-[45%] flex-shrink-0 items-center gap-1 text-[11px] ${
+                    rowIssue ? "font-medium text-warning" : "text-muted-foreground"
+                  }`}
+                >
+                  {rowIssue ? (
+                    <AlertCircle size={11} className="flex-shrink-0" aria-hidden="true" />
+                  ) : (
+                    <ArrowRight size={11} className="flex-shrink-0" aria-hidden="true" />
+                  )}
+                  <span className="truncate">{route}</span>
+                </span>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -196,14 +274,16 @@ function buildHandles(step: WorkflowStep): NodeHandle[] {
 
 function stepToNode(
   step: WorkflowStep,
-  selectedId: string | null
+  selectedId: string | null,
+  issues: WorkflowIssue[] = NO_ISSUES,
+  routes: Record<string, string> = NO_ROUTES
 ): StepFlowNode {
   const height = HEADER_HEIGHT + stepRows(step).length * ROW_HEIGHT;
   return {
     id: step.id,
     type: "stepNode",
     position: { x: step.pos_x, y: step.pos_y },
-    data: { step, selected: step.id === selectedId },
+    data: { step, selected: step.id === selectedId, issues, routes },
     draggable: true,
     width: NODE_WIDTH,
     height,
@@ -376,6 +456,20 @@ function WorkflowCanvasInner({
         isMandatory: fields.is_mandatory,
       });
       setSteps((prev) => prev.map((s) => (s.id === stepId ? { ...s, ...fields } : s)));
+
+      // Una opción renombrada en su mismo lugar se lleva su conexión. Deshacer
+      // vuelve por aquí con las opciones de antes y la devuelve igual.
+      if (previous.options.length === fields.options.length) {
+        for (let i = 0; i < fields.options.length; i += 1) {
+          const from = previous.options[i];
+          const to = fields.options[i];
+          if (from === to || fields.options.includes(from) || previous.options.includes(to)) continue;
+          const edge = edgesRef.current.find((e) => e.source === stepId && fromOptionOf(e) === from);
+          if (!edge) continue;
+          const moved = await renameBranchOption({ branchId: edge.id, workflowId, fromOption: to });
+          setEdges((prev) => withBranch(prev, moved));
+        }
+      }
       return { label, run: () => updateStep(stepId, previous, label) };
     };
 
@@ -526,11 +620,6 @@ function WorkflowCanvasInner({
     [deleteStep, mod, steps]
   );
 
-  const nodes = useMemo(
-    () => steps.map((s) => stepToNode(s, selectedId)),
-    [steps, selectedId]
-  );
-
   // El prop declarativo `fitView` solo corre una vez al montar y puede
   // ejecutarse antes de que los nodos terminen de medirse (quedando la
   // vista vacía o con un zoom inválido). Forzamos el ajuste de forma
@@ -590,6 +679,18 @@ function WorkflowCanvasInner({
     setEdges((prev) => applyEdgeChanges(changes.filter((c) => c.type !== "remove"), prev));
   }, []);
 
+  const removeConnection = useCallback(
+    async (branchId: string, name: string) => {
+      try {
+        record(await ops.removeBranch(branchId, `quitar la conexión “${name}”`));
+        showNotice(`Quitaste la conexión “${name}”.`, "undo");
+      } catch (err) {
+        setErrorMsg(err instanceof Error ? err.message : "No se pudo quitar la conexión.");
+      }
+    },
+    [ops, record, showNotice]
+  );
+
   // Suprimir/Retroceso sobre algo seleccionado: se borra por las mismas
   // operaciones del historial y se cancela el borrado propio de React Flow.
   const onBeforeDelete = useCallback(
@@ -599,17 +700,11 @@ function WorkflowCanvasInner({
         return false;
       }
       for (const edge of edgesToDelete) {
-        const label = `quitar la conexión “${edge.label ?? "Por defecto"}”`;
-        try {
-          record(await ops.removeBranch(edge.id, label));
-          showNotice(`Quitaste la conexión “${edge.label ?? "Por defecto"}”.`, "undo");
-        } catch (err) {
-          setErrorMsg(err instanceof Error ? err.message : "No se pudo quitar la conexión.");
-        }
+        await removeConnection(edge.id, fromOptionOf(edge) ?? "Por defecto");
       }
       return false;
     },
-    [ops, record, requestDeleteStep, showNotice]
+    [removeConnection, requestDeleteStep]
   );
 
   const [pendingConnection, setPendingConnection] = useState<{
@@ -709,6 +804,81 @@ function WorkflowCanvasInner({
   );
   const liveIssues = useMemo(() => validateWorkflow(steps, liveBranches), [steps, liveBranches]);
 
+  // La revisión se dibuja sobre el propio flujo: cada paso carga sus problemas
+  // y cada respuesta, el paso al que lleva.
+  const issuesByStep = useMemo(() => {
+    const map = new Map<string, WorkflowIssue[]>();
+    for (const issue of liveIssues) {
+      if (!issue.stepId) continue;
+      map.set(issue.stepId, [...(map.get(issue.stepId) ?? []), issue]);
+    }
+    return map;
+  }, [liveIssues]);
+
+  const routesByStep = useMemo(() => {
+    const nameById = new Map(steps.map((s) => [s.id, s.name]));
+    const map = new Map<string, Record<string, string>>();
+    for (const step of steps) {
+      const own = edges.filter((e) => e.source === step.id);
+      const routes: Record<string, string> = {};
+      for (const row of stepRows(step)) {
+        const option = row.id === DEFAULT_OPTION_ID ? null : row.id.replace(/^opt::/, "");
+        const edge =
+          own.find((e) => fromOptionOf(e) === option) ??
+          (option === null
+            ? undefined
+            : own.find((e) => {
+                const from = fromOptionOf(e);
+                return from !== null && workflowOptionKey(from) === workflowOptionKey(option);
+              }));
+        const target = edge ? nameById.get(edge.target) : undefined;
+        if (target) routes[row.id] = target;
+      }
+      map.set(step.id, routes);
+    }
+    return map;
+  }, [steps, edges]);
+
+  const nodes = useMemo(
+    () => steps.map((s) => stepToNode(s, selectedId, issuesByStep.get(s.id), routesByStep.get(s.id))),
+    [steps, selectedId, issuesByStep, routesByStep]
+  );
+
+  // Una conexión que sale de una opción que ya no existe se ve rota.
+  const shownEdges = useMemo(() => {
+    const broken = new Set(
+      liveIssues.filter((issue) => issue.kind === "orphan_branch" && issue.branchId).map((issue) => issue.branchId)
+    );
+    if (broken.size === 0) return edges;
+    return edges.map((edge) =>
+      broken.has(edge.id)
+        ? {
+            ...edge,
+            label: `${edge.label} · opción que ya no existe`,
+            style: { strokeWidth: 2, stroke: "var(--danger)", strokeDasharray: "6 4" },
+            labelStyle: { fill: "var(--danger)", fontWeight: 600 },
+          }
+        : edge
+    );
+  }, [edges, liveIssues]);
+
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const reviewErrors = liveIssues.filter((issue) => issue.level === "error").length;
+
+  const focusStep = useCallback(
+    (stepId: string) => {
+      const step = stepsRef.current.find((s) => s.id === stepId);
+      if (!step) return;
+      setSelectedId(stepId);
+      const height = HEADER_HEIGHT + stepRows(step).length * ROW_HEIGHT;
+      // El panel de edición tapa 320 px a la derecha y la revisión abierta, unos
+      // 430 px a la izquierda: el paso se centra en lo que queda a la vista.
+      const offset = reviewOpen ? -55 : 160;
+      setCenter(step.pos_x + NODE_WIDTH / 2 + offset, step.pos_y + height / 2, { zoom: 1, duration: 300 });
+    },
+    [setCenter, reviewOpen]
+  );
+
   const historyButton =
     "grid size-9 place-items-center rounded-lg border border-border bg-surface-solid text-foreground shadow transition hover:bg-surface-muted focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-surface-solid";
 
@@ -721,7 +891,7 @@ function WorkflowCanvasInner({
       <ReactFlow
         style={{ width: "100%", height: "100%" }}
         nodes={nodes}
-        edges={edges}
+        edges={shownEdges}
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
         onNodeDragStart={onNodeDragStart}
@@ -778,10 +948,102 @@ function WorkflowCanvasInner({
             <Redo2 className="size-4" aria-hidden="true" />
           </button>
         </div>
-        <span className="rounded-lg border border-border bg-surface-solid/90 px-3 py-2 text-xs text-muted-foreground shadow backdrop-blur">
+        {liveIssues.length === 0 ? (
+          <span className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-surface-solid px-3 text-xs font-medium text-muted-foreground shadow">
+            <CheckCircle2 size={14} className="text-success" aria-hidden="true" />
+            Sin problemas
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setReviewOpen((open) => !open)}
+            aria-expanded={reviewOpen}
+            aria-controls="workflow-review"
+            className={`inline-flex h-9 items-center gap-1.5 rounded-lg border bg-surface-solid px-3 text-xs font-semibold shadow transition hover:bg-surface-muted focus:outline-none focus:ring-2 focus:ring-ring ${
+              reviewErrors > 0 ? "border-danger/50 text-danger" : "border-warning/50 text-warning"
+            }`}
+          >
+            {reviewErrors > 0 ? (
+              <AlertTriangle size={14} aria-hidden="true" />
+            ) : (
+              <AlertCircle size={14} aria-hidden="true" />
+            )}
+            {issueCountLabel(liveIssues)}
+            <ChevronDown
+              size={14}
+              className={`transition-transform ${reviewOpen ? "rotate-180" : ""}`}
+              aria-hidden="true"
+            />
+          </button>
+        )}
+        <span className="hidden rounded-lg border border-border bg-surface-solid/90 px-3 py-2 text-xs text-muted-foreground shadow backdrop-blur xl:inline">
           Arrastra desde el punto junto a cada respuesta hasta el siguiente paso para armar el camino.
         </span>
       </div>
+
+      {reviewOpen && liveIssues.length > 0 && (
+        <div
+          id="workflow-review"
+          className="absolute left-3 top-16 z-10 flex max-h-[calc(100%-5.5rem)] w-[26rem] max-w-[calc(100%-1.5rem)] flex-col rounded-xl border border-border bg-surface-solid shadow-xl"
+        >
+          <div className="flex items-center justify-between border-b border-border px-3 py-2">
+            <p className="text-xs font-semibold text-foreground">Revisión del flujo</p>
+            <button
+              type="button"
+              onClick={() => setReviewOpen(false)}
+              aria-label="Cerrar la revisión"
+              className="grid size-6 place-items-center rounded-md text-muted-foreground hover:bg-surface-muted hover:text-foreground"
+            >
+              <X className="size-3.5" aria-hidden="true" />
+            </button>
+          </div>
+          <ul className="space-y-1 overflow-y-auto p-1.5">
+            {liveIssues.map((issue, index) => {
+              const stepId = issue.stepId;
+              const body = (
+                <>
+                  <IssueIcon level={issue.level} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-xs text-foreground">{issue.message}</span>
+                    {stepId && (
+                      <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                        {issue.kind === "no_options" ? "Abrir el paso y agregar opciones" : "Ver en el flujo"}
+                      </span>
+                    )}
+                  </span>
+                </>
+              );
+              return (
+                <li key={`${stepId ?? "flow"}-${index}`} className="flex items-start gap-1">
+                  {stepId ? (
+                    <button
+                      type="button"
+                      onClick={() => focusStep(stepId)}
+                      className={`flex min-w-0 flex-1 items-start gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-surface-muted focus:outline-none focus:ring-2 focus:ring-ring ${
+                        stepId === selectedId ? "bg-surface-muted" : ""
+                      }`}
+                    >
+                      {body}
+                    </button>
+                  ) : (
+                    <div className="flex min-w-0 flex-1 items-start gap-2 px-2 py-1.5">{body}</div>
+                  )}
+                  {issue.branchId && (
+                    <button
+                      type="button"
+                      onClick={() => void removeConnection(issue.branchId!, issue.option ?? "Por defecto")}
+                      title={`Quita la conexión «${issue.option ?? "Por defecto"}». Se puede deshacer con ${mod}Z.`}
+                      className="mt-1 flex-shrink-0 rounded-md border border-border px-2 py-1 text-[11px] font-medium text-foreground hover:bg-surface-muted focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      Quitar conexión
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
 
       {pendingConnection && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/30">
@@ -817,7 +1079,7 @@ function WorkflowCanvasInner({
       )}
 
       {errorMsg && (
-        <div className="absolute left-3 top-16 z-10 max-w-md rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-xs font-medium text-danger shadow">
+        <div className="absolute left-3 top-16 z-20 max-w-md rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-xs font-medium text-danger shadow">
           {errorMsg}
           <button onClick={() => setErrorMsg(null)} className="ml-2 underline">
             cerrar
@@ -859,6 +1121,7 @@ function WorkflowCanvasInner({
           // edición), para que el panel no muestre valores viejos.
           key={`${selectedStep.id}:${selectedStep.name}:${selectedStep.description ?? ""}:${selectedStep.field_type}:${selectedStep.options.join("|")}:${selectedStep.is_mandatory}`}
           step={selectedStep}
+          issues={issuesByStep.get(selectedStep.id) ?? NO_ISSUES}
           workflowId={workflowId}
           saving={saving}
           onClose={() => setSelectedId(null)}
@@ -885,7 +1148,7 @@ function WorkflowCanvasInner({
         />
       )}
     </div>
-    <TypificationPreview catalog={liveCatalog} issues={liveIssues} />
+    <TypificationPreview catalog={liveCatalog} />
     </div>
     </StepActionsContext.Provider>
   );
@@ -893,6 +1156,7 @@ function WorkflowCanvasInner({
 
 function StepEditorPanel({
   step,
+  issues,
   saving,
   onClose,
   onSave,
@@ -900,6 +1164,7 @@ function StepEditorPanel({
   onSetStart,
 }: {
   step: WorkflowStep;
+  issues: WorkflowIssue[];
   workflowId: string;
   saving: boolean;
   onClose: () => void;
@@ -935,6 +1200,23 @@ function StepEditorPanel({
       </div>
 
       <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+        {issues.length > 0 && (
+          <ul
+            className={`space-y-1.5 rounded-lg border px-3 py-2 text-xs ${
+              issues.some((issue) => issue.level === "error")
+                ? "border-danger/30 bg-danger-bg"
+                : "border-warning/30 bg-warning-bg"
+            }`}
+          >
+            {issues.map((issue, index) => (
+              <li key={index} className="flex items-start gap-2 text-foreground">
+                <IssueIcon level={issue.level} size={13} />
+                <span>{issue.message}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+
         <div>
           <label className="mb-1 block text-xs font-medium text-muted-foreground">Nombre del paso</label>
           <Input value={name} onChange={(e) => setName(e.target.value)} />
@@ -972,6 +1254,9 @@ function StepEditorPanel({
             <label className="mb-1 block text-xs font-medium text-muted-foreground">
               Opciones de respuesta
             </label>
+            {options.every((opt) => !opt.trim()) && (
+              <p className="mb-1.5 text-xs font-medium text-danger">Agrega al menos una opción.</p>
+            )}
             <div className="space-y-2">
               {options.map((opt, i) => (
                 <div key={i} className="flex items-center gap-1.5">

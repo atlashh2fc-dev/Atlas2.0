@@ -1,3 +1,4 @@
+import { isKnownClosingReason, workflowOptionKey } from "./call-typification.ts";
 import type { WorkflowStep, WorkflowStepBranch } from "./types";
 
 /**
@@ -13,6 +14,12 @@ export type WorkflowIssue = {
   level: "error" | "warning";
   message: string;
   stepId?: string;
+  /** Qué hay que arreglar, para que el lienzo lo marque y ofrezca la salida. */
+  kind?: "no_options" | "orphan_branch" | "hidden_closure" | "unreachable" | "other";
+  /** Opción del paso a la que se refiere el problema. */
+  option?: string;
+  /** Conexión a la que se refiere el problema. */
+  branchId?: string;
 };
 
 const CHOICE_TYPES = new Set<WorkflowStep["field_type"]>([
@@ -74,6 +81,7 @@ export function validateWorkflow(steps: WorkflowStep[], branches: WorkflowStepBr
         level: "error",
         message: `«${step.name}» es inalcanzable: ningún paso lleva hasta él.`,
         stepId: step.id,
+        kind: "unreachable",
       });
     }
 
@@ -94,42 +102,49 @@ export function validateWorkflow(steps: WorkflowStep[], branches: WorkflowStepBr
         level: "error",
         message: `«${step.name}» es un campo de selección sin opciones.`,
         stepId: step.id,
+        kind: "no_options",
       });
     }
 
     if (CHOICE_TYPES.has(step.field_type) && options.length > 0) {
-      const covered = new Set(stepBranches.map((branch) => branch.from_option).filter(Boolean));
-      const uncovered = options.filter((option) => !covered.has(option));
+      // Misma comparación que la ficha: sin mayúsculas, tildes ni signos.
+      const optionKeys = new Set(options.map(workflowOptionKey));
 
-      // Una salida sin opción funciona como camino por defecto para todas.
-      const hasDefault = stepBranches.some((branch) => !branch.from_option);
+      for (const branch of stepBranches) {
+        if (branch.from_option === null) continue;
+        if (!optionKeys.has(workflowOptionKey(branch.from_option))) {
+          issues.push({
+            level: "error",
+            message: `«${step.name}»: la conexión «${branch.from_option}» sale de una opción que ya no existe.`,
+            stepId: step.id,
+            kind: "orphan_branch",
+            option: branch.from_option,
+            branchId: branch.id,
+          });
+          continue;
+        }
 
-      const invalidBranches = stepBranches.filter(
-        (branch) => branch.from_option !== null && !options.includes(branch.from_option)
-      );
-      if (invalidBranches.length > 0) {
-        issues.push({
-          level: "error",
-          message: `«${step.name}» tiene conexiones asociadas a opciones que ya no existen.`,
-          stepId: step.id,
-        });
+        // Una opción con paso propio deja de ser un cierre: la ficha la dibuja
+        // como grupo y ofrece las opciones del paso al que lleva. Si la opción
+        // es un motivo de cierre conocido, casi siempre es un descuido.
+        const target = branch.to_step_id ? steps.find((item) => item.id === branch.to_step_id) : null;
+        const targetOptions = target && Array.isArray(target.options) ? target.options : [];
+        // Las opciones del inicio son estados (Conecta / No Conecta), nunca cierres.
+        if (!step.is_start && target && targetOptions.length > 0 && isKnownClosingReason(branch.from_option)) {
+          issues.push({
+            level: "warning",
+            message: `«${branch.from_option}» lleva a «${target.name}»: el ejecutivo no puede elegirla como cierre, solo ve ${
+              targetOptions.length === 1 ? `«${targetOptions[0]}»` : `las ${targetOptions.length} opciones de ese paso`
+            }.`,
+            stepId: step.id,
+            kind: "hidden_closure",
+            option: branch.from_option,
+            branchId: branch.id,
+          });
+        }
       }
-
-      if (!hasDefault && uncovered.length === options.length && stepBranches.length === 0) {
-        issues.push({
-          level: "warning",
-          message: `«${step.name}» cierra el flujo: ninguna de sus ${options.length} opciones continúa a otro paso.`,
-          stepId: step.id,
-        });
-      } else if (!hasDefault && uncovered.length > 0) {
-        issues.push({
-          level: "warning",
-          message: `«${step.name}»: ${uncovered.length} de ${options.length} opciones no continúan a ningún paso (${uncovered
-            .slice(0, 3)
-            .join(", ")}${uncovered.length > 3 ? "…" : ""}).`,
-          stepId: step.id,
-        });
-      }
+      // Una opción sin conexión no es un problema: es un motivo final, y el
+      // lienzo lo muestra en la propia fila.
     }
   }
 

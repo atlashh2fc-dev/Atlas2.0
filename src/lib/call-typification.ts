@@ -806,16 +806,51 @@ function resolveStartStep(steps: WorkflowStep[], branches: WorkflowStepBranch[])
   return marked ?? steps[0];
 }
 
+/**
+ * Clave con la que se compara una opción con la respuesta de una conexión:
+ * sin mayúsculas, tildes ni signos. La conexión guarda el texto de la opción
+ * tal como estaba al dibujarla, y corregir después «No Interesa» a «No
+ * interesa» la dejaba suelta: el ejecutivo perdía los submotivos sin que nada
+ * cambiara en el dibujo.
+ */
+export function workflowOptionKey(value: string | null | undefined) {
+  return normalizeKey(value);
+}
+
+/** La opción ya es, por sí sola, un motivo de cierre conocido del catálogo. */
+export function isKnownClosingReason(option: string) {
+  const key = normalizeKey(option);
+  return CALL_REASONS.some((reason) => normalizeKey(reason.value) === key);
+}
+
 function branchTarget(
   branches: WorkflowStepBranch[],
   fromStepId: string,
   fromOption: string | null
 ) {
+  const own = branches.filter((branch) => branch.from_step_id === fromStepId);
+  const key = normalizeKey(fromOption);
   return (
-    branches.find((branch) => branch.from_step_id === fromStepId && branch.from_option === fromOption)?.to_step_id ??
-    branches.find((branch) => branch.from_step_id === fromStepId && branch.from_option === null)?.to_step_id ??
+    own.find((branch) => branch.from_option === fromOption)?.to_step_id ??
+    (fromOption === null
+      ? null
+      : own.find((branch) => branch.from_option !== null && normalizeKey(branch.from_option) === key)?.to_step_id) ??
+    own.find((branch) => branch.from_option === null)?.to_step_id ??
     null
   );
+}
+
+/**
+ * Motivo que queda grabado cuando la opción lleva a un paso sin opciones. Un
+ * paso de texto es el cierre del guion y puede dar nombre al motivo; un paso de
+ * selección vacío es un paso a medio armar y no reemplaza a la opción: el
+ * 2026-10-01, en Secretaria Virtual, «Cotización Enviada» conectada a un «Venta
+ * en Validación» sin opciones se ofrecía al ejecutivo como VENTA EN VALIDACION.
+ */
+function terminalReason(target: WorkflowStep | null, option: string) {
+  if (!target) return option;
+  if (target.field_type !== "text" || isKnownClosingReason(option)) return option;
+  return titleToReason(target, option);
 }
 
 export function buildCallReasonCatalogFromWorkflow(
@@ -881,7 +916,7 @@ export function buildCallReasonCatalogFromWorkflow(
         stateOrderIndex,
         resultLabel: displayResultLabel(stateLabel, stateOption),
         resultOrderIndex: 10,
-        reasonLabel: stateTarget ? titleToReason(stateTarget, stateOption) : stateOption,
+        reasonLabel: terminalReason(stateTarget, stateOption),
         reasonOrderIndex: 10,
         groupPath: [],
       });
@@ -916,7 +951,7 @@ export function buildCallReasonCatalogFromWorkflow(
           resultOrderIndex,
           // Una rama que vuelve a un paso ya recorrido se corta en la opción
           // que cierra el ciclo; la validación del editor lo advierte.
-          reasonLabel: target && children.length === 0 ? titleToReason(target, option) : option,
+          reasonLabel: children.length === 0 ? terminalReason(target, option) : option,
           reasonOrderIndex,
           groupPath,
         });

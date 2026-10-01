@@ -629,6 +629,26 @@ export async function upsertBranch(input: {
   return data as WorkflowStepBranch;
 }
 
+// Al renombrar una opción, su conexión la sigue: guarda el texto de la opción y
+// sin esto quedaba apuntando a un nombre que ya no existe.
+export async function renameBranchOption(input: {
+  branchId: string;
+  workflowId: string;
+  fromOption: string;
+}): Promise<WorkflowStepBranch> {
+  await requireProfile(["admin", "supervisor"]);
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("workflow_step_branches")
+    .update({ from_option: input.fromOption })
+    .eq("id", input.branchId)
+    .eq("workflow_id", input.workflowId)
+    .select("*")
+    .single();
+  if (error) throw errorDeAccion(error);
+  return data as WorkflowStepBranch;
+}
+
 export async function deleteBranch(input: {
   branchId: string;
   workflowId: string;

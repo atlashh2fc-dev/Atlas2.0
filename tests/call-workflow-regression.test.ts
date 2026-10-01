@@ -306,3 +306,55 @@ test("a start mark left on an intermediate step still builds the cascade from it
   const errors = validateWorkflow(steps, branches).filter((issue) => issue.level === "error");
   assert.ok(errors.some((issue) => issue.stepId === "connected" && issue.message.includes("marcado como inicio")));
 });
+
+test("Secretaria Virtual 2026-10-01: la opción no se pierde por una mayúscula ni por un paso a medio armar", () => {
+  const base = [
+    step({ id: "call", name: "Llamada", is_start: true, options: ["Conecta", "No Conecta"] }),
+    step({
+      id: "connected",
+      name: "Conecta",
+      field_type: "combobox",
+      // La opción se corrigió a «No interesa»; la conexión quedó como «No Interesa».
+      options: ["Volver a llamar", "Cotización Enviada", "No interesa"],
+    }),
+    step({ id: "not-connected", name: "No Conecta", field_type: "combobox", options: ["No Contesta"] }),
+    step({ id: "not-interested", name: "No Interesa", field_type: "combobox", options: ["Por precio"] }),
+  ];
+  const branches = [
+    branch({ id: "e1", from_step_id: "call", from_option: "Conecta", to_step_id: "connected" }),
+    branch({ id: "e2", from_step_id: "call", from_option: "No Conecta", to_step_id: "not-connected" }),
+    branch({ id: "e3", from_step_id: "connected", from_option: "No Interesa", to_step_id: "not-interested" }),
+    branch({ id: "e4", from_step_id: "connected", from_option: "Cotización Enviada", to_step_id: "sale" }),
+  ];
+
+  // Paso de selección sin opciones: la opción sigue siendo el cierre.
+  const empty = [...base, step({ id: "sale", name: "Venta en Validación" })];
+  const values = buildCallReasonCatalogFromWorkflow(empty, branches).map((reason) => reason.value);
+  assert.ok(values.includes("COTIZACION ENVIADA"));
+  assert.ok(!values.includes("VENTA EN VALIDACION"));
+  assert.ok(values.includes("POR PRECIO"), "la conexión «No Interesa» vale para la opción «No interesa»");
+  assert.ok(!values.includes("NO INTERESA"));
+
+  const emptyIssues = validateWorkflow(empty, branches);
+  assert.deepEqual(
+    emptyIssues.map((issue) => [issue.level, issue.kind, issue.stepId]),
+    [["error", "no_options", "sale"]]
+  );
+
+  // Con una opción en el paso, «Cotización Enviada» pasa a ser un grupo y deja
+  // de poder elegirse: el editor lo avisa sobre la conexión que lo causa.
+  const filled = [...base, step({ id: "sale", name: "Venta en Validación", options: ["venta en validación"] })];
+  const filledValues = buildCallReasonCatalogFromWorkflow(filled, branches).map((reason) => reason.value);
+  assert.ok(!filledValues.includes("COTIZACION ENVIADA"));
+  assert.deepEqual(
+    validateWorkflow(filled, branches).map((issue) => [issue.level, issue.kind, issue.option, issue.branchId]),
+    [["warning", "hidden_closure", "Cotización Enviada", "e4"]]
+  );
+
+  // Una conexión cuya opción ya no existe se identifica una a una.
+  const orphan = validateWorkflow(filled, [
+    ...branches,
+    branch({ id: "e5", from_step_id: "connected", from_option: "Contrata", to_step_id: "not-connected" }),
+  ]).filter((issue) => issue.kind === "orphan_branch");
+  assert.deepEqual(orphan.map((issue) => [issue.level, issue.option, issue.branchId]), [["error", "Contrata", "e5"]]);
+});
