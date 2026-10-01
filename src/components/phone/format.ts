@@ -12,19 +12,35 @@ export function formatElapsed(ms: number): string {
     : `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
-/**
- * El usuario solo escribe los ocho dígitos posteriores a +56 9. También
- * acepta pegar 981406609, 56981406609 o +56 9 8140 6609.
- */
-export function subscriberFromPhone(value: string): string {
+/** Dígitos del número sin el código de país. */
+function nationalDigits(value: string): string {
   let digits = value.replace(/\D/g, "");
   if (digits.startsWith("0056")) digits = digits.slice(4);
   if (digits.startsWith("56") && digits.length >= 10) digits = digits.slice(2);
-  if (digits.startsWith("9") && digits.length === 9) digits = digits.slice(1);
-  if (digits.length > MOBILE_SUBSCRIBER_DIGITS) {
-    digits = digits.slice(-MOBILE_SUBSCRIBER_DIGITS);
+  return digits;
+}
+
+/**
+ * El usuario solo escribe los ocho dígitos posteriores a +56 9. También
+ * acepta pegar 981406609, 56981406609 o +56 9 8140 6609.
+ *
+ * Un número completo que no es móvil (un fijo como +56 2 2345 6789) devuelve
+ * vacío. Antes se quedaba con los últimos ocho dígitos y marcaba
+ * +56 9 2345 6789: el teléfono de otra persona.
+ */
+export function subscriberFromPhone(value: string): string {
+  let digits = nationalDigits(value);
+  if (digits.length === 9) {
+    if (!digits.startsWith("9")) return "";
+    digits = digits.slice(1);
   }
-  return digits.slice(0, MOBILE_SUBSCRIBER_DIGITS);
+  if (digits.length > MOBILE_SUBSCRIBER_DIGITS) return "";
+  return digits;
+}
+
+/** Se escribió o pegó un número completo que no es un móvil chileno. */
+export function isNonMobilePhone(value: string): boolean {
+  return nationalDigits(value).length > MOBILE_SUBSCRIBER_DIGITS && subscriberFromPhone(value) === "";
 }
 
 export function fullChileMobile(subscriber: string): string | null {

@@ -29,7 +29,18 @@ export function MoverMiembro({
   }
 
   return (
-    <ActionForm action={moverPersonaDeEmpresa} success={`${nombre} cambió de empresa`} onSuccess={() => setAbierto(false)}>
+    <ActionForm
+      action={moverPersonaDeEmpresa}
+      success={`${nombre} cambió de empresa`}
+      onSuccess={() => setAbierto(false)}
+      confirm={{
+        title: `¿Mover a ${nombre}?`,
+        description:
+          "Deja de ver todo lo de esta empresa —registros, campañas, conversaciones— y pasa a ver solo lo de la empresa elegida, desde su próximo clic.",
+        confirmLabel: "Mover de empresa",
+        tone: "primary",
+      }}
+    >
       <input type="hidden" name="perfil_id" value={perfilId} />
       <div className="flex items-center justify-end gap-2">
         <Select name="empresa_id" required defaultValue="" fieldSize="sm" className="w-44" aria-label={`Nueva empresa de ${nombre}`} autoFocus>

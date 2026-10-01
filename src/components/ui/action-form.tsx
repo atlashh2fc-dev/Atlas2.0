@@ -1,10 +1,11 @@
 "use client";
 
-import { createContext, useContext, useTransition, type ReactNode } from "react";
+import { createContext, useContext, useRef, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { Button, type ButtonProps } from "./button";
 import { useToast } from "./toast";
+import { ConfirmDialog, type ConfirmOptions } from "./confirm-dialog";
 
 const PendingContext = createContext(false);
 
@@ -23,7 +24,7 @@ function isNextControlFlow(error: unknown): boolean {
  * la causa queda registrada en el servidor y la interfaz entrega un siguiente
  * paso entendible.
  */
-function actionErrorMessage(error: unknown): string {
+export function actionErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : "";
   if (message.includes("An error occurred in the Server Components render")) {
     return "No se pudo completar la operación. Actualiza la página e inténtalo otra vez. Si continúa, avisa a soporte.";
@@ -53,6 +54,7 @@ export function ActionForm({
   success,
   className,
   onSuccess,
+  confirm,
   children,
 }: {
   action: (formData: FormData) => Promise<void> | void;
@@ -60,11 +62,18 @@ export function ActionForm({
   className?: string;
   /** Se ejecuta solo si el action resolvió; sirve para cerrar el panel. */
   onSuccess?: () => void;
+  /**
+   * Pide confirmar antes de ejecutar. Para lo que deja a alguien sin acceso,
+   * apaga una operación o no se deshace con un clic.
+   */
+  confirm?: ConfirmOptions;
   children: ReactNode;
 }) {
   const { toast } = useToast();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [asking, setAsking] = useState(false);
+  const pendingData = useRef<FormData | null>(null);
 
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -73,6 +82,15 @@ export function ActionForm({
     if (pending) return;
 
     const formData = new FormData(event.currentTarget);
+    if (confirm) {
+      pendingData.current = formData;
+      setAsking(true);
+      return;
+    }
+    run(formData);
+  }
+
+  function run(formData: FormData) {
     startTransition(async () => {
       try {
         await action(formData);
@@ -98,6 +116,21 @@ export function ActionForm({
       <form onSubmit={onSubmit} className={className} aria-busy={pending}>
         {children}
       </form>
+      {confirm && (
+        <ConfirmDialog
+          open={asking}
+          options={confirm}
+          onCancel={() => {
+            setAsking(false);
+            pendingData.current = null;
+          }}
+          onConfirm={() => {
+            setAsking(false);
+            if (pendingData.current) run(pendingData.current);
+            pendingData.current = null;
+          }}
+        />
+      )}
     </PendingContext.Provider>
   );
 }

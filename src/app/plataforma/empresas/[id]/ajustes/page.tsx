@@ -33,7 +33,20 @@ export default async function EmpresaAjustesPage({ params }: { params: Promise<{
               ? "Nadie de la empresa podrá entrar ni operar mientras esté suspendida. Sus datos no se borran y se reactiva desde acá."
               : "La empresa vuelve a operar con sus datos, su gente y sus aplicaciones tal como quedaron."}
           </p>
-          <ActionForm action={cambiarEstadoEmpresa} success={empresa.activa ? "Empresa suspendida" : "Empresa reactivada"}>
+          <ActionForm
+            action={cambiarEstadoEmpresa}
+            success={empresa.activa ? "Empresa suspendida" : "Empresa reactivada"}
+            confirm={
+              empresa.activa
+                ? {
+                    title: `¿Suspender ${empresa.nombre}?`,
+                    description: `${empresa.miembrosActivos} ${empresa.miembrosActivos === 1 ? "persona pierde" : "personas pierden"} el acceso de inmediato y su operación se detiene. Los datos se conservan y puedes reactivarla desde acá.`,
+                    confirmLabel: "Suspender empresa",
+                    typeToConfirm: empresa.slug,
+                  }
+                : undefined
+            }
+          >
             <input type="hidden" name="empresa_id" value={empresa.id} />
             <input type="hidden" name="activa" value={empresa.activa ? "false" : "true"} />
             <ActionSubmit variant={empresa.activa ? "danger" : "secondary"}>

@@ -9,9 +9,9 @@ import { SelectorEmpresa, type EmpresaDisponible } from "@/components/selector-e
 import { AgendaBell } from "@/components/agenda-reminder";
 import { DemoRoleSwitcher } from "@/components/demo-role-switcher";
 import type { DemoViewAccount } from "@/lib/demo-view";
-import { signOut } from "@/app/actions/auth";
+import { BotonCerrarSesion } from "@/components/boton-cerrar-sesion";
 import Link from "next/link";
-import { LayoutGrid, LogOut } from "lucide-react";
+import { LayoutGrid } from "lucide-react";
 
 export function Header({
   profile,
@@ -57,16 +57,7 @@ export function Header({
         <QuickSearch role={profile.role} userId={profile.id} modules={modules} edicion={edicion} />
         {profile.role === "agente" && <AgendaBell />}
         <ThemeToggle />
-        <form action={signOut}>
-          <button
-            type="submit"
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground"
-            title="Cerrar sesión"
-            aria-label="Cerrar sesión"
-          >
-            <LogOut size={18} />
-          </button>
-        </form>
+        <BotonCerrarSesion />
       </div>
     </header>
   );

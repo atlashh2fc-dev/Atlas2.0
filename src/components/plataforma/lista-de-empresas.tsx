@@ -51,7 +51,11 @@ export function ListaDeEmpresas({ filas }: { filas: FilaEmpresa[] }) {
 
       <ul className="divide-y divide-border/70 overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
         {visibles.length === 0 && (
-          <li className="px-5 py-12 text-center text-sm text-muted-foreground">Ninguna empresa coincide con «{busqueda}».</li>
+          <li className="px-5 py-12 text-center text-sm text-muted-foreground">
+            {filas.length === 0
+              ? "Todavía no hay empresas. Crea la primera con «Nueva empresa»."
+              : `Ninguna empresa coincide con «${busqueda}».`}
+          </li>
         )}
         {visibles.map((fila) => (
           <li key={fila.id}>

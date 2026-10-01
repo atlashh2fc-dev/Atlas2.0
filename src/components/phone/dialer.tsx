@@ -9,6 +9,7 @@ import {
   formatChileMobile,
   formatSubscriber,
   shortcutLabel,
+  isNonMobilePhone,
   subscriberFromPhone,
 } from "./format";
 
@@ -221,7 +222,9 @@ export function Dialer({
           <p className="px-2 py-3 text-xs text-muted-foreground">
             {query && !isNumericQuery(query)
               ? "Sin contactos con ese nombre o RUT."
-              : validNumber
+              : isNonMobilePhone(query)
+                ? "Ese número no es un móvil (+56 9). Atlas solo marca móviles."
+                : validNumber
                 ? selectedName ?? "Número completo. Presiona Enter para llamar."
                 : `Escribe los 8 dígitos del móvil${subscriber ? ` (faltan ${MOBILE_SUBSCRIBER_DIGITS - subscriber.length})` : ""}.`}
           </p>

@@ -43,6 +43,15 @@ export default async function EmpresaAplicacionesPage({ params }: { params: Prom
                   <ActionForm
                     action={cambiarAplicacionDeEmpresa}
                     success={activa ? `${info.label} dada de baja` : `${info.label} contratada`}
+                    confirm={
+                      activa
+                        ? {
+                            title: `¿Dar de baja ${info.label}?`,
+                            description: `Desaparece del menú de las ${empresa.miembrosActivos} personas activas de ${empresa.nombre}. Sus datos no se borran y se vuelve a contratar cuando quieras.`,
+                            confirmLabel: `Dar de baja ${info.label}`,
+                          }
+                        : undefined
+                    }
                   >
                     <input type="hidden" name="empresa_id" value={empresa.id} />
                     <input type="hidden" name="modulo" value={modulo} />

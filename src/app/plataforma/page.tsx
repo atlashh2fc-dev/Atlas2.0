@@ -2,8 +2,9 @@ import { unstable_noStore as noStore } from "next/cache";
 
 import { crearEmpresa } from "@/app/actions/organizaciones";
 import { CreatePanel } from "@/components/create-panel";
+import { CamposNuevaEmpresa } from "@/components/plataforma/campos-nueva-empresa";
 import { ListaDeEmpresas } from "@/components/plataforma/lista-de-empresas";
-import { Field, Input, PageHeader, Select } from "@/components/ui";
+import { Field, PageHeader, Select } from "@/components/ui";
 import { EDICIONES, EDICION_INFO } from "@/lib/ediciones";
 import { haceCuanto, iniciales, leerPlataforma } from "@/lib/plataforma.server";
 
@@ -31,9 +32,7 @@ export default async function PlataformaEmpresasPage() {
             submitLabel="Crear empresa"
             successLabel="Empresa creada"
           >
-            <Field label="Nombre">
-              <Input name="nombre" required placeholder="Clínica Los Andes" data-autofocus />
-            </Field>
+            <CamposNuevaEmpresa />
             <Field label="Edición">
               <Select name="edicion" required defaultValue="center">
                 {EDICIONES.map((edicion) => (
@@ -42,12 +41,6 @@ export default async function PlataformaEmpresasPage() {
                   </option>
                 ))}
               </Select>
-            </Field>
-            <Field label="Clave">
-              <Input name="slug" required placeholder="clinica-los-andes" pattern="[a-z0-9][a-z0-9-]{1,38}[a-z0-9]" />
-              <span className="text-xs text-muted-foreground">
-                Minúsculas, números y guiones. Se usa en integraciones y no se cambia después.
-              </span>
             </Field>
           </CreatePanel>
         }

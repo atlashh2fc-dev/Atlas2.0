@@ -110,7 +110,8 @@ export function FilterBar({
         {children}
 
         <div className="ml-auto flex items-end gap-2">
-          <button type="submit" className={buttonClasses()}>
+          {/* Secundario: aplicar filtros no es la acción principal de ninguna vista. */}
+          <button type="submit" className={buttonClasses({ variant: "secondary" })}>
             {applyLabel}
           </button>
 
