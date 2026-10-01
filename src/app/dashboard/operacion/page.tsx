@@ -640,7 +640,7 @@ export default async function OperationsPage({
 
       {filters.channel !== "voice" && (
         <TableroDeColas
-          colas={((tableroResult.data ?? []) as ColaEnVivo[]).filter((cola) => !filters.queue || cola.id === filters.queue)}
+          colas={((tableroResult.data ?? []) as ColaEnVivo[]).filter((cola) => !scopedView || matchingQueueIds.has(cola.id))}
           ahora={now}
           puedeMover
         />
