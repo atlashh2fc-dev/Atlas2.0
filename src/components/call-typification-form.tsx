@@ -35,6 +35,20 @@ import { decideShortCallClosure, shortCallNotice } from "@/lib/short-call-closur
 import { AppointmentScheduleEmbed } from "@/components/appointment-schedule-embed";
 import { CotizadorEquifax, type ResultadoCotizacion } from "@/components/cotizador-equifax";
 
+// Este componente se ejecuta tal cual en tests/call-typification-form.test.ts,
+// donde los alias de ruta no resuelven y la UI compartida no se carga. Por eso
+// no importa de @/components/ui: estas clases son copia exacta de
+// buttonClasses() y de Input/Select para que se vea igual que el resto.
+const BOTON_BASE =
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50";
+const BOTON_PRIMARIO = `${BOTON_BASE} h-9 px-3.5 text-sm bg-primary text-primary-foreground shadow-sm hover:bg-primary-hover`;
+const BOTON_PELIGRO = `${BOTON_BASE} h-9 px-3.5 text-sm bg-danger text-primary-foreground shadow-sm hover:opacity-90`;
+const BOTON_PELIGRO_SM = `${BOTON_BASE} h-8 px-2.5 text-xs bg-danger text-primary-foreground shadow-sm hover:opacity-90`;
+const BOTON_SECUNDARIO_SM = `${BOTON_BASE} h-8 px-2.5 text-xs border border-border bg-surface text-foreground shadow-sm hover:bg-surface-muted`;
+const BOTON_FANTASMA_SM = `${BOTON_BASE} h-8 px-2.5 text-xs text-muted-foreground hover:bg-surface-muted hover:text-foreground`;
+const CAMPO =
+  "h-9 w-full rounded-lg border border-border-strong/70 bg-surface px-3 text-sm text-foreground shadow-sm placeholder:text-muted-foreground/70 focus:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-60";
+
 function isoToLocalInput(iso: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -728,13 +742,13 @@ export function CallTypificationForm({
       }}
     >
       {supervision && (
-        <div className="space-y-3 rounded-2xl border border-warning/30 bg-warning-bg px-4 py-3 text-foreground">
+        <div className="space-y-3 rounded-xl border border-warning/30 bg-warning-bg px-4 py-3 text-foreground">
           <div className="flex items-start gap-3">
             <span className="icon-chip mt-0.5 size-8 rounded-lg" data-tone="amber" aria-hidden="true">
               <CalendarClock size={17} />
             </span>
             <div>
-              <p className="text-sm font-bold">
+              <p className="text-sm font-semibold">
                 {adding ? "Agregar tipificación (supervisión)" : "Corregir tipificación (supervisión)"}
               </p>
               <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
@@ -752,7 +766,7 @@ export function CallTypificationForm({
                 <select
                   value={creditedAgentId}
                   onChange={(event) => setCreditedAgentId(event.target.value)}
-                  className="mt-1 block w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
+                  className={`mt-1 ${CAMPO}`}
                 >
                   <option value="">Elige un ejecutivo</option>
                   {supervision.agents.map((agent) => (
@@ -771,7 +785,7 @@ export function CallTypificationForm({
                   value={managedOn}
                   max={todayChile}
                   onChange={(event) => setManagedOn(event.target.value || todayChile)}
-                  className="mt-1 block w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
+                  className={`mt-1 ${CAMPO}`}
                 />
               </label>
             )}
@@ -782,19 +796,19 @@ export function CallTypificationForm({
                 value={supervisorNote}
                 onChange={(event) => setSupervisorNote(event.target.value)}
                 placeholder="Ej.: el ejecutivo cerró como cotización una venta"
-                className="mt-1 block w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
+                className={`mt-1 ${CAMPO}`}
               />
             </label>
           </div>
         </div>
       )}
       {revision && !supervision && (
-        <div className="flex items-start gap-3 rounded-2xl border border-warning/30 bg-warning-bg px-4 py-3 text-foreground">
+        <div className="flex items-start gap-3 rounded-xl border border-warning/30 bg-warning-bg px-4 py-3 text-foreground">
           <span className="icon-chip mt-0.5 size-8 rounded-lg" data-tone="amber" aria-hidden="true">
             <CalendarClock size={17} />
           </span>
           <div>
-            <p className="text-sm font-bold">Corregir tipificación y agenda</p>
+            <p className="text-sm font-semibold">Corregir tipificación y agenda</p>
             <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
               La versión anterior quedará en la auditoría. Esta acción no genera una llamada nueva.
             </p>
@@ -802,10 +816,10 @@ export function CallTypificationForm({
         </div>
       )}
       {!revision && !call.notes && lead.observacion_actual?.trim() && (
-        <div className="flex items-start gap-3 rounded-2xl border border-border bg-surface-muted px-4 py-3">
+        <div className="flex items-start gap-3 rounded-xl border border-border bg-surface-muted px-4 py-3">
           <MessageSquare size={16} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />
           <div className="min-w-0">
-            <p className="text-sm font-bold text-foreground">Última observación registrada</p>
+            <p className="text-sm font-semibold text-foreground">Última observación registrada</p>
             <p className="mt-0.5 text-xs text-muted-foreground">
               {lead.tipificacion_actual ?? "Gestión anterior"}
               {lead.managed_at ? ` · ${new Date(lead.managed_at).toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short", timeZone: "America/Santiago" })}` : ""}
@@ -840,7 +854,7 @@ export function CallTypificationForm({
               setAutoAttempt(0);
               setShortClosure(null);
             }}
-            className="rounded-lg border border-border bg-surface px-3 py-2 text-xs font-semibold text-foreground hover:border-primary hover:text-primary"
+            className={BOTON_SECUNDARIO_SM}
           >
             Cambiar tipificación
           </button>
@@ -867,7 +881,7 @@ export function CallTypificationForm({
             <button
               type="button"
               onClick={() => requestAgentHangup()}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-danger px-3 py-2 text-xs font-semibold text-primary-foreground shadow-sm hover:opacity-90"
+              className={BOTON_PELIGRO_SM}
             >
               <PhoneOff size={14} aria-hidden="true" />
               Colgar y cerrar
@@ -879,7 +893,7 @@ export function CallTypificationForm({
               setArmed(false);
               setAutoAttempt(0);
             }}
-            className="rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground"
+            className={BOTON_FANTASMA_SM}
           >
             Seguir editando
           </button>
@@ -937,7 +951,7 @@ export function CallTypificationForm({
             onClick={() => void handleClose()}
             disabled={pending !== null}
             title="Ctrl + Enter / ⌘ + Enter"
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary-hover disabled:opacity-50"
+            className={BOTON_PRIMARIO}
           >
             {pending === "close"
               ? revision
@@ -973,13 +987,13 @@ export function CallTypificationForm({
                 value={discardReason}
                 onChange={(e) => setDiscardReason(e.target.value)}
                 placeholder="Ej: se corto la llamada por falla de telefonia"
-                className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className={`flex-1 ${CAMPO}`}
               />
               <button
                 type="button"
                 onClick={handleDiscard}
                 disabled={pending !== null}
-                className="rounded-lg bg-danger px-3 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:opacity-90 disabled:opacity-50"
+                className={BOTON_PELIGRO}
               >
                 {pending === "discard" ? "Descartando..." : "Confirmar"}
               </button>

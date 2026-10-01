@@ -17,7 +17,7 @@ export function CabeceraDeIntegracion({ logo, titulo, descripcion }: { logo: Log
       <div className="flex items-center gap-3">
         <LogoDeIntegracion logo={logo} />
         <div className="min-w-0">
-          <h1 className="text-xl font-semibold tracking-tight text-foreground">{titulo}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{titulo}</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">{descripcion}</p>
         </div>
       </div>

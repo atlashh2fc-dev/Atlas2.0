@@ -7,6 +7,7 @@ import { Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { LINK_EXPIRED, mapAuthError, type AuthFailure } from "@/lib/auth-errors";
 import { AuthAlert, PasswordField } from "./auth-fields";
+import { buttonClasses } from "@/components/ui";
 
 const MIN_LENGTH = 8;
 
@@ -23,7 +24,7 @@ export function ResetPasswordForm({ hasSession }: { hasSession: boolean }) {
         <AuthAlert failure={LINK_EXPIRED} />
         <Link
           href="/forgot-password"
-          className="flex w-full items-center justify-center rounded-lg bg-primary px-3 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover"
+          className={buttonClasses({ className: "w-full" })}
         >
           Pedir un enlace nuevo
         </Link>
@@ -79,7 +80,7 @@ export function ResetPasswordForm({ hasSession }: { hasSession: boolean }) {
       <button
         type="submit"
         disabled={!canSubmit}
-        className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
+        className={buttonClasses({ className: "w-full" })}
       >
         {loading && <Loader2 size={16} className="animate-spin" aria-hidden />}
         {loading ? "Guardando…" : "Guardar y entrar"}

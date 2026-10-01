@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 export default function PrivacyPage() {
   return (
     <main className="min-h-screen bg-background px-5 py-12 text-foreground sm:px-8">
-      <article className="mx-auto max-w-3xl rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-10">
+      <article className="mx-auto max-w-3xl rounded-xl border border-border bg-surface p-6 shadow-sm sm:p-10">
         <header className="flex items-center gap-4 border-b border-border pb-6">
           <Image src="/atlas-logo.png" alt="Atlas CRM" width={52} height={52} className="rounded-xl" />
           <div>

@@ -255,7 +255,7 @@ function FunnelStages({
                 className="h-full rounded-full"
                 style={{
                   width: `${width}%`,
-                  background: `linear-gradient(90deg, color-mix(in srgb, ${index === stages.length - 1 ? "var(--success)" : "var(--primary)"} 55%, transparent), ${index === stages.length - 1 ? "var(--success)" : "var(--primary)"})`,
+                  background: index === stages.length - 1 ? "var(--success)" : "var(--primary)",
                 }}
                 role="presentation"
               />

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { AlertTriangle, CalendarClock, ChevronRight, Search, UsersRound } from "lucide-react";
-import { Badge, Button, EmptyState, SectionCard, SlideOver } from "@/components/ui";
+import { Badge, Button, EmptyState, SectionCard, SlideOver, buttonClasses } from "@/components/ui";
 
 export type MailAgentControlRow = {
   agent_id: string;
@@ -169,7 +169,7 @@ export function MailAgentControl({ rows }: { rows: MailAgentControlRow[] }) {
         title={selected?.agent_name ?? "Detalle de ejecutivo"}
         description={selected ? `${attention(selected).label} · última gestión ${formatDate(selected.last_interaction_at)}` : undefined}
         width="md"
-        footer={selected ? <Link href={`/dashboard/leads?agent=${selected.agent_id}&view=prioridad`} className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary-hover">Ver sus registros</Link> : undefined}
+        footer={selected ? <Link href={`/dashboard/leads?agent=${selected.agent_id}&view=prioridad`} className={buttonClasses()}>Ver sus registros</Link> : undefined}
       >
         {selected && <AgentDetail row={selected} />}
       </SlideOver>

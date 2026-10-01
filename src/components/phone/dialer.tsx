@@ -293,7 +293,7 @@ export function Dialer({
             type="button"
             onClick={onCall}
             disabled={!canCall}
-            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-success px-4 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-success px-4 text-sm font-semibold text-primary-foreground transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Phone size={15} aria-hidden />
             Llamar

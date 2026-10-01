@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { setAgentCampaigns } from "@/app/actions/campaign-assignments";
-import { Button } from "@/components/ui";
+import { Badge, Button } from "@/components/ui";
 
 type CampaignOption = { id: string; name: string };
 
@@ -51,11 +51,11 @@ export function UserCampaignsForm({
         </p>
       </div>
       {lockedCampaigns.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-x-4 gap-y-1.5">
           {lockedCampaigns.map((campaign) => (
-            <span key={campaign.id} className="rounded-md bg-primary px-2 py-1 text-[11px] font-medium text-primary-foreground">
+            <Badge key={campaign.id} tone="info">
               {campaign.name} · campaña revisada
-            </span>
+            </Badge>
           ))}
         </div>
       )}

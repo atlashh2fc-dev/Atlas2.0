@@ -149,7 +149,7 @@ export function AgendaBell() {
         <Bell size={18} />
         {items.length > 0 && (
           <span
-            className={`absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold text-white ${
+            className={`absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold text-primary-foreground ${
               overdue.length > 0 ? "bg-danger" : "bg-primary"
             }`}
           >

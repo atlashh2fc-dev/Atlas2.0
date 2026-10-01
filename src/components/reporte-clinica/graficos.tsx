@@ -4,7 +4,7 @@ import { useMemo, useState, type ComponentType, type ReactNode } from "react";
 import { ArrowDownRight, ArrowUpRight, ChevronDown, ChevronUp, FileSpreadsheet, Minus, X } from "lucide-react";
 import { Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
-import type { IconTone } from "@/components/ui";
+import { buttonClasses, type IconTone } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { descargarHoja, type FilaExcel, type FormatoColumna } from "@/lib/reporte-clinica-excel";
 
@@ -278,7 +278,7 @@ export function BarrasRanking({
                 </span>
                 <span className="col-span-2 h-1.5 overflow-hidden rounded-full bg-surface-muted">
                   <span
-                    className="block h-full rounded-full bg-[linear-gradient(90deg,color-mix(in_oklab,var(--primary)_55%,transparent),var(--primary))] transition-[width] duration-500"
+                    className="block h-full rounded-full bg-primary transition-[width] duration-500"
                     style={{ width: `${Math.max(1.5, (item.valor / tope) * 100)}%` }}
                   />
                 </span>
@@ -394,13 +394,13 @@ export function MapaCalor({
       <div className="inline-grid min-w-full gap-[3px]" style={{ gridTemplateColumns: `minmax(2.75rem, max-content) repeat(${columnas.length}, minmax(${columnas.some((c) => c.length > 3) ? "4.5rem" : "1.6rem"}, 1fr))` }}>
         <span />
         {columnas.map((c) => (
-          <span key={c} className="truncate pb-1 text-center text-[10px] tabular-nums text-muted-foreground" title={c}>{c}</span>
+          <span key={c} className="truncate pb-1 text-center text-xs tabular-nums text-muted-foreground" title={c}>{c}</span>
         ))}
         {filas.map((fila, i) => (
           <FilaCalor key={fila} fila={fila} valores={celdas[i]} columnas={columnas} maximo={maximo} activa={activaFila === fila} atenuada={activaFila !== undefined && activaFila !== fila} onElegir={onElegirFila} unidad={unidad} formato={formato} etiquetaColumna={etiquetaColumna} />
         ))}
       </div>
-      <div className="mt-3 flex items-center justify-end gap-1.5 text-[10px] text-muted-foreground">
+      <div className="mt-3 flex items-center justify-end gap-1.5 text-xs text-muted-foreground">
         Menos
         {[0.08, 0.3, 0.55, 0.8, 1].map((n) => (
           <span key={n} className="size-3 rounded-[3px]" style={{ background: `color-mix(in oklab, var(--primary) ${Math.round(n * 100)}%, var(--surface-solid))` }} />
@@ -427,7 +427,7 @@ function FilaCalor({ fila, valores, columnas, maximo, activa, atenuada, onElegir
         <span
           key={j}
           title={`${fila} · ${etiquetaColumna(columnas[j])} · ${formato(valor)} ${unidad}`}
-          className={cn("flex h-7 items-center justify-center rounded-[4px] text-[10px] tabular-nums transition-opacity", atenuada && "opacity-35")}
+          className={cn("flex h-7 items-center justify-center rounded-[4px] text-xs tabular-nums transition-opacity", atenuada && "opacity-35")}
           style={{
             background: valor === 0 ? "var(--surface-muted)" : `color-mix(in oklab, var(--primary) ${Math.round(12 + (valor / maximo) * 88)}%, var(--surface-solid))`,
             color: valor / maximo > 0.55 ? "var(--primary-foreground)" : "var(--muted-foreground)",
@@ -610,13 +610,13 @@ export function Tabla<T>({
         </table>
       </div>
       {paginas > 1 && (
-        <div className="mt-3 flex items-center justify-between text-[11px] text-muted-foreground">
+        <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
           <span>
             {actual * porPagina + 1}–{Math.min(ordenadas.length, (actual + 1) * porPagina)} de {entero.format(ordenadas.length)}
           </span>
           <span className="flex gap-1">
-            <button type="button" disabled={actual === 0} onClick={() => setPagina(actual - 1)} className="rounded-md border border-border px-2 py-0.5 hover:bg-surface-muted disabled:opacity-40">Anterior</button>
-            <button type="button" disabled={actual >= paginas - 1} onClick={() => setPagina(actual + 1)} className="rounded-md border border-border px-2 py-0.5 hover:bg-surface-muted disabled:opacity-40">Siguiente</button>
+            <button type="button" disabled={actual === 0} onClick={() => setPagina(actual - 1)} className={buttonClasses({ variant: "secondary", size: "sm" })}>Anterior</button>
+            <button type="button" disabled={actual >= paginas - 1} onClick={() => setPagina(actual + 1)} className={buttonClasses({ variant: "secondary", size: "sm" })}>Siguiente</button>
           </span>
         </div>
       )}

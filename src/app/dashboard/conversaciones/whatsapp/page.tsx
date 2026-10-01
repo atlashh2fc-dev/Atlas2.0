@@ -698,7 +698,7 @@ export default async function WhatsAppInboxPage({
                               )}
                             <div
                               className={cn(
-                                "mt-1 flex items-center justify-end gap-1 text-[10px] text-muted-foreground",
+                                "mt-1 flex items-center justify-end gap-1 text-xs text-muted-foreground",
                               )}
                             >
                               {outbound &&

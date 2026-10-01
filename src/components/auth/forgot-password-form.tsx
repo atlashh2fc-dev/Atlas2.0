@@ -6,6 +6,7 @@ import { ArrowLeft, Loader2, MailCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { mapAuthError, type AuthFailure } from "@/lib/auth-errors";
 import { AuthAlert, EmailField } from "./auth-fields";
+import { buttonClasses } from "@/components/ui";
 
 export function ForgotPasswordForm({ initialEmail }: { initialEmail: string }) {
   const [email, setEmail] = useState(initialEmail);
@@ -52,7 +53,7 @@ export function ForgotPasswordForm({ initialEmail }: { initialEmail: string }) {
         <button
           type="button"
           onClick={() => setSent(false)}
-          className="w-full rounded-lg border border-border px-3 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-surface-muted"
+          className={buttonClasses({ variant: "secondary", className: "w-full" })}
         >
           Enviar a otro correo
         </button>
@@ -71,7 +72,7 @@ export function ForgotPasswordForm({ initialEmail }: { initialEmail: string }) {
       <button
         type="submit"
         disabled={loading}
-        className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
+        className={buttonClasses({ className: "w-full" })}
       >
         {loading && <Loader2 size={16} className="animate-spin" aria-hidden />}
         {loading ? "Enviando…" : "Enviarme el enlace"}

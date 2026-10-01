@@ -90,7 +90,7 @@ export function RecetaEditor({
                         )
                       }
                       aria-label={`Cantidad de ${insumo.nombre}`}
-                      className="w-16 rounded-md border border-border bg-surface px-2 py-1 text-right text-sm tabular-nums text-foreground"
+                      className="h-8 w-16 rounded-lg border border-border-strong/70 bg-surface px-2 text-right text-sm tabular-nums text-foreground shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
                     />
                     <button
                       type="button"
@@ -113,7 +113,7 @@ export function RecetaEditor({
                 const id = event.target.value;
                 if (id) setLineas((actuales) => [...actuales, { insumo_id: id, cantidad: 1 }]);
               }}
-              className="rounded-md border border-border bg-surface px-2 py-1 text-xs text-foreground"
+              className="h-8 rounded-lg border border-border-strong/70 bg-surface px-2.5 text-xs text-foreground shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
             >
               <option value="">+ Agregar material</option>
               {[...new Set(disponibles.map((insumo) => insumo.categoria ?? "Otros"))].map((categoria) => (

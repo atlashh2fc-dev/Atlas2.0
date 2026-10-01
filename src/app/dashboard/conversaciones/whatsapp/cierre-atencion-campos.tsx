@@ -49,7 +49,7 @@ export function CierreAtencionCampos({ motivos }: { motivos: MotivoDeCierre[] })
         required={exigeNota}
         aria-required={exigeNota}
         placeholder={exigeNota ? "Qué se resolvió o qué quedó pendiente" : "Resumen u observación de cierre"}
-        className="w-full resize-none rounded-md border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="w-full resize-none rounded-lg border border-border-strong/70 bg-surface px-3 py-2 text-xs text-foreground shadow-sm placeholder:text-muted-foreground/70 focus:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
       />
     </>
   );

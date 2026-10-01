@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 
+import { buttonClasses } from "@/components/ui";
 import { leerPagoPublico, primero } from "@/lib/pagos/servidor";
 import { pasarelaActiva } from "@/lib/pagos/pasarela";
 
@@ -40,7 +41,7 @@ export default async function PagarPage({
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-5 py-12 text-foreground">
-      <article className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
+      <article className="w-full max-w-md rounded-xl border border-border bg-surface p-6 shadow-sm sm:p-8">
         <header className="flex items-center gap-3 border-b border-border pb-5">
           <Image src="/atlas-logo.png" alt="Atlas" width={44} height={44} className="rounded-xl" />
           <div>
@@ -108,7 +109,7 @@ export default async function PagarPage({
                 <input type="hidden" name="pago" value={pago.id} />
                 <button
                   type="submit"
-                  className="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                  className={buttonClasses({ className: "h-10 w-full" })}
                 >
                   Pagar {pesos.format(Number(pago.monto))} con {pasarela.etiqueta}
                 </button>

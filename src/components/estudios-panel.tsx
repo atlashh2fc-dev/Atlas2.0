@@ -126,7 +126,7 @@ export function EstudiosPanel({
               </div>
               <div className="bg-surface px-1.5 py-1">
                 <p className="truncate text-[11px] font-medium text-foreground">{estudio.titulo}</p>
-                <p className="truncate text-[10px] text-muted-foreground">
+                <p className="truncate text-xs text-muted-foreground">
                   {fecha.format(new Date(`${estudio.fecha}T12:00:00Z`))}
                   {estudio.pieza ? ` · ${estudio.pieza}` : ""}
                 </p>

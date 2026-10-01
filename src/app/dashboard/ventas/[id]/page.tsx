@@ -305,7 +305,7 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
               </Select>
               <Input name="asunto" placeholder="Asunto (correo)" className="flex-1" defaultValue={`Sobre ${negocio.name}`} />
             </div>
-            <textarea name="texto" required rows={4} maxLength={5000} placeholder={`Hola ${contacto?.full_name?.split(" ")[0] ?? ""}, …`} className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-primary" />
+            <textarea name="texto" required rows={4} maxLength={5000} placeholder={`Hola ${contacto?.full_name?.split(" ")[0] ?? ""}, …`} className="w-full rounded-lg border border-border-strong/70 bg-surface px-3 py-2 text-sm text-foreground shadow-sm placeholder:text-muted-foreground/70 focus:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30" />
             <ActionSubmit variant="secondary" pendingLabel="Enviando…">Enviar</ActionSubmit>
           </ActionForm>
           <div className="space-y-3">

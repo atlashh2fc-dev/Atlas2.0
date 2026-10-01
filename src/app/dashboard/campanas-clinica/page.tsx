@@ -122,7 +122,7 @@ export default async function CampanasClinicaPage({ searchParams }: { searchPara
                       ? "Hola {{nombre}}, en {{clinica}} tenemos horas libres esta semana. ¿Te reservamos una?"
                       : "Hola {{nombre}}, en {{clinica}} tenemos horas para tu control esta semana. ¿Agendamos?"
                 }
-                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+                className="w-full rounded-lg border border-border-strong/70 bg-surface px-3 py-2 text-sm text-foreground shadow-sm placeholder:text-muted-foreground/70 focus:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
               />
               <p className="text-xs text-muted-foreground">
                 {esVet ? <>Puedes usar {"{{nombre}}"}, {"{{mascota}}"} y {"{{clinica}}"}.</> : <>Puedes usar {"{{nombre}}"} y {"{{clinica}}"}.</>}

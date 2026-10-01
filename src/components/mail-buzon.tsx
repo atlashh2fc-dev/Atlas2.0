@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { CheckCheck, ChevronRight, Clock3, Inbox, Mail, MessageCircleReply, UserRound, UserX, XCircle } from "lucide-react";
 
 import { gestionarCorreoDeBuzon } from "@/app/actions/correo-registro";
-import { Badge, Button, EmptyState, Input, SectionCard, Select, SlideOver } from "@/components/ui";
+import { Badge, Button, EmptyState, Input, SectionCard, Select, SlideOver, buttonClasses } from "@/components/ui";
 import { useToast } from "@/components/ui/toast";
 import { sinCita } from "@/lib/correo/sin-cita";
 
@@ -291,7 +291,7 @@ function DetalleCorreo({ row, agents, onClose }: { row: BuzonRow | null; agents:
 
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
             {row.lead_id ? (
-              <Link href={`/dashboard/leads/${row.lead_id}`} className="inline-flex items-center justify-center rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium text-foreground shadow-sm hover:bg-surface-muted">
+              <Link href={`/dashboard/leads/${row.lead_id}`} className={buttonClasses({ variant: "secondary" })}>
                 Abrir ficha y responder
               </Link>
             ) : <span />}

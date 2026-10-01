@@ -4,7 +4,7 @@ import { Inbox, Mail, MessageCircle, MessagesSquare, Send, UserRound } from "luc
 
 import { marcarConversacionLeida, responderConversacion, responderCorreo } from "@/app/actions/conversaciones-clinica";
 import { WhatsAppAutoRefresh } from "@/components/whatsapp-auto-refresh";
-import { Badge, Callout, EmptyState, PageHeader, SectionCard, SubmitButton, buttonClasses } from "@/components/ui";
+import { Badge, Callout, EmptyState, Input, PageHeader, SectionCard, SubmitButton, buttonClasses } from "@/components/ui";
 import { ZONA_CLINICA } from "@/lib/citas";
 import { ATENCION_POR_EDICION, PACIENTES_POR_EDICION, clinicaDe } from "@/lib/ediciones";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
@@ -240,15 +240,14 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
             <form action={responderCorreo} className="space-y-2 border-t border-border px-4 py-3">
               <input type="hidden" name="cuenta_id" value={hiloActual.company_id} />
               <input type="hidden" name="in_reply_to" value={hiloActual.entrantes[0]?.message_id ?? ""} />
-              <input
+              <Input
                 name="asunto"
                 defaultValue={hiloActual.asunto ? (hiloActual.asunto.toLowerCase().startsWith("re:") ? hiloActual.asunto : `Re: ${hiloActual.asunto}`) : ""}
                 placeholder="Asunto"
                 maxLength={300}
-                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
               />
               <div className="flex items-end gap-2">
-                <textarea name="texto" required rows={3} maxLength={5000} placeholder={`Responder a ${hiloActual.nombre.split(" ")[0]}…`} className="min-h-[60px] flex-1 resize-y rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-primary" />
+                <textarea name="texto" required rows={3} maxLength={5000} placeholder={`Responder a ${hiloActual.nombre.split(" ")[0]}…`} className="min-h-[60px] flex-1 resize-y rounded-lg border border-border-strong/70 bg-surface px-3 py-2 text-sm text-foreground shadow-sm placeholder:text-muted-foreground/70 focus:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30" />
                 <SubmitButton pendingLabel="Enviando…">
                   <Send size={16} aria-hidden="true" /> Enviar
                 </SubmitButton>
@@ -285,7 +284,7 @@ export default async function MensajesPage({ searchParams }: { searchParams: Pro
                   rows={2}
                   maxLength={4096}
                   placeholder={`Escríbele a ${nombreDe(actual).split(" ")[0]}…`}
-                  className="min-h-[44px] flex-1 resize-y rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+                  className="min-h-[44px] flex-1 resize-y rounded-lg border border-border-strong/70 bg-surface px-3 py-2 text-sm text-foreground shadow-sm placeholder:text-muted-foreground/70 focus:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
                 />
                 <SubmitButton pendingLabel="Enviando…">
                   <Send size={16} aria-hidden="true" /> Enviar

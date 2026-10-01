@@ -13,6 +13,7 @@ import {
   type AuthFailure,
 } from "@/lib/auth-errors";
 import { AuthAlert, EmailField, PasswordField } from "./auth-fields";
+import { buttonClasses } from "@/components/ui";
 
 const REMEMBER_KEY = "atlas.login.email";
 
@@ -161,7 +162,7 @@ export function LoginForm({ linkExpired, destino = "/dashboard" }: { linkExpired
       <button
         type="submit"
         disabled={loading}
-        className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
+        className={buttonClasses({ className: "w-full" })}
       >
         {loading && <Loader2 size={16} className="animate-spin" aria-hidden />}
         {loading ? "Entrando…" : "Entrar"}

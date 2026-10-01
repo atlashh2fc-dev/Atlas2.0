@@ -381,7 +381,7 @@ export function AgentQuotationsTable({ rows, campaigns }: { rows: QuotationRow[]
                 placeholder={
                   draft.result === "vendida" ? "Ej.: aceptó el plan mensual, paga con transferencia" : "Ej.: encontró otra opción más barata"
                 }
-                className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="w-full rounded-lg border border-border-strong/70 bg-surface px-3 py-2 text-sm text-foreground shadow-sm placeholder:text-muted-foreground/70 focus:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
               />
             </Field>
           </div>

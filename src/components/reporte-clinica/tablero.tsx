@@ -51,7 +51,7 @@ import {
 } from "lucide-react";
 
 import { ReportRangePicker } from "@/components/report-range-picker";
-import { Badge, PageHeader } from "@/components/ui";
+import { Badge, PageHeader, buttonClasses } from "@/components/ui";
 import { CLINIC_PRESETS } from "@/lib/report-range";
 import { cn } from "@/lib/utils";
 import {
@@ -304,7 +304,7 @@ export function TableroClinica({
             <button
               type="button"
               onClick={exportarTodo}
-              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-sm transition hover:bg-primary-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className={buttonClasses({ size: "sm" })}
             >
               <Download className="size-3.5" aria-hidden="true" /> Descargar Excel
             </button>
@@ -331,8 +331,8 @@ export function TableroClinica({
               }}
               aria-label={ETIQUETA_DIMENSION[dimension]}
               className={cn(
-                "max-w-44 rounded-md border bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                filtros[dimension] ? "border-primary/50 ring-1 ring-primary/30" : "border-border",
+                "h-8 max-w-44 rounded-lg border bg-surface px-2.5 text-xs text-foreground shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/30",
+                filtros[dimension] ? "border-primary/50 ring-1 ring-primary/30" : "border-border-strong/70",
               )}
             >
               <option value="">{ETIQUETA_DIMENSION[dimension]}: todos</option>
@@ -342,20 +342,25 @@ export function TableroClinica({
             </select>
           ))}
           <span className="mx-1 hidden h-5 w-px bg-border sm:block" />
-          <div className="inline-flex rounded-md border border-border p-0.5" role="group" aria-label="Agrupar por">
+          <div className="inline-flex gap-1" role="group" aria-label="Agrupar por">
             {(["dia", "semana", "mes"] as Grano[]).map((g) => (
               <button
                 key={g}
                 type="button"
                 onClick={() => setGranoElegido(g)}
                 aria-pressed={grano === g}
-                className={cn("rounded px-2 py-0.5 text-[11px] font-medium", grano === g ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
+                className={cn(
+                  "h-8 rounded-lg px-2.5 text-[13px] font-medium transition-colors",
+                  grano === g
+                    ? "bg-surface text-foreground shadow-sm ring-1 ring-border"
+                    : "text-muted-foreground hover:bg-surface-muted hover:text-foreground",
+                )}
               >
                 {g === "dia" ? "Día" : g === "semana" ? "Semana" : "Mes"}
               </button>
             ))}
           </div>
-          <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             Comparar con
             <select
               value={comparar ? comparacion : "ninguna"}
@@ -367,7 +372,7 @@ export function TableroClinica({
                   iniciar(() => setComparacion(valor as Comparacion));
                 }
               }}
-              className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="h-8 rounded-lg border border-border-strong/70 bg-surface px-2.5 text-xs text-foreground shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
             >
               <option value="anterior">el período anterior</option>
               <option value="anio">el mismo período del año pasado</option>

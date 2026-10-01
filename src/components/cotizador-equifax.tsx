@@ -196,12 +196,12 @@ export function CotizadorEquifax({
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-border border-l-2 border-l-[var(--tone-green)] bg-surface px-4 py-3">
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 shadow-sm">
         <span className="icon-chip size-8 shrink-0 rounded-lg" data-tone="green" aria-hidden="true">
           {enviada ? <CheckCircle2 size={17} /> : <Calculator size={17} />}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold text-foreground">{enviada ? "Propuesta enviada" : "Cotizador Equifax"}</p>
+          <p className="text-sm font-semibold text-foreground">{enviada ? "Propuesta enviada" : "Cotizador Equifax"}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             {enviada
               ? `${enviada.canal === "correo" ? "Por correo a" : "WhatsApp abierto para"} ${enviada.destinatario} · ${enviada.resumen}.${onEnviada ? " Productos y UF quedaron listos en la tipificación." : " Quedó en el historial del registro."}`
@@ -532,7 +532,7 @@ function PrecioLinea({ cotizada, valorUf }: { cotizada: LineaCotizada; valorUf: 
       <div className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-1 border-t border-border pt-3 text-sm">
         <span className="text-muted-foreground">A publicar {formatoPesos(pub.publicar)}</span>
         <span className="text-muted-foreground">Neto {formatoPesos(pub.neto)} + IVA {formatoPesos(pub.iva)}</span>
-        <span className="ml-auto text-base font-bold text-foreground">Total {formatoPesos(pub.total)}</span>
+        <span className="ml-auto text-base font-semibold text-foreground">Total {formatoPesos(pub.total)}</span>
       </div>
     );
   }
@@ -550,7 +550,7 @@ function PrecioLinea({ cotizada, valorUf }: { cotizada: LineaCotizada; valorUf: 
       )}
       {cotizada.ufVenta != null ? (
         <span className="ml-auto text-right">
-          <span className="text-base font-bold text-foreground">{formatoUf(cotizada.ufVenta)} UF + IVA</span>
+          <span className="text-base font-semibold text-foreground">{formatoUf(cotizada.ufVenta)} UF + IVA</span>
           {valorUf && <span className="block text-xs text-muted-foreground">≈ {formatoPesos(cotizada.ufVenta * valorUf)} + IVA</span>}
         </span>
       ) : (

@@ -203,29 +203,29 @@ export default async function CampaignAgentsPage({ params }: { params: Promise<{
                       {DAY_LABELS.map((day, dayIndex) => (
                         <label
                           key={day}
-                          className="flex cursor-pointer flex-col items-center gap-0.5 text-[10px] text-muted-foreground"
+                          className="flex cursor-pointer flex-col items-center gap-0.5 text-xs text-muted-foreground"
                         >
                           <input type="checkbox" name="days_of_week" value={dayIndex} className="accent-primary" />
                           {day}
                         </label>
                       ))}
                     </fieldset>
-                    <label className="text-[11px] text-muted-foreground">
+                    <label className="text-xs text-muted-foreground">
                       Desde
                       <input
                         required
                         type="time"
                         name="start_time"
-                        className="ml-1 rounded-md border border-border bg-background px-1 py-0.5 text-xs text-foreground"
+                        className="ml-1 h-8 rounded-lg border border-border-strong/70 bg-surface px-2 text-xs text-foreground shadow-sm"
                       />
                     </label>
-                    <label className="text-[11px] text-muted-foreground">
+                    <label className="text-xs text-muted-foreground">
                       Hasta
                       <input
                         required
                         type="time"
                         name="end_time"
-                        className="ml-1 rounded-md border border-border bg-background px-1 py-0.5 text-xs text-foreground"
+                        className="ml-1 h-8 rounded-lg border border-border-strong/70 bg-surface px-2 text-xs text-foreground shadow-sm"
                       />
                     </label>
                     <ActionSubmit variant="secondary" size="sm" pendingLabel="Agregando…">

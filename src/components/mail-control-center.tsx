@@ -5,7 +5,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarClock, CheckCheck, ChevronRight, Clock3, History, Inbox, Mail, MessageCircleReply, MousePointerClick, Phone, UserRound } from "lucide-react";
 import { bulkAssignMailEngagementLeads } from "@/app/actions/mail";
-import { Badge, Button, Callout, EmptyState, SectionCard, Select, SlideOver } from "@/components/ui";
+import { Badge, Button, Callout, EmptyState, SectionCard, Select, SlideOver, buttonClasses } from "@/components/ui";
 import { useToast } from "@/components/ui/toast";
 
 export type MailQueueRow = {
@@ -322,7 +322,7 @@ export function MailControlCenter({
               <p className="mt-2 text-xs text-muted-foreground">Campaña: {inspected.mail_campaign_name} · {inspected.campaign_name}</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Link href={`/dashboard/leads/${inspected.lead_id}`} className="inline-flex items-center justify-center rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium text-foreground shadow-sm hover:bg-surface-muted">
+              <Link href={`/dashboard/leads/${inspected.lead_id}`} className={buttonClasses({ variant: "secondary" })}>
                 Abrir ficha completa
               </Link>
               <Button type="button" onClick={() => openAssignment([inspected.lead_id])}>

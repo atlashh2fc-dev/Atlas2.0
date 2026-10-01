@@ -6,7 +6,7 @@ import { ChevronDown, Minus, Package, Plus, Search, Stethoscope, Trash2, X } fro
 
 import { registrarAtenciones } from "@/app/actions/atenciones";
 import { useInsumos } from "@/components/insumos-context";
-import { ActionForm, ActionSubmit, Field, Input, Select } from "@/components/ui";
+import { ActionForm, ActionSubmit, Field, Input, Select, buttonClasses } from "@/components/ui";
 import {
   pesos,
   porCategoria,
@@ -117,7 +117,7 @@ export function AtencionForm({
       <button
         type="button"
         onClick={() => abrir(null)}
-        className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+        className={buttonClasses({ className: "w-full" })}
       >
         <Icono size={15} aria-hidden="true" /> {accion}
         {contexto.length > 0 && <span className="font-normal opacity-80">· {contexto.join(" · ")}</span>}
@@ -274,7 +274,7 @@ function Visita({
         action={registrarAtenciones}
         success={lineas.length === 1 ? "Atención registrada" : `${lineas.length} procedimientos registrados`}
         onSuccess={onGuardada}
-        className="relative flex h-full w-full max-w-6xl flex-col overflow-hidden bg-surface-solid shadow-2xl sm:rounded-2xl sm:border sm:border-border"
+        className="relative flex h-full w-full max-w-6xl flex-col overflow-hidden bg-surface-solid shadow-2xl sm:rounded-xl sm:border sm:border-border"
       >
         <input type="hidden" name="cuenta_id" value={cuentaId} />
         <input type="hidden" name="lineas" value={cargaUtil} />
@@ -428,7 +428,7 @@ function Visita({
                                 inputMode="numeric"
                                 placeholder="36"
                                 aria-label={`Pieza de ${linea.procedimiento.name}`}
-                                className={`w-14 rounded-md border bg-background px-2 py-1.5 text-center text-sm tabular-nums text-foreground ${
+                                className={`w-14 rounded-lg border bg-background px-2 py-1.5 text-center text-sm tabular-nums text-foreground ${
                                   linea.pieza && !piezaPorNumero(Number(linea.pieza)) ? "border-danger" : "border-border"
                                 }`}
                               />
@@ -442,7 +442,7 @@ function Visita({
                               onBlur={() => cambiar(linea.clave, { precio: linea.precio === "" ? "" : aNumero(linea.precio).toLocaleString("es-CL") })}
                               inputMode="numeric"
                               aria-label={`Precio de ${linea.procedimiento.name}`}
-                              className="w-32 rounded-md border border-border bg-background py-1.5 pl-6 pr-2 text-right text-sm tabular-nums text-foreground"
+                              className="w-32 rounded-lg border border-border bg-background py-1.5 pl-6 pr-2 text-right text-sm tabular-nums text-foreground"
                             />
                           </label>
                           <button
@@ -523,7 +523,7 @@ function Visita({
                                         Cobrar {pesos.format(Number(insumo.precio_venta ?? 0))}
                                       </label>
                                     )}
-                                    <div className="flex items-center rounded-md border border-border bg-background">
+                                    <div className="flex items-center rounded-lg border border-border bg-background">
                                       <button
                                         type="button"
                                         aria-label={`Menos ${insumo.nombre}`}

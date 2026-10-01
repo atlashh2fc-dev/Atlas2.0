@@ -127,7 +127,7 @@ export function AgendaCallButton({
             >
               <span className="flex min-w-0 items-start gap-2">
                 <span
-                  className="icon-chip mt-0.5 size-5 rounded-md text-[10px] font-semibold"
+                  className="icon-chip mt-0.5 size-5 rounded-md text-xs font-semibold"
                   data-tone={option.blockedReason ? "rose" : option.isPrimary ? "primary" : "slate"}
                   aria-hidden="true"
                 >

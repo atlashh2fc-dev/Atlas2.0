@@ -71,7 +71,7 @@ function ResultColumn({ group, total }: { group: TipificationGroup; total: numbe
           className="h-full rounded-full"
           style={{
             width: `${Math.min(100, share)}%`,
-            background: `linear-gradient(90deg, color-mix(in srgb, ${palette.bar} 55%, transparent), ${palette.bar})`,
+            background: palette.bar,
           }}
         />
       </div>

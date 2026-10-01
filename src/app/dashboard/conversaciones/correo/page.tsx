@@ -185,7 +185,7 @@ async function BandejaDelEjecutivo({ profileId, params }: { profileId: string; p
     <div className="grid gap-4 lg:grid-cols-[20rem_minmax(0,1fr)] xl:grid-cols-[20rem_minmax(0,1fr)_18rem]">
       <RefrescoDeBandeja />
 
-      <nav aria-label="Conversaciones de correo" className="min-w-0 rounded-2xl border border-border bg-surface">
+      <nav aria-label="Conversaciones de correo" className="min-w-0 rounded-xl border border-border bg-surface shadow-sm">
         {/* Filtro por query, con el mismo estilo que los filtros de Mis registros y WhatsApp. */}
         <div className="flex gap-1 border-b border-border p-2">
           {[
@@ -248,7 +248,7 @@ async function BandejaDelEjecutivo({ profileId, params }: { profileId: string; p
           <div
             id="gestion-en-curso"
             {...{ [OPEN_CALL_FORM_ATTRIBUTE]: gestion.id }}
-            className="scroll-mt-4 rounded-2xl border-2 border-primary/20 bg-primary/[0.025] p-3 sm:p-5"
+            className="scroll-mt-4 rounded-xl border border-primary/30 bg-primary/[0.025] p-3 sm:p-5"
           >
             <p className="mb-3 text-sm font-medium text-foreground">
               Tipificación de la conversación por correo

@@ -41,7 +41,7 @@ import {
   type ManualCallManagement,
   type OpenManagement,
 } from "@/app/actions/calls";
-import { SlideOver, StatusDot, Input, actionErrorMessage, type BadgeTone } from "@/components/ui";
+import { SlideOver, StatusDot, Input, Select, actionErrorMessage, buttonClasses, type BadgeTone } from "@/components/ui";
 import {
   beginLegalIntercallBreak,
   LEGAL_INTERCALL_BREAK_SECONDS,
@@ -2136,12 +2136,12 @@ export function CtiBar({ profile }: { profile: Profile }) {
           Para marcar sales de la cola automática. No recibirás llamadas del discador hasta volver.
         </p>
         {manualCampaigns.length > 1 && (
-          <select
+          <Select
+            fieldSize="sm"
             value={effectiveManualCampaignId}
             onChange={(event) => setManualCampaignId(event.target.value)}
             disabled={hybridTransitionPending}
             aria-label="Campaña de la llamada manual"
-            className="w-full rounded-lg border border-border bg-surface px-2 py-1.5 text-xs font-medium"
           >
             <option value="">Campaña…</option>
             {manualCampaigns.map((campaign) => (
@@ -2149,13 +2149,13 @@ export function CtiBar({ profile }: { profile: Profile }) {
                 {campaign.name}
               </option>
             ))}
-          </select>
+          </Select>
         )}
         <button
           type="button"
           onClick={() => void handleEnterHybridManualMode()}
           disabled={hybridTransitionPending || regState !== "registered" || !effectiveManualCampaignId}
-          className="w-full rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+          className={buttonClasses({ size: "sm", className: "w-full" })}
         >
           {hybridTransitionPending ? "Saliendo de la cola…" : "Salir de la cola y marcar"}
         </button>
@@ -2414,7 +2414,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
               type="button"
               onClick={() => setManualRecoveryOpen(false)}
               disabled={manualRecoveryPending}
-              className="rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground disabled:opacity-50"
+              className={buttonClasses({ variant: "secondary" })}
             >
               Cancelar
             </button>
@@ -2422,7 +2422,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
               type="button"
               onClick={handleManualRecovery}
               disabled={manualRecoveryPending}
-              className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
+              className={buttonClasses()}
             >
               {manualRecoveryPending ? "Creando gestión…" : "Ir a tipificar"}
             </button>

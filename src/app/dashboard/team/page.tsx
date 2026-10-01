@@ -118,7 +118,7 @@ function ReassignForm({ lead, agents }: { lead: AgendaLead; agents: AgentOption[
         type="datetime-local"
         name="next_action_at"
         defaultValue={toDatetimeLocal(lead.next_action_at!)}
-        className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="h-8 rounded-lg border border-border-strong/70 bg-surface px-2.5 text-xs text-foreground shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
       />
       <ActionSubmit size="sm" variant="secondary" pendingLabel="Reagendando…">
         Reagendar

@@ -10,7 +10,7 @@ export type OpcionSegmentada = { clave: string; texto: string; href: string; cue
  */
 export function VistaSegmentada({ opciones, activa, etiqueta }: { opciones: OpcionSegmentada[]; activa: string; etiqueta: string }) {
   return (
-    <nav aria-label={etiqueta} className="inline-flex max-w-full overflow-x-auto rounded-lg border border-border bg-surface p-0.5 text-sm shadow-sm">
+    <nav aria-label={etiqueta} className="inline-flex max-w-full gap-1 overflow-x-auto">
       {opciones.map((opcion) => {
         const esta = opcion.clave === activa;
         return (
@@ -19,8 +19,10 @@ export function VistaSegmentada({ opciones, activa, etiqueta }: { opciones: Opci
             href={opcion.href}
             aria-current={esta ? "page" : undefined}
             className={cn(
-              "inline-flex min-h-9 items-center gap-1.5 whitespace-nowrap rounded-md px-3 font-medium transition-colors",
-              esta ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+              "inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-[13px] font-medium transition-colors",
+              esta
+                ? "bg-surface text-foreground shadow-sm ring-1 ring-border"
+                : "text-muted-foreground hover:bg-surface-muted hover:text-foreground",
             )}
           >
             {opcion.texto}
@@ -28,7 +30,7 @@ export function VistaSegmentada({ opciones, activa, etiqueta }: { opciones: Opci
               <span
                 className={cn(
                   "text-xs font-semibold tabular-nums",
-                  esta ? "text-primary-foreground/80" : opcion.cuenta > 0 ? "text-primary" : "text-muted-foreground",
+                  opcion.cuenta > 0 ? "text-primary" : "text-muted-foreground",
                 )}
               >
                 {opcion.cuenta}

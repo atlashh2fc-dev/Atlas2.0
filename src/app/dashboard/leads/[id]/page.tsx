@@ -895,7 +895,7 @@ export default async function LeadDetailPage({
       )}
 
       {supervisionContext && supervisedCall && (
-        <section id="supervision-form" className="rounded-2xl border-2 border-warning/20 bg-warning/[0.025] p-3 sm:p-5">
+        <section id="supervision-form" className="rounded-xl border border-warning/30 bg-warning/[0.025] p-3 sm:p-5">
           <CallTypificationForm
             key={supervisedCall.id || "nueva"}
             lead={lead}
@@ -924,7 +924,7 @@ export default async function LeadDetailPage({
           <section
             id="gestion-en-curso"
             {...{ [OPEN_CALL_FORM_ATTRIBUTE]: call.id }}
-            className="min-w-0 scroll-mt-4 rounded-2xl border-2 border-primary/20 bg-primary/[0.025] p-3 sm:p-5"
+            className="min-w-0 scroll-mt-4 rounded-xl border border-primary/30 bg-primary/[0.025] p-3 sm:p-5"
           >
             {/* Cierra la medición de cuánto tardó la ficha en aparecer. */}
             {profile.role === "agente" && <ScreenPopTiming leadId={lead.id} />}
@@ -959,7 +959,7 @@ export default async function LeadDetailPage({
       )}
 
       {!call && revisableCall && correctionRequested && (
-        <section className="rounded-2xl border-2 border-warning/20 bg-warning/[0.025] p-3 sm:p-5">
+        <section className="rounded-xl border border-warning/30 bg-warning/[0.025] p-3 sm:p-5">
           <CallTypificationForm
             key={revisableCall.id}
             lead={lead}

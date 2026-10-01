@@ -164,7 +164,7 @@ export function CallBar({
             onClick={onHangup}
             disabled={phase === "ending"}
             title={`Colgar (${shortcutLabel("X")})`}
-            className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-danger px-3.5 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-60"
+            className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-danger px-3.5 text-sm font-semibold text-primary-foreground transition hover:brightness-110 disabled:opacity-60"
           >
             <PhoneOff size={17} aria-hidden />
             Colgar

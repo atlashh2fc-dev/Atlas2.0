@@ -15,11 +15,11 @@ import {
   type FichaFormFields,
 } from "@/lib/bigdata-ficha";
 import { toDateTimeInput } from "@/lib/report-range";
-import { Badge } from "@/components/ui";
+import { Badge, buttonClasses } from "@/components/ui";
 import { compactRut, isValidRut } from "@/lib/rut";
 
 const INPUT_CLASS =
-  "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "w-full rounded-lg border border-border-strong/70 bg-surface px-3 py-2 text-sm text-foreground shadow-sm placeholder:text-muted-foreground/70 focus:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30";
 
 type Option = {
   id: string;
@@ -466,14 +466,14 @@ export function ManualLeadRecordForm({
         <button
           type="button"
           onClick={() => router.push("/dashboard/leads")}
-          className="rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-surface-muted"
+          className={buttonClasses({ variant: "secondary" })}
         >
           Cancelar
         </button>
         <button
           type="submit"
           disabled={pending || searching}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover disabled:opacity-60"
+          className={buttonClasses()}
         >
           <Plus size={16} />
           {pending ? "Ingresando..." : inCampaign ? "Abrir ficha existente" : "Ingresar registro"}

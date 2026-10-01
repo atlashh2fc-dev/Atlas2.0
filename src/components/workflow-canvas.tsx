@@ -27,7 +27,7 @@ import { WORKFLOW_FIELD_TYPES } from "@/lib/types";
 import { buildCallReasonCatalogFromWorkflow } from "@/lib/call-typification";
 import { validateWorkflow } from "@/lib/workflow-validation";
 import { TypificationPreview } from "@/components/typification-preview";
-import { Badge } from "@/components/ui";
+import { Badge, Input, Select, buttonClasses } from "@/components/ui";
 import {
   createWorkflowStepNode,
   deleteBranch,
@@ -748,7 +748,7 @@ function WorkflowCanvasInner({
       <div className="absolute left-3 top-3 flex items-center gap-2">
         <button
           onClick={addStep}
-          className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary-hover"
+          className={buttonClasses()}
         >
           + Agregar paso
         </button>
@@ -808,7 +808,7 @@ function WorkflowCanvasInner({
             </div>
             <button
               onClick={() => setPendingConnection(null)}
-              className="mt-3 w-full rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-surface-muted"
+              className={buttonClasses({ variant: "ghost", size: "sm", className: "mt-3 w-full" })}
             >
               Cancelar
             </button>
@@ -937,11 +937,7 @@ function StepEditorPanel({
       <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
         <div>
           <label className="mb-1 block text-xs font-medium text-muted-foreground">Nombre del paso</label>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-          />
+          <Input value={name} onChange={(e) => setName(e.target.value)} />
         </div>
 
         <div>
@@ -953,23 +949,22 @@ function StepEditorPanel({
             onChange={(e) => setDescription(e.target.value)}
             rows={2}
             placeholder="Ej: Pregunta si el cliente confirma sus datos personales"
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
+            className="w-full rounded-lg border border-border-strong/70 bg-surface px-3 py-2 text-sm text-foreground shadow-sm placeholder:text-muted-foreground/70 focus:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
           />
         </div>
 
         <div>
           <label className="mb-1 block text-xs font-medium text-muted-foreground">Tipo de respuesta</label>
-          <select
+          <Select
             value={fieldType}
             onChange={(e) => setFieldType(e.target.value as WorkflowFieldType)}
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
           >
             {WORKFLOW_FIELD_TYPES.map((f) => (
               <option key={f.value} value={f.value}>
                 {f.label}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         {needsOptions && (
@@ -1019,7 +1014,7 @@ function StepEditorPanel({
         {!step.is_start && (
           <button
             onClick={onSetStart}
-            className="w-full rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-surface-muted"
+            className={buttonClasses({ variant: "secondary", size: "sm", className: "w-full" })}
           >
             Marcar como primer paso del flujo
           </button>
@@ -1038,7 +1033,7 @@ function StepEditorPanel({
             })
           }
           disabled={saving || !name.trim()}
-          className="w-full rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover disabled:opacity-50"
+          className={buttonClasses({ className: "w-full" })}
         >
           {saving ? "Guardando..." : "Guardar cambios"}
         </button>
@@ -1046,7 +1041,7 @@ function StepEditorPanel({
         {!confirmDelete ? (
           <button
             onClick={() => setConfirmDelete(true)}
-            className="w-full rounded-lg border border-border px-3 py-2 text-xs font-medium text-danger hover:bg-danger-bg"
+            className="h-8 w-full rounded-lg border border-border px-2.5 text-xs font-medium text-danger transition-colors hover:bg-danger-bg"
           >
             Eliminar paso
           </button>
@@ -1054,13 +1049,13 @@ function StepEditorPanel({
           <div className="flex gap-2">
             <button
               onClick={onDelete}
-              className="flex-1 rounded-lg bg-danger px-3 py-2 text-xs font-medium text-primary-foreground hover:opacity-90"
+              className={buttonClasses({ variant: "danger", size: "sm", className: "flex-1" })}
             >
               Confirmar
             </button>
             <button
               onClick={() => setConfirmDelete(false)}
-              className="flex-1 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-surface-muted"
+              className={buttonClasses({ variant: "secondary", size: "sm", className: "flex-1" })}
             >
               Cancelar
             </button>

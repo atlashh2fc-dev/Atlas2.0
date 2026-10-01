@@ -106,7 +106,7 @@ export function MobileNav({
               />
               <div className="leading-none">
                 <MarcaAtlas edicion={edicion} />
-                <p className="mt-0.5 text-[10px] text-muted-foreground">
+                <p className="mt-0.5 text-xs text-muted-foreground">
                   {workspaceLabel(profile.role, spaceForPath(pathname, profile.role))} · {ROLE_LABEL[profile.role]}
                 </p>
               </div>

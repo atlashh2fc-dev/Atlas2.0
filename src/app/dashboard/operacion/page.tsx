@@ -1252,7 +1252,7 @@ export default async function OperationsPage({
         </div>
       </SectionCard>
 
-      <details className="rounded-lg border border-border bg-surface px-4 py-3 text-xs text-muted-foreground">
+      <details className="rounded-xl border border-border bg-surface px-4 py-3 text-xs text-muted-foreground shadow-sm">
         <summary className="cursor-pointer font-medium text-foreground">
           Definiciones y alcance de esta vista
         </summary>

@@ -30,7 +30,7 @@ import {
 import type { AppRole } from "@/lib/types";
 import { metricGlossary } from "@/lib/metric-definitions";
 import type { SectionTone } from "@/components/ui/card";
-import { EmptyState } from "@/components/ui";
+import { EmptyState, buttonClasses } from "@/components/ui";
 
 type TrainingStep = {
   title: string;
@@ -374,24 +374,24 @@ function ScreenMap({ guide }: { guide: Guide }) {
     <div className="overflow-hidden rounded-xl border border-border bg-background shadow-sm">
       <div className="flex items-center justify-between border-b border-border bg-surface px-3 py-2">
         <div className="flex items-center gap-2 text-[11px] font-semibold text-foreground"><span className="flex size-5 items-center justify-center rounded bg-primary text-[10px] text-primary-foreground">A</span> Atlas · CRM</div>
-        <span className="rounded-md border border-border bg-background px-2 py-1 text-[10px] text-muted-foreground">Buscar o ir a...</span>
+        <span className="rounded-md border border-border bg-background px-2 py-1 text-xs text-muted-foreground">Buscar o ir a...</span>
       </div>
       <div className="grid min-h-56 grid-cols-[92px_1fr] sm:grid-cols-[120px_1fr]">
-        <aside className="border-r border-border bg-surface-muted/40 p-2 text-[10px] text-muted-foreground">
+        <aside className="border-r border-border bg-surface-muted/40 p-2 text-xs text-muted-foreground">
           <p className="px-1.5 py-1 font-semibold text-foreground">Menú Atlas</p>
           {guide.route.map((item, index) => <p key={item} className={`mt-1 rounded px-1.5 py-1 ${index === guide.route.length - 1 ? "bg-primary/10 font-semibold text-primary" : ""}`}>{item}</p>)}
         </aside>
         <div className="p-4">
-          <p className="text-[10px] font-medium text-primary">Pantalla de referencia</p>
+          <p className="text-xs font-medium text-muted-foreground">Pantalla de referencia</p>
           <h3 className="mt-1 text-sm font-semibold text-foreground">{guide.screenTitle}</h3>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             {guide.screenControls.map((control, index) => (
               <div key={control} className={`rounded-lg border px-2.5 py-2 text-[11px] ${index === 0 ? "border-primary/40 bg-primary/5 text-foreground" : "border-border bg-surface text-muted-foreground"}`}>
-                <span className="mr-1.5 inline-flex size-4 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground">{index + 1}</span>{control}
+                <span className="mr-1.5 inline-flex size-4 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground">{index + 1}</span>{control}
               </div>
             ))}
           </div>
-          <p className="mt-3 text-[10px] leading-4 text-muted-foreground">Usa esta referencia para ubicarte. Abajo puedes cargar la pantalla real de Atlas con tus propios permisos.</p>
+          <p className="mt-3 text-xs leading-5 text-muted-foreground">Usa esta referencia para ubicarte. Abajo puedes cargar la pantalla real de Atlas con tus propios permisos.</p>
         </div>
       </div>
     </div>
@@ -403,7 +403,7 @@ function GuideDetail({ guide, onClose }: { guide: Guide; onClose: () => void }) 
   const Icon = guide.icon;
 
   return (
-    <section className="rounded-2xl border border-primary/30 bg-surface p-4 shadow-sm sm:p-6" aria-label={`Capacitación: ${guide.title}`}>
+    <section className="rounded-xl border border-border bg-surface p-4 shadow-sm sm:p-6" aria-label={`Capacitación: ${guide.title}`}>
       <div className="flex items-start justify-between gap-4 border-b border-border pb-5">
         <div className="flex gap-3">
           <div className="icon-chip size-11 rounded-xl" data-tone={guideTone(guide)} data-active="true" aria-hidden="true"><Icon size={22} /></div>
@@ -417,12 +417,12 @@ function GuideDetail({ guide, onClose }: { guide: Guide; onClose: () => void }) 
           <div className="rounded-xl border border-border bg-background p-4">
             <p className="text-xs font-semibold text-foreground">Ruta exacta en el menú</p>
             <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs">
-              {guide.route.map((item, index) => <span key={item} className="inline-flex items-center gap-1.5">{index > 0 && <ChevronRight size={14} className="text-muted-foreground" />}<span className={index === guide.route.length - 1 ? "rounded-md bg-primary px-2 py-1 font-semibold text-primary-foreground" : "rounded-md border border-border bg-surface px-2 py-1 text-foreground"}>{item}</span></span>)}
+              {guide.route.map((item, index) => <span key={item} className="inline-flex items-center gap-1.5">{index > 0 && <ChevronRight size={14} className="text-muted-foreground" />}<span className={index === guide.route.length - 1 ? "font-semibold text-primary" : "text-foreground"}>{item}</span></span>)}
             </div>
           </div>
           <ScreenMap guide={guide} />
           <div className="rounded-xl border border-primary/25 bg-primary/5 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-semibold text-foreground">Pantalla real del CRM</p><p className="mt-1 text-xs text-muted-foreground">Se abre con tu sesión y tus permisos; no es una maqueta.</p></div><button type="button" onClick={() => setLiveScreen((value) => !value)} className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary-hover">{liveScreen ? "Ocultar pantalla" : "Cargar pantalla real"}</button></div>
+            <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-semibold text-foreground">Pantalla real del CRM</p><p className="mt-1 text-xs text-muted-foreground">Se abre con tu sesión y tus permisos; no es una maqueta.</p></div><button type="button" onClick={() => setLiveScreen((value) => !value)} className={buttonClasses({ size: "sm" })}>{liveScreen ? "Ocultar pantalla" : "Cargar pantalla real"}</button></div>
             {liveScreen && <iframe title={`Pantalla real: ${guide.screenTitle}`} src={guide.href} className="mt-4 h-[520px] w-full rounded-lg border border-border bg-background" />}
           </div>
         </div>
@@ -430,11 +430,11 @@ function GuideDetail({ guide, onClose }: { guide: Guide; onClose: () => void }) 
         <aside className="space-y-4">
           <div className="rounded-xl border border-border bg-background p-4"><p className="text-xs font-semibold text-foreground">Antes de empezar</p><ul className="mt-2 space-y-2">{guide.before.map((item) => <li key={item} className="flex gap-2 text-xs leading-5 text-muted-foreground"><CheckCircle2 size={14} className="mt-0.5 shrink-0 text-success" />{item}</li>)}</ul></div>
           <div className="rounded-xl border border-success/25 bg-success-bg/30 p-4"><p className="text-xs font-semibold text-foreground">Resultado esperado</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{guide.outcome}</p></div>
-          <Link href={guide.href} className="flex items-center justify-center gap-2 rounded-lg border border-primary bg-surface px-3 py-2.5 text-sm font-semibold text-primary hover:bg-primary/5">{guide.action}<ArrowRight size={16} /></Link>
+          <Link href={guide.href} className={buttonClasses({ variant: "secondary", className: "w-full" })}>{guide.action}<ArrowRight size={16} aria-hidden="true" /></Link>
         </aside>
       </div>
 
-      <div className="mt-6 border-t border-border pt-5"><div className="flex items-center gap-2"><ClipboardCheck size={16} className="text-muted-foreground" aria-hidden="true" /><h3 className="text-base font-semibold text-foreground">Qué hacer, qué seleccionar y cómo comprobarlo</h3></div><ol className="mt-4 grid gap-3 lg:grid-cols-2">{guide.steps.map((step, index) => <li key={step.title} className="rounded-xl border border-border bg-background p-4"><div className="flex gap-3"><span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">{index + 1}</span><div><h4 className="text-sm font-semibold text-foreground">{step.title}</h4><p className="mt-1 text-xs leading-5 text-muted-foreground"><span className="font-semibold text-foreground">Haz esto: </span>{step.do}</p><p className="mt-2 text-xs leading-5 text-muted-foreground"><span className="font-semibold text-success">Comprueba: </span>{step.verify}</p>{step.warning && <p className="mt-2 flex gap-1.5 text-xs leading-5 text-warning"><AlertTriangle size={14} className="mt-0.5 shrink-0" />{step.warning}</p>}</div></div></li>)}</ol></div>
+      <div className="mt-6 border-t border-border pt-5"><div className="flex items-center gap-2"><ClipboardCheck size={16} className="text-muted-foreground" aria-hidden="true" /><h3 className="text-base font-semibold text-foreground">Qué hacer, qué seleccionar y cómo comprobarlo</h3></div><ol className="mt-4 grid gap-3 lg:grid-cols-2">{guide.steps.map((step, index) => <li key={step.title} className="rounded-xl border border-border bg-background p-4"><div className="flex gap-3"><span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">{index + 1}</span><div><h4 className="text-sm font-semibold text-foreground">{step.title}</h4><p className="mt-1 text-xs leading-5 text-muted-foreground"><span className="font-semibold text-foreground">Haz esto: </span>{step.do}</p><p className="mt-2 text-xs leading-5 text-muted-foreground"><span className="font-semibold text-success">Comprueba: </span>{step.verify}</p>{step.warning && <p className="mt-2 flex gap-1.5 text-xs leading-5 text-warning"><AlertTriangle size={14} className="mt-0.5 shrink-0" />{step.warning}</p>}</div></div></li>)}</ol></div>
     </section>
   );
 }
@@ -490,7 +490,7 @@ export function HelpCenter({ role }: { role: AppRole }) {
   const selectedGuide = GUIDES.find((guide) => guide.id === selectedId && guide.roles.includes(role));
 
   return <div className="mx-auto max-w-7xl space-y-6 pb-8">
-    <section className="rounded-xl border border-border bg-surface p-6 shadow-sm sm:p-8"><div className="max-w-4xl"><p className="inline-flex items-center gap-2 text-xs font-medium text-muted-foreground"><CircleHelp size={16} aria-hidden="true" /> Centro de capacitación Atlas</p><h1 className="mt-4 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">{copy.title}</h1><p className="mt-2 text-sm leading-6 text-muted-foreground sm:text-base">{copy.description}</p><div className="relative mt-5 max-w-3xl"><Search size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Busca una tarea: campaña, flujo, carga, agenda, usuarios..." className="w-full rounded-xl border border-border bg-surface py-3 pl-10 pr-4 text-sm text-foreground shadow-sm outline-none placeholder:text-muted-foreground focus:border-primary" /></div><div className="mt-3 flex flex-wrap gap-2">{copy.searches.map((item) => <button key={item} type="button" onClick={() => setQuery(item)} className="rounded-lg h-8 px-2.5 text-[13px] font-medium ring-1 ring-border text-muted-foreground hover:bg-surface-muted hover:text-foreground">{item}</button>)}</div></div></section>
+    <section className="rounded-xl border border-border bg-surface p-6 shadow-sm sm:p-8"><div className="max-w-4xl"><p className="inline-flex items-center gap-2 text-xs font-medium text-muted-foreground"><CircleHelp size={16} aria-hidden="true" /> Centro de capacitación Atlas</p><h1 className="mt-4 text-2xl font-semibold tracking-tight text-foreground">{copy.title}</h1><p className="mt-2 text-sm leading-6 text-muted-foreground sm:text-base">{copy.description}</p><div className="relative mt-5 max-w-3xl"><Search size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Busca una tarea: campaña, flujo, carga, agenda, usuarios..." className="w-full rounded-xl border border-border bg-surface py-3 pl-10 pr-4 text-sm text-foreground shadow-sm outline-none placeholder:text-muted-foreground focus:border-primary" /></div><div className="mt-3 flex flex-wrap gap-2">{copy.searches.map((item) => <button key={item} type="button" onClick={() => setQuery(item)} className="rounded-lg h-8 px-2.5 text-[13px] font-medium ring-1 ring-border text-muted-foreground hover:bg-surface-muted hover:text-foreground">{item}</button>)}</div></div></section>
     <section className="rounded-xl border border-border bg-surface p-4 shadow-sm"><div className="flex items-start gap-3"><ShieldCheck size={16} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" /><div><p className="text-sm font-semibold text-foreground">Tu alcance</p><p className="mt-1 text-sm text-muted-foreground">{copy.scope}</p></div></div><p className="mt-3 flex gap-2 rounded-lg bg-surface-muted/60 p-3 text-xs leading-5 text-muted-foreground"><CheckCircle2 size={16} className="mt-0.5 shrink-0 text-success" />Cada guía incluye ruta de menú, una referencia visual, pantalla real cargable y validaciones de término. Así sabes dónde entrar, qué hacer y cuándo está bien hecho.</p></section>
     {selectedGuide && <GuideDetail guide={selectedGuide} onClose={() => setSelectedId(null)} />}
     <MetricGlossary />

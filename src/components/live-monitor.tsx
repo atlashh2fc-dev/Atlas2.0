@@ -757,7 +757,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
                     </span>
                   </div>
                   <div className="mt-1 h-2 overflow-hidden rounded-full bg-surface-muted">
-                    <div className="h-full rounded-full" style={{ width: `${Math.max(share, stage.value > 0 ? 1 : 0)}%`, background: `linear-gradient(90deg, color-mix(in srgb, ${stage.color} 55%, transparent), ${stage.color})` }} />
+                    <div className="h-full rounded-full" style={{ width: `${Math.max(share, stage.value > 0 ? 1 : 0)}%`, background: stage.color }} />
                   </div>
                 </div>
               );
@@ -807,7 +807,7 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
                   <span className="font-medium text-foreground">{item.motivo}{pausedNow > 0 && <span className="ml-1.5 text-danger">· {pausedNow} ahora</span>}</span>
                   <span className="font-mono tabular-nums text-muted-foreground">{formatElapsed(item.segundos)}</span>
                 </div>
-                <div className="mt-1 h-2 overflow-hidden rounded-full bg-surface-muted"><div className="h-full rounded-full bg-[linear-gradient(90deg,color-mix(in_srgb,var(--tone-rose)_50%,transparent),var(--tone-rose))]" style={{ width: `${share}%` }} /></div>
+                <div className="mt-1 h-2 overflow-hidden rounded-full bg-surface-muted"><div className="h-full rounded-full bg-tone-rose" style={{ width: `${share}%` }} /></div>
               </div>
             );
           })}
