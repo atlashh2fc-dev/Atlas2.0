@@ -58,7 +58,8 @@ test("un trabajo durable recupera mensajes sin ejecución y fallos reintentables
   assert.match(migration, /run\.id is null/);
   assert.match(migration, /run\.status = 'failed'/);
   assert.match(worker, /respondToWhatsAppInbound/);
-  assert.match(worker, /CRON_SECRET/);
+  // El worker exige el secreto de Vercel Cron, comparado en tiempo constante.
+  assert.match(worker, /if \(!cronAutorizado\(request\)\)/);
   assert.match(middleware, /\/api\/integrations\/meta\/whatsapp\/ai-worker/);
 });
 

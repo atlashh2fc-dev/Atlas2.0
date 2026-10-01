@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { syncAllMailboxes } from "@/lib/inbound-mail";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { cronAutorizado } from "@/lib/cron-autorizado";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret || request.headers.get("authorization") !== `Bearer ${cronSecret}`) {
+  if (!cronAutorizado(request)) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
 

@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { cronAutorizado } from "@/lib/cron-autorizado";
 import { BUCKET_LOOKS } from "@/lib/looks.server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -11,9 +12,7 @@ export const dynamic = "force-dynamic";
 export const DIAS_DE_RETENCION = 90;
 
 function autorizado(request: NextRequest) {
-  const esperado = process.env.CRON_SECRET?.trim();
-  const recibido = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
-  return Boolean(esperado) && recibido === esperado;
+  return cronAutorizado(request);
 }
 
 /**

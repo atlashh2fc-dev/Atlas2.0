@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { respondToWhatsAppInbound } from "@/lib/mercury-whatsapp";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { cronAutorizado } from "@/lib/cron-autorizado";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
-  const expected = process.env.CRON_SECRET?.trim();
-  if (!expected || request.headers.get("authorization") !== `Bearer ${expected}`) {
+  if (!cronAutorizado(request)) {
     return NextResponse.json({ error: "No autorizado." }, { status: 401 });
   }
 
