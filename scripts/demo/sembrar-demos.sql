@@ -60,11 +60,15 @@ language plpgsql as $$
 declare
   v_id uuid := gen_random_uuid();
 begin
+  -- Las columnas de token van en '' y no en NULL: con NULL, Auth responde 500
+  -- al listar usuarios y falla la recuperación de clave de esa cuenta.
   insert into auth.users (instance_id, id, aud, role, email, encrypted_password,
-                          raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+                          raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+                          confirmation_token, recovery_token, email_change_token_new, email_change)
   values ('00000000-0000-0000-0000-000000000000', v_id, 'authenticated', 'authenticated', p_email, '',
           jsonb_build_object('provider', 'email', 'providers', jsonb_build_array('email'), 'role', p_rol),
-          jsonb_build_object('full_name', p_nombre), now(), now());
+          jsonb_build_object('full_name', p_nombre), now(), now(),
+          '', '', '', '');
   -- El perfil nace en la empresa por defecto; se lo lleva a la demo.
   delete from public.organization_members where profile_id = v_id;
   update public.profiles
