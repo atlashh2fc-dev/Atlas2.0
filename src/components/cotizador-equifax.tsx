@@ -81,6 +81,12 @@ function resumenTotales(lineas: LineaCotizada[]): string {
 const fechaHora = (iso: string) =>
   new Date(iso).toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short", timeZone: "America/Santiago" });
 
+/** El servidor no respondió (corte de red o página desactualizada tras un despliegue): se dice, no se queda en silencio. */
+const fallaDeRed = (): { ok: false; error: string } => ({
+  ok: false,
+  error: "No se pudo contactar al servidor. Recarga la página (Ctrl + F5) e inténtalo de nuevo; la propuesta no salió.",
+});
+
 export function CotizadorEquifax({
   leadId,
   callId,
@@ -168,7 +174,7 @@ export function CotizadorEquifax({
     if (!listo || !correoValido || enviando) return;
     setEnviando("correo");
     setError(null);
-    const respuesta = await enviarCotizacionPorCorreo({ ...entrada(), para: correo });
+    const respuesta = await enviarCotizacionPorCorreo({ ...entrada(), para: correo }).catch(fallaDeRed);
     setEnviando(null);
     if (!respuesta.ok) {
       setError(respuesta.error);
@@ -183,7 +189,7 @@ export function CotizadorEquifax({
     window.open(enlaceWhatsapp(celularValido, mensajeWhatsapp(datos)), "_blank", "noopener,noreferrer");
     setEnviando("whatsapp");
     setError(null);
-    const respuesta = await registrarCotizacionWhatsapp({ ...entrada(), celular: celularValido });
+    const respuesta = await registrarCotizacionWhatsapp({ ...entrada(), celular: celularValido }).catch(fallaDeRed);
     setEnviando(null);
     if (!respuesta.ok) {
       setError(respuesta.error);
@@ -222,6 +228,11 @@ export function CotizadorEquifax({
         description={[cliente.empresa, cliente.rut ? `RUT ${cliente.rut}` : null].filter(Boolean).join(" · ") || undefined}
         footer={
           <>
+            {/* El aviso de arriba queda fuera de vista si el panel está desplazado hacia los botones:
+                sin esto, un rechazo del servidor se vería como un clic que no hace nada. */}
+            {error && contexto && (
+              <p role="alert" className="mr-auto min-w-0 flex-1 text-xs font-medium text-danger">{error}</p>
+            )}
             <Button type="button" variant="secondary" onClick={abrirWhatsapp} disabled={!listo || !celularValido || enviando !== null} title={celularValido ? undefined : "Escribe un celular chileno"}>
               <MessageCircle size={15} aria-hidden="true" /> {enviando === "whatsapp" ? "Registrando…" : "Abrir WhatsApp"}
             </Button>
