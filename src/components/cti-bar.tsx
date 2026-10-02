@@ -2361,7 +2361,11 @@ export function CtiBar({ profile }: { profile: Profile }) {
           <div className="fixed inset-x-0 top-0 z-50">{callBar}</div>
         ))}
 
-      <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2 [&>*]:pointer-events-auto">
+      {/* z-40, un nivel bajo los paneles y diálogos (z-50): este bloque se pinta
+          después de la página, así que con z-50 empataba y ganaba encima del
+          pie de cualquier panel, tapando «Enviar» en el cotizador mientras
+          había una tipificación pendiente. */}
+      <div className="pointer-events-none fixed bottom-4 right-4 z-40 flex flex-col items-end gap-2 [&>*]:pointer-events-auto">
         {callError && !dialerOpen && !activeCall && (
           <div
             role="alert"
