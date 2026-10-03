@@ -262,7 +262,8 @@ const KPI_BAR: Record<KpiTone, string> = {
 /**
  * Un indicador de la franja: etiqueta con su icono, cifra grande, variación
  * y abajo la tendencia (curva) o la proporción (barra). Si lleva `href`, toda
- * la celda abre el detalle que la compone.
+ * la celda abre el detalle que la compone; `active` la marca cuando ese
+ * detalle es lo que se está viendo debajo.
  */
 export function KpiStripItem({
   label,
@@ -276,6 +277,7 @@ export function KpiStripItem({
   trendColor,
   progress,
   href,
+  active = false,
 }: {
   label: ReactNode;
   value: string;
@@ -290,6 +292,8 @@ export function KpiStripItem({
   /** 0–100: proporción que representa la cifra (asignados de la base, etc.). */
   progress?: number;
   href?: string;
+  /** La lista de abajo muestra justo lo que cuenta esta cifra. */
+  active?: boolean;
 }) {
   const clamped = typeof progress === "number" ? Math.min(100, Math.max(0, progress)) : null;
   const body = (
@@ -332,7 +336,12 @@ export function KpiStripItem({
   return (
     <Link
       href={href}
-      className={cn(base, "transition-colors hover:bg-surface-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring")}
+      aria-current={active ? "true" : undefined}
+      className={cn(
+        base,
+        "transition-colors hover:bg-surface-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+        active && "bg-surface-muted/40 shadow-[inset_0_-2px_0_var(--primary)]"
+      )}
     >
       {body}
     </Link>

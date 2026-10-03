@@ -7,7 +7,7 @@ import { BandejaProspeccion, type FilaProspecto } from "@/components/bandeja-pro
 import { RespuestasDelAgente, type BorradorAgente, type ConfigAgente } from "@/components/respuestas-del-agente";
 import { KpiStrip, KpiStripItem } from "@/components/report-kit";
 import { masReciente, recortar, tiempoRelativo, type Canal, type UltimaLinea } from "@/components/pipeline-kit";
-import { Avatar, Badge, Callout, EmptyState, NavTabs, PageHeader, SegmentTabs, SubmitButton, type BadgeTone, type SegmentTab } from "@/components/ui";
+import { Avatar, Badge, Callout, EmptyState, NavTabs, PageHeader, SegmentTabs, SubmitButton, buttonClasses, type BadgeTone, type SegmentTab } from "@/components/ui";
 import { requireProfile } from "@/lib/auth";
 import { ZONA_CLINICA, fechaEnChile, instanteEnChile } from "@/lib/citas";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
@@ -24,6 +24,7 @@ import {
   type Prospecto,
 } from "@/lib/prospeccion";
 import { createClient } from "@/lib/supabase/server";
+import { cn } from "@/lib/utils";
 import { PESTANAS_VENTAS } from "@/lib/ventas-pestanas";
 
 /**
@@ -72,11 +73,46 @@ function primero<T>(valor: T | T[] | null | undefined): T | null {
   return valor ?? null;
 }
 
-export default async function ProspeccionPage({ searchParams }: { searchParams: Promise<{ vista?: string }> }) {
+const RUTA = "/dashboard/ventas/prospeccion";
+
+/** «1 hizo clic», «6 volvieron a abrir»: la cifra con su verbo en número. */
+function cuantos(n: number, singular: string, plural: string) {
+  return `${n.toLocaleString("es-CL")} ${n === 1 ? singular : plural}`;
+}
+
+/**
+ * Los filtros rápidos de la lista, debajo de las pestañas. Cada indicador de
+ * arriba abre uno de estos: la cifra y la lista que la compone son lo mismo.
+ */
+function FiltrosRapidos({ filtros, activo }: { filtros: { id: string; label: string; href: string; count: number }[]; activo: string }) {
+  return (
+    <nav aria-label="Filtrar la lista" className="flex flex-wrap items-center gap-1">
+      {filtros.map((filtro) => {
+        const esActivo = filtro.id === activo;
+        return (
+          <Link
+            key={filtro.id}
+            href={filtro.href}
+            aria-current={esActivo ? "true" : undefined}
+            className={cn(
+              "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              esActivo ? "bg-foreground/[0.07] text-foreground" : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"
+            )}
+          >
+            {filtro.label}
+            <span className="tabular-nums opacity-70">{filtro.count.toLocaleString("es-CL")}</span>
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+export default async function ProspeccionPage({ searchParams }: { searchParams: Promise<{ vista?: string; filtro?: string }> }) {
   await connection();
   const profile = await requireProfile(["admin", "supervisor"]);
   const { empresa: empresaPropia } = await contextoDeMiEmpresa();
-  const { vista = "cola" } = await searchParams;
+  const { vista = "cola", filtro } = await searchParams;
   const ahora = new Date();
   const inicioHoy = instanteEnChile(fechaEnChile(ahora), "00:00");
   const haceSieteDias = new Date(ahora.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -164,6 +200,19 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
     return null;
   };
   const calientes = cola.filter((p) => p.respondio || p.clic || p.estado === "volvio");
+  // El desglose sin repetir a nadie, en el orden de la bandeja: quien respondió
+  // y además hizo clic cuenta como respuesta. Suma exactamente «Muy interesados».
+  const respondieron = calientes.filter((p) => p.respondio).length;
+  const hicieronClic = calientes.filter((p) => !p.respondio && p.clic).length;
+  const volvieron = calientes.length - respondieron - hicieronClic;
+  const desgloseCalientes =
+    [
+      respondieron > 0 ? cuantos(respondieron, "respondió", "respondieron") : null,
+      hicieronClic > 0 ? cuantos(hicieronClic, "hizo clic", "hicieron clic") : null,
+      volvieron > 0 ? cuantos(volvieron, "volvió a abrir", "volvieron a abrir") : null,
+    ]
+      .filter(Boolean)
+      .join(" · ") || "Nadie respondió, hizo clic ni volvió a abrir";
   const sinGestionUnDia = cola.filter((p) => p.estado === "nuevo" && p.primera_senal_at && ahora.getTime() - new Date(p.primera_senal_at).getTime() > 24 * 60 * 60 * 1000);
   const hechosHoy = toques.filter((t) => new Date(t.created_at) >= inicioHoy);
   const remitente = (profile.full_name ?? "").split(" ")[0] || "el equipo";
@@ -172,17 +221,30 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
   // Sin agente y sin nada pendiente, la vista de respuestas sería una puerta a un cuarto vacío.
   const conAgente = Boolean(config?.enabled) || borradores.length > 0;
   const vistaActiva = vista === "historial" ? "historial" : vista === "respuestas" && conAgente ? "respuestas" : "cola";
+  // Un filtro que no es de esta vista se ignora: la lista nunca queda vacía por un enlace viejo.
+  const filtroCola = vistaActiva === "cola" && (filtro === "interesados" || filtro === "esperando") ? filtro : "todos";
+  const filtroHistorial = vistaActiva === "historial" && filtro === "hoy" ? "hoy" : "semana";
+  const sinGestionIds = new Set(sinGestionUnDia.map((p) => p.lead_id));
+  const visibles =
+    filtroCola === "interesados"
+      ? todos.filter((p) => !p.no_contactar && (p.respondio || p.clic || p.estado === "volvio"))
+      : filtroCola === "esperando"
+        ? todos.filter((p) => sinGestionIds.has(p.lead_id))
+        : todos;
+  const toquesVisibles = filtroHistorial === "hoy" ? hechosHoy : toques;
 
+  // «Te respondieron» contaba borradores del asistente, no personas: con 7 muy
+  // interesados marcaba 0 y parecía que se perdían respuestas. Se llama por lo que es.
   const pestanas: SegmentTab[] = [
-    { id: "cola", label: "Por contactar", href: "/dashboard/ventas/prospeccion", count: cola.length },
-    ...(conAgente ? [{ id: "respuestas", label: "Te respondieron", href: "/dashboard/ventas/prospeccion?vista=respuestas", count: borradores.length }] : []),
-    { id: "historial", label: "Ya contactados", href: "/dashboard/ventas/prospeccion?vista=historial", count: toques.length },
+    { id: "cola", label: "Por contactar", href: RUTA, count: cola.length },
+    ...(conAgente ? [{ id: "respuestas", label: "Respuestas por aprobar", href: `${RUTA}?vista=respuestas`, count: borradores.length }] : []),
+    { id: "historial", label: "Ya contactados", href: `${RUTA}?vista=historial`, count: toques.length },
   ];
   const ayuda =
     vistaActiva === "cola"
       ? "Una tarjeta por persona, con lo último que se habló. Primero los más interesados: escríbele y después anota cómo te fue; nadie sale de esta lista hasta que lo anotes."
       : vistaActiva === "respuestas"
-        ? "Lo que el asistente propone contestar a quien respondió tu campaña."
+        ? "Lo que el asistente propone contestar a quien respondió tu campaña. Nada sale hasta que lo apruebes."
         : "Contactados en los últimos 7 días. Lo tuyo de las últimas 24 horas se puede deshacer, salvo lo que ya pasó a Negocios.";
 
   return (
@@ -201,13 +263,17 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
           icon={Inbox}
           tone={sinGestionUnDia.length > 0 ? "warn" : "default"}
           detail={sinGestionUnDia.length > 0 ? `${sinGestionUnDia.length} llevan más de un día: el interés se enfría` : "Nadie lleva más de un día esperando"}
+          href={RUTA}
+          active={vistaActiva === "cola" && filtroCola === "todos"}
         />
         <KpiStripItem
           label="Muy interesados"
           value={calientes.length.toLocaleString("es-CL")}
           icon={Flame}
-          detail="Respondieron, hicieron clic o volvieron a abrir"
+          detail={desgloseCalientes}
           progress={cola.length > 0 ? (calientes.length / cola.length) * 100 : undefined}
+          href={`${RUTA}?filtro=interesados`}
+          active={vistaActiva === "cola" && filtroCola === "interesados"}
         />
         <KpiStripItem
           label="Contactados hoy"
@@ -215,6 +281,8 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
           icon={CheckCheck}
           tone={hechosHoy.length > 0 ? "good" : "default"}
           detail={`${toques.length} en los últimos 7 días`}
+          href={`${RUTA}?vista=historial&filtro=hoy`}
+          active={vistaActiva === "historial" && filtroHistorial === "hoy"}
         />
       </KpiStrip>
 
@@ -225,17 +293,47 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
         <div className="border-b border-border px-3">
           <SegmentTabs tabs={pestanas} activeId={vistaActiva} label="Qué ver" />
         </div>
-        <p className="border-b border-border/70 bg-surface-raised px-5 py-2.5 text-xs text-muted-foreground">{ayuda}</p>
+        <div className="space-y-2 border-b border-border/70 bg-surface-raised px-5 py-2.5">
+          <p className="text-xs text-muted-foreground">{ayuda}</p>
+          {vistaActiva === "cola" && todos.length > 0 && (
+            <FiltrosRapidos
+              activo={filtroCola}
+              filtros={[
+                { id: "todos", label: "Todos", href: RUTA, count: cola.length },
+                { id: "interesados", label: "Muy interesados", href: `${RUTA}?filtro=interesados`, count: calientes.length },
+                { id: "esperando", label: "Más de un día esperando", href: `${RUTA}?filtro=esperando`, count: sinGestionUnDia.length },
+              ]}
+            />
+          )}
+          {vistaActiva === "historial" && toques.length > 0 && (
+            <FiltrosRapidos
+              activo={filtroHistorial}
+              filtros={[
+                { id: "semana", label: "Últimos 7 días", href: `${RUTA}?vista=historial`, count: toques.length },
+                { id: "hoy", label: "Hoy", href: `${RUTA}?vista=historial&filtro=hoy`, count: hechosHoy.length },
+              ]}
+            />
+          )}
+        </div>
 
         {vistaActiva === "respuestas" ? (
           <RespuestasDelAgente config={config} borradores={borradores} />
         ) : vistaActiva === "cola" ? (
           todos.length === 0 ? (
             <EmptyState icon={Inbox} title="Estás al día" description="Nadie espera que le escribas. Cuando alguien abra o haga clic en tu campaña de correo, aparece acá." />
+          ) : visibles.length === 0 ? (
+            <EmptyState
+              icon={Inbox}
+              title={filtroCola === "interesados" ? "Nadie muy interesado por ahora" : "Nadie lleva más de un día esperando"}
+              description="El resto de la lista sigue esperando que le escribas."
+              action={<Link href={RUTA} className={buttonClasses({ variant: "secondary", size: "sm" })}>Ver a todos</Link>}
+            />
           ) : (
             <div className="p-3">
+              {/* Con otro filtro es otra lista: se monta de nuevo para no arrastrar tarjetas de la anterior como «Gestionado». */}
               <BandejaProspeccion
-                filas={todos.map((p): FilaProspecto => {
+                key={filtroCola}
+                filas={visibles.map((p): FilaProspecto => {
                   const celular = celularChileno(p.telefono);
                   const porWhatsapp = respondieronPorWhatsapp.has(p.lead_id);
                   const correos = p.correos ?? [];
@@ -287,11 +385,16 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
               />
             </div>
           )
-        ) : toques.length === 0 ? (
-          <EmptyState icon={History} title="Todavía no contactas a nadie" description="Cada WhatsApp, llamada o resultado que anotes en Por contactar aparece acá." />
+        ) : toques.length === 0 || toquesVisibles.length === 0 ? (
+          <EmptyState
+            icon={History}
+            title={toques.length === 0 ? "Todavía no contactas a nadie" : "Hoy todavía no contactas a nadie"}
+            description="Cada WhatsApp, llamada o resultado que anotes en Por contactar aparece acá."
+            action={<Link href={RUTA} className={buttonClasses({ variant: "secondary", size: "sm" })}>Ir a Por contactar</Link>}
+          />
         ) : (
           <ul className="divide-y divide-border/70">
-            {toques.map((t) => {
+            {toquesVisibles.map((t) => {
               const lead = primero(t.leads);
               const nombre = String(lead?.extra?.company_name ?? lead?.full_name ?? "Prospecto");
               // Sin autor: lo anotó el eco de un mensaje enviado desde la app del teléfono.
