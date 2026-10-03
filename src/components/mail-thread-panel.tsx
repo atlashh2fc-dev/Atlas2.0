@@ -3,7 +3,7 @@ import { ArrowDownLeft, ArrowUpRight, Reply } from "lucide-react";
 import { queueAssignedMailReply } from "@/app/actions/mail";
 import { ActionForm, ActionSubmit, Avatar, Badge, SectionCard } from "@/components/ui";
 import { CountBox, dateTimeLabel, relativeLabel } from "@/components/record-kit";
-import { parseMailMessageBody } from "@/lib/mail-message-body";
+import { hasAtlasLeadOriginal, parseMailMessageBody } from "@/lib/mail-message-body";
 
 export type LeadMailMessage = {
   /** Id del correo en Atlas Lead: con él se reconstruye el original. */
@@ -83,7 +83,7 @@ export function MailThreadPanel({
                     </p>
                   </div>
                 </div>
-                {message.direction === "outbound" && message.external_message_id && !bodySegments.some((segment) => segment.kind === "image") ? (
+                {message.direction === "outbound" && hasAtlasLeadOriginal(message.external_message_id) && !bodySegments.some((segment) => segment.kind === "image") ? (
                   <div className="mt-3 overflow-hidden rounded-lg border border-border sm:ml-12">
                     {/* El HTML del correo está diseñado sobre blanco: se muestra tal cual llega al contacto. */}
                     <iframe

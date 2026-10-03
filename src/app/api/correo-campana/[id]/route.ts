@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getCurrentProfile } from "@/lib/auth";
 import { integrationV2Destinations, integrationV2Signature } from "@/lib/integration-v2";
+import { hasAtlasLeadOriginal } from "@/lib/mail-message-body";
 import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -37,7 +38,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
   const supabase = await createClient();
   const { data: mensaje } = await supabase.from("lead_mail_messages").select("id, external_message_id").eq("id", id).maybeSingle();
-  if (!mensaje?.external_message_id) return pagina("<p>No hay un correo original para mostrar.</p>", 404);
+  if (!hasAtlasLeadOriginal(mensaje?.external_message_id)) return pagina("<p>Este correo no salió por Atlas Lead: no hay un original para mostrar.</p>", 404);
 
   const destino = integrationV2Destinations(process.env.INTEGRATION_OUTBOX_DESTINATIONS_JSON).get("atlas_lead");
   if (!destino) return pagina("<p>El puente con Atlas Lead no está configurado.</p>", 503);

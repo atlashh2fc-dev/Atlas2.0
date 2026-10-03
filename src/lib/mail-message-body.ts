@@ -40,3 +40,14 @@ export function parseMailMessageBody(body: string): MailMessageBodySegment[] {
 
   return segments.filter((segment) => segment.kind === "image" || segment.value.trim().length > 0);
 }
+
+const ATLAS_LEAD_MESSAGE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * Atlas Lead identifica sus envíos con un UUID. Los correos cargados por otra
+ * vía (demos, importaciones) traen ids propios como `fec-out-…` que Atlas Lead
+ * no conoce: pedirle el original devuelve 400, así que se muestra el texto.
+ */
+export function hasAtlasLeadOriginal(externalMessageId: string | null | undefined): externalMessageId is string {
+  return Boolean(externalMessageId && ATLAS_LEAD_MESSAGE_ID.test(externalMessageId));
+}
