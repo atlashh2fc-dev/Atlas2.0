@@ -19,7 +19,10 @@ export function CountUp({ value, duration = 900 }: { value: string; duration?: n
     if (!element) return;
     const target = parse(value);
     const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    if (!target || reduce || target.number === 0) {
+    // En una pestaña oculta el navegador no entrega cuadros: la animación no
+    // se vería y la cifra quedaba congelada a medio contar (Marketing mostraba
+    // "Piezas 1 · Canales 0" con 16 piezas en 3 canales).
+    if (!target || reduce || target.number === 0 || document.visibilityState === "hidden") {
       element.textContent = value;
       return;
     }
@@ -33,7 +36,17 @@ export function CountUp({ value, duration = 900 }: { value: string; duration?: n
       if (progress < 1) frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
+    // Red de seguridad: si los cuadros se detienen (pestaña que pasa a segundo
+    // plano, captura de pantalla, equipo lento), la cifra igual termina en su
+    // valor real. Nunca se queda mostrando un número a medio camino.
+    const landing = window.setTimeout(() => {
+      cancelAnimationFrame(frame);
+      element.textContent = value;
+    }, duration + 100);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(landing);
+    };
   }, [value, duration]);
 
   return (

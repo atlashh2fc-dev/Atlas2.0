@@ -103,11 +103,22 @@ const instante = (requerido: boolean) =>
     return fecha.toISOString();
   });
 
+/**
+ * Cifras (alcance, leads…) y, como única excepción de texto, `poster_url`:
+ * la portada del video que el calendario muestra antes de reproducirlo.
+ */
 const metricas = z
-  .record(z.string().min(1).max(40), z.coerce.number().finite().nonnegative())
+  .record(z.string().min(1).max(40), z.union([z.coerce.number().finite().nonnegative(), z.string().trim().max(2000)]))
   .nullish()
   .transform((valor) => valor ?? {})
-  .refine((valor) => Object.keys(valor).length <= 30, { message: "Demasiadas métricas" });
+  .refine((valor) => Object.keys(valor).length <= 30, { message: "Demasiadas métricas" })
+  .superRefine((valor, ctx) => {
+    for (const [clave, dato] of Object.entries(valor)) {
+      if (typeof dato !== "string") continue;
+      if (clave !== "poster_url") ctx.addIssue({ code: "custom", path: [clave], message: "Tiene que ser un número" });
+      else if (!/^https?:\/\/\S+$/i.test(dato)) ctx.addIssue({ code: "custom", path: [clave], message: "Tiene que ser un enlace http(s)" });
+    }
+  });
 
 /** Una pieza tal como la envía un alimentador. */
 export const piezaEntranteSchema = z
