@@ -13,6 +13,7 @@ import {
   Megaphone,
   MessageCircle,
   Network,
+  Orbit,
   PhoneCall,
   Plug,
   ShieldCheck,
@@ -231,6 +232,18 @@ const CONSOLE: NavSpace = {
           modules: ["marketing"],
         },
         {
+          // Atlas Órbita: los agentes de marketing con IA como una red viva.
+          // Se mira; los agentes se declaran y reportan por /api/orbita/eventos.
+          id: "orbita",
+          label: "Órbita",
+          href: "/dashboard/orbita",
+          icon: Orbit,
+          roles: ["admin", "supervisor"],
+          description: "Monitor en vivo de los agentes de marketing con IA: estado, conexiones y actividad",
+          match: ["/dashboard/orbita"],
+          modules: ["orbita"],
+        },
+        {
           id: "correo",
           label: "Correo",
           href: "/dashboard/mail",
@@ -404,7 +417,7 @@ const WORKSPACE_SECTIONS: Record<AppRole, Record<NavSpaceId, SectionSpec[]>> = {
     console: [
       { id: "control-home", itemIds: ["inicio"] },
       { id: "control-live", label: "Operación en vivo", itemIds: ["operacion", "agenda-clinica", "recordatorios", "correo"] },
-      { id: "control-work", label: "Gestión", itemIds: ["pacientes", "caja", "campanas-clinica", "ventas", "registros", "validacion-ventas", "marketing"] },
+      { id: "control-work", label: "Gestión", itemIds: ["pacientes", "caja", "campanas-clinica", "ventas", "registros", "validacion-ventas", "marketing", "orbita"] },
       { id: "control-analysis", label: "Análisis y calidad", itemIds: ["conversaciones", "conversaciones-clinica", "reportes", "reportes-clinica", "calidad"] },
     ],
     admin: [
@@ -420,7 +433,7 @@ const WORKSPACE_SECTIONS: Record<AppRole, Record<NavSpaceId, SectionSpec[]>> = {
     console: [
       { id: "supervision-home", itemIds: ["inicio"] },
       { id: "supervision-live", label: "Operación en vivo", itemIds: ["operacion", "equipo", "agenda-clinica", "recordatorios", "correo"] },
-      { id: "supervision-work", label: "Gestión", itemIds: ["pacientes", "caja", "campanas-clinica", "campanas-operativas", "ventas", "registros", "validacion-ventas", "marketing"] },
+      { id: "supervision-work", label: "Gestión", itemIds: ["pacientes", "caja", "campanas-clinica", "campanas-operativas", "ventas", "registros", "validacion-ventas", "marketing", "orbita"] },
       { id: "supervision-analysis", label: "Análisis y calidad", itemIds: ["conversaciones", "conversaciones-clinica", "reportes", "reportes-clinica", "calidad"] },
     ],
     admin: [

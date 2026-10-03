@@ -24,6 +24,7 @@ export const APP_MODULES = [
   "finanzas",
   "aprende",
   "marketing",
+  "orbita",
 ] as const;
 
 export type AppModule = (typeof APP_MODULES)[number];
@@ -108,6 +109,12 @@ export const MODULE_INFO: Record<AppModule, ModuleInfo> = {
     label: "Marketing",
     producto: "Atlas 2.0",
     description: "Calendario de publicaciones, correos y anuncios por canal, con su estado y resultados",
+    dentro: true,
+  },
+  orbita: {
+    label: "Órbita",
+    producto: "Atlas Órbita",
+    description: "Monitor en vivo de los agentes de marketing con IA: estado, conexiones y lo que van haciendo",
     dentro: true,
   },
 };

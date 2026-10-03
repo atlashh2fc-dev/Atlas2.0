@@ -244,6 +244,23 @@ export async function integracionesDeLaEmpresa(modulos: AppModule[]): Promise<In
     });
   }
 
+  // Órbita usa la misma clave que Marketing, atada a la misma empresa.
+  if (tiene(modulos, "orbita")) {
+    const empresaDeLaClave = process.env.MARKETING_INGEST_ORG?.trim() || "altius";
+    const conectado = hay("MARKETING_INGEST_SECRET") && organizacion?.slug === empresaDeLaClave;
+    lista.push({
+      id: "orbita",
+      nombre: "Atlas Órbita",
+      proveedor: "Agentes de marketing con IA",
+      descripcion: "Los agentes se declaran y reportan cada inicio, fin, error, decisión y recuperación al monitor Órbita.",
+      logo: "atlas",
+      categoria: "Suite Altius",
+      estado: conectado ? "conectado" : "sin_conectar",
+      detalle: conectado ? "Recibe con firma verificada" : "Falta la clave compartida con los agentes",
+      href: "/dashboard/orbita",
+    });
+  }
+
   if (tiene(modulos, "contact_center")) {
     lista.push({
       id: "discador",
