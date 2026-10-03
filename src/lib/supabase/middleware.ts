@@ -44,6 +44,9 @@ const MACHINE_ONLY_PATHS = new Set([
   // Los alimentadores del calendario de Marketing (Claude, Atlas Lead, Meta).
   // Misma puerta: firma HMAC del cuerpo crudo y marca de tiempo reciente.
   "/api/marketing/items",
+  // Los agentes de Atlas Órbita se declaran y reportan lo que hacen. Misma
+  // puerta y misma clave que Marketing.
+  "/api/orbita/eventos",
   "/api/agentes/vigilante",
   "/api/agentes/vendedor",
   // El despacho de mensajes lo despierta el cron con el mismo secreto.
