@@ -127,13 +127,16 @@ export type PiezaMarketing = {
   scheduled_at: string;
   ends_at: string | null;
   published_at: string | null;
-  metrics: Record<string, number>;
+  /** Cifras, y a lo más `poster_url` (portada del video), que es texto. */
+  metrics: Record<string, number | string>;
   source: OrigenMarketing;
+  /** Identificador del alimentador: "plan-…" marca un espacio de plan de Claude. */
+  external_id: string | null;
   updated_at: string;
 };
 
 export const COLUMNAS_PIEZA =
-  "id, campaign, channel, format, title, body, target, product, agent, asset_url, external_url, status, scheduled_at, ends_at, published_at, metrics, source, updated_at";
+  "id, campaign, channel, format, title, body, target, product, agent, asset_url, external_url, status, scheduled_at, ends_at, published_at, metrics, source, external_id, updated_at";
 
 export const enLista = <T extends string>(lista: readonly T[], valor: unknown): valor is T =>
   typeof valor === "string" && (lista as readonly string[]).includes(valor);
@@ -142,7 +145,18 @@ export const enLista = <T extends string>(lista: readonly T[], valor: unknown): 
 // Calendario
 // ---------------------------------------------------------------------------
 
-export type VistaCalendario = "semana" | "mes";
+export const VISTAS_CALENDARIO = ["proximos", "semana", "mes"] as const;
+export type VistaCalendario = (typeof VISTAS_CALENDARIO)[number];
+
+export const ETIQUETA_VISTA: Record<VistaCalendario, string> = { proximos: "Próximos", semana: "Semana", mes: "Mes" };
+
+/** Lo que abarca la vista «Próximos»: dos semanas desde hoy. */
+export const DIAS_PROXIMOS = 14;
+
+/** Sin vista en la URL (o con una que no existe) se abre «Próximos»: lo que viene, como agenda. */
+export function vistaDesdeParam(valor: unknown): VistaCalendario {
+  return enLista(VISTAS_CALENDARIO, valor) ? valor : "proximos";
+}
 
 export type RangoCalendario = {
   vista: VistaCalendario;
@@ -155,7 +169,7 @@ export type RangoCalendario = {
   dias: string[];
   anterior: string;
   siguiente: string;
-  /** "Semana del 5 al 11 de octubre" / "Octubre de 2026". */
+  /** "Del 3 al 16 de octubre" / "Semana del 5 al 11 de octubre" / "Octubre de 2026". */
   titulo: string;
   /** Mes al que pertenece la vista mensual ("2026-10"); los días de otros meses van atenuados. */
   mes: string;
@@ -185,18 +199,31 @@ function sumarMeses(fecha: string, meses: number): string {
   return new Date(Date.UTC(anio, mes - 1 + meses, 1)).toISOString().slice(0, 10);
 }
 
+/** "5 al 11 de octubre", "28 de septiembre al 4 de octubre"; el año solo si cambia. */
+function tramo(desde: string, ultimo: string): string {
+  const a = diaYMes(desde);
+  const b = diaYMes(ultimo);
+  if (a.anio !== b.anio) return `${a.dia} de ${a.mes} de ${a.anio} al ${b.dia} de ${b.mes} de ${b.anio}`;
+  return a.mes === b.mes ? `${a.dia} al ${b.dia} de ${b.mes}` : `${a.dia} de ${a.mes} al ${b.dia} de ${b.mes}`;
+}
+
 export function rangoDelCalendario(vista: VistaCalendario, fecha: string): RangoCalendario {
+  if (vista === "proximos") {
+    return {
+      vista,
+      fecha,
+      desde: fecha,
+      hasta: sumarDias(fecha, DIAS_PROXIMOS),
+      dias: Array.from({ length: DIAS_PROXIMOS }, (_, i) => sumarDias(fecha, i)),
+      anterior: sumarDias(fecha, -DIAS_PROXIMOS),
+      siguiente: sumarDias(fecha, DIAS_PROXIMOS),
+      titulo: `Del ${tramo(fecha, sumarDias(fecha, DIAS_PROXIMOS - 1))}`,
+      mes: fecha.slice(0, 7),
+    };
+  }
+
   if (vista === "semana") {
     const desde = sumarDias(fecha, -diaDeLaSemana(fecha));
-    const ultimo = sumarDias(desde, 6);
-    const a = diaYMes(desde);
-    const b = diaYMes(ultimo);
-    const titulo =
-      a.anio !== b.anio
-        ? `Semana del ${a.dia} de ${a.mes} de ${a.anio} al ${b.dia} de ${b.mes} de ${b.anio}`
-        : a.mes === b.mes
-          ? `Semana del ${a.dia} al ${b.dia} de ${b.mes}`
-          : `Semana del ${a.dia} de ${a.mes} al ${b.dia} de ${b.mes}`;
     return {
       vista,
       fecha,
@@ -205,7 +232,7 @@ export function rangoDelCalendario(vista: VistaCalendario, fecha: string): Rango
       dias: Array.from({ length: 7 }, (_, i) => sumarDias(desde, i)),
       anterior: sumarDias(fecha, -7),
       siguiente: sumarDias(fecha, 7),
-      titulo,
+      titulo: `Semana del ${tramo(desde, sumarDias(desde, 6))}`,
       mes: fecha.slice(0, 7),
     };
   }
@@ -245,8 +272,10 @@ export function diasDeLaPieza(pieza: Pick<PiezaMarketing, "scheduled_at" | "ends
   return dias.filter((dia) => dia >= inicio && dia <= fin);
 }
 
-export function agruparPorDia(piezas: readonly PiezaMarketing[], dias: readonly string[]): Map<string, PiezaMarketing[]> {
-  const porDia = new Map<string, PiezaMarketing[]>(dias.map((dia) => [dia, []]));
+type Ubicable = Pick<PiezaMarketing, "scheduled_at" | "ends_at" | "title">;
+
+export function agruparPorDia<T extends Ubicable>(piezas: readonly T[], dias: readonly string[]): Map<string, T[]> {
+  const porDia = new Map<string, T[]>(dias.map((dia) => [dia, []]));
   for (const pieza of piezas) {
     for (const dia of diasDeLaPieza(pieza, dias)) porDia.get(dia)?.push(pieza);
   }
@@ -254,21 +283,162 @@ export function agruparPorDia(piezas: readonly PiezaMarketing[], dias: readonly 
   return porDia;
 }
 
+/**
+ * El día de la agenda «Próximos» en que va la pieza: una sola vez, el día en
+ * que sale. Una campaña que ya venía corriendo va el primer día del rango;
+ * repetir un anuncio de siete días siete veces tapaba lo que sale cada día.
+ */
+export function diaEnLaAgenda(pieza: Pick<PiezaMarketing, "scheduled_at" | "ends_at">, dias: readonly string[]): string | null {
+  if (dias.length === 0) return null;
+  const inicio = fechaEnChile(new Date(pieza.scheduled_at));
+  const fin = pieza.ends_at ? fechaEnChile(new Date(pieza.ends_at)) : inicio;
+  const primero = dias[0];
+  const ultimo = dias[dias.length - 1];
+  if (fin < primero || inicio > ultimo) return null;
+  return inicio < primero ? primero : inicio;
+}
+
+/** Los días con algo en la agenda, en orden, cada uno con sus publicaciones por hora. */
+export function agendaPorDia<T extends Ubicable>(piezas: readonly T[], dias: readonly string[]): { dia: string; piezas: T[] }[] {
+  const porDia = new Map<string, T[]>();
+  for (const pieza of piezas) {
+    const dia = diaEnLaAgenda(pieza, dias);
+    if (!dia) continue;
+    const lista = porDia.get(dia) ?? [];
+    lista.push(pieza);
+    porDia.set(dia, lista);
+  }
+  return [...porDia.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([dia, lista]) => ({
+      dia,
+      piezas: lista.sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at) || a.title.localeCompare(b.title, "es")),
+    }));
+}
+
+// ---------------------------------------------------------------------------
+// Publicaciones cruzadas y espacios de plan
+// ---------------------------------------------------------------------------
+
+/**
+ * Lo que sale a la vez en varias redes (un reel en Instagram y en Facebook)
+ * es una sola publicación en el calendario, con un ícono por red. En la base
+ * siguen siendo filas separadas: cada red tiene su estado, su enlace y sus
+ * resultados, y el panel las muestra una por una.
+ */
+export type GrupoMarketing = {
+  /** id de la primera pieza: estable mientras la pieza exista. */
+  id: string;
+  piezas: PiezaMarketing[];
+  principal: PiezaMarketing;
+  canales: CanalMarketing[];
+  title: string;
+  format: FormatoMarketing;
+  scheduled_at: string;
+  /** El fin más tardío del grupo (null si ninguna pieza dura varios días). */
+  ends_at: string | null;
+  /** El estado que hay que mirar: si las redes no coinciden, el más urgente. */
+  estado: EstadoMarketing;
+  /** Las redes del grupo no están todas en el mismo estado. */
+  mixto: boolean;
+  /** Todas sus piezas son espacios de plan de un agente. */
+  plan: boolean;
+};
+
+/** Del más urgente al más tranquilo: lo que falló o se pausó no se esconde tras un "publicado". */
+const PRIORIDAD_ESTADO: readonly EstadoMarketing[] = ["fallido", "pausado", "programado", "borrador", "idea", "publicado"];
+
+/** Mismo título, mismo minuto y mismo formato = la misma publicación. */
+export function claveDePublicacion(pieza: Pick<PiezaMarketing, "title" | "scheduled_at" | "format">): string {
+  const instante = new Date(pieza.scheduled_at);
+  const minuto = Number.isNaN(instante.getTime()) ? pieza.scheduled_at : instante.toISOString().slice(0, 16);
+  const titulo = pieza.title.trim().replace(/\s+/g, " ").toLocaleLowerCase("es");
+  return [pieza.format, minuto, titulo].join("|");
+}
+
+/** Un espacio que Claude reservó para un agente («Agente 1 · Educador»): todavía no es una pieza con texto. */
+export function esEspacioDePlan(pieza: Pick<PiezaMarketing, "source" | "external_id">): boolean {
+  return pieza.source === "claude" && typeof pieza.external_id === "string" && pieza.external_id.startsWith("plan-");
+}
+
+/** "Dentistas en Chile · Pymes de Chile." → ["Dentistas en Chile", "Pymes de Chile"]. */
+export function gruposDelPlan(target: string | null): string[] {
+  if (!target) return [];
+  return target
+    .split(" · ")
+    .map((grupo) => grupo.trim().replace(/\.$/, "").trim())
+    .filter(Boolean);
+}
+
+export function agruparPublicaciones(piezas: readonly PiezaMarketing[]): GrupoMarketing[] {
+  const abiertos = new Map<string, PiezaMarketing[][]>();
+  const grupos: PiezaMarketing[][] = [];
+  for (const pieza of piezas) {
+    const clave = claveDePublicacion(pieza);
+    const candidatos = abiertos.get(clave) ?? [];
+    // Dos piezas del mismo canal no se juntan: son dos publicaciones, no una cruzada.
+    const destino = candidatos.find((grupo) => !grupo.some((otra) => otra.channel === pieza.channel));
+    if (destino) {
+      destino.push(pieza);
+    } else {
+      const nuevo = [pieza];
+      candidatos.push(nuevo);
+      abiertos.set(clave, candidatos);
+      grupos.push(nuevo);
+    }
+  }
+
+  return grupos
+    .map((lista): GrupoMarketing => {
+      const ordenadas = [...lista].sort((a, b) => CANALES_MARKETING.indexOf(a.channel) - CANALES_MARKETING.indexOf(b.channel));
+      const principal = ordenadas[0];
+      const estados = new Set(ordenadas.map((pieza) => pieza.status));
+      const fines = ordenadas.map((pieza) => pieza.ends_at).filter((fin): fin is string => Boolean(fin));
+      return {
+        id: principal.id,
+        piezas: ordenadas,
+        principal,
+        canales: ordenadas.map((pieza) => pieza.channel),
+        title: principal.title,
+        format: principal.format,
+        scheduled_at: principal.scheduled_at,
+        ends_at: fines.length ? fines.reduce((a, b) => (Date.parse(a) >= Date.parse(b) ? a : b)) : null,
+        estado: PRIORIDAD_ESTADO.find((estado) => estados.has(estado)) ?? principal.status,
+        mixto: estados.size > 1,
+        plan: ordenadas.every(esEspacioDePlan),
+      };
+    })
+    .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at) || a.title.localeCompare(b.title, "es"));
+}
+
+// ---------------------------------------------------------------------------
+// Resumen
+// ---------------------------------------------------------------------------
+
 export type ResumenMarketing = {
+  /** Piezas (filas) del rango: un reel en Instagram y en Facebook son dos. */
   total: number;
+  /** Canales distintos con al menos una pieza. */
+  canales: number;
   porEstado: Partial<Record<EstadoMarketing, number>>;
   porCanal: Partial<Record<CanalMarketing, number>>;
   leads: number;
+  /** Espacios de plan de los agentes (todavía sin pieza propia). */
+  planes: number;
 };
 
-export function resumenDelRango(piezas: readonly Pick<PiezaMarketing, "status" | "channel" | "metrics">[]): ResumenMarketing {
-  const resumen: ResumenMarketing = { total: piezas.length, porEstado: {}, porCanal: {}, leads: 0 };
+type Resumible = Pick<PiezaMarketing, "status" | "channel" | "metrics"> & Partial<Pick<PiezaMarketing, "source" | "external_id">>;
+
+export function resumenDelRango(piezas: readonly Resumible[]): ResumenMarketing {
+  const resumen: ResumenMarketing = { total: piezas.length, canales: 0, porEstado: {}, porCanal: {}, leads: 0, planes: 0 };
   for (const pieza of piezas) {
     resumen.porEstado[pieza.status] = (resumen.porEstado[pieza.status] ?? 0) + 1;
     resumen.porCanal[pieza.channel] = (resumen.porCanal[pieza.channel] ?? 0) + 1;
     const leads = Number(pieza.metrics?.leads);
     if (Number.isFinite(leads) && leads > 0) resumen.leads += leads;
+    if (pieza.source && esEspacioDePlan({ source: pieza.source, external_id: pieza.external_id ?? null })) resumen.planes += 1;
   }
+  resumen.canales = Object.keys(resumen.porCanal).length;
   return resumen;
 }
 
@@ -302,6 +472,17 @@ export function enlaceDelCalendario(vista: VistaCalendario, fecha: string, filtr
   if (filtros.producto) params.set("producto", filtros.producto);
   if (filtros.campana) params.set("campana", filtros.campana);
   return `/dashboard/marketing?${params}`;
+}
+
+/** Portada del video, si el alimentador la mandó en las métricas. */
+export function portadaDelVideo(metrics: PiezaMarketing["metrics"] | null | undefined): string | undefined {
+  const url = metrics?.poster_url;
+  return typeof url === "string" && /^https?:\/\/\S+$/i.test(url) ? url : undefined;
+}
+
+/** Las cifras de la pieza; lo que no es número (la portada) no es un resultado. */
+export function metricasNumericas(metrics: PiezaMarketing["metrics"] | null | undefined): [string, number][] {
+  return Object.entries(metrics ?? {}).filter((par): par is [string, number] => typeof par[1] === "number" && Number.isFinite(par[1]));
 }
 
 /** Piezas con imagen o video que se pueden mostrar en el panel. */
