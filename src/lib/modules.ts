@@ -23,6 +23,7 @@ export const APP_MODULES = [
   "itsm",
   "finanzas",
   "aprende",
+  "marketing",
 ] as const;
 
 export type AppModule = (typeof APP_MODULES)[number];
@@ -102,6 +103,12 @@ export const MODULE_INFO: Record<AppModule, ModuleInfo> = {
     producto: "Atlas Aprende",
     description: "Formación de los equipos y su avance",
     dentro: false,
+  },
+  marketing: {
+    label: "Marketing",
+    producto: "Atlas 2.0",
+    description: "Calendario de publicaciones, correos y anuncios por canal, con su estado y resultados",
+    dentro: true,
   },
 };
 

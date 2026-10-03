@@ -42,6 +42,7 @@ test("Control opera por tarea y deja la configuración en su propio espacio", ()
     "Ventas",
     "Registros",
     "Validación de ventas",
+    "Marketing",
     "Reportes",
     "Grabaciones y calidad",
   ]);
@@ -74,7 +75,7 @@ test("Control opera por tarea y deja la configuración en su propio espacio", ()
 });
 
 test("Supervisión opera su equipo y configura aparte a sus ejecutivos", () => {
-  assert.deepEqual(labels("console", "supervisor"), ["Resumen", "Operación", "Mi equipo", "Correo", "Pacientes", "Campañas", "Ventas", "Registros", "Validación de ventas", "Historial", "Reportes", "Grabaciones y calidad"]);
+  assert.deepEqual(labels("console", "supervisor"), ["Resumen", "Operación", "Mi equipo", "Correo", "Pacientes", "Campañas", "Ventas", "Registros", "Validación de ventas", "Marketing", "Historial", "Reportes", "Grabaciones y calidad"]);
   assert.deepEqual(labels("admin", "supervisor"), ["Usuarios y skills", "Flujos de gestión"]);
   assert.equal(nav.workspaceLabel("supervisor"), "Supervisión");
   assert.equal(nav.setupEntryHref("supervisor"), "/dashboard/team/usuarios");
