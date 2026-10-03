@@ -74,12 +74,17 @@ export function ActionForm({
   const [pending, startTransition] = useTransition();
   const [asking, setAsking] = useState(false);
   const pendingData = useRef<FormData | null>(null);
+  // `pending` solo cambia en el siguiente render: dos submit en el mismo tick
+  // (Enter + clic, doble clic) lo ven en false y el action corre dos veces
+  // (pasó el 02-10: una respuesta de Messenger salió duplicada). El ref se
+  // marca en el acto y es el candado que de verdad impide el segundo envío.
+  const inFlight = useRef(false);
 
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     // Segundo candado, además del botón deshabilitado: un Enter repetido o un
     // doble clic rápido puede disparar submit antes de que React repinte.
-    if (pending) return;
+    if (pending || inFlight.current) return;
 
     const formData = new FormData(event.currentTarget);
     if (confirm) {
@@ -91,6 +96,8 @@ export function ActionForm({
   }
 
   function run(formData: FormData) {
+    if (inFlight.current) return;
+    inFlight.current = true;
     startTransition(async () => {
       try {
         await action(formData);
@@ -107,6 +114,8 @@ export function ActionForm({
           tone: "danger",
           message: actionErrorMessage(error),
         });
+      } finally {
+        inFlight.current = false;
       }
     });
   }
