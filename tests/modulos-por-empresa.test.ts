@@ -28,7 +28,7 @@ test("el catálogo cubre lo que ofrecemos en el sitio", () => {
   for (const producto of PRODUCTOS_DEL_SITIO) {
     assert.ok(CATALOGO.includes(producto), `falta ${producto} en el catálogo de la suite`);
   }
-  for (const modulo of ["leads", "ventas_b2b", "ventas_b2c", "contact_center", "correo", "whatsapp", "bigdata", "analytics", "itsm", "finanzas", "aprende"]) {
+  for (const modulo of ["leads", "ventas_b2b", "ventas_b2c", "contact_center", "correo", "whatsapp", "bigdata", "analytics", "itsm", "finanzas", "aprende", "marketing"]) {
     assert.match(CATALOGO, new RegExp(`"${modulo}"`), `falta el módulo ${modulo}`);
   }
 });
@@ -86,6 +86,7 @@ test("cada ruta de una aplicación tiene su puerta en el servidor", () => {
     ["src/app/dashboard/admin/estados-agente/layout.tsx", "contact_center"],
     ["src/app/dashboard/admin/cargas/layout.tsx", "leads"],
     ["src/app/dashboard/admin/agentes-sip/layout.tsx", "contact_center"],
+    ["src/app/dashboard/marketing/layout.tsx", "marketing"],
   ];
   for (const [ruta, modulo] of PUERTAS) {
     assert.ok(hay(ruta), `falta la puerta de ${ruta}`);

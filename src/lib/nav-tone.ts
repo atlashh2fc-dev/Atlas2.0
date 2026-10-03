@@ -35,6 +35,7 @@ export const NAV_TONE: Record<string, Tone> = {
   campanas: "rose",
   "campanas-clinica": "rose",
   "campanas-operativas": "rose",
+  marketing: "rose",
   colas: "rose",
   flujos: "rose",
   ayuda: "blue",

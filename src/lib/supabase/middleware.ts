@@ -41,6 +41,9 @@ const MACHINE_ONLY_PATHS = new Set([
   // altiusignite.com avisa cada reunión, plan o contacto. No tiene sesión web:
   // el handler exige firma HMAC del cuerpo crudo y marca de tiempo reciente.
   "/api/integrations/altius/intake",
+  // Los alimentadores del calendario de Marketing (Claude, Atlas Lead, Meta).
+  // Misma puerta: firma HMAC del cuerpo crudo y marca de tiempo reciente.
+  "/api/marketing/items",
   "/api/agentes/vigilante",
   "/api/agentes/vendedor",
   // El despacho de mensajes lo despierta el cron con el mismo secreto.

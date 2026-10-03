@@ -4,6 +4,7 @@ import {
   BarChart3,
   Handshake,
   CalendarClock,
+  CalendarRange,
   CircleHelp,
   Database,
   Headphones,
@@ -218,6 +219,18 @@ const CONSOLE: NavSpace = {
           ediciones: ["center"],
         },
         {
+          // Lo que la empresa publica (reels, grupos, correos, anuncios). En la
+          // etapa 1 se mira: lo cargan los alimentadores, no se edita acá.
+          id: "marketing",
+          label: "Marketing",
+          href: "/dashboard/marketing",
+          icon: CalendarRange,
+          roles: ["admin", "supervisor"],
+          description: "Calendario de publicaciones, correos y anuncios por canal, con su estado y resultados",
+          match: ["/dashboard/marketing"],
+          modules: ["marketing"],
+        },
+        {
           id: "correo",
           label: "Correo",
           href: "/dashboard/mail",
@@ -391,7 +404,7 @@ const WORKSPACE_SECTIONS: Record<AppRole, Record<NavSpaceId, SectionSpec[]>> = {
     console: [
       { id: "control-home", itemIds: ["inicio"] },
       { id: "control-live", label: "Operación en vivo", itemIds: ["operacion", "agenda-clinica", "recordatorios", "correo"] },
-      { id: "control-work", label: "Gestión", itemIds: ["pacientes", "caja", "campanas-clinica", "ventas", "registros", "validacion-ventas"] },
+      { id: "control-work", label: "Gestión", itemIds: ["pacientes", "caja", "campanas-clinica", "ventas", "registros", "validacion-ventas", "marketing"] },
       { id: "control-analysis", label: "Análisis y calidad", itemIds: ["conversaciones", "conversaciones-clinica", "reportes", "reportes-clinica", "calidad"] },
     ],
     admin: [
@@ -407,7 +420,7 @@ const WORKSPACE_SECTIONS: Record<AppRole, Record<NavSpaceId, SectionSpec[]>> = {
     console: [
       { id: "supervision-home", itemIds: ["inicio"] },
       { id: "supervision-live", label: "Operación en vivo", itemIds: ["operacion", "equipo", "agenda-clinica", "recordatorios", "correo"] },
-      { id: "supervision-work", label: "Gestión", itemIds: ["pacientes", "caja", "campanas-clinica", "campanas-operativas", "ventas", "registros", "validacion-ventas"] },
+      { id: "supervision-work", label: "Gestión", itemIds: ["pacientes", "caja", "campanas-clinica", "campanas-operativas", "ventas", "registros", "validacion-ventas", "marketing"] },
       { id: "supervision-analysis", label: "Análisis y calidad", itemIds: ["conversaciones", "conversaciones-clinica", "reportes", "reportes-clinica", "calidad"] },
     ],
     admin: [

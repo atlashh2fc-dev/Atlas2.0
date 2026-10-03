@@ -226,6 +226,24 @@ export async function integracionesDeLaEmpresa(modulos: AppModule[]): Promise<In
     });
   }
 
+  // La clave de ingreso está atada a una sola empresa (MARKETING_INGEST_ORG):
+  // en otra, el calendario no tiene quién lo alimente todavía.
+  if (tiene(modulos, "marketing")) {
+    const empresaDeLaClave = process.env.MARKETING_INGEST_ORG?.trim() || "altius";
+    const conectado = hay("MARKETING_INGEST_SECRET") && organizacion?.slug === empresaDeLaClave;
+    lista.push({
+      id: "marketing",
+      nombre: "Calendario de marketing",
+      proveedor: "Claude · Atlas Lead · Meta",
+      descripcion: "Las piezas de la semana (reels, grupos, correos y anuncios) y sus resultados llegan al calendario de Marketing.",
+      logo: "atlas",
+      categoria: "Suite Altius",
+      estado: conectado ? "conectado" : "sin_conectar",
+      detalle: conectado ? "Recibe con firma verificada" : "Falta la clave compartida con los alimentadores",
+      href: "/dashboard/marketing",
+    });
+  }
+
   if (tiene(modulos, "contact_center")) {
     lista.push({
       id: "discador",
