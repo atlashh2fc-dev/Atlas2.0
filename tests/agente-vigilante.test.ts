@@ -35,8 +35,12 @@ test("el informe llega todos los días, esté bien o mal", () => {
   assert.ok(cron, "el vigilante no está programado");
   assert.match(cron.schedule, /^\d+ \d+ \* \* \*$/, "debe correr todos los días, no solo hábiles");
   // Un informe que solo llega cuando algo falla enseña a ignorar la bandeja.
-  assert.match(RUTA, /todo en orden/);
-  assert.match(RUTA, /alerta\(s\) que revisar/);
+  // El informe de marketing se arma y se envía siempre: tiene texto para el día bueno y para el malo.
+  assert.match(RUTA, /const informe = armarInformeDeMarketing\(/);
+  assert.match(RUTA, /await enviarInforme\(informe\.asunto, informe\.html, destino\)/);
+  const INFORME = readFileSync(new URL("../src/lib/informe-marketing.ts", import.meta.url), "utf8");
+  assert.match(INFORME, /Se cumplió lo comprometido\. Sin alertas\./);
+  assert.match(INFORME, /puntos que mirar primero/);
 });
 
 test("que el vigilante falle también se avisa", () => {
