@@ -62,6 +62,18 @@ export async function resumenDeCorreo(slug: string): Promise<Resultado<ResumenDe
       cupo_diario: typeof datos.cupo_diario === "number" ? datos.cupo_diario : null,
       campanas: Array.isArray(datos.campanas) ? datos.campanas : [],
       respuestas_7d: Array.isArray(datos.respuestas_7d) ? datos.respuestas_7d : [],
+      por_dia: Array.isArray(datos.por_dia)
+        ? datos.por_dia.map((d) => ({
+            dia: String(d.dia),
+            enviados: Number(d.enviados) || 0,
+            fallidos: Number(d.fallidos) || 0,
+            abrieron: Number(d.abrieron) || 0,
+            clics: Number(d.clics) || 0,
+            rebotes: Number(d.rebotes) || 0,
+            respuestas: Number(d.respuestas) || 0,
+            bajas: Number(d.bajas) || 0,
+          }))
+        : [],
     },
   };
 }

@@ -57,6 +57,8 @@ export const TIPO_CONEXION_INFO: Record<TipoConexion, { label: string; verbo: st
 
 /** Código del CEO de marketing: el centro de la red. */
 export const CODIGO_CEO = "0";
+/** Código del Guardián: revisa a todos cada hora. Sus chequeos no son trabajo de marketing. */
+export const CODIGO_GUARDIAN = "G";
 /** `"a": "*"` en una conexión = con todos los agentes (el Guardián vigila a todos). */
 export const TODOS = "*";
 

@@ -117,15 +117,47 @@ export const eventoEntranteSchema = z.object({
 
 export type EventoEntrante = z.output<typeof eventoEntranteSchema>;
 
-/** El cuerpo del POST: `{ agentes?: [...], eventos?: [...] }`, con al menos uno de los dos. */
+/** Una pieza de evidencia: qué empresa se siguió, qué grupo se activó, con su enlace. */
+const evidenciaSchema = z.object({
+  texto: z.string().trim().min(1).max(200),
+  url: z
+    .string()
+    .trim()
+    .max(500)
+    .nullish()
+    .transform((valor) => (valor && /^https?:\/\//i.test(valor) ? valor : null)),
+  estado: textoOpcional(40),
+});
+
+/**
+ * La cifra de un día para un objetivo, recalculada por el agente desde su
+ * archivo de origen. Reenviarla reemplaza la anterior (no se suma).
+ */
+export const metricaEntranteSchema = z.object({
+  dia: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "dia: usa AAAA-MM-DD (hora de Chile)"),
+  metrica: z.preprocess(clave, z.string().regex(/^[a-z0-9_]{1,40}$/, "metrica: minúsculas, números y _ (hasta 40)")),
+  valor: z.number().finite().min(0, "valor: no puede ser negativo"),
+  agente: z.preprocess((valor) => (valor === "" ? null : valor), codigoSchema.nullish()),
+  evidencia: z
+    .array(evidenciaSchema)
+    .max(200, "evidencia: máximo 200 piezas")
+    .nullish()
+    .transform((valor) => valor ?? []),
+  fuente: textoOpcional(200),
+});
+
+/** El cuerpo del POST: `{ agentes?: [...], eventos?: [...], metricas?: [...] }`, con al menos uno. */
 export const envioDeOrbitaSchema = z
   .object({
     agentes: z.array(z.unknown()).max(MAX_POR_ENVIO, `Máximo ${MAX_POR_ENVIO} agentes por envío`).optional(),
     eventos: z.array(z.unknown()).max(MAX_POR_ENVIO, `Máximo ${MAX_POR_ENVIO} eventos por envío`).optional(),
+    metricas: z.array(z.unknown()).max(MAX_POR_ENVIO, `Máximo ${MAX_POR_ENVIO} métricas por envío`).optional(),
   })
-  .refine((envio) => (envio.agentes?.length ?? 0) + (envio.eventos?.length ?? 0) > 0, { message: "No vienen agentes ni eventos" });
+  .refine((envio) => (envio.agentes?.length ?? 0) + (envio.eventos?.length ?? 0) + (envio.metricas?.length ?? 0) > 0, {
+    message: "No vienen agentes, eventos ni métricas",
+  });
 
-export type ErrorDeOrbita = { lista: "agentes" | "eventos"; indice: number; codigo: string | null; errores: string[] };
+export type ErrorDeOrbita = { lista: "agentes" | "eventos" | "metricas"; indice: number; codigo: string | null; errores: string[] };
 
 export type FilaAgente = {
   organization_id: string;
@@ -151,11 +183,22 @@ export type FilaEvento = {
   ocurrido_at: string;
 };
 
+export type FilaMetrica = {
+  organization_id: string;
+  dia: string;
+  metrica: string;
+  agente_codigo: string | null;
+  valor: number;
+  evidencia: { texto: string; url: string | null; estado: string | null }[];
+  fuente: string | null;
+};
+
 export type EnvioValidado = {
   agentes: FilaAgente[];
   /** Estado fijado a mano por código (solo los agentes que lo traen). */
   estados: Map<string, EstadoAgente>;
   eventos: FilaEvento[];
+  metricas: FilaMetrica[];
   errores: ErrorDeOrbita[];
 };
 
@@ -177,7 +220,7 @@ const codigoCrudo = (item: unknown, campo: string): string | null => {
  * red no tendría dónde dibujarlo.
  */
 export function validarEnvioOrbita(
-  envio: { agentes?: unknown[]; eventos?: unknown[] },
+  envio: { agentes?: unknown[]; eventos?: unknown[]; metricas?: unknown[] },
   organizationId: string,
   existentes: Iterable<string>,
   ahora: Date = new Date(),
@@ -185,6 +228,7 @@ export function validarEnvioOrbita(
   const agentes: FilaAgente[] = [];
   const estados = new Map<string, EstadoAgente>();
   const eventos: FilaEvento[] = [];
+  const metricas: FilaMetrica[] = [];
   const errores: ErrorDeOrbita[] = [];
   const conocidos = new Set(existentes);
   const vistos = new Set<string>();
@@ -246,5 +290,41 @@ export function validarEnvioOrbita(
     });
   });
 
-  return { agentes, estados, eventos, errores };
+  const metricasVistas = new Set<string>();
+  (envio.metricas ?? []).forEach((item, indice) => {
+    const resultado = metricaEntranteSchema.safeParse(item);
+    if (!resultado.success) {
+      errores.push({ lista: "metricas", indice, codigo: codigoCrudo(item, "agente"), errores: mensajes(resultado.error.issues, "metrica") });
+      return;
+    }
+    const metrica = resultado.data;
+    // Un día imposible ("2026-02-31") pasa la forma pero no el calendario.
+    const fecha = new Date(`${metrica.dia}T12:00:00Z`);
+    if (Number.isNaN(fecha.getTime()) || fecha.toISOString().slice(0, 10) !== metrica.dia) {
+      errores.push({ lista: "metricas", indice, codigo: metrica.agente ?? null, errores: ["dia: no es una fecha válida"] });
+      return;
+    }
+    if (metrica.agente && !conocidos.has(metrica.agente)) {
+      errores.push({ lista: "metricas", indice, codigo: metrica.agente, errores: [`agente: «${metrica.agente}» no existe`] });
+      return;
+    }
+    // Dos veces la misma métrica del mismo día haría fallar el upsert entero.
+    const llave = `${metrica.dia}|${metrica.metrica}`;
+    if (metricasVistas.has(llave)) {
+      errores.push({ lista: "metricas", indice, codigo: metrica.agente ?? null, errores: ["metrica: repetida para ese día en este envío"] });
+      return;
+    }
+    metricasVistas.add(llave);
+    metricas.push({
+      organization_id: organizationId,
+      dia: metrica.dia,
+      metrica: metrica.metrica,
+      agente_codigo: metrica.agente ?? null,
+      valor: metrica.valor,
+      evidencia: metrica.evidencia.map((pieza) => ({ texto: pieza.texto, url: pieza.url, estado: pieza.estado })),
+      fuente: metrica.fuente,
+    });
+  });
+
+  return { agentes, estados, eventos, metricas, errores };
 }

@@ -14,7 +14,7 @@ export function CifrasOrbita({ resumen }: { resumen: ResumenOrbita }) {
     resumen.tasaExito7 === null ? "default" : resumen.tasaExito7 >= 95 ? "good" : resumen.tasaExito7 >= 80 ? "warn" : "danger";
 
   return (
-    <KpiStrip columns={5} title="Cómo va la red" meta="Ejecuciones = turnos terminados (fin o error)">
+    <KpiStrip columns={5} title="Cómo va la red" meta="Turnos de los agentes de marketing (sin los chequeos del Guardián)">
       <KpiStripItem
         label="Agentes sanos"
         value={`${resumen.sanos}/${resumen.total}`}
@@ -29,7 +29,7 @@ export function CifrasOrbita({ resumen }: { resumen: ResumenOrbita }) {
         value={resumen.ejecuciones24.toLocaleString("es-CL")}
         icon={Activity}
         tone={resumen.fallidas24 > 0 ? "warn" : "default"}
-        definition={{ text: "Turnos que terminaron en las últimas 24 horas, bien o con error." }}
+        definition={{ text: "Turnos de los agentes de marketing que terminaron en las últimas 24 horas, bien o con error. No incluye los chequeos horarios del Guardián." }}
         detail={resumen.fallidas24 > 0 ? `${resumen.fallidas24} con error` : resumen.ejecuciones24 > 0 ? "Sin errores" : "Ningún turno terminado"}
       />
       <KpiStripItem
@@ -39,7 +39,7 @@ export function CifrasOrbita({ resumen }: { resumen: ResumenOrbita }) {
         tone={tonoExito}
         progress={resumen.tasaExito7 ?? undefined}
         definition={{
-          text: "De los turnos terminados en 7 días, los que terminaron bien.",
+          text: "De los turnos de los agentes de marketing terminados en 7 días, los que terminaron bien (sin los chequeos del Guardián).",
           formula: "fines sin error ÷ (fines + errores)",
         }}
         detail={resumen.ejecuciones7 === 1 ? "1 turno terminado" : `${resumen.ejecuciones7.toLocaleString("es-CL")} turnos terminados`}
