@@ -1,8 +1,7 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
-import { cambiosTrasEventos, type EstadoAgente } from "@/lib/orbita";
 import { envioDeOrbitaSchema, validarEnvioOrbita } from "@/lib/orbita-ingreso";
+import { empresaDeLaIntegracion, leerEnvioFirmado, registrarEventos } from "@/lib/orbita-registro.server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
@@ -25,36 +24,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 export const runtime = "nodejs";
 export const maxDuration = 20;
 
-const VENTANA_SEGUNDOS = 300;
 const MAX_BYTES = 512 * 1024;
 
-function firmaValida(secreto: string, timestamp: string, cuerpo: string, recibida: string): boolean {
-  const esperada = createHmac("sha256", secreto).update(`${timestamp}.${cuerpo}`).digest("hex");
-  const a = Buffer.from(esperada);
-  const b = Buffer.from(recibida.trim().toLowerCase().replace(/^sha256=/, ""));
-  return a.length === b.length && timingSafeEqual(a, b);
-}
-
 export async function POST(request: Request) {
-  const secreto = process.env.MARKETING_INGEST_SECRET?.trim();
-  if (!secreto) {
-    return NextResponse.json({ error: "Integración no configurada" }, { status: 503 });
-  }
-
-  const timestamp = request.headers.get("x-atlas-timestamp") ?? "";
-  const firma = request.headers.get("x-atlas-signature") ?? "";
-  const cuerpo = await request.text();
-
-  if (cuerpo.length > MAX_BYTES) {
-    return NextResponse.json({ error: "Envío demasiado grande" }, { status: 413 });
-  }
-  const segundos = Number(timestamp);
-  if (!Number.isFinite(segundos) || Math.abs(Date.now() / 1000 - segundos) > VENTANA_SEGUNDOS) {
-    return NextResponse.json({ error: "Marca de tiempo fuera de ventana" }, { status: 401 });
-  }
-  if (!firma || !firmaValida(secreto, timestamp, cuerpo, firma)) {
-    return NextResponse.json({ error: "Firma inválida" }, { status: 401 });
-  }
+  const firmado = await leerEnvioFirmado(request, MAX_BYTES);
+  if (!firmado.ok) return NextResponse.json({ error: firmado.error }, { status: firmado.status });
+  const cuerpo = firmado.cuerpo;
 
   let datos: unknown;
   try {
@@ -68,13 +43,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: envio.error.issues[0]?.message ?? "Cuerpo inválido" }, { status: 400 });
   }
 
-  const slug = process.env.MARKETING_INGEST_ORG?.trim() || "altius";
   const admin = createAdminClient();
-  const { data: organizationId, error: errorEmpresa } = await admin.rpc("organization_id_by_slug", { p_slug: slug });
-  if (errorEmpresa || typeof organizationId !== "string") {
-    console.error("[orbita-ingest] empresa no encontrada", slug, errorEmpresa?.message);
-    return NextResponse.json({ error: "Empresa de la integración no encontrada" }, { status: 503 });
-  }
+  const organizationId = await empresaDeLaIntegracion(admin);
+  if (!organizationId) return NextResponse.json({ error: "Empresa de la integración no encontrada" }, { status: 503 });
 
   const { data: actuales, error: errorActuales } = await admin
     .from("orbita_agentes")
@@ -104,46 +75,27 @@ export async function POST(request: Request) {
     }
   }
 
-  if (eventos.length > 0) {
-    const { error } = await admin.from("orbita_eventos").insert(eventos);
-    if (error) {
-      console.error("[orbita-ingest] fallo al guardar eventos", error.message);
-      return NextResponse.json({ error: "No se pudo guardar" }, { status: 500 });
-    }
-  }
-
-  // Lo que los eventos dicen de cada agente, sobre el estado fijado a mano.
-  const conocidos = new Map<string, string | null>((actuales ?? []).map((fila) => [fila.codigo as string, (fila.ultimo_evento_at as string | null) ?? null]));
-  for (const agente of agentes) if (!conocidos.has(agente.codigo)) conocidos.set(agente.codigo, null);
-  const cambios = cambiosTrasEventos(
-    [...conocidos].map(([codigo, ultimo_evento_at]) => ({ codigo, ultimo_evento_at })),
+  const registro = await registrarEventos(
+    admin,
+    organizationId,
     eventos.map((evento) => ({
       agente: evento.agente_codigo,
       tipo: evento.tipo,
       estado: evento.estado,
       resumen: evento.resumen,
+      detalle: evento.detalle,
       relacionado_con: evento.relacionado_con,
       ocurrido_at: evento.ocurrido_at,
     })),
+    estados,
   );
-  for (const [codigo, estado] of estados) {
-    const cambio = cambios.get(codigo) ?? {};
-    if (!cambio.ultimo_estado) cambios.set(codigo, { ...cambio, ultimo_estado: estado as EstadoAgente });
-  }
-
-  const resultados = await Promise.all(
-    [...cambios].map(([codigo, cambio]) =>
-      admin.from("orbita_agentes").update(cambio).eq("organization_id", organizationId).eq("codigo", codigo),
-    ),
-  );
-  const fallidos = resultados.filter((resultado) => resultado.error);
-  if (fallidos.length > 0) {
-    console.error("[orbita-ingest] fallo al actualizar estados", fallidos[0].error?.message);
-    return NextResponse.json({ error: "Los eventos quedaron guardados, pero no se pudo actualizar el estado de los agentes" }, { status: 500 });
+  if (registro.error) {
+    console.error("[orbita-ingest]", registro.error);
+    return NextResponse.json({ error: "No se pudo guardar" }, { status: 500 });
   }
 
   return NextResponse.json(
-    { ok: true, agentes: agentes.length, eventos: eventos.length, estados_actualizados: cambios.size },
+    { ok: true, agentes: agentes.length, eventos: eventos.length, estados_actualizados: registro.estadosActualizados },
     { status: 200 },
   );
 }

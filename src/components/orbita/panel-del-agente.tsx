@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, RefreshCw } from "lucide-react";
+import { ArrowRight, Cloud, Laptop, RefreshCw } from "lucide-react";
 
 import { Badge, Button, Skeleton, SlideOver } from "@/components/ui";
 import {
@@ -29,7 +29,9 @@ import { ChipDeAgente } from "./chip-de-agente";
  * actividad en vivo trae algo nuevo.
  */
 
-type Lectura = { clave: string; eventos: EventoOrbita[]; error: boolean };
+type NotaDelAgente = { id: string; tipo: string; titulo: string; contenido: string; created_at: string };
+type TareaDelAgente = { id: string; de: string; titulo: string; created_at: string };
+type Lectura = { clave: string; eventos: EventoOrbita[]; nota: NotaDelAgente | null; tareas: TareaDelAgente[]; error: boolean };
 
 export function PanelDelAgente({
   agente,
@@ -49,6 +51,7 @@ export function PanelDelAgente({
 }) {
   const [intento, setIntento] = useState(0);
   const [lectura, setLectura] = useState<Lectura | null>(null);
+  const [notaCompleta, setNotaCompleta] = useState(false);
   const codigo = agente?.codigo ?? null;
   const clave = codigo ? `${codigo}|${version}|${intento}` : "";
 
@@ -56,18 +59,36 @@ export function PanelDelAgente({
     if (!codigo) return;
     let vigente = true;
     const supabase = createClient();
-    supabase
-      .from("orbita_eventos")
-      .select(COLUMNAS_EVENTO)
-      // El código ya viene validado ([0-9A-Z_-]): no rompe el filtro.
-      .or(`agente_codigo.eq.${codigo},relacionado_con.eq.${codigo}`)
-      .order("ocurrido_at", { ascending: false })
-      .limit(20)
-      .then(({ data, error }) => {
-        if (!vigente) return;
-        if (error) console.error("[orbita] no se pudo leer los eventos del agente", error.message);
-        setLectura({ clave, eventos: (data ?? []) as unknown as EventoOrbita[], error: Boolean(error) });
+    Promise.all([
+      supabase
+        .from("orbita_eventos")
+        .select(COLUMNAS_EVENTO)
+        // El código ya viene validado ([0-9A-Z_-]): no rompe el filtro.
+        .or(`agente_codigo.eq.${codigo},relacionado_con.eq.${codigo}`)
+        .order("ocurrido_at", { ascending: false })
+        .limit(20),
+      // Lo último que dejó en la memoria compartida (informe, inteligencia, decisión).
+      supabase
+        .from("orbita_notas")
+        .select("id, tipo, titulo, contenido, created_at")
+        .eq("agente_codigo", codigo)
+        .neq("tipo", "idea")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase.from("orbita_tareas").select("id, de, titulo, created_at").eq("para", codigo).eq("estado", "pendiente").order("created_at").limit(8),
+    ]).then(([eventos, nota, tareas]) => {
+      if (!vigente) return;
+      const error = eventos.error ?? nota.error ?? tareas.error;
+      if (error) console.error("[orbita] no se pudo leer el detalle del agente", error.message);
+      setLectura({
+        clave,
+        eventos: (eventos.data ?? []) as unknown as EventoOrbita[],
+        nota: (nota.data as NotaDelAgente | null) ?? null,
+        tareas: (tareas.data ?? []) as TareaDelAgente[],
+        error: Boolean(eventos.error),
       });
+    });
     return () => {
       vigente = false;
     };
@@ -122,6 +143,68 @@ export function PanelDelAgente({
             </p>
           </div>
         </section>
+
+        <p className="flex items-start gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-[13px] leading-snug text-foreground">
+          {agente.motor ? (
+            <>
+              <Cloud size={15} className="mt-0.5 shrink-0 text-primary" aria-hidden="true" />
+              <span>
+                <span className="font-medium">Trabaja en la nube de Atlas.</span> Corre solo a su hora, aunque ningún computador esté encendido.
+              </span>
+            </>
+          ) : (
+            <>
+              <Laptop size={15} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <span>
+                <span className="font-medium">Trabaja en el equipo local.</span> Necesita ese computador encendido; el Guardián avisa si no corre a su hora.
+              </span>
+            </>
+          )}
+        </p>
+
+        {delAgente?.nota && (
+          <section>
+            <h3 className="text-xs font-medium text-muted-foreground">Lo último que dejó en la memoria</h3>
+            <div className="mt-1.5 rounded-lg border border-border bg-surface-raised p-3">
+              <p className="flex items-baseline justify-between gap-2 text-sm font-medium text-foreground">
+                <span className="min-w-0">{delAgente.nota.titulo}</span>
+                <time dateTime={delAgente.nota.created_at} title={horaExacta(delAgente.nota.created_at)} className="shrink-0 text-[11px] font-normal tabular-nums text-muted-foreground">
+                  {haceCuanto(delAgente.nota.created_at, ahora)}
+                </time>
+              </p>
+              <p className={`mt-1.5 whitespace-pre-line text-[13px] leading-relaxed text-foreground/90 ${notaCompleta ? "" : "line-clamp-6"}`}>{delAgente.nota.contenido}</p>
+              {delAgente.nota.contenido.length > 360 && (
+                <button
+                  type="button"
+                  onClick={() => setNotaCompleta((abierta) => !abierta)}
+                  className="mt-1.5 inline-flex min-h-11 items-center text-[13px] font-medium text-primary hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-0"
+                >
+                  {notaCompleta ? "Ver menos" : "Ver completo"}
+                </button>
+              )}
+            </div>
+          </section>
+        )}
+
+        {delAgente && delAgente.tareas.length > 0 && (
+          <section>
+            <h3 className="text-xs font-medium text-muted-foreground">Tareas pendientes ({delAgente.tareas.length})</h3>
+            <ul className="mt-1.5 space-y-1.5">
+              {delAgente.tareas.map((tarea) => {
+                const de = porCodigo.get(tarea.de);
+                return (
+                  <li key={tarea.id} className="flex items-start gap-2 text-[13px] leading-snug text-foreground">
+                    <span aria-hidden="true" className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" />
+                    <span className="min-w-0">
+                      {tarea.titulo}
+                      <span className="text-muted-foreground"> · de {de ? nombreDelAgente(de) : tarea.de}</span>
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
 
         {agente.ultimo_resumen && (
           <section>

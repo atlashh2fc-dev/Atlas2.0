@@ -10,12 +10,36 @@
       "cron": "30 8 * * *",
       "color": "#c4b5fd",
       "conexiones": [
-        { "a": "9", "tipo": "ordena", "etiqueta": "Aprueba y encarga Reels" },
-        { "a": "1", "tipo": "ordena", "etiqueta": "Aprueba piezas y fija el foco" },
-        { "a": "2", "tipo": "ordena", "etiqueta": "Aprueba piezas y fija el foco" },
-        { "a": "3", "tipo": "ordena", "etiqueta": "Aprueba piezas y fija el foco" },
-        { "a": "4", "tipo": "ordena", "etiqueta": "Aprueba piezas y fija el foco" },
-        { "a": "5", "tipo": "ordena", "etiqueta": "Aprueba piezas y fija el foco" }
+        {
+          "a": "9",
+          "tipo": "ordena",
+          "etiqueta": "Aprueba y encarga Reels"
+        },
+        {
+          "a": "1",
+          "tipo": "ordena",
+          "etiqueta": "Aprueba piezas y fija el foco"
+        },
+        {
+          "a": "2",
+          "tipo": "ordena",
+          "etiqueta": "Aprueba piezas y fija el foco"
+        },
+        {
+          "a": "3",
+          "tipo": "ordena",
+          "etiqueta": "Aprueba piezas y fija el foco"
+        },
+        {
+          "a": "4",
+          "tipo": "ordena",
+          "etiqueta": "Aprueba piezas y fija el foco"
+        },
+        {
+          "a": "5",
+          "tipo": "ordena",
+          "etiqueta": "Aprueba piezas y fija el foco"
+        }
       ]
     },
     {
@@ -28,8 +52,16 @@
       "cron": "0 9 * * *",
       "color": "#67e8f9",
       "conexiones": [
-        { "a": "6", "tipo": "datos", "etiqueta": "Registro de publicaciones" },
-        { "a": "7", "tipo": "datos", "etiqueta": "Publicaciones del día" }
+        {
+          "a": "6",
+          "tipo": "datos",
+          "etiqueta": "Registro de publicaciones"
+        },
+        {
+          "a": "7",
+          "tipo": "datos",
+          "etiqueta": "Publicaciones del día"
+        }
       ]
     },
     {
@@ -42,8 +74,16 @@
       "cron": "0 11 * * *",
       "color": "#a5b4fc",
       "conexiones": [
-        { "a": "6", "tipo": "datos", "etiqueta": "Registro de publicaciones" },
-        { "a": "7", "tipo": "datos", "etiqueta": "Publicaciones del día" }
+        {
+          "a": "6",
+          "tipo": "datos",
+          "etiqueta": "Registro de publicaciones"
+        },
+        {
+          "a": "7",
+          "tipo": "datos",
+          "etiqueta": "Publicaciones del día"
+        }
       ]
     },
     {
@@ -56,8 +96,16 @@
       "cron": "30 13 * * *",
       "color": "#f9a8d4",
       "conexiones": [
-        { "a": "6", "tipo": "datos", "etiqueta": "Registro de publicaciones" },
-        { "a": "7", "tipo": "datos", "etiqueta": "Publicaciones del día" }
+        {
+          "a": "6",
+          "tipo": "datos",
+          "etiqueta": "Registro de publicaciones"
+        },
+        {
+          "a": "7",
+          "tipo": "datos",
+          "etiqueta": "Publicaciones del día"
+        }
       ]
     },
     {
@@ -70,8 +118,16 @@
       "cron": "30 16 * * *",
       "color": "#fdba74",
       "conexiones": [
-        { "a": "6", "tipo": "datos", "etiqueta": "Publicaciones y seguimientos" },
-        { "a": "7", "tipo": "datos", "etiqueta": "Publicaciones y seguimientos" }
+        {
+          "a": "6",
+          "tipo": "datos",
+          "etiqueta": "Publicaciones y seguimientos"
+        },
+        {
+          "a": "7",
+          "tipo": "datos",
+          "etiqueta": "Publicaciones y seguimientos"
+        }
       ]
     },
     {
@@ -84,8 +140,16 @@
       "cron": "30 19 * * *",
       "color": "#fda4af",
       "conexiones": [
-        { "a": "6", "tipo": "datos", "etiqueta": "Registro de publicaciones" },
-        { "a": "7", "tipo": "datos", "etiqueta": "Publicaciones del día" }
+        {
+          "a": "6",
+          "tipo": "datos",
+          "etiqueta": "Registro de publicaciones"
+        },
+        {
+          "a": "7",
+          "tipo": "datos",
+          "etiqueta": "Publicaciones del día"
+        }
       ]
     },
     {
@@ -98,7 +162,11 @@
       "cron": "15 21 * * *",
       "color": "#5eead4",
       "conexiones": [
-        { "a": "7", "tipo": "reporta", "etiqueta": "Estado de publicaciones y conversaciones" }
+        {
+          "a": "7",
+          "tipo": "reporta",
+          "etiqueta": "Estado de publicaciones y conversaciones"
+        }
       ]
     },
     {
@@ -106,12 +174,16 @@
       "persona": "Sebastián",
       "nombre": "Líder de resultados",
       "rol": "Mide, hace la retrospectiva y propone ajustes",
-      "descripcion": "Junta las métricas del día (Business Suite, anuncios, seguidores), escribe el reporte diario y, los domingos, la retrospectiva semanal. Ajusta las fichas de los agentes y propone Reels y presupuesto al CEO.",
+      "descripcion": "Desde la nube de Atlas, cada noche lee las piezas y métricas del calendario de Marketing (las toma el Monitor), escribe el informe del día y, los domingos, la retrospectiva semanal. Propone Reels, experimentos y ajustes al CEO.",
       "horario": "Diario 22:30 · domingos retrospectiva",
       "cron": "30 22 * * *",
       "color": "#d9f99d",
       "conexiones": [
-        { "a": "0", "tipo": "reporta", "etiqueta": "Métricas diarias y retrospectiva semanal" }
+        {
+          "a": "0",
+          "tipo": "reporta",
+          "etiqueta": "Métricas diarias y retrospectiva semanal"
+        }
       ]
     },
     {
@@ -124,8 +196,16 @@
       "cron": "30 7 * * *",
       "color": "#f0abfc",
       "conexiones": [
-        { "a": "0", "tipo": "reporta", "etiqueta": "Competencia y tendencias" },
-        { "a": "7", "tipo": "reporta", "etiqueta": "Ideas con evidencia" }
+        {
+          "a": "0",
+          "tipo": "reporta",
+          "etiqueta": "Competencia y tendencias"
+        },
+        {
+          "a": "7",
+          "tipo": "reporta",
+          "etiqueta": "Ideas con evidencia"
+        }
       ]
     },
     {
@@ -138,19 +218,27 @@
       "cron": "0 10 * * 1,4",
       "color": "#fef08a",
       "conexiones": [
-        { "a": "7", "tipo": "datos", "etiqueta": "Reels producidos y programados" }
+        {
+          "a": "7",
+          "tipo": "datos",
+          "etiqueta": "Reels producidos y programados"
+        }
       ]
     },
     {
       "codigo": "G",
       "nombre": "Guardián",
       "rol": "Vigila a todos y recupera agentes caídos",
-      "descripcion": "Cada 15 minutos revisa que cada agente haya corrido a su hora y haya terminado bien. Si uno se cayó o quedó atrasado, lo vuelve a lanzar y avisa.",
-      "horario": "Cada 15 min",
-      "cron": "*/15 * * * *",
+      "descripcion": "Desde la nube de Atlas, cada 5 minutos revisa que cada agente haya corrido a su hora y terminado bien. Relanza a los de la nube que fallan o se cuelgan, marca atrasados a los del equipo local y avisa si ese equipo parece apagado.",
+      "horario": "Cada 5 min, en la nube de Atlas",
+      "cron": "*/5 * * * *",
       "color": "#cbd5e1",
       "conexiones": [
-        { "a": "*", "tipo": "vigila", "etiqueta": "Revisa que cada agente corra a su hora" }
+        {
+          "a": "*",
+          "tipo": "vigila",
+          "etiqueta": "Revisa que cada agente corra a su hora"
+        }
       ]
     }
   ]

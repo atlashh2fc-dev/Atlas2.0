@@ -126,6 +126,7 @@ export function MonitorOrbita({
   const version = `${actividad[0]?.id ?? ""}|${elegido?.ultimo_evento_at ?? ""}`;
   // Si al menos uno tiene persona, la red se presenta como un equipo (de IA, y lo dice).
   const conPersona = agentes.some((agente) => agente.persona?.trim());
+  const enLaNube = agentes.filter((agente) => agente.motor && agente.activo).length;
   const vivo = <IndicadorEnVivo enVivo={enVivo} actualizando={actualizando} oscuro={false} />;
 
   return (
@@ -154,6 +155,7 @@ export function MonitorOrbita({
                 {conPersona
                   ? "Toca a alguien del equipo para ver qué hace, cómo está y con quién trabaja."
                   : "Toca un agente para ver qué hace, cómo está y con quién se conecta."}
+                {enLaNube > 0 && ` ${enLaNube} de ${agentes.length} trabajan en la nube de Atlas.`}
               </p>
             </div>
             <IndicadorEnVivo enVivo={enVivo} actualizando={actualizando} oscuro />

@@ -75,6 +75,9 @@ export type AgenteOrbita = {
   cron: string | null;
   color: string | null;
   conexiones: ConexionAgente[];
+  /** Motor de Atlas que lo ejecuta en la nube; null = corre fuera de Atlas y solo reporta. */
+  motor: string | null;
+  activo: boolean;
   ultimo_estado: EstadoAgente;
   ultimo_evento_at: string | null;
   ultimo_resumen: string | null;
@@ -92,7 +95,7 @@ export type EventoOrbita = {
 };
 
 export const COLUMNAS_AGENTE =
-  "id, codigo, nombre, persona, rol, descripcion, horario, cron, color, conexiones, ultimo_estado, ultimo_evento_at, ultimo_resumen";
+  "id, codigo, nombre, persona, rol, descripcion, horario, cron, color, conexiones, motor, activo, ultimo_estado, ultimo_evento_at, ultimo_resumen";
 export const COLUMNAS_EVENTO = "id, agente_codigo, tipo, estado, resumen, detalle, relacionado_con, ocurrido_at";
 
 export const enLista = <T extends string>(lista: readonly T[], valor: unknown): valor is T =>

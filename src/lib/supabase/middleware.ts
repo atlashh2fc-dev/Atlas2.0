@@ -47,6 +47,10 @@ const MACHINE_ONLY_PATHS = new Set([
   // Los agentes de Atlas Órbita se declaran y reportan lo que hacen. Misma
   // puerta y misma clave que Marketing.
   "/api/orbita/eventos",
+  // Reloj y turnos de Órbita (validan CRON_SECRET) y puente de tareas (firma HMAC).
+  "/api/orbita/reloj",
+  "/api/orbita/ejecutar",
+  "/api/orbita/tareas",
   "/api/agentes/vigilante",
   "/api/agentes/vendedor",
   // El despacho de mensajes lo despierta el cron con el mismo secreto.

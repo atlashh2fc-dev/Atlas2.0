@@ -31,6 +31,7 @@ const soloCodigo = (sql: string) => sql.replace(/--[^\n]*/g, "");
 
 const MIGRACION = soloCodigo(leer("supabase/migrations/20261003210000_orbita_agentes.sql"));
 const RUTA = leer("src/app/api/orbita/eventos/route.ts");
+const REGISTRO = leer("src/lib/orbita-registro.server.ts");
 const MIDDLEWARE = leer("src/lib/supabase/middleware.ts");
 const SEMILLA = JSON.parse(leer("scripts/orbita-altius-agentes.json")) as { agentes: Record<string, unknown>[] };
 const ORG = "00000000-0000-0000-0000-000000000001";
@@ -82,14 +83,18 @@ test("un agente por código y empresa; los eventos se leen por empresa y fecha",
 // ---------------------------------------------------------------------------
 
 test("la ruta exige la firma de Marketing, ventana de 5 min y la empresa de la clave", () => {
-  assert.match(RUTA, /process\.env\.MARKETING_INGEST_SECRET/);
-  assert.match(RUTA, /status: 503/);
-  assert.match(RUTA, /x-atlas-timestamp/);
-  assert.match(RUTA, /x-atlas-signature/);
-  assert.match(RUTA, /createHmac\("sha256", secreto\)\.update\(`\$\{timestamp\}\.\$\{cuerpo\}`\)/);
-  assert.match(RUTA, /timingSafeEqual/);
-  assert.match(RUTA, /VENTANA_SEGUNDOS = 300/);
-  assert.match(RUTA, /process\.env\.MARKETING_INGEST_ORG/);
+  // La verificación vive en orbita-registro.server.ts y la comparten la ruta de eventos y el puente de tareas.
+  assert.match(RUTA, /await leerEnvioFirmado\(request, MAX_BYTES\)/);
+  assert.match(RUTA, /if \(!firmado\.ok\) return NextResponse\.json/);
+  assert.match(RUTA, /await empresaDeLaIntegracion\(admin\)/);
+  assert.match(REGISTRO, /process\.env\.MARKETING_INGEST_SECRET/);
+  assert.match(REGISTRO, /status: 503/);
+  assert.match(REGISTRO, /x-atlas-timestamp/);
+  assert.match(REGISTRO, /x-atlas-signature/);
+  assert.match(REGISTRO, /createHmac\("sha256", secreto\)\.update\(`\$\{timestamp\}\.\$\{cuerpo\}`\)/);
+  assert.match(REGISTRO, /timingSafeEqual/);
+  assert.match(REGISTRO, /VENTANA_SEGUNDOS = 300/);
+  assert.match(REGISTRO, /process\.env\.MARKETING_INGEST_ORG/);
   // La empresa sale de la clave, nunca del cuerpo.
   assert.doesNotMatch(RUTA, /organization_id:\s*envio/);
   assert.match(MIDDLEWARE, /"\/api\/orbita\/eventos"/);
@@ -291,6 +296,8 @@ const agente = (codigo: string, extra: Partial<AgenteOrbita> = {}): AgenteOrbita
   cron: null,
   color: null,
   conexiones: [],
+  motor: null,
+  activo: true,
   ultimo_estado: "ok",
   ultimo_evento_at: null,
   ultimo_resumen: null,
