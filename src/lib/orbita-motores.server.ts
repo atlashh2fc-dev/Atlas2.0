@@ -5,6 +5,8 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 
+import type { ResumenDeCorreo } from "./informe-marketing";
+import { ajustarCampanaDeCorreo, resumenDeCorreo } from "./marketing-correo.server";
 import { diaDeLaSemana, fechaDeChile, horaDeChile } from "./orbita-cron";
 import { registrarEventos, type EventoAGuardar } from "./orbita-registro.server";
 
@@ -166,6 +168,32 @@ async function contextoComun(turno: TurnoDelMotor): Promise<{ texto: string; equ
   return { texto: lineas.join("\n\n"), equipo: miembros, tareas };
 }
 
+/** El correo (campañas de Atlas Lead) como lo ve el cerebro: por campaña, con su id para ajustarla. */
+async function contextoDeCorreo(turno: TurnoDelMotor): Promise<{ texto: string; slug: string | null; correo: ResumenDeCorreo | null }> {
+  const { data: empresa } = await turno.admin.from("organizations").select("slug").eq("id", turno.organizationId).maybeSingle();
+  const slug = (empresa?.slug as string | undefined) ?? null;
+  if (!slug) return { texto: "## Correo\nSin datos: la empresa no tiene identificador.", slug, correo: null };
+  const resumen = await resumenDeCorreo(slug);
+  if (!resumen.ok) return { texto: `## Correo (campañas de Atlas Lead)\nSin datos: ${resumen.error}.`, slug, correo: null };
+  const c = resumen.datos;
+  const lineas = c.campanas
+    .filter((campana) => campana.activa || campana.enviados > 0)
+    .map(
+      (campana) =>
+        `- id ${campana.id} · ${campana.nombre} · ${campana.activa ? "ACTIVA" : "pausada"} · límite ${campana.limite_diario ?? "—"}/día · base ${campana.base} · escritos ${campana.contactados} · faltan ${campana.pendientes ?? "—"} · enviados 24 h ${campana.enviados_24h} · abrieron ${campana.abrieron} (+${campana.abrieron_24h}) · clics ${campana.clics} (+${campana.clics_24h}) · respuestas ${campana.respuestas} · rebotes ${campana.rebotes} · bajas ${campana.bajas}`,
+    );
+  const respuestas = c.respuestas_7d.slice(0, 10).map((r) => `- ${r.empresa ?? "Sin nombre"} · ${r.intencion ?? "sin clasificar"} · ${recortar(r.resumen, 200)}`);
+  return {
+    slug,
+    correo: c,
+    texto: [
+      `## Correo (campañas de Atlas Lead)\nCupo: ${c.cupo_diario ?? "—"} correos al día entre todas las campañas (los seguimientos salen primero); el correo sale de lunes a viernes. Enviados hoy: ${c.enviados_hoy}.`,
+      lineas.join("\n") || "Sin campañas con movimiento.",
+      `### Respuestas de 7 días\n${respuestas.join("\n") || "Ninguna."}`,
+    ].join("\n"),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Llamada a Claude con salida validada
 // ---------------------------------------------------------------------------
@@ -286,6 +314,16 @@ const EsquemaCeo = z.object({
     .array(z.object({ id: z.string(), decision: z.enum(["aprobada", "rechazada"]), motivo: z.string() }))
     .describe("Decisión sobre ideas nuevas del tablero, por su id (aprueba hasta 3 por semana)"),
   prioridad_semana: z.string().nullable().describe("Nueva prioridad de la semana (máximo 3 líneas). Los lunes es obligatoria; otros días solo si hay que cambiarla; si no, null"),
+  correo: z
+    .array(
+      z.object({
+        campana_id: z.string().describe("El id de la campaña, tal como aparece en la sección Correo"),
+        activa: z.boolean().nullable().describe("true para activarla, false para pausarla, null para no cambiarlo"),
+        limite_diario: z.number().int().min(1).max(100).nullable().describe("Primeros correos por día, o null para no cambiarlo"),
+        porque: z.string(),
+      }),
+    )
+    .describe("Ajustes a campañas de correo existentes (activar, pausar, cambiar el límite diario). Vacío si no hay que tocar nada. No se crean campañas ni se cambia el contenido."),
   escalamientos: z
     .array(z.object({ que: z.string(), recomendacion: z.string(), plazo: z.string() }))
     .describe("Solo lo que una IA no puede decidir: dinero, precios u ofertas nuevas, legal, seguridad de cuentas, identidad de marca, o algo a nombre personal del dueño"),
@@ -299,10 +337,13 @@ Cada día:
 3. Asigna tareas concretas al agente que corresponde. No dupliques tareas pendientes.
 4. Los lunes, además: aprueba o rechaza cada propuesta de la retrospectiva del domingo y escribe la prioridad de la semana.
 
+Orquestas todos los canales, no solo las publicaciones: el correo también es tuyo. Revisa cada campaña (cuántos faltan por escribir, aperturas, clics, respuestas, rebotes y bajas) y ajústala con "correo": pausa la que rebota o genera bajas, activa la que corresponde al foco y reparte el límite diario según lo que responde mejor, sin pasar del cupo total. Subir el cupo total cuesta dinero: eso se escala.
+
 Se escala al dueño SOLO lo indelegable (dinero, precios u ofertas nuevas, legal, seguridad de cuentas, identidad de marca, algo a nombre personal del dueño), con tu recomendación y plazo. Lo demás lo decides tú.`;
 
 async function turnoCeo(turno: TurnoDelMotor): Promise<ResultadoDelTurno> {
   const comun = await contextoComun(turno);
+  const correo = await contextoDeCorreo(turno);
   const [reportes, inteligencia, ideas, decisiones, escalamientos] = await Promise.all([
     notas(turno, ["reporte", "retrospectiva"], 2),
     notas(turno, ["inteligencia"], 1),
@@ -315,6 +356,7 @@ async function turnoCeo(turno: TurnoDelMotor): Promise<ResultadoDelTurno> {
 
   const contexto = [
     comun.texto,
+    correo.texto,
     `## Últimos informes del Líder de resultados\n${reportes.map((r) => `### ${r.titulo} (${horaCorta(r.created_at)})\n${recortar(r.contenido, 5000)}`).join("\n\n") || "Sin informes todavía."}`,
     `## Última inteligencia (competencia y viral)\n${inteligencia[0] ? `### ${inteligencia[0].titulo}\n${recortar(inteligencia[0].contenido, 5000)}` : "Sin inteligencia todavía."}`,
     `## Ideas nuevas del tablero (decide por id)\n${ideasNuevas.map((i) => `- id ${i.id} · ${i.titulo}${i.datos?.puntaje ? ` · puntaje ${i.datos.puntaje}` : ""}\n  ${recortar(JSON.stringify(i.datos), 600)}`).join("\n") || "Sin ideas nuevas."}`,
@@ -364,7 +406,27 @@ async function turnoCeo(turno: TurnoDelMotor): Promise<ResultadoDelTurno> {
     if (error) throw new ErrorDelMotor(`No se pudo decidir la idea ${idea.titulo}: ${error.message}`);
   }
 
+  // Ajustes de correo: solo campañas que vinieron en el contexto, por el puente firmado.
+  const conocidas = new Map((correo.correo?.campanas ?? []).map((campana) => [campana.id, campana]));
+  const ajustes: EventoAGuardar[] = [];
+  for (const ajuste of salida.correo) {
+    const campana = conocidas.get(ajuste.campana_id);
+    if (!campana || !correo.slug || (ajuste.activa === null && ajuste.limite_diario === null)) continue;
+    const resultado = await ajustarCampanaDeCorreo(correo.slug, {
+      campana_id: campana.id,
+      ...(ajuste.activa !== null ? { activa: ajuste.activa } : {}),
+      ...(ajuste.limite_diario !== null ? { limite_diario: ajuste.limite_diario } : {}),
+    });
+    const que = [ajuste.activa === true ? "activada" : ajuste.activa === false ? "pausada" : null, ajuste.limite_diario !== null ? `límite ${ajuste.limite_diario}/día` : null].filter(Boolean).join(", ");
+    ajustes.push(
+      resultado.ok
+        ? { agente: turno.agente.codigo, tipo: "decision", resumen: `Correo · ${campana.nombre}: ${que}. ${ajuste.porque}`, detalle: { correo: true, campana_id: campana.id } }
+        : { agente: turno.agente.codigo, tipo: "alerta", resumen: `No se pudo ajustar la campaña de correo «${campana.nombre}»: ${resultado.error}`, detalle: { correo: true } },
+    );
+  }
+
   await eventos(turno, [
+    ...ajustes,
     ...salida.decisiones
       .filter((d) => destino(d.para))
       .map((d) => ({ agente: turno.agente.codigo, tipo: "decision" as const, resumen: d.titulo, relacionado_con: destino(d.para) })),
@@ -375,7 +437,7 @@ async function turnoCeo(turno: TurnoDelMotor): Promise<ResultadoDelTurno> {
   const aprobadas = salida.ideas.filter((i) => i.decision === "aprobada" && porId.has(i.id)).length;
   const resumen = [
     salida.urgente ? `URGENTE: ${salida.urgente}` : null,
-    `${salida.decisiones.length} decisiones, ${tareas.length} tareas, ${aprobadas} ideas aprobadas, ${salida.escalamientos.length} escalamientos`,
+    `${salida.decisiones.length} decisiones, ${tareas.length} tareas, ${aprobadas} ideas aprobadas, ${ajustes.filter((a) => a.tipo === "decision").length} ajustes de correo, ${salida.escalamientos.length} escalamientos`,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -398,6 +460,8 @@ const EsquemaLider = z.object({
 
 const SISTEMA_LIDER = `Tu cargo: Líder de resultados (agente 7). Mides, haces la retrospectiva y propones mejoras al CEO (agente 0). No publicas nada.
 
+Mides todos los canales: publicaciones, Reels y correo (la sección "Correo" trae cada campaña: escritos, faltan, aperturas, clics, respuestas, rebotes y bajas).
+
 Cada noche: con las piezas y métricas que te entregan (las que llegan al calendario de Marketing de Atlas) y la bitácora del equipo, escribe el informe del día: lo que pasó, la mejor y la peor pieza, y alertas (Reel con retención a 3 s bajo 20 %, post de grupo con 0 interacciones a las 48 h, anuncio con costo por conversación sobre 2 veces el mejor, grupo que borró un post, agentes que fallan).
 
 Los domingos escribe la retrospectiva semanal: tablero de la semana frente a la anterior, ranking de piezas (top 3 y bottom 3 con el porqué), diagnóstico, empezar/dejar/seguir, hasta 3 experimentos (hipótesis, cambio, métrica, umbral) y propuestas para el CEO (Reels de la semana con gancho y guion de 3 líneas, presupuesto, ajustes). Nunca propongas precios.
@@ -406,6 +470,7 @@ Si una métrica no está, escribe "sin dato" y di cómo conseguirla. No inventes
 
 async function turnoLider(turno: TurnoDelMotor): Promise<ResultadoDelTurno> {
   const comun = await contextoComun(turno);
+  const correo = await contextoDeCorreo(turno);
   const esDomingo = diaDeLaSemana(turno.ahora) === 0;
   const desde = new Date(turno.ahora.getTime() - (esDomingo ? 14 : 7) * 86_400_000).toISOString();
   const [piezasR, reportes, inteligencia, ideas] = await Promise.all([
@@ -429,6 +494,7 @@ async function turnoLider(turno: TurnoDelMotor): Promise<ResultadoDelTurno> {
 
   const contexto = [
     comun.texto,
+    correo.texto,
     `## Calendario de Marketing (${esDomingo ? "14" : "7"} días): conteo por canal y estado\n${[...porEstado].map(([k, v]) => `- ${k}: ${v}`).join("\n") || "Sin piezas."}`,
     `## Piezas con métricas (${conMetricas.length})\n${conMetricas.map((p) => `- ${horaCorta((p.published_at ?? p.scheduled_at) as string | null)} · ${p.channel}/${p.format} · ${recortar(p.title as string, 120)} · agente ${p.agent ?? "—"} · ${JSON.stringify(p.metrics)}`).join("\n") || "Ninguna pieza trae métricas todavía."}`,
     `## Piezas sin métricas (muestra)\n${piezas.filter((p) => !conMetricas.includes(p)).slice(0, 60).map((p) => `- ${horaCorta((p.published_at ?? p.scheduled_at) as string | null)} · ${p.channel}/${p.format} · ${p.status} · ${recortar(p.title as string, 100)} · agente ${p.agent ?? "—"}`).join("\n") || "—"}`,

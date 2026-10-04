@@ -1,6 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import {
+  armarInformeDeMarketing,
+  type AgenteDelInforme,
+  type DatosDelInforme,
+  type EventoDelInforme,
+  type PiezaDelInforme,
+} from "@/lib/informe-marketing";
 import { verifyIntegrationV2WorkerAuthorization } from "@/lib/integration-v2";
+import { resumenDeCorreo } from "@/lib/marketing-correo.server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
@@ -9,6 +17,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * Los dos fallos de esta semana no gritaron. La campaña enviaba cero correos y
  * decía "éxito"; el sincronizador del buzón reportaba verde sin credenciales. Un
  * sistema que trabaja solo no falla con una excepción: falla quedándose callado.
+ *
+ * Desde el 04-10-2026 el correo es el informe diario de marketing completo
+ * (src/lib/informe-marketing.ts): correo, grupos, Reels, respuestas, decisiones
+ * del equipo de agentes y, al final, esta revisión del circuito.
  *
  * Por eso el correo sale todos los días, haya o no problemas. Un informe que
  * solo llega cuando algo se rompe enseña a ignorar la bandeja: si hoy no llegó,
@@ -23,80 +35,66 @@ type Revision = { revision: string; estado: string; detalle: string };
 type Verificacion = { empresa: string; alertas: number; avisos: number; revisiones: Revision[] };
 type Resumen = Record<string, number | string>;
 
-const SIGNOS: Record<string, string> = { ok: "✓", aviso: "!", alerta: "✕", sin_datos: "·" };
-const COLORES: Record<string, string> = {
-  ok: "#16794a",
-  aviso: "#9a6700",
-  alerta: "#b42318",
-  sin_datos: "#64748b",
-};
-
-function escapar(valor: unknown): string {
-  return String(valor ?? "")
+const escapar = (valor: unknown): string =>
+  String(valor ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
-}
 
-function cuerpoHtml(empresa: string, verificacion: Verificacion, resumen: Resumen): string {
-  const filas = verificacion.revisiones
-    .map(
-      (r) => `<tr>
-        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;color:${COLORES[r.estado] ?? "#334155"};font-weight:600;white-space:nowrap">
-          ${SIGNOS[r.estado] ?? "·"} ${escapar(r.revision)}
-        </td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;color:#334155">${escapar(r.detalle)}</td>
-      </tr>`,
-    )
-    .join("");
+const HORA = 3_600_000;
+const NOMBRE_DE_EMPRESA: Record<string, string> = { altius: "Altius" };
+/** Publicaciones en grupos comprometidas por día (mínimo que pidió la dirección). */
+const META_GRUPOS = Number(process.env.ORBITA_META_GRUPOS) || 20;
 
-  const numero = (clave: string) => escapar(resumen[clave] ?? 0);
+/**
+ * Todo lo que el informe muestra, leído de una vez: el calendario de Marketing
+ * (lo comprometido y lo hecho), la red de Órbita (equipo, decisiones, alertas),
+ * el correo (por el puente con Atlas Lead) y las ventas.
+ */
+async function datosDelInforme(
+  admin: ReturnType<typeof createAdminClient>,
+  empresa: string,
+  verificacion: Verificacion,
+  resumen: Resumen,
+): Promise<DatosDelInforme> {
+  const ahora = new Date();
+  const hace24 = new Date(ahora.getTime() - 24 * HORA).toISOString();
+  const en24 = new Date(ahora.getTime() + 24 * HORA).toISOString();
+  const { data: organizationId } = await admin.rpc("organization_id_by_slug", { p_slug: empresa });
+  const COLUMNAS = "title, channel, format, status, agent, target, body, scheduled_at, published_at, external_id";
 
-  return `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:640px;color:#0f172a">
-    <h2 style="margin:0 0 4px">Atlas · ${escapar(empresa)}</h2>
-    <p style="margin:0 0 20px;color:#64748b;font-size:13px">Lo que hizo el equipo en las últimas 24 horas.</p>
+  const [correo, piezas, proximas, agentes, eventos, analisis] = await Promise.all([
+    resumenDeCorreo(empresa),
+    admin.from("marketing_items").select(COLUMNAS).eq("organization_id", organizationId).gte("scheduled_at", hace24).lte("scheduled_at", ahora.toISOString()).order("scheduled_at").limit(400),
+    admin.from("marketing_items").select(COLUMNAS).eq("organization_id", organizationId).gt("scheduled_at", ahora.toISOString()).lte("scheduled_at", en24).order("scheduled_at").limit(200),
+    admin.from("orbita_agentes").select("codigo, nombre, persona, motor, activo, ultimo_estado, ultimo_evento_at, ultimo_resumen").eq("organization_id", organizationId).order("codigo"),
+    admin.from("orbita_eventos").select("agente_codigo, tipo, resumen, relacionado_con, ocurrido_at").eq("organization_id", organizationId).neq("tipo", "pulso").gte("ocurrido_at", hace24).order("ocurrido_at", { ascending: false }).limit(200),
+    admin.from("orbita_notas").select("titulo, contenido, created_at").eq("organization_id", organizationId).in("tipo", ["reporte", "retrospectiva"]).gte("created_at", new Date(ahora.getTime() - 36 * HORA).toISOString()).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+  ]);
 
-    <table style="border-collapse:collapse;width:100%;margin-bottom:24px">
-      <tr>
-        <td style="padding:10px 12px;background:#f8fafc;border-radius:6px">
-          <strong style="font-size:22px">${numero("contactos_nuevos")}</strong><br>
-          <span style="color:#64748b;font-size:12px">contactos nuevos</span>
-        </td>
-        <td style="padding:10px 12px;background:#f8fafc;border-radius:6px">
-          <strong style="font-size:22px">${numero("aperturas")}</strong><br>
-          <span style="color:#64748b;font-size:12px">aperturas</span>
-        </td>
-        <td style="padding:10px 12px;background:#f8fafc;border-radius:6px">
-          <strong style="font-size:22px">${numero("clics")}</strong><br>
-          <span style="color:#64748b;font-size:12px">clics</span>
-        </td>
-        <td style="padding:10px 12px;background:#f8fafc;border-radius:6px">
-          <strong style="font-size:22px">${numero("negocios_nuevos")}</strong><br>
-          <span style="color:#64748b;font-size:12px">negocios nuevos</span>
-        </td>
-        <td style="padding:10px 12px;background:#f8fafc;border-radius:6px">
-          <strong style="font-size:22px">${numero("respuestas_recibidas")}</strong><br>
-          <span style="color:#64748b;font-size:12px">respuestas</span>
-        </td>
-        <td style="padding:10px 12px;background:#f8fafc;border-radius:6px">
-          <strong style="font-size:22px">${numero("reuniones_agendadas")}</strong><br>
-          <span style="color:#64748b;font-size:12px">reuniones</span>
-        </td>
-      </tr>
-    </table>
+  const equipo = ((agentes.data ?? []) as AgenteDelInforme[]).sort((a, b) => a.codigo.localeCompare(b.codigo, "es", { numeric: true }));
+  // Mientras el Líder no escriba en la memoria de la nube, vale su último resumen.
+  const lider = equipo.find((agente) => agente.codigo === "7");
+  const liderReciente = lider?.ultimo_resumen && lider.ultimo_evento_at && Date.parse(lider.ultimo_evento_at) > ahora.getTime() - 36 * HORA;
 
-    <h3 style="margin:0 0 8px;font-size:14px">Revisión del circuito</h3>
-    <table style="border-collapse:collapse;width:100%;font-size:13px">${filas}</table>
-
-    <p style="margin:24px 0 0;color:#334155;font-size:13px">
-      Hay <strong>${numero("negocios_abiertos")}</strong> negocios abiertos,
-      <strong>${numero("para_hoy")}</strong> con acción para hoy y
-      <strong>${numero("esperando_tu_revision")}</strong> respuesta(s) del agente esperando tu visto bueno.
-    </p>
-    <p style="margin:16px 0 0;color:#94a3b8;font-size:12px">
-      Este correo llega todos los días, esté todo bien o no. Si un día no llega, el vigilante se cayó.
-    </p>
-  </div>`;
+  return {
+    empresa: NOMBRE_DE_EMPRESA[empresa] ?? empresa,
+    ahora: ahora.toISOString(),
+    correo: correo.ok ? correo.datos : null,
+    correoError: correo.ok ? null : correo.error,
+    piezas: (piezas.data ?? []) as PiezaDelInforme[],
+    proximas: (proximas.data ?? []) as PiezaDelInforme[],
+    agentes: equipo,
+    eventos: (eventos.data ?? []) as EventoDelInforme[],
+    analisis: analisis.data
+      ? (analisis.data as { titulo: string; contenido: string; created_at: string })
+      : liderReciente
+        ? { titulo: `Último informe de ${lider.persona ?? lider.nombre} (${lider.nombre})`, contenido: lider.ultimo_resumen as string, created_at: lider.ultimo_evento_at as string }
+        : null,
+    ventas: resumen,
+    revisiones: verificacion.revisiones,
+    metaGrupos: META_GRUPOS,
+  };
 }
 
 async function enviarInforme(asunto: string, html: string, destino: string) {
@@ -181,12 +179,12 @@ export async function GET(request: NextRequest) {
     datosVerificacion.revisiones = [...datosVerificacion.revisiones, ...revisionesVendedor];
     datosVerificacion.alertas += revisionesVendedor.filter((r) => r.estado === "alerta").length;
 
-    const asunto = datosVerificacion.alertas > 0
-      ? `Atlas · ${empresa}: ${datosVerificacion.alertas} alerta(s) que revisar`
-      : `Atlas · ${empresa}: todo en orden · ${datosResumen.negocios_nuevos ?? 0} negocios nuevos`;
+    // Un solo informe de marketing: lo comprometido, lo hecho y lo que volvió
+    // en todos los canales, con el circuito al final.
+    const informe = armarInformeDeMarketing(await datosDelInforme(admin, empresa, datosVerificacion, datosResumen));
 
     const envio = destino
-      ? await enviarInforme(asunto, cuerpoHtml(empresa, datosVerificacion, datosResumen), destino)
+      ? await enviarInforme(informe.asunto, informe.html, destino)
       : { enviado: false, motivo: "No hay a quién enviarle el informe" };
 
     // Queda anotado el resultado y si el informe salió: sin esto, un correo que
@@ -196,7 +194,7 @@ export async function GET(request: NextRequest) {
       p_organization_slug: empresa,
       p_estado: datosVerificacion.alertas > 0 ? "alerta" : "ok",
       p_resumen: `${datosVerificacion.alertas} alerta(s); informe ${envio.enviado ? "enviado" : "no enviado"}`,
-      p_detalle: { resumen: datosResumen, envio, revisiones: datosVerificacion.revisiones },
+      p_detalle: { resumen: datosResumen, envio, revisiones: datosVerificacion.revisiones, puntos_del_informe: informe.alertas },
     });
 
     salida.push({ empresa, alertas: datosVerificacion.alertas, resumen: datosResumen, envio });
