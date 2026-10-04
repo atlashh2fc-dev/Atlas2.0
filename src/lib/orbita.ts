@@ -65,7 +65,10 @@ export type ConexionAgente = { a: string; tipo: TipoConexion; etiqueta?: string 
 export type AgenteOrbita = {
   id: string;
   codigo: string;
+  /** El cargo: "Educador", "CEO de Marketing". */
   nombre: string;
+  /** Nombre de persona con que se presenta en la red ("Tomás"). Opcional. */
+  persona: string | null;
   rol: string | null;
   descripcion: string | null;
   horario: string | null;
@@ -89,11 +92,22 @@ export type EventoOrbita = {
 };
 
 export const COLUMNAS_AGENTE =
-  "id, codigo, nombre, rol, descripcion, horario, cron, color, conexiones, ultimo_estado, ultimo_evento_at, ultimo_resumen";
+  "id, codigo, nombre, persona, rol, descripcion, horario, cron, color, conexiones, ultimo_estado, ultimo_evento_at, ultimo_resumen";
 export const COLUMNAS_EVENTO = "id, agente_codigo, tipo, estado, resumen, detalle, relacionado_con, ocurrido_at";
 
 export const enLista = <T extends string>(lista: readonly T[], valor: unknown): valor is T =>
   typeof valor === "string" && (lista as readonly string[]).includes(valor);
+
+/** Cómo se llama en pantalla: su persona ("Tomás") o, si no tiene, su cargo. */
+export function nombreDelAgente(agente: Pick<AgenteOrbita, "nombre" | "persona">): string {
+  return agente.persona?.trim() || agente.nombre;
+}
+
+/** Persona y cargo juntos ("Tomás · Educador"), o solo el cargo. */
+export function etiquetaDelAgente(agente: Pick<AgenteOrbita, "nombre" | "persona">): string {
+  const persona = agente.persona?.trim();
+  return persona ? `${persona} · ${agente.nombre}` : agente.nombre;
+}
 
 /** Color de identidad del agente, con un respaldo estable si no trae uno. */
 const PALETA_RESPALDO = ["#38bdf8", "#a78bfa", "#f472b6", "#34d399", "#fb923c", "#22d3ee", "#facc15", "#818cf8"];

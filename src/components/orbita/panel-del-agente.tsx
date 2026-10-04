@@ -11,8 +11,10 @@ import {
   TIPOS_CONEXION,
   TIPO_EVENTO_INFO,
   aristasDeLaRed,
+  etiquetaDelAgente,
   haceCuanto,
   horaExacta,
+  nombreDelAgente,
   type AgenteOrbita,
   type EventoOrbita,
   type TipoConexion,
@@ -97,7 +99,7 @@ export function PanelDelAgente({
     <SlideOver
       open
       onClose={onCerrar}
-      title={`${agente.codigo} · ${agente.nombre}`}
+      title={etiquetaDelAgente(agente)}
       description={agente.rol ?? undefined}
       width="md"
     >
@@ -170,7 +172,7 @@ export function PanelDelAgente({
                           className="inline-flex h-11 items-center gap-2 rounded-lg border border-border bg-surface px-2.5 text-[13px] text-foreground transition-colors hover:bg-surface-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring md:h-9"
                         >
                           <ChipDeAgente agente={destino} />
-                          {destino.nombre}
+                          {nombreDelAgente(destino)}
                         </button>
                       );
                     })}
@@ -223,11 +225,11 @@ export function PanelDelAgente({
                         <span className="font-medium text-foreground">{tipo.label}</span>
                         {otro && (
                           <span className="inline-flex items-center gap-1">
-                            {entrante ? `de ${otro.codigo} · ${otro.nombre}` : (
+                            {entrante ? `de ${nombreDelAgente(otro)}` : (
                               <>
                                 <ArrowRight size={12} aria-hidden="true" />
                                 <span className="sr-only">hacia</span>
-                                {otro.codigo} · {otro.nombre}
+                                {nombreDelAgente(otro)}
                               </>
                             )}
                           </span>
