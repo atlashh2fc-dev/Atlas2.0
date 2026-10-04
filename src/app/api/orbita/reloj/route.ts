@@ -1,18 +1,19 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 
 import { cronAutorizado } from "@/lib/cron-autorizado";
 import { decidirGuardian, type AgenteParaGuardian, type EjecucionParaGuardian } from "@/lib/orbita-guardian";
 import { horaExacta } from "@/lib/orbita";
 import { claveDeIaDeOrbita } from "@/lib/orbita-motores.server";
 import { registrarEventos, type EventoAGuardar } from "@/lib/orbita-registro.server";
+import { tomarTurno } from "@/lib/orbita-turno.server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
  * El reloj de Órbita: corre cada 5 minutos en Vercel Cron y es el Guardián
  * de la nube. Por cada empresa con agentes en la nube:
  *
- * 1. lanza los turnos que tocan (cada uno en su propia llamada a
- *    /api/orbita/ejecutar, para que un agente lento no frene a los demás);
+ * 1. lanza los turnos que tocan (cada uno corre en paralelo después de
+ *    responder, para que un agente lento no frene a los demás);
  * 2. recupera los turnos que fallaron o se colgaron (hasta 3 intentos);
  * 3. marca atrasados a los agentes de fuera de Atlas que no corrieron a su
  *    hora y avisa si ese equipo parece apagado;
@@ -21,7 +22,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * No depende de ningún computador encendido.
  */
 export const runtime = "nodejs";
-export const maxDuration = 60;
+// Los turnos corren después de responder, dentro de esta función: hasta 5 min.
+export const maxDuration = 300;
 
 const COLUMNAS_AGENTE = "codigo, nombre, persona, motor, activo, cron, duracion_max_min, ultimo_estado, ultimo_evento_at";
 const COLUMNAS_EJECUCION = "id, agente_codigo, programada_para, intento, estado, iniciada_at, terminada_at, created_at";
@@ -41,7 +43,7 @@ export async function GET(request: Request) {
   const salida: Record<string, unknown>[] = [];
   for (const organizationId of empresas) {
     try {
-      salida.push({ empresa: organizationId, ...(await vuelta(admin, organizationId, ahora, request)) });
+      salida.push({ empresa: organizationId, ...(await vuelta(admin, organizationId, ahora)) });
     } catch (error) {
       const motivo = error instanceof Error ? error.message : "Error desconocido";
       console.error(`[orbita-reloj] ${organizationId}: ${motivo}`);
@@ -51,7 +53,7 @@ export async function GET(request: Request) {
   return NextResponse.json({ ok: true, empresas: salida });
 }
 
-async function vuelta(admin: ReturnType<typeof createAdminClient>, organizationId: string, ahora: Date, request: Request) {
+async function vuelta(admin: ReturnType<typeof createAdminClient>, organizationId: string, ahora: Date) {
   const [agentesR, ejecucionesR] = await Promise.all([
     admin.from("orbita_agentes").select(COLUMNAS_AGENTE).eq("organization_id", organizationId),
     admin
@@ -109,16 +111,15 @@ async function vuelta(admin: ReturnType<typeof createAdminClient>, organizationI
       .maybeSingle();
     // Otro reloj ya lo creó (choca con el único por turno): no se lanza dos veces.
     if (error || !creada) continue;
-    const respuesta = await fetch(new URL("/api/orbita/ejecutar", request.url), {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${process.env.CRON_SECRET?.trim() ?? ""}` },
-      body: JSON.stringify({ ejecucion_id: creada.id }),
-    }).catch((falla: unknown) => falla as Error);
-    if (respuesta instanceof Error || !respuesta.ok) {
-      // Queda pendiente: el Guardián la da por perdida a los 5 min y reintenta.
-      console.error(`[orbita-reloj] no se pudo lanzar a ${lanzamiento.codigo}`, respuesta instanceof Error ? respuesta.message : respuesta.status);
+    // El turno corre dentro de esta misma función (después de responder), sin
+    // llamarse por HTTP: esa llamada no llegaba al motor en producción.
+    const turno = await tomarTurno(admin, creada.id as string);
+    if (!turno.tomada) {
+      // Queda pendiente o cerrada con su motivo: el Guardián la reintenta.
+      console.error(`[orbita-reloj] no se pudo lanzar a ${lanzamiento.codigo}`, turno.error ?? "ya tomada");
       continue;
     }
+    after(turno.trabajo);
     lanzados.push(lanzamiento.codigo);
     if (guardian && lanzamiento.motivo !== "turno") {
       eventos.push({
