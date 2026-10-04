@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Radio } from "lucide-react";
+import { ArrowRight, Radio, Sparkles } from "lucide-react";
 
 import {
   ESTADO_AGENTE_INFO,
@@ -10,8 +10,10 @@ import {
   TIPO_CONEXION_INFO,
   TIPO_EVENTO_INFO,
   colorDelAgente,
+  etiquetaDelAgente,
   haceCuanto,
   horaExacta,
+  nombreDelAgente,
   type AgenteOrbita,
   type EstadoAgente,
   type EventoOrbita,
@@ -122,6 +124,8 @@ export function MonitorOrbita({
     [agentes],
   );
   const version = `${actividad[0]?.id ?? ""}|${elegido?.ultimo_evento_at ?? ""}`;
+  // Si al menos uno tiene persona, la red se presenta como un equipo (de IA, y lo dice).
+  const conPersona = agentes.some((agente) => agente.persona?.trim());
   const vivo = <IndicadorEnVivo enVivo={enVivo} actualizando={actualizando} oscuro={false} />;
 
   return (
@@ -140,10 +144,17 @@ export function MonitorOrbita({
         >
           <header className="flex flex-wrap items-start justify-between gap-3 px-5 pt-4">
             <div>
-              <h2 id="orbita-red-titulo" className="text-sm font-semibold text-slate-100">
-                Red de agentes
-              </h2>
-              <p className="mt-0.5 text-xs text-slate-400">Toca un agente para ver qué hace, cómo está y con quién se conecta.</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 id="orbita-red-titulo" className="text-sm font-semibold text-slate-100">
+                  {conPersona ? "Equipo de marketing" : "Red de agentes"}
+                </h2>
+                <SelloEquipoIA oscuro />
+              </div>
+              <p className="mt-0.5 text-xs text-slate-400">
+                {conPersona
+                  ? "Toca a alguien del equipo para ver qué hace, cómo está y con quién trabaja."
+                  : "Toca un agente para ver qué hace, cómo está y con quién se conecta."}
+              </p>
             </div>
             <IndicadorEnVivo enVivo={enVivo} actualizando={actualizando} oscuro />
           </header>
@@ -188,9 +199,12 @@ export function MonitorOrbita({
         {/* Teléfono: la red no cabe; los agentes van en lista, lo urgente arriba. */}
         <section aria-labelledby="orbita-lista-titulo" className="min-w-0 space-y-3 md:hidden">
           <div className="flex items-center justify-between gap-3">
-            <h2 id="orbita-lista-titulo" className="text-sm font-semibold text-foreground">
-              Agentes
-            </h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 id="orbita-lista-titulo" className="text-sm font-semibold text-foreground">
+                {conPersona ? "Equipo de marketing" : "Agentes"}
+              </h2>
+              <SelloEquipoIA oscuro={false} />
+            </div>
             {vivo}
           </div>
           <ul className="space-y-2">
@@ -206,8 +220,12 @@ export function MonitorOrbita({
                   >
                     <ChipDeAgente agente={agente} tamano="lg" />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold text-foreground">{agente.nombre}</span>
-                      {agente.rol && <span className="block truncate text-xs text-muted-foreground">{agente.rol}</span>}
+                      <span className="block truncate text-sm font-semibold text-foreground">{nombreDelAgente(agente)}</span>
+                      {agente.persona?.trim() ? (
+                        <span className="block truncate text-xs text-muted-foreground">{agente.nombre}</span>
+                      ) : (
+                        agente.rol && <span className="block truncate text-xs text-muted-foreground">{agente.rol}</span>
+                      )}
                       <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
                         <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
                           <span
@@ -287,7 +305,7 @@ function FilaDeActividad({
     <button
       type="button"
       onClick={() => onSeleccionar(evento.agente_codigo)}
-      aria-label={`${agente?.nombre ?? evento.agente_codigo}: ${tipo.label}${evento.resumen ? `, ${evento.resumen}` : ""}. ${haceCuanto(evento.ocurrido_at, ahora)}. Abrir el agente.`}
+      aria-label={`${agente ? etiquetaDelAgente(agente) : evento.agente_codigo}: ${tipo.label}${evento.resumen ? `, ${evento.resumen}` : ""}. ${haceCuanto(evento.ocurrido_at, ahora)}. Abrir el agente.`}
       className={cn(
         "flex min-h-11 w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-muted focus:outline-none focus-visible:bg-surface-muted focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
         reciente && "orbita-nuevo"
@@ -296,7 +314,7 @@ function FilaDeActividad({
       {agente ? <ChipDeAgente agente={agente} /> : <span className="size-6 shrink-0 rounded-md bg-surface-muted" aria-hidden="true" />}
       <span className="min-w-0 flex-1">
         <span className="flex items-baseline gap-2">
-          <span className="truncate text-[13px] font-medium text-foreground">{agente?.nombre ?? `Agente ${evento.agente_codigo}`}</span>
+          <span className="truncate text-[13px] font-medium text-foreground">{agente ? etiquetaDelAgente(agente) : `Agente ${evento.agente_codigo}`}</span>
           <time dateTime={evento.ocurrido_at} title={horaExacta(evento.ocurrido_at)} className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground">
             {haceCuanto(evento.ocurrido_at, ahora)}
           </time>
@@ -309,13 +327,29 @@ function FilaDeActividad({
           {destino && (
             <span className="inline-flex items-center gap-1">
               <ArrowRight size={11} aria-hidden="true" />
-              {destino.codigo} · {destino.nombre}
+              {nombreDelAgente(destino)}
             </span>
           )}
         </span>
         {evento.resumen && <span className="mt-1 line-clamp-2 block text-[13px] leading-snug text-foreground/85">{evento.resumen}</span>}
       </span>
     </button>
+  );
+}
+
+/** Que se vea un equipo, pero que nadie crea que son personas: son agentes de IA. */
+function SelloEquipoIA({ oscuro }: { oscuro: boolean }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium",
+        oscuro ? "border-sky-400/30 bg-sky-400/10 text-sky-200" : "border-border bg-surface-muted text-muted-foreground"
+      )}
+      title="Cada integrante es un agente de inteligencia artificial que trabaja con horario propio"
+    >
+      <Sparkles size={11} aria-hidden="true" />
+      Equipo de IA
+    </span>
   );
 }
 

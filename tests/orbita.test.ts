@@ -15,7 +15,9 @@ import {
   cambiosTrasEventos,
   conexionesValidas,
   efectosDelEvento,
+  etiquetaDelAgente,
   haceCuanto,
+  nombreDelAgente,
   posicionesDeLaRed,
   pulsosRecientes,
   resumenDeOrbita,
@@ -282,6 +284,7 @@ const agente = (codigo: string, extra: Partial<AgenteOrbita> = {}): AgenteOrbita
   id: codigo,
   codigo,
   nombre: `Agente ${codigo}`,
+  persona: null,
   rol: null,
   descripcion: null,
   horario: null,
@@ -356,4 +359,50 @@ test("las horas relativas se leen como una persona", () => {
   assert.equal(haceCuanto(hace(30 * 3600), ahora), "ayer");
   assert.equal(haceCuanto(hace(4 * 86400), ahora), "hace 4 d");
   assert.equal(haceCuanto(null, ahora), "sin actividad");
+});
+
+// ---------------------------------------------------------------------------
+// Persona: la red se ve como un equipo, sin perder el cargo
+// ---------------------------------------------------------------------------
+
+test("la persona es opcional, se limpia y no puede ser larga", () => {
+  const { agentes, errores } = validarEnvioOrbita(
+    {
+      agentes: [
+        { codigo: "1", nombre: "Educador", persona: "  Tomás " },
+        { codigo: "G", nombre: "Guardián", persona: "   " },
+        { codigo: "3", nombre: "Producto en acción" },
+        { codigo: "4", nombre: "Comunidad", persona: "J".repeat(41) },
+      ],
+    },
+    ORG,
+    [],
+    AHORA,
+  );
+  assert.deepEqual(
+    agentes.map((fila) => [fila.codigo, fila.persona]),
+    [["1", "Tomás"], ["G", null], ["3", null]],
+  );
+  assert.equal(errores.length, 1);
+  assert.equal(errores[0].codigo, "4");
+});
+
+test("con persona se muestra su nombre; sin persona, el cargo", () => {
+  assert.equal(nombreDelAgente(agente("1", { nombre: "Educador", persona: "Tomás" })), "Tomás");
+  assert.equal(etiquetaDelAgente(agente("1", { nombre: "Educador", persona: "Tomás" })), "Tomás · Educador");
+  assert.equal(nombreDelAgente(agente("G", { nombre: "Guardián" })), "Guardián");
+  assert.equal(etiquetaDelAgente(agente("G", { nombre: "Guardián", persona: " " })), "Guardián");
+});
+
+test("la migración de persona es idempotente y no acepta personas en blanco", () => {
+  const sql = soloCodigo(leer("supabase/migrations/20261003230000_orbita_persona.sql"));
+  assert.match(sql, /add column if not exists persona text/);
+  assert.match(sql, /drop constraint if exists orbita_agentes_persona_not_blank/);
+  assert.match(sql, /persona is null or btrim\(persona\) <> ''/);
+});
+
+test("todos los agentes de Altius, salvo el Guardián, tienen persona", () => {
+  const red = JSON.parse(leer("scripts/orbita-altius-agentes.json")) as { agentes: { codigo: string; persona?: string }[] };
+  const sinPersona = red.agentes.filter((item) => !item.persona).map((item) => item.codigo);
+  assert.deepEqual(sinPersona, ["G"]);
 });

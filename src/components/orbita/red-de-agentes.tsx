@@ -12,7 +12,9 @@ import {
   TIPOS_CONEXION,
   aristasDeLaRed,
   colorDelAgente,
+  etiquetaDelAgente,
   haceCuanto,
+  nombreDelAgente,
   posicionesDeLaRed,
   pulsosRecientes,
   trazoEntre,
@@ -115,7 +117,7 @@ export function RedDeAgentes({ agentes, pulsos, ahora, seleccionado, onSeleccion
         strokeDasharray="2 7"
         strokeLinecap="round"
       >
-        {guardian && <title>{`${guardian.nombre} vigila toda la órbita`}</title>}
+        {guardian && <title>{`${nombreDelAgente(guardian)} vigila toda la órbita`}</title>}
       </ellipse>
 
       {/* Conexiones */}
@@ -230,7 +232,12 @@ function Neurona({
   const color = colorDelAgente(agente);
   const hace = haceCuanto(agente.ultimo_evento_at, ahora);
   const esCentro = nodo.anillo === 0;
-  const nombre = agente.nombre.length > 22 ? `${agente.nombre.slice(0, 21).trimEnd()}…` : agente.nombre;
+  const recortar = (texto: string, max: number) => (texto.length > max ? `${texto.slice(0, max - 1).trimEnd()}…` : texto);
+  // Con persona, el nodo es alguien del equipo: su nombre arriba y su cargo debajo.
+  const persona = agente.persona?.trim() || null;
+  const titulo = recortar(persona ?? agente.nombre, 22);
+  const cargo = persona ? recortar(agente.nombre, 32) : null;
+  const yEstado = nodo.r + (cargo ? 59 : 41);
 
   return (
     <g
@@ -239,7 +246,7 @@ function Neurona({
       role="button"
       tabIndex={0}
       aria-pressed={seleccionada}
-      aria-label={`${agente.codigo} · ${agente.nombre}. ${estado.label}, última actividad ${hace}.`}
+      aria-label={`${agente.codigo} · ${etiquetaDelAgente(agente)}. ${estado.label}, última actividad ${hace}.`}
       onClick={onClick}
       onKeyDown={onKeyDown}
       onPointerEnter={onEntrar}
@@ -281,13 +288,18 @@ function Neurona({
       <circle cx={nodo.r * 0.72} cy={-nodo.r * 0.72} r={esCentro ? 7 : 6} fill={estado.color} stroke={FONDO_NODO} strokeWidth={2.5} />
       {/* El contorno del color del escenario separa el texto de las líneas que pasan detrás. */}
       <text y={nodo.r + 22} textAnchor="middle" fill={TEXTO} fontSize={esCentro ? 18 : 16} fontWeight={600} {...CONTORNO}>
-        {nombre}
+        {titulo}
       </text>
-      <text y={nodo.r + 41} textAnchor="middle" fill={TEXTO_SUAVE} fontSize={13.5} {...CONTORNO}>
+      {cargo && (
+        <text y={nodo.r + 40} textAnchor="middle" fill={TEXTO} fillOpacity={0.82} fontSize={13.5} fontWeight={500} {...CONTORNO}>
+          {cargo}
+        </text>
+      )}
+      <text y={yEstado} textAnchor="middle" fill={TEXTO_SUAVE} fontSize={13.5} {...CONTORNO}>
         <tspan fill={estado.color}>{estado.label}</tspan>
         {` · ${hace}`}
       </text>
-      <title>{[`${agente.codigo} · ${agente.nombre}`, agente.rol, agente.horario].filter(Boolean).join("\n")}</title>
+      <title>{[`${agente.codigo} · ${etiquetaDelAgente(agente)}`, agente.rol, agente.horario].filter(Boolean).join("\n")}</title>
     </g>
   );
 }

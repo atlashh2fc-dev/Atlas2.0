@@ -68,6 +68,8 @@ export const agenteEntranteSchema = z
   .object({
     codigo: codigoSchema,
     nombre: z.string().trim().min(1, "Falta el nombre").max(120),
+    /** Nombre de persona con que se presenta en la red ("Tomás"); `nombre` queda como cargo. */
+    persona: textoOpcional(40),
     rol: textoOpcional(200),
     descripcion: textoOpcional(4000),
     horario: textoOpcional(120),
@@ -129,6 +131,7 @@ export type FilaAgente = {
   organization_id: string;
   codigo: string;
   nombre: string;
+  persona: string | null;
   rol: string | null;
   descripcion: string | null;
   horario: string | null;
@@ -204,6 +207,7 @@ export function validarEnvioOrbita(
       organization_id: organizationId,
       codigo: agente.codigo,
       nombre: agente.nombre,
+      persona: agente.persona,
       rol: agente.rol,
       descripcion: agente.descripcion,
       horario: agente.horario,

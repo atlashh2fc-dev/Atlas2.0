@@ -2,6 +2,7 @@
   "agentes": [
     {
       "codigo": "0",
+      "persona": "Catalina",
       "nombre": "CEO de Marketing",
       "rol": "Dueño del objetivo: aprueba, rechaza y ordena",
       "descripcion": "Parte el día fijando el foco según la estrategia de octubre (Atlas CRM por rubro: Dental, Veterinaria, Barbería). Aprueba o rechaza las piezas y los Reels, ordena a los agentes que publican y al Productor de Reels, y decide con lo que le reportan el Líder de resultados y la Inteligencia competitiva.",
@@ -19,6 +20,7 @@
     },
     {
       "codigo": "1",
+      "persona": "Tomás",
       "nombre": "Educador",
       "rol": "Publica contenido que enseña en grupos de Facebook",
       "descripcion": "Abre la jornada con una pieza educativa para los grupos del rubro del día: un problema común del negocio y cómo se resuelve. Deja la publicación en el registro y en el calendario de Atlas.",
@@ -32,6 +34,7 @@
     },
     {
       "codigo": "2",
+      "persona": "Fernanda",
       "nombre": "Datos y casos",
       "rol": "Publica cifras y casos reales en grupos de Facebook",
       "descripcion": "Publica un dato o un caso concreto (antes y después, tiempos de respuesta, citas recuperadas) en los grupos que le tocan según la rotación.",
@@ -45,6 +48,7 @@
     },
     {
       "codigo": "3",
+      "persona": "Matías",
       "nombre": "Producto en acción",
       "rol": "Muestra Atlas CRM funcionando en grupos de Facebook",
       "descripcion": "Muestra el producto en uso: una pantalla, un flujo o un Reel corto de Atlas CRM resolviendo algo del rubro. Sin precio publicado.",
@@ -58,6 +62,7 @@
     },
     {
       "codigo": "4",
+      "persona": "Javiera",
       "nombre": "Comunidad",
       "rol": "Conversa en comunidades y sigue negocios del rubro",
       "descripcion": "Participa en las conversaciones de los grupos y, además, sigue en Facebook e Instagram a los negocios de la lista de pendientes, dejando el estado de cada seguimiento.",
@@ -71,6 +76,7 @@
     },
     {
       "codigo": "5",
+      "persona": "Diego",
       "nombre": "Oferta",
       "rol": "Publica la oferta en grupos de Facebook",
       "descripcion": "Cierra el día con la invitación concreta: agendar una demo de Atlas CRM para el rubro. Atlas Pulso es el único precio público (desde $29.990 al mes + IVA).",
@@ -84,6 +90,7 @@
     },
     {
       "codigo": "6",
+      "persona": "Camila",
       "nombre": "Monitor",
       "rol": "Verifica las publicaciones, responde y comparte",
       "descripcion": "Revisa el registro de los últimos 7 días: qué quedó publicado, qué rechazó un grupo, qué hay que resubir. Responde comentarios y hace un compartido al día.",
@@ -96,6 +103,7 @@
     },
     {
       "codigo": "7",
+      "persona": "Sebastián",
       "nombre": "Líder de resultados",
       "rol": "Mide, hace la retrospectiva y propone ajustes",
       "descripcion": "Junta las métricas del día (Business Suite, anuncios, seguidores), escribe el reporte diario y, los domingos, la retrospectiva semanal. Ajusta las fichas de los agentes y propone Reels y presupuesto al CEO.",
@@ -108,6 +116,7 @@
     },
     {
       "codigo": "8",
+      "persona": "Antonia",
       "nombre": "Inteligencia competitiva y viral",
       "rol": "Vigila a la competencia y lo que se vuelve viral",
       "descripcion": "Antes de que empiece la jornada revisa a los competidores y las tendencias de redes, y deja ideas con evidencia para el CEO y el Líder de resultados.",
@@ -121,6 +130,7 @@
     },
     {
       "codigo": "9",
+      "persona": "Benjamín",
       "nombre": "Productor de Reels",
       "rol": "Produce los Reels que aprueba el CEO",
       "descripcion": "Produce los Reels de la semana (guion, voz, música y montaje) a partir de lo que el CEO aprueba, y los deja programados en Business Suite.",
