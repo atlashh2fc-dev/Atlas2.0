@@ -1,5 +1,12 @@
 # Reglas estrictas de producción
 
+## Un solo repositorio de trabajo (desde el 2026-10-04)
+
+- El único repositorio de trabajo autorizado de Atlas 2.0 es `/Users/hh/Claude/Projects/Atlas 2.0`. Todo cambio se hace ahí, en `main` o en una rama creada **dentro** de ese mismo directorio (`git switch -c …`).
+- **Prohibido** crear worktrees (`git worktree add`, `.claude/worktrees/…`), clonar o copiar el repositorio, generar una copia por chat o por agente, o duplicar `node_modules`/`.next` para comodidad. El 2026-10-04 había 49 worktrees (~76 GiB, 44 `node_modules`, 21 `.next`) con trabajo disperso y migraciones aplicadas en producción cuyos archivos no estaban en `main`.
+- Si una sesión arranca dentro de un worktree, no trabajes ahí: usa explícitamente la ruta original. No inicies agentes ni sesiones paralelas sobre otra copia del repo.
+- Toda migración aplicada en la base debe tener su archivo en `supabase/migrations/` de este repositorio en el mismo cambio.
+
 ## Publicar antes de desplegar
 
 - Producción se despliega **solo** desde `origin/main`. Un push a `main` dispara el deploy automáticamente; no hace falta desplegar a mano.
