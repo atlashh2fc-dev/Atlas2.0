@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { cronAutorizado } from "@/lib/cron-autorizado";
 import { decidirGuardian, type AgenteParaGuardian, type EjecucionParaGuardian } from "@/lib/orbita-guardian";
 import { horaExacta } from "@/lib/orbita";
+import { claveDeIaDeOrbita } from "@/lib/orbita-motores.server";
 import { registrarEventos, type EventoAGuardar } from "@/lib/orbita-registro.server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -70,7 +71,7 @@ async function vuelta(admin: ReturnType<typeof createAdminClient>, organizationI
   const eventos: EventoAGuardar[] = [];
 
   // Sin clave de IA no se lanza nada (fallaría 3 veces por turno): se avisa una vez cada 12 h.
-  if (decision.lanzar.length > 0 && !process.env.ANTHROPIC_API_KEY?.trim()) {
+  if (decision.lanzar.length > 0 && !claveDeIaDeOrbita()) {
     decision.lanzar = [];
     if (guardian) {
       const { count } = await admin
@@ -84,7 +85,7 @@ async function vuelta(admin: ReturnType<typeof createAdminClient>, organizationI
         eventos.push({
           agente: guardian,
           tipo: "alerta",
-          resumen: "Los agentes de la nube no pueden trabajar: falta configurar la clave de IA (ANTHROPIC_API_KEY) en Atlas.",
+          resumen: "Los agentes de la nube no pueden trabajar: falta configurar la clave de Mercury (INCEPTION_API_KEY) en Atlas.",
           detalle: { sin_clave_ia: true },
         });
       }
