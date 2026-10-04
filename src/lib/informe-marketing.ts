@@ -49,6 +49,19 @@ export type ResumenDeCorreo = {
   cupo_diario: number | null;
   campanas: CampanaDeCorreo[];
   respuestas_7d: RespuestaDeCorreo[];
+  /** Últimos 31 días en hora de Chile (Atlas Lead desde el 04-10-2026). */
+  por_dia?: CorreoPorDia[];
+};
+
+export type CorreoPorDia = {
+  dia: string;
+  enviados: number;
+  fallidos: number;
+  abrieron: number;
+  clics: number;
+  rebotes: number;
+  respuestas: number;
+  bajas: number;
 };
 
 export type PiezaDelInforme = {

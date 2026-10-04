@@ -1,13 +1,16 @@
 import Link from "next/link";
 import { connection } from "next/server";
+import { Suspense } from "react";
 import { Orbit, RefreshCw } from "lucide-react";
 
 import { CifrasOrbita } from "@/components/orbita/cifras-orbita";
 import { MonitorOrbita } from "@/components/orbita/monitor-orbita";
+import { ObjetivosOrbita, ObjetivosOrbitaCargando } from "@/components/orbita/objetivos-orbita";
 import { Callout, EmptyState, PageHeader, buttonClasses } from "@/components/ui";
 import { getCurrentProfile } from "@/lib/auth";
 import {
   CODIGO_CEO,
+  CODIGO_GUARDIAN,
   COLUMNAS_AGENTE,
   COLUMNAS_EVENTO,
   ESTADOS_AGENTE,
@@ -18,29 +21,35 @@ import {
   type AgenteOrbita,
   type EventoOrbita,
 } from "@/lib/orbita";
+import { periodoValido } from "@/lib/orbita-objetivos";
 import { createClient } from "@/lib/supabase/server";
 
 /**
  * Órbita · el monitor de los agentes de marketing con IA.
  *
  * Quién está trabajando, quién falló, qué se están pasando y cuánto rinde la
- * red. Los agentes se declaran y reportan solos por /api/orbita/eventos; acá
+ * red, y arriba de todo, si se cumplió lo pedido (objetivos por día, semana y
+ * mes, con su evidencia). Los agentes se declaran y reportan solos por /api/orbita/eventos; acá
  * se mira. La parte de cliente se refresca con cada evento (Realtime) y cada
  * 15 s como respaldo.
  */
 
 const HORA = 60 * 60 * 1000;
 
-export default async function OrbitaPage() {
+export default async function OrbitaPage({ searchParams }: { searchParams: Promise<{ periodo?: string }> }) {
   await connection();
+  const periodo = periodoValido((await searchParams).periodo);
   const ahora = new Date();
   const hace24h = new Date(ahora.getTime() - 24 * HORA).toISOString();
   const hace7d = new Date(ahora.getTime() - 7 * 24 * HORA).toISOString();
   const haceUnRato = new Date(ahora.getTime() - VENTANA_PULSOS_MS).toISOString();
 
   const supabase = await createClient();
-  // Conteos sin traer filas: el Guardián late cada 15 min y la semana pesa.
+  // Conteos sin traer filas: el Guardián late cada hora y la semana pesa.
   const contar = () => supabase.from("orbita_eventos").select("id", { count: "exact", head: true });
+  // Los turnos que cuentan son los de los agentes de marketing: los chequeos
+  // del Guardián inflaban la cifra sin que nadie publicara ni enviara nada.
+  const contarTurnos = () => contar().neq("agente_codigo", CODIGO_GUARDIAN);
 
   const [agentesR, actividadR, pulsosR, fin24, error24, fin7, finConError7, error7, recuperaciones7, decisionesCeo7, perfil] = await Promise.all([
     supabase.from("orbita_agentes").select(COLUMNAS_AGENTE).order("codigo").limit(200),
@@ -52,11 +61,11 @@ export default async function OrbitaPage() {
       .gte("ocurrido_at", haceUnRato)
       .order("ocurrido_at", { ascending: false })
       .limit(60),
-    contar().eq("tipo", "fin").gte("ocurrido_at", hace24h),
-    contar().eq("tipo", "error").gte("ocurrido_at", hace24h),
-    contar().eq("tipo", "fin").gte("ocurrido_at", hace7d),
-    contar().eq("tipo", "fin").eq("estado", "error").gte("ocurrido_at", hace7d),
-    contar().eq("tipo", "error").gte("ocurrido_at", hace7d),
+    contarTurnos().eq("tipo", "fin").gte("ocurrido_at", hace24h),
+    contarTurnos().eq("tipo", "error").gte("ocurrido_at", hace24h),
+    contarTurnos().eq("tipo", "fin").gte("ocurrido_at", hace7d),
+    contarTurnos().eq("tipo", "fin").eq("estado", "error").gte("ocurrido_at", hace7d),
+    contarTurnos().eq("tipo", "error").gte("ocurrido_at", hace7d),
     contar().eq("tipo", "recuperacion").gte("ocurrido_at", hace7d),
     contar().eq("tipo", "decision").eq("agente_codigo", CODIGO_CEO).gte("ocurrido_at", hace7d),
     getCurrentProfile(),
@@ -119,6 +128,10 @@ export default async function OrbitaPage() {
         </div>
       ) : (
         <>
+          {/* Lo que se pidió va primero; si la fuente del correo tarda, el resto no espera. */}
+          <Suspense key={periodo} fallback={<ObjetivosOrbitaCargando />}>
+            <ObjetivosOrbita periodo={periodo} />
+          </Suspense>
           <CifrasOrbita resumen={resumen} />
           <MonitorOrbita agentes={agentes} actividad={actividad} pulsos={pulsos} ahora={ahora.toISOString()} />
         </>
