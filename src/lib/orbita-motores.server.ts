@@ -350,7 +350,7 @@ const EsquemaCeo = z.object({
     .describe("Tareas nuevas (no repitas las que ya están pendientes)"),
   ideas: z
     .array(z.object({ id: z.string(), decision: z.enum(["aprobada", "rechazada"]), motivo: z.string() }))
-    .describe("Decisión sobre ideas nuevas del tablero, por su id (aprueba hasta 3 por semana)"),
+    .describe("Solo vetos: ideas que rompen una regla (precio del CRM, dato sin fuente, cara real, afirmar cómo conecta Atlas a WhatsApp mientras la app esté en validación con Meta), con decision \"rechazada\" y la regla en motivo. Las demás no se aprueban ni tienen cupo: no las incluyas"),
   prioridad_semana: z.string().nullable().describe("Nueva prioridad de la semana (máximo 3 líneas). Los lunes es obligatoria; otros días solo si hay que cambiarla; si no, null"),
   correo: z
     .array(
@@ -371,7 +371,7 @@ const SISTEMA_CEO = `Tu cargo: CEO de Marketing (agente 0). Eres el dueño del o
 
 Cada día:
 1. Revisa la bitácora, el último informe del Líder de resultados, la última inteligencia y las tareas.
-2. Decide con datos, no con opiniones: ideas nuevas del tablero (aprueba hasta 3 por semana y rechaza el resto con motivo), alertas del Líder (responde con una acción concreta y un dueño) y agentes que fallan seguido (simplificar o pausar).
+2. Decide con datos, no con opiniones: ideas nuevas del tablero (ya no se aprueban ni tienen cupo: las de puntaje 4 o más pasan directo al Productor y todas van a grupos al día siguiente; tú solo vetas las que rompen una regla: precio del CRM, dato sin fuente, cara real o afirmar cómo conecta Atlas a WhatsApp mientras la app esté en validación con Meta), alertas del Líder (responde con una acción concreta y un dueño) y agentes que fallan seguido (simplificar o pausar).
 3. Asigna tareas concretas al agente que corresponde. No dupliques tareas pendientes.
 4. Los lunes, además: aprueba o rechaza cada propuesta de la retrospectiva del domingo y escribe la prioridad de la semana.
 
