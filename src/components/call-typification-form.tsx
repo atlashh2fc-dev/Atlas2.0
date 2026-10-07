@@ -300,6 +300,18 @@ export function CallTypificationForm({
   );
   const notesRequired = reasonConfig?.notesRequiredWithoutAgenda === true && !closureNextActionAt;
   const agendaPolicyText = describeAgendaPolicy(agendaPolicy);
+  // Una carga de base o supervisión devolvió el lead a la cola después de su
+  // última gestión (casi siempre con teléfono nuevo): la observación guardada
+  // es del ciclo anterior y no debe leerse como «no llamar a este número».
+  const reabiertoEl =
+    lead.dialer_cycle_started_at &&
+    (!lead.managed_at || new Date(lead.dialer_cycle_started_at) > new Date(lead.managed_at))
+      ? new Date(lead.dialer_cycle_started_at).toLocaleDateString("es-CL", {
+          day: "2-digit",
+          month: "2-digit",
+          timeZone: "America/Santiago",
+        })
+      : null;
 
   const pendingIssues = useMemo(
     () =>
@@ -827,7 +839,14 @@ export function CallTypificationForm({
         <div className="flex items-start gap-3 rounded-xl border border-border bg-surface-muted px-4 py-3">
           <MessageSquare size={16} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-foreground">Última observación registrada</p>
+            <p className="text-sm font-semibold text-foreground">
+              {reabiertoEl ? "Observación de antes de reabrirse" : "Última observación registrada"}
+            </p>
+            {reabiertoEl && (
+              <p className="mt-0.5 text-xs font-medium text-foreground">
+                Volvió a la cola el {reabiertoEl}, en general con un teléfono nuevo. Lo que dice abajo es de antes y puede ser de otro número.
+              </p>
+            )}
             <p className="mt-0.5 text-xs text-muted-foreground">
               {lead.tipificacion_actual ?? "Gestión anterior"}
               {lead.managed_at ? ` · ${new Date(lead.managed_at).toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short", timeZone: "America/Santiago" })}` : ""}
