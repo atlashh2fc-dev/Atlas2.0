@@ -5,7 +5,8 @@ import { enviarCorreo } from "@/lib/correo/smtp";
 import { PLANTILLAS, renderizarPlantilla, type ClavePlantilla } from "@/lib/mensajes/plantillas";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { normalizeWhatsAppPhone } from "@/lib/whatsapp";
-import { isWhatsAppProviderConfigured, sendWhatsAppText, whatsappProvider } from "@/lib/whatsapp-provider";
+import { dentroDeVentana, parametrosDePlantillaMeta, PLANTILLAS_META } from "@/lib/mensajes/plantillas-meta";
+import { isWhatsAppProviderConfigured, sendWhatsAppTemplate, sendWhatsAppText, whatsappProvider } from "@/lib/whatsapp-provider";
 
 /**
  * El despacho: toma lo que toca enviar y lo manda por el canal de la empresa.
@@ -56,7 +57,7 @@ type Admin = ReturnType<typeof createAdminClient>;
 export type EnvioAConversacion =
   | { estado: "enviado"; proveedor: string; proveedorId: string; conversationId: string; whatsappMessageId: string }
   | { estado: "simulado"; proveedor: "simulado"; proveedorId: string; conversationId: string; whatsappMessageId: string }
-  | { estado: "fallido"; error: string; conversationId: string | null; whatsappMessageId: string | null };
+  | { estado: "fallido"; error: string; conversationId: string | null; whatsappMessageId: string | null; fueraDeVentana?: boolean };
 
 /**
  * Manda un texto a una ficha por el WhatsApp de su empresa y lo deja en el
@@ -64,9 +65,21 @@ export type EnvioAConversacion =
  * de la clínica. Si la empresa es de demostración y su canal no está
  * conectado, el envío se simula y queda marcado como tal.
  */
-export async function enviarAFicha(admin: Admin, entrada: { organizationId: string; cuentaId: string; destinatario: string; cuerpo: string; sentBy?: string | null; origen?: Record<string, unknown> }): Promise<EnvioAConversacion> {
+export async function enviarAFicha(
+  admin: Admin,
+  entrada: {
+    organizationId: string;
+    cuentaId: string;
+    destinatario: string;
+    cuerpo: string;
+    sentBy?: string | null;
+    origen?: Record<string, unknown>;
+    /** La plantilla de Atlas que originó el mensaje: fuera de las 24 horas se envía su versión aprobada por Meta. */
+    plantilla?: { clave: string; variables: Record<string, unknown> };
+  },
+): Promise<EnvioAConversacion> {
   const [{ data: canal }, { data: organizacion }] = await Promise.all([
-    admin.from("whatsapp_channels").select("id, phone_number_id, display_phone_number, status, provider").eq("organization_id", entrada.organizationId).eq("canal", "whatsapp").order("created_at").limit(1).maybeSingle(),
+    admin.from("whatsapp_channels").select("id, phone_number_id, display_phone_number, status, provider, plantillas_aprobadas").eq("organization_id", entrada.organizationId).eq("canal", "whatsapp").order("created_at").limit(1).maybeSingle(),
     admin.from("organizations").select("slug").eq("id", entrada.organizationId).single(),
   ]);
   const esDemo = typeof organizacion?.slug === "string" && organizacion.slug.startsWith("demo-");
@@ -83,6 +96,29 @@ export async function enviarAFicha(admin: Admin, entrada: { organizationId: stri
     return { estado: "fallido", error: conversacionError?.message ?? "No se pudo abrir la conversación.", conversationId: null, whatsappMessageId: null };
   }
 
+  // WhatsApp solo acepta texto libre hasta 24 horas después del último
+  // mensaje de la persona. Fuera de esa ventana va la plantilla aprobada.
+  let plantillaMeta: { nombre: string; idioma: string; parametros: string[] } | null = null;
+  if (canalListo) {
+    const { data: conversacion } = await admin.from("whatsapp_conversations").select("last_inbound_at").eq("id", conversationId).maybeSingle();
+    if (!dentroDeVentana(conversacion?.last_inbound_at as string | null | undefined)) {
+      const definicion = entrada.plantilla ? PLANTILLAS_META[entrada.plantilla.clave] : undefined;
+      const aprobadas = (canal.plantillas_aprobadas as string[] | null) ?? [];
+      if (!definicion || !aprobadas.includes(definicion.nombre) || !entrada.plantilla) {
+        return {
+          estado: "fallido",
+          error: definicion
+            ? `Fuera de las 24 horas WhatsApp exige la plantilla «${definicion.nombre}» aprobada por Meta, y este número todavía no la tiene.`
+            : "Fuera de las 24 horas WhatsApp solo deja enviar plantillas aprobadas, y este mensaje no tiene una.",
+          conversationId,
+          whatsappMessageId: null,
+          fueraDeVentana: true,
+        };
+      }
+      plantillaMeta = { nombre: definicion.nombre, idioma: definicion.idioma, parametros: parametrosDePlantillaMeta(entrada.plantilla.clave, entrada.plantilla.variables) ?? [] };
+    }
+  }
+
   const clientReference = randomUUID();
   const ahora = new Date().toISOString();
   const { data: pendiente, error: pendienteError } = await admin
@@ -90,11 +126,11 @@ export async function enviarAFicha(admin: Admin, entrada: { organizationId: stri
     .insert({
       conversation_id: conversationId,
       direction: "outbound",
-      message_type: "text",
+      message_type: plantillaMeta ? "template" : "text",
       text_body: entrada.cuerpo,
       status: "pending",
       sent_by: entrada.sentBy ?? null,
-      provider_payload: { provider: canalListo ? whatsappProvider(canal.provider) : "simulado", client_reference: clientReference, ...(entrada.origen ?? {}) },
+      provider_payload: { provider: canalListo ? whatsappProvider(canal.provider) : "simulado", client_reference: clientReference, ...(plantillaMeta ? { plantilla: plantillaMeta.nombre } : {}), ...(entrada.origen ?? {}) },
     })
     .select("id")
     .single();
@@ -111,15 +147,10 @@ export async function enviarAFicha(admin: Admin, entrada: { organizationId: stri
   }
 
   try {
-    const { provider, providerMessageId, payload } = await sendWhatsAppText({
-      provider: canal.provider,
-      channelId: canal.id,
-      phoneNumberId: canal.phone_number_id,
-      from: canal.display_phone_number,
-      to: normalizeWhatsAppPhone(entrada.destinatario),
-      body: entrada.cuerpo,
-      clientReference,
-    });
+    const destino = { provider: canal.provider, channelId: canal.id, phoneNumberId: canal.phone_number_id, from: canal.display_phone_number, to: normalizeWhatsAppPhone(entrada.destinatario), clientReference };
+    const { provider, providerMessageId, payload } = plantillaMeta
+      ? await sendWhatsAppTemplate({ ...destino, template: plantillaMeta.nombre, language: plantillaMeta.idioma, parameters: plantillaMeta.parametros })
+      : await sendWhatsAppText({ ...destino, body: entrada.cuerpo });
     await admin
       .from("whatsapp_messages")
       .update({ provider_message_id: providerMessageId, status: "accepted", provider_timestamp: ahora, provider_payload: { provider, client_reference: clientReference, response: payload, ...(entrada.origen ?? {}) } })
@@ -210,7 +241,21 @@ async function despacharWhatsApp(admin: Admin, mensaje: Mensaje, cuerpo: string,
     destinatario: mensaje.destinatario,
     cuerpo,
     origen: { origen: "mensajes_salientes", mensaje_id: mensaje.id },
+    plantilla: { clave: mensaje.plantilla, variables: mensaje.variables ?? {} },
   });
+  if (envio.estado === "fallido" && envio.fueraDeVentana) {
+    // Sin plantilla aprobada, el mismo mensaje sale por correo si la ficha lo tiene.
+    const { data: ficha } = await admin.from("sales_companies").select("email").eq("id", mensaje.cuenta_id).maybeSingle();
+    const correo = typeof ficha?.email === "string" ? ficha.email.trim() : "";
+    if (correo) {
+      await admin
+        .from("mensajes_salientes")
+        .update({ canal: "correo", destinatario: correo, estado: "programado", error: null, updated_at: new Date().toISOString() })
+        .eq("id", mensaje.id);
+      await despacharCorreo(admin, { ...mensaje, canal: "correo", destinatario: correo }, cuerpo, resultado);
+      return;
+    }
+  }
   if (envio.estado === "fallido") {
     await cerrar(admin, mensaje.id, "fallido", { cuerpo, error: envio.error, conversation: envio.conversationId ?? undefined, whatsappMessage: envio.whatsappMessageId ?? undefined });
     resultado.fallidos += 1;

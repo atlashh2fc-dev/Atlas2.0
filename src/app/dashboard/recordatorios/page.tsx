@@ -56,6 +56,7 @@ function errorLegible(error: string, canal: string, esAdmin: boolean): string {
     return `El ${nombreCanal} de la clínica no está conectado. ${esAdmin ? "Conéctalo en Integraciones y reintenta." : "Pídele a un administrador que lo conecte y luego reintenta."}`;
   }
   if (/ficha de destino/i.test(error)) return "El mensaje quedó sin ficha de destino. Cancélalo y envíalo de nuevo desde la ficha.";
+  if (/24 horas/i.test(error)) return "WhatsApp no deja escribir primero sin una plantilla aprobada por Meta, y la ficha no tiene correo. Agrégale un correo o espera a que la persona escriba.";
   return `No se pudo entregar. Revisa el ${canal === "correo" ? "correo" : "celular"} de la ficha y usa «Reintentar».`;
 }
 

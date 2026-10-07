@@ -148,6 +148,26 @@ export function validarTextoPropio(clave: ClavePlantilla, texto: string): string
 }
 
 /**
+ * Las variables de un mensaje como texto, más las derivadas: una mascota
+ * cambia la frase («la hora de Luna» / «tu hora»), los recordatorios
+ * antiguos no traen «cuando», y la reserva en línea arma su enlace. Lo usan
+ * el texto libre y las plantillas aprobadas por Meta.
+ */
+export function valoresDePlantilla(variables: Record<string, unknown>): Record<string, string> {
+  const valores: Record<string, string> = {};
+  for (const [nombre, valor] of Object.entries(variables)) {
+    valores[nombre] = valor === null || valor === undefined ? "" : String(valor);
+  }
+  const mascota = valores.mascota?.trim();
+  valores.de_quien = mascota ? `la hora de ${mascota}` : "tu hora";
+  valores.mascota_sufijo = mascota ? ` · ${mascota}` : "";
+  valores.cuando = valores.cuando?.trim() || "mañana";
+  valores.url_cita = valores.token ? `${URL_PUBLICA}/reservar/cita/${valores.token}` : valores.url_cita ?? "";
+  valores.vence_o_vencio = variables.vencida === true || variables.vencida === "true" ? "venció" : "vence";
+  return valores;
+}
+
+/**
  * Rellena una plantilla con sus variables. Las que faltan quedan vacías, sin
  * llaves sueltas. Si la empresa escribió su propio texto para esa plantilla,
  * se usa ese.
@@ -157,19 +177,7 @@ export function renderizarPlantilla(clave: string, variables: Record<string, unk
   const plantilla = typeof propio === "string" && propio.trim() && clave in PLANTILLAS_EDITABLES
     ? { cuerpo: propio }
     : PLANTILLAS[clave as ClavePlantilla] ?? PLANTILLAS.libre;
-  const valores: Record<string, string> = {};
-  for (const [nombre, valor] of Object.entries(variables)) {
-    valores[nombre] = valor === null || valor === undefined ? "" : String(valor);
-  }
-  // Derivadas: una mascota cambia la frase ("la hora de Luna" / "tu hora").
-  const mascota = valores.mascota?.trim();
-  valores.de_quien = mascota ? `la hora de ${mascota}` : "tu hora";
-  valores.mascota_sufijo = mascota ? ` · ${mascota}` : "";
-  // Los recordatorios anteriores a la anticipación configurable no traen «cuando».
-  valores.cuando = valores.cuando?.trim() || "mañana";
-  // La reserva en línea manda el enlace para ver o cancelar la cita.
-  valores.url_cita = valores.token ? `${URL_PUBLICA}/reservar/cita/${valores.token}` : valores.url_cita ?? "";
-  valores.vence_o_vencio = variables.vencida === true || variables.vencida === "true" ? "venció" : "vence";
+  const valores = valoresDePlantilla(variables);
   return plantilla.cuerpo
     .replace(/\{\{\s*([a-z_]+)\s*\}\}/g, (_, nombre: string) => valores[nombre] ?? "")
     .replace(/\s+([,.)])/g, "$1")

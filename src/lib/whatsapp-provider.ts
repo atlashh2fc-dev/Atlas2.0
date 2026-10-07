@@ -301,3 +301,75 @@ export async function sendWhatsAppMedia(input: SendMediaInput): Promise<SendText
   }
   return { provider, providerMessageId, payload };
 }
+
+type SendTemplateInput = ConProveedor & {
+  phoneNumberId: string;
+  from: string;
+  to: string;
+  /** Nombre de la plantilla aprobada en Meta. */
+  template: string;
+  language: string;
+  parameters: string[];
+  clientReference: string;
+};
+
+/**
+ * Envía una plantilla aprobada por Meta: lo único que WhatsApp acepta para
+ * escribirle a alguien fuera de las 24 horas desde su último mensaje.
+ */
+export async function sendWhatsAppTemplate(input: SendTemplateInput): Promise<SendTextResult> {
+  const plantilla = {
+    name: input.template,
+    language: { code: input.language },
+    components: input.parameters.length
+      ? [{ type: "body", parameters: input.parameters.map((valor) => ({ type: "text", text: valor })) }]
+      : [],
+  };
+  const provider = whatsappProvider(input.provider);
+  if (provider === "ycloud") {
+    const apiKey = process.env.WHATSAPP_YCLOUD_API_KEY?.trim();
+    if (!apiKey) throw new Error("Falta completar la clave API de YCloud.");
+    const response = await fetch("https://api.ycloud.com/v2/whatsapp/messages/sendDirectly", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": apiKey },
+      body: JSON.stringify({
+        from: normalizeWhatsAppPhone(input.from),
+        to: normalizeWhatsAppPhone(input.to),
+        type: "template",
+        template: plantilla,
+        externalId: input.clientReference,
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    const decoded = await response.json().catch(() => ({}));
+    const payload = record(decoded) ?? {};
+    const message = record(payload.whatsappMessage) ?? payload;
+    const error = record(payload.error);
+    const providerMessageId = text(message.wamid) ?? text(message.id);
+    if (!response.ok || !providerMessageId) {
+      throw new Error(text(error?.message) ?? text(payload.message) ?? `YCloud rechazó la plantilla (${response.status}).`);
+    }
+    return { provider, providerMessageId, payload };
+  }
+
+  const accessToken = await accesoDeMeta(input.channelId);
+  if (!accessToken) throw new Error("Falta completar el acceso de Meta para enviar desde Atlas.");
+  const response = await fetch(
+    `https://graph.facebook.com/${whatsappGraphApiVersion()}/${encodeURIComponent(input.phoneNumberId)}/messages`,
+    {
+      method: "POST",
+      headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+      body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", to: input.to, type: "template", template: plantilla }),
+      signal: AbortSignal.timeout(15_000),
+    },
+  );
+  const decoded = await response.json().catch(() => ({}));
+  const payload = record(decoded) ?? {};
+  const messages = Array.isArray(payload.messages) ? payload.messages : [];
+  const providerMessageId = text(record(messages[0])?.id);
+  const error = record(payload.error);
+  if (!response.ok || !providerMessageId) {
+    throw new Error(text(error?.message) ?? `Meta rechazó la plantilla (${response.status}).`);
+  }
+  return { provider, providerMessageId, payload };
+}
