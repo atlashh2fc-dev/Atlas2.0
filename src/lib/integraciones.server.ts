@@ -191,12 +191,11 @@ export async function integracionesDeLaEmpresa(modulos: AppModule[]): Promise<In
       id: "atlas_lead",
       nombre: "Atlas Lead",
       proveedor: "Suite Altius",
-      descripcion: "Campañas de correo: aperturas, clics y respuestas llegan al registro; el CRM le pide envíos.",
+      descripcion: "Motor de campañas de correo: se arman, programan y miden desde el CRM; aperturas, clics y respuestas llegan al registro.",
       logo: "atlas",
       categoria: "Suite Altius",
       ...estadoDePuente(Boolean(fuente("atlas_lead")?.is_active), destinos.has("atlas_lead"), circuitoDe("atlas_lead")),
-      // Las campañas se vinculan desde la campaña del contact center; sin él no hay dónde.
-      href: tiene(modulos, "contact_center") ? "/dashboard/admin/campanas" : undefined,
+      href: "/dashboard/campanas-correo",
     });
   }
 

@@ -10,16 +10,14 @@ import { integrationV2Destinations, integrationV2Signature } from "./integration
  * orquesta todos los canales.
  */
 
-/** La marca con que cada empresa envía en Atlas Lead. */
-const MARCA_POR_EMPRESA: Record<string, string> = { altius: "Altius Ignite" };
+export type Resultado<T> = { ok: true; datos: T } | { ok: false; error: string; status?: number };
 
-export function marcaDeLaEmpresa(slug: string): string | null {
-  return MARCA_POR_EMPRESA[slug] ?? null;
-}
-
-type Resultado<T> = { ok: true; datos: T } | { ok: false; error: string };
-
-async function llamar<T>(ruta: string, cuerpo: Record<string, unknown>): Promise<Resultado<T>> {
+/**
+ * Llamada firmada al puente de Atlas Lead (mismo destino y secreto del outbox).
+ * La empresa siempre viaja en el cuerpo firmado: Atlas Lead solo deja ver y
+ * tocar lo de esa empresa.
+ */
+export async function llamarAtlasLead<T>(ruta: string, cuerpo: Record<string, unknown>, timeoutMs = 20_000): Promise<Resultado<T>> {
   const destino = integrationV2Destinations(process.env.INTEGRATION_OUTBOX_DESTINATIONS_JSON).get("atlas_lead");
   if (!destino) return { ok: false, error: "el puente con Atlas Lead no está configurado" };
 
@@ -37,27 +35,33 @@ async function llamar<T>(ruta: string, cuerpo: Record<string, unknown>): Promise
       body: rawBody,
       redirect: "manual",
       cache: "no-store",
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     const datos = (await respuesta.json().catch(() => null)) as (T & { error?: string }) | null;
-    if (!respuesta.ok || !datos) return { ok: false, error: `Atlas Lead respondió ${respuesta.status}${datos?.error ? `: ${datos.error}` : ""}` };
+    if (!respuesta.ok || !datos) {
+      // Los errores de validación de Atlas Lead ya vienen en palabras para la pantalla.
+      const legible = respuesta.status === 400 || respuesta.status === 404 || respuesta.status === 409 || respuesta.status === 422;
+      return {
+        ok: false,
+        status: respuesta.status,
+        error: legible && datos?.error ? datos.error : `Atlas Lead respondió ${respuesta.status}${datos?.error ? `: ${datos.error}` : ""}`,
+      };
+    }
     return { ok: true, datos };
   } catch (error) {
     return { ok: false, error: error instanceof Error && error.name === "TimeoutError" ? "Atlas Lead no respondió a tiempo" : "no se pudo conectar con Atlas Lead" };
   }
 }
 
-/** Lo planificado, lo enviado y lo que volvió, por campaña de correo. */
+/** Lo planificado, lo enviado y lo que volvió, por campaña de correo de la empresa. */
 export async function resumenDeCorreo(slug: string): Promise<Resultado<ResumenDeCorreo>> {
-  const marca = marcaDeLaEmpresa(slug);
-  if (!marca) return { ok: false, error: "la empresa no tiene una marca de correo configurada" };
-  const resultado = await llamar<ResumenDeCorreo>("/api/integrations/v2/marketing/resumen", { marca });
+  const resultado = await llamarAtlasLead<ResumenDeCorreo>("/api/integrations/v2/marketing/resumen", { empresa: slug });
   if (!resultado.ok) return resultado;
   const datos = resultado.datos;
   return {
     ok: true,
     datos: {
-      marca: datos.marca ?? marca,
+      marca: datos.marca ?? slug,
       enviados_hoy: Number(datos.enviados_hoy) || 0,
       cupo_diario: typeof datos.cupo_diario === "number" ? datos.cupo_diario : null,
       campanas: Array.isArray(datos.campanas) ? datos.campanas : [],
@@ -80,12 +84,10 @@ export async function resumenDeCorreo(slug: string): Promise<Resultado<ResumenDe
 
 export type AjusteDeCampana = { campana_id: string; activa?: boolean; limite_diario?: number };
 
-/** Activa, pausa o cambia el límite diario de una campaña de la marca. */
+/** Activa, pausa o cambia el límite diario de una campaña de la empresa. */
 export async function ajustarCampanaDeCorreo(slug: string, ajuste: AjusteDeCampana) {
-  const marca = marcaDeLaEmpresa(slug);
-  if (!marca) return { ok: false as const, error: "la empresa no tiene una marca de correo configurada" };
-  return llamar<{ ok: true; campana: { id: string; nombre: string; activa: boolean; limite_diario: number | null } }>(
+  return llamarAtlasLead<{ ok: true; campana: { id: string; nombre: string; activa: boolean; limite_diario: number | null } }>(
     "/api/integrations/v2/marketing/campana",
-    { marca, ...ajuste },
+    { empresa: slug, ...ajuste },
   );
 }

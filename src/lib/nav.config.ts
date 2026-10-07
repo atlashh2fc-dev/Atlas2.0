@@ -10,6 +10,7 @@ import {
   Headphones,
   LayoutDashboard,
   Mail,
+  MailPlus,
   Megaphone,
   MessageCircle,
   Network,
@@ -247,6 +248,19 @@ const CONSOLE: NavSpace = {
           modules: ["orbita"],
         },
         {
+          // Las campañas de correo de la empresa: se arman, programan y miden
+          // acá; las envía Atlas Lead y la audiencia sale de Bigdata.
+          id: "campanas-correo",
+          label: "Campañas de correo",
+          href: "/dashboard/campanas-correo",
+          icon: MailPlus,
+          roles: ["admin", "supervisor"],
+          description: "Arma, programa y mide campañas de correo con audiencia de Bigdata; las envía Atlas Lead",
+          match: ["/dashboard/campanas-correo"],
+          modules: ["correo"],
+          ediciones: ["center"],
+        },
+        {
           id: "correo",
           label: "Correo",
           href: "/dashboard/mail",
@@ -424,7 +438,7 @@ const WORKSPACE_SECTIONS: Record<AppRole, Record<NavSpaceId, SectionSpec[]>> = {
     console: [
       { id: "control-home", itemIds: ["inicio"] },
       { id: "control-live", label: "Operación en vivo", itemIds: ["operacion", "agenda-clinica", "recordatorios", "correo"] },
-      { id: "control-work", label: "Gestión", itemIds: ["pacientes", "caja", "campanas-clinica", "ventas", "registros", "validacion-ventas", "marketing", "orbita"] },
+      { id: "control-work", label: "Gestión", itemIds: ["pacientes", "caja", "campanas-clinica", "campanas-correo", "ventas", "registros", "validacion-ventas", "marketing", "orbita"] },
       { id: "control-analysis", label: "Análisis y calidad", itemIds: ["conversaciones", "conversaciones-clinica", "reportes", "reportes-clinica", "calidad"] },
     ],
     admin: [
@@ -440,7 +454,7 @@ const WORKSPACE_SECTIONS: Record<AppRole, Record<NavSpaceId, SectionSpec[]>> = {
     console: [
       { id: "supervision-home", itemIds: ["inicio"] },
       { id: "supervision-live", label: "Operación en vivo", itemIds: ["operacion", "equipo", "agenda-clinica", "recordatorios", "correo"] },
-      { id: "supervision-work", label: "Gestión", itemIds: ["pacientes", "caja", "campanas-clinica", "campanas-operativas", "ventas", "registros", "validacion-ventas", "marketing", "orbita"] },
+      { id: "supervision-work", label: "Gestión", itemIds: ["pacientes", "caja", "campanas-clinica", "campanas-correo", "campanas-operativas", "ventas", "registros", "validacion-ventas", "marketing", "orbita"] },
       { id: "supervision-analysis", label: "Análisis y calidad", itemIds: ["conversaciones", "conversaciones-clinica", "reportes", "reportes-clinica", "calidad"] },
     ],
     admin: [
