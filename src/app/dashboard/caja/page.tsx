@@ -109,6 +109,7 @@ export default async function CajaPage({ searchParams }: { searchParams: Promise
       <NavTabs
         tabs={[
           { label: "Por cobrar", href: "/dashboard/caja" },
+          { label: "Mostrador y comisiones", href: "/dashboard/caja/mostrador" },
           { label: ventas.negocios, href: "/dashboard/ventas" },
         ]}
       />

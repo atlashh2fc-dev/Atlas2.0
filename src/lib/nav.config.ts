@@ -176,6 +176,7 @@ const CONSOLE: NavSpace = {
           match: ["/dashboard/caja", "/dashboard/ventas"],
           tabs: [
             { label: "Por cobrar", href: "/dashboard/caja" },
+            { label: "Mostrador y comisiones", href: "/dashboard/caja/mostrador" },
             { label: "Presupuestos", href: "/dashboard/ventas" },
           ],
           modules: ["ventas_b2c"],
@@ -340,6 +341,17 @@ const CONSOLE: NavSpace = {
           ediciones: ["dental", "vet", "barber"],
         },
         {
+          id: "mi-dia",
+          label: "Mi día",
+          href: "/dashboard/mi-dia",
+          icon: CalendarDays,
+          roles: ["agente"],
+          description: "Tus citas del día, marcar atendida y tu comisión del mes",
+          match: ["/dashboard/mi-dia"],
+          modules: ["ventas_b2c"],
+          ediciones: ["dental", "vet", "barber"],
+        },
+        {
           id: "agenda",
           label: "Mi agenda",
           href: "/dashboard/agenda",
@@ -464,7 +476,7 @@ const WORKSPACE_SECTIONS: Record<AppRole, Record<NavSpaceId, SectionSpec[]>> = {
   },
   agente: {
     console: [
-      { id: "attention-workspace", itemIds: ["inicio", "conversaciones", "registros", "agenda"] },
+      { id: "attention-workspace", itemIds: ["mi-dia", "inicio", "conversaciones", "registros", "agenda"] },
     ],
     admin: [],
   },

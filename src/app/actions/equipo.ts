@@ -80,11 +80,29 @@ export async function guardarProfesional(formData: FormData) {
   const color = texto(formData, "color", 7);
   if (nombre.length < 3) throw new Error("El nombre es muy corto.");
   if (!COLOR.test(color)) throw new Error("Color inválido.");
+  const porcentaje = (campo: string) => {
+    const valor = Number(texto(formData, campo, 6).replace(",", ".") || 0);
+    if (!Number.isFinite(valor) || valor < 0 || valor > 100) throw new Error("La comisión va de 0 a 100 %.");
+    return Math.round(valor * 100) / 100;
+  };
+  const perfil = texto(formData, "perfil_id", 40);
+  if (perfil && !UUID.test(perfil)) throw new Error("Usuario inválido.");
   const { error } = await supabase
     .from("profesionales")
-    .update({ nombre, especialidad: texto(formData, "especialidad", 80) || null, color, activo: formData.get("activo") === "si" })
+    .update({
+      nombre,
+      especialidad: texto(formData, "especialidad", 80) || null,
+      color,
+      activo: formData.get("activo") === "si",
+      comision_servicios: porcentaje("comision_servicios"),
+      comision_productos: porcentaje("comision_productos"),
+      perfil_id: perfil || null,
+    })
     .eq("id", id);
-  if (error) throw errorDeAccion(error, error.code === "23505" ? "Ya hay alguien con ese nombre en la agenda." : undefined);
+  if (error) {
+    const mensaje = error.code === "23505" ? (error.message.includes("perfil") ? "Ese usuario ya está ligado a otra persona de la agenda." : "Ya hay alguien con ese nombre en la agenda.") : undefined;
+    throw errorDeAccion(error, mensaje);
+  }
 
   // Horario propio: o el de la clínica (sin filas) o uno propio completo.
   const propio = formData.get("horario_propio") === "si";

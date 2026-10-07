@@ -18,7 +18,7 @@ import { createClient } from "@/lib/supabase/server";
  * acá lo usan la agenda, la reserva en línea y los recordatorios.
  */
 
-type Profesional = { id: string; nombre: string; especialidad: string | null; color: string; activo: boolean };
+type Profesional = { id: string; nombre: string; especialidad: string | null; color: string; activo: boolean; perfil_id: string | null; comision_servicios: number; comision_productos: number };
 type Recurso = { id: string; nombre: string; activo: boolean };
 type Bloqueo = { id: string; profesional_id: string | null; desde: string; hasta: string; motivo: string | null };
 
@@ -31,12 +31,14 @@ export default async function EquipoPage() {
   const at = ATENCION_POR_EDICION[tipo];
   const nombreRecurso = tipo === "dental" ? { uno: "sillón", varios: "Sillones", ejemplo: "Sillón 1" } : tipo === "vet" ? { uno: "box", varios: "Boxes y salas", ejemplo: "Box 1" } : { uno: "silla", varios: "Sillas", ejemplo: "Silla 1" };
   const supabase = await createClient();
-  const [{ data: profesionalesData }, { data: horariosData }, { data: recursosData }, { data: bloqueosData }] = await Promise.all([
-    supabase.from("profesionales").select("id, nombre, especialidad, color, activo").order("activo", { ascending: false }).order("orden").order("nombre"),
+  const [{ data: profesionalesData }, { data: horariosData }, { data: recursosData }, { data: bloqueosData }, { data: usuariosData }] = await Promise.all([
+    supabase.from("profesionales").select("id, nombre, especialidad, color, activo, perfil_id, comision_servicios, comision_productos").order("activo", { ascending: false }).order("orden").order("nombre"),
     supabase.from("horarios_atencion").select("profesional_id, dia_semana, desde, hasta").order("dia_semana").order("desde"),
     supabase.from("recursos_agenda").select("id, nombre, activo").order("orden").order("nombre"),
     supabase.from("bloqueos_agenda").select("id, profesional_id, desde, hasta, motivo").gte("hasta", new Date().toISOString()).order("desde").limit(100),
+    supabase.from("profiles").select("id, full_name, email, role").eq("active", true).order("full_name"),
   ]);
+  const usuarios = (usuariosData ?? []) as { id: string; full_name: string | null; email: string | null; role: string }[];
   const profesionales = (profesionalesData ?? []) as Profesional[];
   const horarios = (horariosData ?? []) as (TramoHorario & { profesional_id: string | null })[];
   const recursos = (recursosData ?? []) as Recurso[];
@@ -105,6 +107,23 @@ export default async function EquipoPage() {
                           <input type="color" name="color" defaultValue={profesional.color} className="h-9 w-14 cursor-pointer rounded-lg border border-border-strong/70 bg-surface p-1" aria-label="Color en la agenda" />
                         </Field>
                       </div>
+                      <div className="grid gap-4 sm:grid-cols-3">
+                        <Field label="Comisión por servicios (%)">
+                          <Input name="comision_servicios" inputMode="decimal" defaultValue={String(Number(profesional.comision_servicios))} />
+                        </Field>
+                        <Field label="Comisión por productos (%)">
+                          <Input name="comision_productos" inputMode="decimal" defaultValue={String(Number(profesional.comision_productos))} />
+                        </Field>
+                        <Field label="Su usuario en Atlas">
+                          <Select name="perfil_id" defaultValue={profesional.perfil_id ?? ""}>
+                            <option value="">Sin usuario</option>
+                            {usuarios.map((usuario) => (
+                              <option key={usuario.id} value={usuario.id}>{usuario.full_name || usuario.email}</option>
+                            ))}
+                          </Select>
+                        </Field>
+                      </div>
+                      <p className="-mt-2 text-xs text-muted-foreground">Con un usuario de rol Agente ligado, ve «Mi día»: sus citas, marca en sala o atendida y revisa su comisión del mes.</p>
                       <HorarioProfesional propio={propios.length > 0} inicial={porDia} deLaClinica={resumenHorario(horarioClinica)} puedeEditar />
                       <label className="flex min-h-9 cursor-pointer items-center gap-2 text-sm">
                         <input type="checkbox" name="activo" value="si" defaultChecked={profesional.activo} className="size-4" />

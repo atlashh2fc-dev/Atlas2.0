@@ -100,6 +100,8 @@ export default async function DashboardPage() {
   // pacientes. El de contact center queda para la edición Center.
   const contexto = await contextoDeMiEmpresa();
   if (contexto.edicion !== "center") {
+    // Quien atiende (rol agente) entra directo a su día: sus citas y su comisión.
+    if (profile.role === "agente") redirect("/dashboard/mi-dia");
     return (
       <InicioClinica
         profile={profile}
