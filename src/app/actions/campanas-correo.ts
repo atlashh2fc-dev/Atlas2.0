@@ -116,16 +116,23 @@ export async function vistaPreviaCorreo(input: {
   campanaId?: string;
   paso: number;
   borrador?: Partial<DatosCampana>;
-}): Promise<Ok<{ html: string; asunto: string; empresaEjemplo: string }> | Falla> {
+}): Promise<Ok<{ html: string; asunto: string; empresaEjemplo: string; nombreEjemplo: string | null; nombreEsEjemplo: boolean }> | Falla> {
   try {
     const { empresa } = await contexto();
-    const resultado = await atlasLead<{ html: string; asunto: string; empresa_ejemplo: string }>(empresa.slug, "vista_previa", {
+    const resultado = await atlasLead<{ html: string; asunto: string; empresa_ejemplo: string; nombre_ejemplo?: string; nombre_es_ejemplo?: boolean }>(empresa.slug, "vista_previa", {
       campana_id: input.campanaId,
       paso: Math.max(0, Math.min(4, Math.floor(input.paso))),
       borrador: input.borrador,
     });
     if (!resultado.ok) return { ok: false, error: resultado.error };
-    return { ok: true, html: resultado.datos.html, asunto: resultado.datos.asunto, empresaEjemplo: resultado.datos.empresa_ejemplo };
+    return {
+      ok: true,
+      html: resultado.datos.html,
+      asunto: resultado.datos.asunto,
+      empresaEjemplo: resultado.datos.empresa_ejemplo,
+      nombreEjemplo: resultado.datos.nombre_ejemplo ?? null,
+      nombreEsEjemplo: Boolean(resultado.datos.nombre_es_ejemplo),
+    };
   } catch (error) {
     return falla(error);
   }

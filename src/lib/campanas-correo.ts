@@ -81,6 +81,8 @@ export type Paso = {
   asunto: string;
   cuerpo: string;
   imagen_url: string | null;
+  /** Dónde va la imagen respecto del texto. */
+  imagen_posicion?: "arriba" | "abajo";
   espera_dias_habiles: number;
   condicion: Condicion;
 };
@@ -184,7 +186,7 @@ export const PROGRAMACION_POR_DEFECTO: Programacion = {
   ventanas: [{ inicio: "09:00", fin: "18:00" }],
 };
 
-export const PASO_NUEVO: Paso = { asunto: "", cuerpo: "", imagen_url: null, espera_dias_habiles: 3, condicion: "todos" };
+export const PASO_NUEVO: Paso = { asunto: "", cuerpo: "", imagen_url: null, imagen_posicion: "abajo", espera_dias_habiles: 3, condicion: "todos" };
 
 // ---------------------------------------------------------------------------
 // Audiencia (Bigdata, contrato bigdata.audiencia.v1)

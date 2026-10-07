@@ -101,6 +101,7 @@ export function EditorCorreos({ modo, campanaId, version, remitentes, variables,
         asunto: paso.asunto.trim(),
         cuerpo: paso.cuerpo.trim(),
         imagen_url: paso.imagen_url,
+        imagen_posicion: paso.imagen_posicion ?? "abajo",
         espera_dias_habiles: indice === 0 ? 0 : paso.espera_dias_habiles,
         condicion: paso.condicion,
       })),
@@ -123,7 +124,7 @@ export function EditorCorreos({ modo, campanaId, version, remitentes, variables,
 
   // ---- Vista previa ----------------------------------------------------
   const [pasoPrevia, setPasoPrevia] = useState(0);
-  const [previa, setPrevia] = useState<{ html: string; asunto: string; empresa: string } | null>(null);
+  const [previa, setPrevia] = useState<{ html: string; asunto: string; empresa: string; nombre: string | null; nombreEsEjemplo: boolean } | null>(null);
   const [previaError, setPreviaError] = useState<string | null>(null);
   const [cargandoPrevia, setCargandoPrevia] = useState(false);
   const pedido = useRef(0);
@@ -155,7 +156,7 @@ export function EditorCorreos({ modo, campanaId, version, remitentes, variables,
       });
       if (numero !== pedido.current) return;
       if (resultado.ok) {
-        setPrevia({ html: resultado.html, asunto: resultado.asunto, empresa: resultado.empresaEjemplo });
+        setPrevia({ html: resultado.html, asunto: resultado.asunto, empresa: resultado.empresaEjemplo, nombre: resultado.nombreEjemplo, nombreEsEjemplo: resultado.nombreEsEjemplo });
         setPreviaError(null);
       } else {
         setPreviaError(resultado.error);
@@ -294,7 +295,7 @@ export function EditorCorreos({ modo, campanaId, version, remitentes, variables,
             </div>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-1.5 border-y border-border bg-surface-raised px-5 py-2.5">
-            <span className="mr-1 text-xs text-muted-foreground">Insertar:</span>
+            <span className="mr-1 text-xs font-medium text-foreground">Personalizar:</span>
             {variables.map((variable) => (
               <button
                 key={variable.clave}
@@ -305,7 +306,7 @@ export function EditorCorreos({ modo, campanaId, version, remitentes, variables,
                 onClick={() => insertar(variable.clave)}
                 className="h-11 rounded-md border border-border bg-surface px-2.5 text-xs font-medium sm:h-7 text-foreground transition-colors hover:border-primary/50 hover:text-primary disabled:opacity-50"
               >
-                {variable.clave.replace(/[[\]]/g, "")}
+                + {variable.clave.replace(/[[\]]/g, "")}
               </button>
             ))}
             <button
@@ -375,10 +376,18 @@ export function EditorCorreos({ modo, campanaId, version, remitentes, variables,
                       aria-invalid={Boolean(mostrar(errores.pasos[indice]?.cuerpo))}
                     />
                     <span className={cn("text-xs", mostrar(errores.pasos[indice]?.cuerpo ?? null) ? "text-danger" : "text-muted-foreground")}>
-                      {mostrar(errores.pasos[indice]?.cuerpo ?? null) ?? "La firma y el enlace de baja los agrega Atlas Lead. Un enlace de agenda solo en su línea se vuelve botón."}
+                      {mostrar(errores.pasos[indice]?.cuerpo ?? null) ?? "Escribe [Nombre] y cada persona recibe su primer nombre (o toca «+ Nombre» arriba). La firma y el enlace de baja los agrega Atlas Lead."}
                     </span>
                   </Field>
                   <SubirImagen etiqueta="Imagen dentro del correo (opcional)" valor={paso.imagen_url} onCambio={(url) => cambiarPaso(indice, { imagen_url: url })} maxMb={imagenMb} disabled={deshabilitado} />
+                  {paso.imagen_url && (
+                    <Field label="Ubicación de la imagen" className="max-w-xs">
+                      <Select value={paso.imagen_posicion ?? "abajo"} onChange={(evento) => cambiarPaso(indice, { imagen_posicion: evento.target.value as "arriba" | "abajo" })} disabled={deshabilitado}>
+                        <option value="abajo">Después del texto</option>
+                        <option value="arriba">Antes del texto</option>
+                      </Select>
+                    </Field>
+                  )}
                 </div>
               </li>
             ))}
@@ -465,7 +474,13 @@ export function EditorCorreos({ modo, campanaId, version, remitentes, variables,
               {previaError}
             </p>
           )}
-          {previa && !previaError && <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">Con datos de {previa.empresa}, un contacto real de la base.</p>}
+          {previa && !previaError && (
+            <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
+              Ejemplo: así le llega a <strong className="text-foreground">{previa.nombre ?? previa.empresa}</strong>
+              {previa.nombre ? ` de ${previa.empresa}` : ""}.
+              {previa.nombreEsEjemplo ? " El nombre es de ejemplo; a cada persona le llega el suyo." : " A cada persona le llega con su nombre y su empresa."}
+            </p>
+          )}
         </div>
       </aside>
     </div>
