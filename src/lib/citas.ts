@@ -40,6 +40,8 @@ export type Cita = {
   nota: string | null;
   /** whatsapp, correo, recepcion o reserva_online; null mientras no se confirma. */
   confirmada_por?: string | null;
+  /** recepcion, reserva_online, whatsapp o importacion. */
+  origen?: string | null;
   sales_companies: { name: string; phone: string | null } | { name: string; phone: string | null }[] | null;
   mascotas: { nombre: string; especie: string } | { nombre: string; especie: string }[] | null;
 };

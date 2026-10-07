@@ -10,7 +10,10 @@ import type { BadgeTone } from "@/components/ui";
  * de la plantilla registrada allá y las variables van en el mismo orden.
  */
 
-export type ClavePlantilla = "cita_confirmar" | "cita_recordatorio" | "cita_confirmada" | "cita_cancelada" | "cita_reagendar" | "vacuna" | "presupuesto" | "control" | "mantencion" | "look" | "enlace_pago" | "seguimiento_propuesta" | "libre";
+/** Dirección pública de Atlas para los enlaces que salen en los mensajes. */
+export const URL_PUBLICA = (typeof process !== "undefined" && process.env?.ATLAS_URL_PUBLICA) || "https://atlascrm.geimser.cl";
+
+export type ClavePlantilla = "cita_confirmar" | "cita_recordatorio" | "cita_confirmada" | "cita_cancelada" | "cita_reagendar" | "reserva_recibida" | "vacuna" | "presupuesto" | "control" | "mantencion" | "look" | "enlace_pago" | "seguimiento_propuesta" | "libre";
 
 export const PLANTILLAS: Record<ClavePlantilla, { nombre: string; cuerpo: string }> = {
   cita_confirmar: {
@@ -33,6 +36,10 @@ export const PLANTILLAS: Record<ClavePlantilla, { nombre: string; cuerpo: string
   cita_reagendar: {
     nombre: "Respuesta: quiere otra hora",
     cuerpo: "Perfecto, {{nombre}}. Te escribimos en un rato con otras horas disponibles en {{clinica}}. Tu hora del {{fecha}} sigue reservada mientras tanto.",
+  },
+  reserva_recibida: {
+    nombre: "Reserva en línea recibida",
+    cuerpo: "Hola {{nombre}}, tu hora en {{clinica}} quedó reservada para el {{fecha}} con {{profesional}} ({{motivo}}). Antes de la cita te pedimos confirmarla. Si necesitas cancelar: {{url_cita}}",
   },
   vacuna: {
     nombre: "Vacuna por vencer o vencida",
@@ -81,6 +88,7 @@ export const ETIQUETA_ESTADO_MENSAJE: Record<EstadoMensaje, { label: string; ton
 export const ETIQUETA_REGLA: Record<string, string> = {
   cita_manana: "Cita próxima",
   cita_respuesta: "Respuesta a la cita",
+  reserva_online: "Reserva en línea",
   vacuna: "Vacuna",
   presupuesto: "Presupuesto",
   control: "Control",
@@ -103,6 +111,7 @@ export const PLANTILLAS_EDITABLES: Partial<Record<ClavePlantilla, string[]>> = {
   cita_confirmada: ["nombre", "fecha", "clinica"],
   cita_cancelada: ["nombre", "fecha", "clinica"],
   cita_reagendar: ["nombre", "fecha", "clinica"],
+  reserva_recibida: ["nombre", "fecha", "profesional", "motivo", "clinica", "url_cita"],
   vacuna: ["nombre", "mascota", "vence_o_vencio", "fecha", "clinica"],
   presupuesto: ["nombre", "presupuesto", "monto", "clinica"],
   control: ["nombre", "meses", "clinica"],
@@ -119,6 +128,7 @@ export const VARIABLES_DE_EJEMPLO: Record<string, string> = {
   motivo: "Control",
   mascota: "Luna",
   fecha: "09/10 a las 10:30",
+  url_cita: `${URL_PUBLICA}/reservar/cita/…`,
   presupuesto: "Tratamiento de conducto",
   monto: "$180.000",
   meses: "6",
@@ -157,6 +167,8 @@ export function renderizarPlantilla(clave: string, variables: Record<string, unk
   valores.mascota_sufijo = mascota ? ` · ${mascota}` : "";
   // Los recordatorios anteriores a la anticipación configurable no traen «cuando».
   valores.cuando = valores.cuando?.trim() || "mañana";
+  // La reserva en línea manda el enlace para ver o cancelar la cita.
+  valores.url_cita = valores.token ? `${URL_PUBLICA}/reservar/cita/${valores.token}` : valores.url_cita ?? "";
   valores.vence_o_vencio = variables.vencida === true || variables.vencida === "true" ? "venció" : "vence";
   return plantilla.cuerpo
     .replace(/\{\{\s*([a-z_]+)\s*\}\}/g, (_, nombre: string) => valores[nombre] ?? "")

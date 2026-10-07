@@ -32,6 +32,10 @@ const PUBLIC_PATHS = [
   // El look aprobado lo abre el cliente desde WhatsApp, sin cuenta. La llave
   // es un token largo y aleatorio que se puede revocar.
   "/look/",
+  // La reserva en línea la abre cualquiera desde Instagram o la web de la
+  // clínica. Solo llama funciones públicas que exponen servicios y horas
+  // libres; la cita propia se ve y cancela con un token largo.
+  "/reservar/",
 ];
 
 const MACHINE_ONLY_PATHS = new Set([

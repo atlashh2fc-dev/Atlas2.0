@@ -119,7 +119,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       supabase.from("profesionales").select("id, nombre, especialidad, color, activo").eq("activo", true).order("orden").order("nombre"),
       supabase
         .from("citas")
-        .select("id, cuenta_id, mascota_id, profesional_id, inicio, fin, motivo, estado, nota, confirmada_por, sales_companies(name, phone), mascotas(nombre, especie)")
+        .select("id, cuenta_id, mascota_id, profesional_id, inicio, fin, motivo, estado, nota, confirmada_por, origen, sales_companies(name, phone), mascotas(nombre, especie)")
         .gte("inicio", desde.toISOString())
         .lt("inicio", hasta.toISOString())
         .order("inicio"),
@@ -435,7 +435,10 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
                         </span>
                       </Td>
                       <Td>
-                        <span className={`block ${activa ? "text-foreground" : ""}`}>{cita.motivo}</span>
+                        <span className={`block ${activa ? "text-foreground" : ""}`}>
+                          {cita.motivo}
+                          {cita.origen === "reserva_online" && <Badge tone="info" className="ml-2 align-middle">En línea</Badge>}
+                        </span>
                         {cita.nota && <span className="block text-xs text-muted-foreground">{cita.nota}</span>}
                       </Td>
                       <Td>
