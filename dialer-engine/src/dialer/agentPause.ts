@@ -79,6 +79,31 @@ export async function holdAgentWhileBusy(ami: AmiClient, extension: string): Pro
 }
 
 /**
+ * Pausa inmediata en la cola apenas el ejecutivo elige un AUX en la barra.
+ * Antes el AUX esperaba al sync periódico (5 s) y en ese lapso la cola le
+ * entregaba el cliente que el predictivo ya había marcado contando con él:
+ * elegía Baño y un segundo después le entraba la llamada.
+ *
+ * Devuelve false si Asterisk ya lo tenía pausado (cierre, ocupación u otro
+ * AUX); el sync periódico solo actualiza el motivo.
+ */
+export async function pauseAgentForAux(ami: AmiClient, extension: string, reasonLabel: string): Promise<boolean> {
+  if (lastPausedByExtension.get(extension) === true) return false;
+  // Antes de la acción, igual que en el sync: el evento de pausa puede
+  // llegar antes que la respuesta y debe dejar la sesión en 'paused'.
+  busyHoldExtensions.delete(extension);
+  busyHoldUntil.delete(extension);
+  await amiAction(ami, {
+    Action: "QueuePause",
+    Interface: `PJSIP/${extension}`,
+    Paused: "true",
+    Reason: reasonLabel,
+  });
+  lastPausedByExtension.set(extension, true);
+  return true;
+}
+
+/**
  * Despausa al ejecutivo apenas Atlas lo dejó 'available' (cierre de la
  * tipificación), sin esperar al ciclo periódico de sincronización: esa espera
  * de hasta 10 s era una ventana en la que el motor ya contaba al ejecutivo

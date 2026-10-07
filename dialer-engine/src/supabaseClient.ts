@@ -604,6 +604,17 @@ export async function isAgentInPauseReason(profileId: string): Promise<boolean> 
   return reason?.is_pause === true;
 }
 
+/** Motivo de estado (Disponible o un AUX) por id, para la pausa por evento. */
+export async function getStatusReason(reasonId: string): Promise<{ label: string; is_pause: boolean } | null> {
+  const { data, error } = await supabase
+    .from("agent_status_reasons")
+    .select("label, is_pause")
+    .eq("id", reasonId)
+    .maybeSingle();
+  if (error) throw new Error(`agent_status_reasons: ${error.message}`);
+  return data ?? null;
+}
+
 const HEARTBEAT_GRACE_SECONDS = 60;
 
 /**

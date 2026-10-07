@@ -8,7 +8,7 @@ import { runAiVoiceCampaignTick } from "./dialer/aiVoiceCampaignLoop";
 import { refreshAgentDirectory, getActiveCredentials } from "./dialer/agentDirectory";
 import { ensureAgentEndpoints, ensureAmdContext } from "./asterisk/configSync";
 import { syncAgentPauseStates } from "./dialer/agentPause";
-import { subscribeAgentHolds, subscribeAgentReleases } from "./dialer/agentRelease";
+import { subscribeAgentAuxPauses, subscribeAgentHolds, subscribeAgentReleases } from "./dialer/agentRelease";
 import { setPacingWakeHandler, type PacingWakeReason } from "./dialer/pacingWake";
 import { checkAgentHeartbeats } from "./dialer/agentHeartbeat";
 import { AGENT_CONTROL_POLL_MS, processAgentControlCommands } from "./dialer/agentControl";
@@ -269,6 +269,7 @@ async function main() {
   // en Asterisk y despierta el pacing sin esperar los ciclos periódicos.
   subscribeAgentReleases(ami);
   subscribeAgentHolds(ami);
+  subscribeAgentAuxPauses(ami);
 
   // Ciclo separado para campañas atendidas por IA. No toca Queue, agentes ni
   // extensiones: Atlas reclama la base y ElevenLabs origina por su troncal SIP.

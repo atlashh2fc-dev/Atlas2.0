@@ -2193,6 +2193,7 @@ export function CtiBar({ profile }: { profile: Profile }) {
           currentId={currentReasonId}
           disabled={savingStatus || hybridManualMode || statusLoading || statusReasons.length === 0}
           disabledNote={hybridManualMode ? "Estás en llamada manual. Vuelve a la cola desde el marcador." : null}
+          callInProgress={activeCall}
           onSelect={(id) => void handleStatusChange(id)}
           error={statusError}
           onRetry={() => void loadAgentStatus()}

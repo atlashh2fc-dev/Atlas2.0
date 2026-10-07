@@ -1,8 +1,8 @@
 import type AmiClient from "asterisk-manager";
 import { logger } from "../logger";
-import { supabase, getAgentSessionStatuses, getBusyAgentIds, isAgentInPauseReason } from "../supabaseClient";
+import { supabase, getAgentSessionStatuses, getBusyAgentIds, getStatusReason, isAgentInPauseReason } from "../supabaseClient";
 import { getExtensionForProfileId } from "./agentDirectory";
-import { holdAgentWhileBusy, resumeAgentAfterWrapUp } from "./agentPause";
+import { holdAgentWhileBusy, pauseAgentForAux, resumeAgentAfterWrapUp } from "./agentPause";
 import { requestPacingWake } from "./pacingWake";
 
 /** Cuántas veces y cada cuánto se confirma que la sesión ya quedó 'available'. */
@@ -130,6 +130,61 @@ export function subscribeAgentHolds(ami: AmiClient): () => Promise<void> {
       logger.warn({ status, err }, "Suscripción Realtime de gestiones manuales no disponible; rige el sync periódico");
     }
   });
+
+  return async () => {
+    await supabase.removeChannel(channel);
+  };
+}
+
+/** Los motivos casi no cambian; el heartbeat (cada 20 s) no consulta la base. */
+const REASON_CACHE_MS = 5 * 60_000;
+const reasonCache = new Map<string, { reason: { label: string; is_pause: boolean } | null; at: number }>();
+
+async function cachedStatusReason(reasonId: string) {
+  const hit = reasonCache.get(reasonId);
+  if (hit && Date.now() - hit.at < REASON_CACHE_MS) return hit.reason;
+  const reason = await getStatusReason(reasonId);
+  reasonCache.set(reasonId, { reason, at: Date.now() });
+  return reason;
+}
+
+/**
+ * Pausa en la cola al ejecutivo apenas elige un AUX (o queda Desconectado),
+ * sin esperar al sync periódico. Volver a Disponible sigue en manos del sync
+ * y de la liberación por call.closed, que miran cierre y ocupación.
+ */
+export function subscribeAgentAuxPauses(ami: AmiClient): () => Promise<void> {
+  const channel = supabase
+    .channel("dialer-engine-agent-aux")
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "agent_current_status" },
+      (payload) => {
+        const row = payload.new as { profile_id?: string | null; reason_id?: string | null };
+        const profileId = row?.profile_id;
+        const reasonId = row?.reason_id;
+        if (!profileId || !reasonId) return;
+        const extension = getExtensionForProfileId(profileId);
+        if (!extension) return;
+        cachedStatusReason(reasonId)
+          .then(async (reason) => {
+            if (!reason?.is_pause) return;
+            if (await pauseAgentForAux(ami, extension, reason.label)) {
+              logger.info({ profileId, extension, reason: reason.label }, "Ejecutivo pausado en la cola al elegir AUX");
+            }
+          })
+          .catch((err) =>
+            logger.warn({ err, profileId, extension }, "No se pudo pausar al ejecutivo por su AUX; el sync periódico lo cubre")
+          );
+      }
+    )
+    .subscribe((status, err) => {
+      if (status === "SUBSCRIBED") {
+        logger.info("Suscrito a agent_current_status: pausa por AUX inmediata activa");
+      } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+        logger.warn({ status, err }, "Suscripción Realtime de AUX no disponible; rige el sync periódico");
+      }
+    });
 
   return async () => {
     await supabase.removeChannel(channel);

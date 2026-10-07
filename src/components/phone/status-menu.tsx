@@ -39,6 +39,7 @@ export function StatusMenu({
   currentId,
   disabled,
   disabledNote,
+  callInProgress,
   onSelect,
   error,
   onRetry,
@@ -67,6 +68,11 @@ export function StatusMenu({
   currentId: string | null;
   disabled: boolean;
   disabledNote?: ReactNode;
+  /**
+   * Hay una llamada en curso (incluida la propia agenda marcando al cliente).
+   * Un AUX no la corta: la cola ya se la entregó o está por entregársela.
+   */
+  callInProgress?: boolean;
   onSelect: (id: string) => void;
   error: string | null;
   onRetry: () => void;
@@ -107,6 +113,14 @@ export function StatusMenu({
         <ChevronDown size={14} aria-hidden />
       </button>
       {!countdown && pauseCapSeconds ? <PauseCap since={since} maxSeconds={pauseCapSeconds} /> : null}
+      {tone === "pause" && callInProgress ? (
+        <span
+          role="status"
+          className="whitespace-nowrap rounded-md border border-warning/40 bg-warning-bg px-2 py-1 text-xs font-semibold text-warning"
+        >
+          Llamada en curso: tipifícala antes de dejar el puesto
+        </span>
+      ) : null}
 
       {open && (
         <div
@@ -129,6 +143,11 @@ export function StatusMenu({
                 }}
               />
             ))}
+            {callInProgress && aux.length > 0 && (
+              <p className="px-2 pb-1.5 text-xs text-warning">
+                Tienes una llamada en curso. Un AUX no la corta: termínala y tipifícala antes de dejar el puesto.
+              </p>
+            )}
             {aux.map((option) => (
               <MenuOption
                 key={option.id}
