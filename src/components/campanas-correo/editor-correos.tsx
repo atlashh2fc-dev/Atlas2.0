@@ -303,7 +303,7 @@ export function EditorCorreos({ modo, campanaId, version, remitentes, variables,
                 disabled={deshabilitado}
                 onMouseDown={(evento) => evento.preventDefault()}
                 onClick={() => insertar(variable.clave)}
-                className="h-7 rounded-md border border-border bg-surface px-2 text-xs font-medium text-foreground transition-colors hover:border-primary/50 hover:text-primary disabled:opacity-50"
+                className="h-11 rounded-md border border-border bg-surface px-2.5 text-xs font-medium sm:h-7 text-foreground transition-colors hover:border-primary/50 hover:text-primary disabled:opacity-50"
               >
                 {variable.clave.replace(/[[\]]/g, "")}
               </button>
@@ -313,7 +313,7 @@ export function EditorCorreos({ modo, campanaId, version, remitentes, variables,
               disabled={deshabilitado}
               onMouseDown={(evento) => evento.preventDefault()}
               onClick={() => insertar("\n\n[BULLETS]\n- Primer punto\n- Segundo punto\n\n")}
-              className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-surface px-2 text-xs font-medium text-foreground transition-colors hover:border-primary/50 hover:text-primary disabled:opacity-50"
+              className="inline-flex h-11 items-center gap-1 rounded-md border border-border bg-surface px-2.5 text-xs font-medium sm:h-7 text-foreground transition-colors hover:border-primary/50 hover:text-primary disabled:opacity-50"
             >
               <List size={12} aria-hidden="true" /> Lista
             </button>
@@ -444,7 +444,7 @@ export function EditorCorreos({ modo, campanaId, version, remitentes, variables,
                   role="tab"
                   aria-selected={pasoPrevia === indice}
                   onClick={() => setPasoPrevia(indice)}
-                  className={cn("h-8 shrink-0 rounded-md px-2.5 text-xs font-medium", pasoPrevia === indice ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-surface-muted")}
+                  className={cn("h-11 shrink-0 rounded-md px-2.5 text-xs font-medium sm:h-8", pasoPrevia === indice ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-surface-muted")}
                 >
                   {indice + 1}. {nombreDelPaso(indice)}
                 </button>

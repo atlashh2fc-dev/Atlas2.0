@@ -59,7 +59,7 @@ function Chips({
               aria-pressed={activa}
               onClick={() => onCambio(activa ? elegidas.filter((valor) => valor !== opcion.valor) : [...elegidas, opcion.valor])}
               className={cn(
-                "inline-flex min-h-8 items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors",
+                "inline-flex min-h-11 items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors sm:min-h-8",
                 activa ? "border-primary bg-primary/10 font-medium text-primary" : "border-border bg-surface text-foreground hover:border-primary/50",
               )}
             >
@@ -69,7 +69,7 @@ function Chips({
           );
         })}
         {opciones.length > limite && (
-          <button type="button" onClick={() => setVerTodas((valor) => !valor)} className="min-h-8 rounded-full px-3 text-xs font-medium text-primary hover:underline">
+          <button type="button" onClick={() => setVerTodas((valor) => !valor)} className="min-h-11 rounded-full px-3 text-xs font-medium text-primary hover:underline sm:min-h-8">
             {verTodas ? "Ver menos" : `Ver las ${opciones.length}`}
           </button>
         )}
@@ -253,11 +253,11 @@ export function AudienciaBigdata({ campanaId, nombreCampana, audienciaActual, de
                 <Input value={filtros.nombre_contiene ?? ""} onChange={(evento) => cambiar({ nombre_contiene: evento.target.value })} placeholder="Clínica, Dental, Transportes…" />
               </Field>
               <div className="flex flex-wrap gap-x-6 gap-y-2">
-                <label className="inline-flex min-h-8 items-center gap-2 text-sm text-foreground">
+                <label className="inline-flex min-h-11 items-center gap-2 text-sm text-foreground sm:min-h-8">
                   <input type="checkbox" className="size-4 accent-[var(--color-primary)]" checked={filtros.solo_activas ?? true} onChange={(evento) => cambiar({ solo_activas: evento.target.checked })} />
                   Solo empresas activas en el SII
                 </label>
-                <label className="inline-flex min-h-8 items-center gap-2 text-sm text-foreground">
+                <label className="inline-flex min-h-11 items-center gap-2 text-sm text-foreground sm:min-h-8">
                   <input type="checkbox" className="size-4 accent-[var(--color-primary)]" checked={filtros.excluir_clientes_equifax ?? false} onChange={(evento) => cambiar({ excluir_clientes_equifax: evento.target.checked })} />
                   Excluir clientes de Equifax
                 </label>
@@ -276,7 +276,7 @@ export function AudienciaBigdata({ campanaId, nombreCampana, audienciaActual, de
           <fieldset className="space-y-1.5">
             <legend className="sr-only">Tipo de contacto</legend>
             {(Object.keys(CONTACTO_LABEL) as (keyof typeof CONTACTO_LABEL)[]).map((valor) => (
-              <label key={valor} className="flex min-h-9 items-center gap-2.5 text-sm text-foreground">
+              <label key={valor} className="flex min-h-11 items-center gap-2.5 text-sm text-foreground sm:min-h-9">
                 <input type="radio" name="contacto" className="size-4 accent-[var(--color-primary)]" checked={(filtros.contacto ?? "ambos") === valor} onChange={() => cambiar({ contacto: valor })} />
                 {CONTACTO_LABEL[valor]}
               </label>
