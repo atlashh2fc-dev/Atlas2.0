@@ -107,13 +107,20 @@ export type CampanaDetalle = CampanaResumen & {
   audiencia: { lote_id: string | null; total: number; nombre: string | null; ola: number | null; origen?: unknown; cargada_at?: string | null };
   remitente_cabecera_con_texto: boolean;
   acciones: Accion[];
+  respuestas: Respuesta[];
 };
+
+export type Respuesta = { id: string; empresa: string | null; email: string | null; asunto: string | null; extracto: string; recibida_at: string };
+
+/** Un correo que llegó a la casilla de respuestas y no calzó con ningún envío. */
+export type CorreoSinAsociar = { id: string; remitente: string; nombre: string | null; asunto: string | null; extracto: string; recibido_at: string; motivo: string };
 
 export type ListaDeCampanas = {
   empresa: { slug: string; nombre: string; cupo_diario: number | null };
   enviados_hoy: number;
   por_dia: { dia: string; enviados: number; abrieron: number; clics: number; respuestas: number; bajas: number; rebotes: number; fallidos: number }[];
   respuestas_7d: { campana_id: string; empresa: string | null; recibida_at: string; intencion: string | null; resumen: string | null }[];
+  correos_sin_asociar: number;
   campanas: CampanaResumen[];
 };
 

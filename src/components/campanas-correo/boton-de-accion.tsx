@@ -4,10 +4,13 @@ import { useRef, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
-import { cambiarEstadoCampanaCorreo, conectarAtlasLead } from "@/app/actions/campanas-correo";
+import { cambiarEstadoCampanaCorreo, conectarAtlasLead, descartarCorreoSinAsociar } from "@/app/actions/campanas-correo";
 import { Button, ConfirmDialog, useToast, type ButtonProps, type ConfirmOptions } from "@/components/ui";
 
-type Accion = { tipo: "estado"; campanaId: string; accion: "lanzar" | "pausar" | "reanudar" | "cancelar" } | { tipo: "conectar" };
+type Accion =
+  | { tipo: "estado"; campanaId: string; accion: "lanzar" | "pausar" | "reanudar" | "cancelar" }
+  | { tipo: "conectar" }
+  | { tipo: "descartar"; correoId: string };
 
 /**
  * Botón que ejecuta una acción de la campaña y muestra el motivo exacto si
@@ -39,7 +42,12 @@ export function BotonDeAccion({
     enVuelo.current = true;
     start(async () => {
       try {
-        const resultado = accion.tipo === "conectar" ? await conectarAtlasLead() : await cambiarEstadoCampanaCorreo({ campanaId: accion.campanaId, accion: accion.accion });
+        const resultado =
+          accion.tipo === "conectar"
+            ? await conectarAtlasLead()
+            : accion.tipo === "descartar"
+              ? await descartarCorreoSinAsociar({ id: accion.correoId })
+              : await cambiarEstadoCampanaCorreo({ campanaId: accion.campanaId, accion: accion.accion });
         if (!resultado.ok) {
           toast({ tone: "danger", message: resultado.error });
           return;

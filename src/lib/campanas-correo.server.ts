@@ -2,6 +2,7 @@ import "server-only";
 
 import type {
   CampanaDetalle,
+  CorreoSinAsociar,
   Capacidades,
   ConteoAudiencia,
   FiltrosAudiencia,
@@ -42,7 +43,9 @@ export type AccionAtlasLead =
   | "prueba"
   | "estado"
   | "audiencia"
-  | "imagen";
+  | "imagen"
+  | "sin_asociar"
+  | "resolver_sin_asociar";
 
 const TIEMPO_POR_ACCION: Partial<Record<AccionAtlasLead, number>> = {
   prueba: 90_000,
@@ -57,6 +60,7 @@ export function atlasLead<T>(slug: string, accion: AccionAtlasLead, cuerpo: Reco
 export const capacidadesDeCorreo = (slug: string) => atlasLead<Capacidades>(slug, "capacidades");
 export const campanasDeCorreo = (slug: string) => atlasLead<ListaDeCampanas>(slug, "listar");
 export const campanaDeCorreo = (slug: string, id: string) => atlasLead<{ campana: CampanaDetalle }>(slug, "detalle", { campana_id: id });
+export const correosSinAsociar = (slug: string) => atlasLead<{ total: number; correos: CorreoSinAsociar[] }>(slug, "sin_asociar");
 
 // ---------------------------------------------------------------------------
 // Bigdata

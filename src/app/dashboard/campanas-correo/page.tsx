@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { connection } from "next/server";
-import { ChevronRight, MailPlus, Plug, Send } from "lucide-react";
+import { ChevronRight, Inbox, MailPlus, Plug, Send } from "lucide-react";
 
 import { BotonDeAccion } from "@/components/campanas-correo/boton-de-accion";
 import { Badge, Callout, EmptyState, PageHeader, SectionCard, SegmentTabs, buttonClasses } from "@/components/ui";
 import { requireProfile } from "@/lib/auth";
 import { ESTADO_CAMPANA, formatearNumero, porcentaje, type CampanaResumen } from "@/lib/campanas-correo";
-import { campanasDeCorreo, capacidadesDeCorreo, empresaActual } from "@/lib/campanas-correo.server";
+import { campanasDeCorreo, capacidadesDeCorreo, correosSinAsociar, empresaActual } from "@/lib/campanas-correo.server";
 
 /**
  * Campañas de correo de la empresa.
@@ -93,6 +93,7 @@ export default async function CampanasCorreoPage({ searchParams }: { searchParam
   }
 
   const lista = await campanasDeCorreo(empresa.slug);
+  const sinAsociar = lista.ok && (lista.datos.correos_sin_asociar ?? 0) > 0 ? await correosSinAsociar(empresa.slug) : null;
   const campanas = lista.ok ? lista.datos.campanas : [];
   const ultimos30 = lista.ok ? lista.datos.por_dia : [];
   const suma = (campo: "enviados" | "abrieron" | "respuestas") => ultimos30.reduce((total, dia) => total + (Number(dia[campo]) || 0), 0);
@@ -215,6 +216,39 @@ export default async function CampanasCorreoPage({ searchParams }: { searchParam
           </div>
         )}
       </SectionCard>
+
+      {sinAsociar?.ok && sinAsociar.datos.correos.length > 0 && (
+        <SectionCard
+          title={`${sinAsociar.datos.total} ${sinAsociar.datos.total === 1 ? "correo llegó" : "correos llegaron"} sin campaña`}
+          description="Llegaron a la casilla de respuestas y no calzaron con ningún envío: puede ser un cliente que escribió desde otra dirección. Respóndelo desde tu correo y descártalo acá."
+        >
+          <ul className="divide-y divide-border/70 border-t border-border">
+            {sinAsociar.datos.correos.map((correo) => (
+              <li key={correo.id} className="flex flex-wrap items-start gap-3 px-5 py-3">
+                <Inbox size={16} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-foreground">
+                    {correo.nombre ? `${correo.nombre} · ` : ""}
+                    <a href={`mailto:${correo.remitente}`} className="text-primary hover:underline">
+                      {correo.remitente}
+                    </a>
+                  </p>
+                  <p className="mt-0.5 text-sm text-foreground">{correo.asunto || "(sin asunto)"}</p>
+                  <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{correo.extracto}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <time className="text-xs tabular-nums text-muted-foreground" dateTime={correo.recibido_at}>
+                    {cuando.format(new Date(correo.recibido_at)).replace(".", "")}
+                  </time>
+                  <BotonDeAccion variant="ghost" size="sm" accion={{ tipo: "descartar", correoId: correo.id }} exito="Correo descartado" pendiente="…">
+                    Descartar
+                  </BotonDeAccion>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
+      )}
     </div>
   );
 }

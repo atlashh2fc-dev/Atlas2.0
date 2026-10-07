@@ -176,6 +176,20 @@ export async function cambiarEstadoCampanaCorreo(input: { campanaId: string; acc
   }
 }
 
+/** Descarta un correo que llegó sin campaña (no era una respuesta a una campaña). */
+export async function descartarCorreoSinAsociar(input: { id: string }): Promise<Ok<object> | Falla> {
+  try {
+    const { empresa, actor } = await contexto();
+    if (!UUID.test(input.id)) return { ok: false, error: "Correo inválido." };
+    const resultado = await atlasLead(empresa.slug, "resolver_sin_asociar", { id: input.id, accion: "descartar", actor });
+    if (!resultado.ok) return { ok: false, error: resultado.error };
+    revalidatePath(RUTA);
+    return { ok: true };
+  } catch (error) {
+    return falla(error);
+  }
+}
+
 /** URL firmada para que el navegador suba la imagen directo a Atlas Lead. */
 export async function prepararSubidaDeImagen(input: { nombre: string; tipo: string; bytes: number }): Promise<Ok<{ subidaUrl: string; urlPublica: string; clavePublica: string | null }> | Falla> {
   try {

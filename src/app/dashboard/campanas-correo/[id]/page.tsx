@@ -100,7 +100,8 @@ export default async function CampanaCorreoPage({ params, searchParams }: { para
     if (detalle.status === 404) notFound();
     return <Callout tone="danger">No se pudo leer la campaña: {detalle.error}. Vuelve a cargar para reintentar.</Callout>;
   }
-  const campana = detalle.datos.campana;
+  // Atlas Lead puede ir una versión atrás durante un despliegue: lo nuevo es opcional.
+  const campana = { ...detalle.datos.campana, respuestas: detalle.datos.campana.respuestas ?? [] };
   const limites = capacidades.ok ? capacidades.datos.limites : { imagenMb: 5, pruebaMax: 5, pasosMax: 5, audienciaLoteMax: 500, limiteDiarioMax: 1000 };
   const variables = capacidades.ok ? capacidades.datos.variables : [];
 
@@ -190,6 +191,37 @@ export default async function CampanaCorreoPage({ params, searchParams }: { para
                   <Cifra label="Se dieron de baja" valor={formatearNumero(m?.bajas)} detalle={m?.contactados ? porcentaje(m.bajas, m.contactados) : undefined} />
                   <Cifra label="Rebotaron" valor={formatearNumero(m?.rebotes)} detalle={m?.contactados ? porcentaje(m.rebotes, m.contactados) : undefined} />
                 </dl>
+                <SectionCard
+                  title={`Respuestas${campana.respuestas.length ? ` · ${campana.respuestas.length}` : ""}`}
+                  description="Lo que contestaron los clientes. También llegan a la bandeja de Correo para seguirlas."
+                  actions={
+                    <Link href="/dashboard/mail" className="text-sm text-primary hover:underline">
+                      Abrir bandeja
+                    </Link>
+                  }
+                >
+                  {campana.respuestas.length === 0 ? (
+                    <p className="border-t border-border px-5 py-4 text-sm text-muted-foreground">Todavía nadie contestó esta campaña.</p>
+                  ) : (
+                    <ul className="divide-y divide-border/70 border-t border-border">
+                      {campana.respuestas.map((respuesta) => (
+                        <li key={respuesta.id} className="px-5 py-3">
+                          <div className="flex flex-wrap items-baseline justify-between gap-2">
+                            <p className="text-sm font-medium text-foreground">
+                              {respuesta.empresa ?? respuesta.email}
+                              {respuesta.empresa && respuesta.email ? <span className="font-normal text-muted-foreground"> · {respuesta.email}</span> : null}
+                            </p>
+                            <time className="text-xs tabular-nums text-muted-foreground" dateTime={respuesta.recibida_at}>
+                              {cuando.format(new Date(respuesta.recibida_at)).replace(".", "")}
+                            </time>
+                          </div>
+                          <p className="mt-0.5 text-sm text-foreground">{respuesta.asunto}</p>
+                          <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">{respuesta.extracto}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </SectionCard>
                 <SectionCard title="Cuándo envía" description={campana.programacion ? describirProgramacion(campana.programacion, campana.limite_diario) : "Con el horario fijo de Atlas Lead (lunes a viernes). Puedes darle uno propio."}>
                   <div className="border-t border-border px-5 py-3 text-sm text-muted-foreground">
                     {m?.ultimo_envio ? `Último envío: ${cuando.format(new Date(m.ultimo_envio)).replace(".", "")} · ${formatearNumero(m.enviados_24h)} en las últimas 24 horas.` : "Todavía no sale ningún correo."}{" "}
