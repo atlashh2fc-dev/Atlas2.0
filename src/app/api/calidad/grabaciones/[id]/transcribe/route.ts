@@ -8,6 +8,7 @@ import {
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { evaluateQualityTranscriptionEligibility } from "@/lib/quality-transcription-policy";
+import { getWorkspacePermissions } from "@/lib/workspace-permissions";
 
 export const maxDuration = 300;
 
@@ -52,7 +53,7 @@ function json(payload: object, status = 200) {
 async function authorizeRecording(id: string) {
   const profile = await getCurrentProfile();
   if (!profile) return { error: json({ error: "Debes iniciar sesión." }, 401) } as const;
-  if (!profile.active || (profile.role !== "admin" && profile.role !== "supervisor")) {
+  if (!profile.active || !getWorkspacePermissions(profile.role).canReviewQuality) {
     return { error: json({ error: "No tienes permiso para transcribir grabaciones." }, 403) } as const;
   }
   if (!UUID_PATTERN.test(id)) return { error: json({ error: "Grabación inválida." }, 400) } as const;

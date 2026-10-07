@@ -8,12 +8,14 @@ export function getWorkspacePermissions(role: AppRole) {
     canManageAssignments: role === "admin" || role === "supervisor",
     canMonitorOperations: role === "admin" || role === "supervisor",
     canConfigurePlatform: role === "admin",
-    canReviewQuality: role === "admin" || role === "supervisor",
+    canReviewQuality: role === "admin" || role === "supervisor" || role === "calidad",
     workspaceLabel: role === "admin"
       ? "Control"
       : role === "supervisor"
         ? "Supervisión"
-        : "Atención",
+        : role === "calidad"
+          ? "Calidad"
+          : "Atención",
   };
 }
 

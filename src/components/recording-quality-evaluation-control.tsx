@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BrainCircuit, Lightbulb, ListChecks, LoaderCircle, RotateCcw, ThumbsUp, TriangleAlert } from "lucide-react";
 import { Badge, Button, Callout, EmptyState, SlideOver, useToast } from "@/components/ui";
@@ -110,6 +111,8 @@ export function RecordingQualityEvaluationControl({
   initialStatus,
   initialScore,
   initialVerdict,
+  hasPauta = false,
+  reviewScore = null,
   compact = false,
 }: {
   recordingId: string;
@@ -120,6 +123,10 @@ export function RecordingQualityEvaluationControl({
   initialStatus: QualityEvaluationStatus | null;
   initialScore: number | null;
   initialVerdict: QualityEvaluationVerdict | null;
+  /** La campaña tiene pauta cargada por la empresa: se valida en su propia pantalla. */
+  hasPauta?: boolean;
+  /** Nota validada por Calidad, si existe. */
+  reviewScore?: number | null;
   compact?: boolean;
 }) {
   const router = useRouter();
@@ -132,6 +139,19 @@ export function RecordingQualityEvaluationControl({
   const [evaluation, setEvaluation] = useState<EvaluationPayload | null>(null);
   const [transcriptionReady, setTranscriptionReady] = useState(transcriptionStatus === "completed");
 
+  if (hasPauta) {
+    return (
+      <PautaEvaluationControl
+        recordingId={recordingId}
+        playable={playable}
+        initialStatus={initialStatus}
+        initialScore={reviewScore ?? initialScore}
+        initialVerdict={initialVerdict}
+        validated={reviewScore !== null}
+        compact={compact}
+      />
+    );
+  }
   if (!isSecretariaVirtualAuditCampaign(campaignName)) {
     return <span className="whitespace-nowrap text-xs text-muted-foreground">Sin pauta</span>;
   }
@@ -428,5 +448,98 @@ export function RecordingQualityEvaluationControl({
         )}
       </SlideOver>
     </>
+  );
+}
+
+/**
+ * Campañas con pauta de la empresa (Equifax): la nota lleva a la pantalla de
+ * validación y «Evaluar» transcribe + evalúa en el servidor y abre esa pantalla.
+ */
+function PautaEvaluationControl({
+  recordingId,
+  playable,
+  initialStatus,
+  initialScore,
+  initialVerdict,
+  validated,
+  compact,
+}: {
+  recordingId: string;
+  playable: boolean;
+  initialStatus: QualityEvaluationStatus | null;
+  initialScore: number | null;
+  initialVerdict: QualityEvaluationVerdict | null;
+  validated: boolean;
+  compact: boolean;
+}) {
+  const router = useRouter();
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(false);
+  const href = `/dashboard/calidad/evaluaciones/${encodeURIComponent(recordingId)}`;
+
+  if (!playable) return <span className="whitespace-nowrap text-xs text-muted-foreground">Sin audio</span>;
+
+  if (initialStatus === "completed" || validated) {
+    const tone = initialVerdict ? VERDICT[initialVerdict].tone : "neutral";
+    return (
+      <Link
+        href={href}
+        title={validated ? "Ver la validación de Calidad" : "Validar la evaluación de la IA"}
+        className="group/score block w-full min-w-0 rounded-lg px-1.5 py-1 text-left transition-colors hover:bg-surface-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <span className="flex items-baseline justify-between gap-2">
+          <span className="flex items-baseline gap-0.5">
+            <span className={`text-[15px] font-semibold tabular-nums ${TONE_TEXT[tone]}`}>
+              {initialScore === null ? "—" : initialScore.toLocaleString("es-CL", { maximumFractionDigits: 1 })}
+            </span>
+            <span className="text-[11px] text-muted-foreground">/100</span>
+          </span>
+          <span className="truncate text-[11px] text-muted-foreground group-hover/score:text-foreground">
+            {validated ? "Validada" : "Por validar"}
+          </span>
+        </span>
+        {initialScore !== null && <ScoreBar value={initialScore} tone={tone} className="mt-1.5" />}
+      </Link>
+    );
+  }
+
+  const evaluate = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/calidad/grabaciones/${encodeURIComponent(recordingId)}/evaluate`, {
+        method: "POST",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const payload = (await response.json().catch(() => ({}))) as { error?: string; message?: string };
+      if (!response.ok) throw new Error(payload.error ?? payload.message ?? "No se pudo evaluar la llamada.");
+      router.push(href);
+    } catch (error) {
+      toast({ tone: "danger", message: error instanceof Error ? error.message : "No se pudo evaluar la llamada." });
+      setLoading(false);
+    }
+  };
+
+  if (initialStatus === "processing" || loading) {
+    return (
+      <Badge tone="info" dot={false} className={compact ? "px-1.5 py-1" : undefined}>
+        <LoaderCircle size={13} className="animate-spin text-primary" />
+        Evaluando
+      </Badge>
+    );
+  }
+  return (
+    <Button
+      type="button"
+      variant="secondary"
+      size="sm"
+      onClick={evaluate}
+      className={compact ? "w-full gap-1 px-2 text-xs leading-tight" : undefined}
+      title="Transcribe y evalúa la llamada con la pauta de su campaña"
+    >
+      {initialStatus === "failed" ? <RotateCcw size={14} /> : <BrainCircuit size={14} />}
+      {initialStatus === "failed" ? "Reintentar" : "Evaluar"}
+    </Button>
   );
 }

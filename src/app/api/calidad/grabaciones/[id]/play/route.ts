@@ -3,6 +3,7 @@ import { getCurrentProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSupervisedTeamIds } from "@/lib/supervisor-scope";
+import { getWorkspacePermissions } from "@/lib/workspace-permissions";
 
 const SIGNED_URL_TTL_SECONDS = 5 * 60;
 
@@ -38,7 +39,7 @@ export async function GET(
   const profile = await getCurrentProfile();
   if (!profile) return jsonError("Debes iniciar sesión para escuchar esta grabación.", 401);
   if (!profile.active) return jsonError("Tu sesión no está habilitada para escuchar grabaciones.", 403);
-  if (profile.role !== "admin" && profile.role !== "supervisor") {
+  if (!getWorkspacePermissions(profile.role).canReviewQuality) {
     return jsonError("No tienes permiso para escuchar grabaciones.", 403);
   }
 

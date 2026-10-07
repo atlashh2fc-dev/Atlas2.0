@@ -82,7 +82,7 @@ function formatTimestamp(seconds: number | undefined) {
   return `${minutes}:${remaining.toString().padStart(2, "0")}`;
 }
 
-function transcriptEvidence(text: string, segments: TranscriptSegment[]) {
+export function transcriptEvidence(text: string, segments: TranscriptSegment[]) {
   const timestamped = segments
     .filter((segment) => segment.text?.trim())
     .map((segment) => `[${formatTimestamp(segment.start)}] ${segment.text?.trim()}`)

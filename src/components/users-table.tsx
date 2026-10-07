@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Headset, KeyRound, ShieldCheck, type LucideIcon } from "lucide-react";
+import { ClipboardCheck, Headset, KeyRound, ShieldCheck, type LucideIcon } from "lucide-react";
 import { bulkSetUserActive, toggleUserActive } from "@/app/actions/admin";
 import type { AppRole } from "@/lib/types";
 import { UserRoleForm } from "@/components/user-role-form";
@@ -24,6 +24,7 @@ const ROLE_LABEL: Record<AppRole, string> = {
   agente: "Agente",
   supervisor: "Supervisor",
   admin: "Administrador",
+  calidad: "Calidad",
 };
 
 /** Chip del rol: ejecutivos en azul (personas), supervisión en violeta, administración en gris. */
@@ -31,6 +32,7 @@ const ROLE_CHIP: Record<AppRole, { icon: LucideIcon; tone: "blue" | "violet" | "
   agente: { icon: Headset, tone: "blue" },
   supervisor: { icon: ShieldCheck, tone: "violet" },
   admin: { icon: KeyRound, tone: "slate" },
+  calidad: { icon: ClipboardCheck, tone: "violet" },
 };
 
 export type UserRow = {

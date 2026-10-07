@@ -4,11 +4,9 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveReportRange, toDateInput } from "@/lib/report-range";
 import { fetchQualityRecordings, type RecordingFilters } from "@/lib/quality-recordings";
-import { getSupervisedTeamIds } from "@/lib/supervisor-scope";
+import { loadQualityScope } from "@/lib/quality-scorecard.server";
 import { QualityRecordingsTable } from "@/components/quality-recordings-table";
 import { Callout, Field, FilterBar, Input, Select } from "@/components/ui";
-
-type Option = { id: string; name?: string; full_name?: string };
 
 export default async function GrabacionesPage({
   searchParams,
@@ -22,7 +20,7 @@ export default async function GrabacionesPage({
     page?: string;
   }>;
 }) {
-  const profile = await requireProfile(["admin", "supervisor"]);
+  const profile = await requireProfile(["admin", "supervisor", "calidad"]);
   const mercuryConfigured = Boolean(process.env.INCEPTION_API_KEY?.trim());
   const params = await searchParams;
   const supabase = await createClient();
@@ -40,38 +38,17 @@ export default async function GrabacionesPage({
     to: toDateInput(requestedRange.to),
   };
 
-  let agentOptions: Option[] = [];
-  if (profile.role === "admin") {
-    const { data } = await supabase
-      .from("profiles")
-      .select("id, full_name")
-      .eq("role", "agente")
-      .order("full_name");
-    agentOptions = (data ?? []) as Option[];
-  } else {
-    const teamIds = await getSupervisedTeamIds(supabase);
-    if (teamIds.length > 0) {
-      const { data } = await supabase
-        .from("profiles")
-        .select("id, full_name")
-        .eq("role", "agente")
-        .in("team_id", teamIds)
-        .order("full_name");
-      agentOptions = (data ?? []) as Option[];
-    }
-  }
-
-  const [{ data: campaignRows }, recordings] = await Promise.all([
-    supabase.rpc("get_report_scope_campaigns"),
-    fetchQualityRecordings(
-      supabase,
-      profile,
-      filters,
-      Number(params.page) || 1,
-      relatedDataClient
-    ),
-  ]);
-  const campaignOptions = (campaignRows ?? []) as Option[];
+  const scope = await loadQualityScope(supabase, relatedDataClient, profile);
+  const agentOptions = scope.agents;
+  const campaignOptions = scope.campaigns;
+  const recordings = await fetchQualityRecordings(
+    supabase,
+    profile,
+    filters,
+    Number(params.page) || 1,
+    relatedDataClient,
+    scope.pautaCampaignIds
+  );
 
   return (
     <div className="space-y-5">
@@ -101,7 +78,7 @@ export default async function GrabacionesPage({
           <Select name="agent" defaultValue={filters.agent}>
             <option value="">Todos los ejecutivos</option>
             {agentOptions.map((agent) => (
-              <option key={agent.id} value={agent.id}>{agent.full_name}</option>
+              <option key={agent.id} value={agent.id}>{agent.name}</option>
             ))}
           </Select>
         </Field>
@@ -120,7 +97,7 @@ export default async function GrabacionesPage({
 
       {!mercuryConfigured && (
         <Callout tone="warning">
-          La pauta de Secretaría Virtual ya está cargada, pero la evaluación automática del script todavía no está activada. Puedes escuchar y transcribir; para evaluar, pídele a soporte que la active.
+          Las pautas ya están cargadas, pero la evaluación con IA todavía no está activada. Puedes escuchar y transcribir; para evaluar, pídele a soporte que la active.
         </Callout>
       )}
 
@@ -137,7 +114,7 @@ export default async function GrabacionesPage({
               </span>
             </h2>
             <p className="mt-1.5 max-w-3xl text-xs leading-relaxed text-muted-foreground">
-              Atlas selecciona solo las ventas o rechazos de más de 2 minutos con audio íntegro. En cualquier otra grabación puedes usar «Transcribir igual»; «Evaluar script» prepara el texto y puntúa el apego a la pauta en un solo paso.
+              «Evaluar» transcribe la llamada y la puntúa con la pauta de su campaña en un solo paso; luego la validas en Evaluaciones. Atlas además evalúa sola la muestra diaria de cada ejecutivo.
             </p>
           </div>
         </div>

@@ -6,11 +6,12 @@ import { updateUserRole } from "@/app/actions/admin";
 import type { AppRole } from "@/lib/types";
 import { Button, Select } from "@/components/ui";
 
-const ROLES: AppRole[] = ["agente", "supervisor", "admin"];
+const ROLES: AppRole[] = ["agente", "supervisor", "calidad", "admin"];
 const ROLE_LABEL: Record<AppRole, string> = {
   agente: "Agente",
   supervisor: "Supervisor",
   admin: "Administrador",
+  calidad: "Calidad",
 };
 
 type TeamOption = { id: string; name: string };

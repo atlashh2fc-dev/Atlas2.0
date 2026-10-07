@@ -240,7 +240,7 @@ const columns: Column<QualityRecordingRow>[] = [
     id: "qualityActions",
     header: "Calidad",
     className: "w-[15%]",
-    tooltip: "Transcribe si hace falta y puntúa el apego al guion vigente con Mercury 2; requiere revisión humana.",
+    tooltip: "Transcribe si hace falta y puntúa la llamada con la pauta de su campaña; la nota oficial es la que valida Calidad.",
     value: (row) => `${row.evaluationScore ?? "Pendiente"} · ${row.transcriptionStatus ?? "Pendiente"}`,
     exportValues: (row) => ({
       "Apego al script": row.evaluationScore,
@@ -257,7 +257,9 @@ const columns: Column<QualityRecordingRow>[] = [
           eligible={row.transcriptionEligibility.eligible}
           initialStatus={row.evaluationStatus}
           initialScore={row.evaluationScore}
-          initialVerdict={row.evaluationVerdict}
+          initialVerdict={row.reviewVerdict ?? row.evaluationVerdict}
+          hasPauta={row.hasPauta}
+          reviewScore={row.reviewScore}
           compact
         />
         <RecordingTranscriptionControl

@@ -112,7 +112,7 @@ export async function updateUserRole(formData: FormData) {
   const supervisorTeamIds = [...new Set(formData.getAll("supervisor_team_ids").map(String).filter(Boolean))];
 
   if (!userId) throw new Error("No se identificó el usuario a actualizar.");
-  if (!(["agente", "supervisor", "admin"] as const).includes(role)) {
+  if (!(["agente", "supervisor", "admin", "calidad"] as const).includes(role)) {
     throw new Error("El rol seleccionado no es válido.");
   }
 

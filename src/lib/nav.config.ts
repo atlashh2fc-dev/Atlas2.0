@@ -98,10 +98,13 @@ export const ROLE_LABEL: Record<AppRole, string> = {
   agente: "Agente",
   supervisor: "Supervisor",
   admin: "Administrador",
+  calidad: "Calidad",
 };
 
-const ALL_ROLES: AppRole[] = ["agente", "supervisor", "admin"];
+const ALL_ROLES: AppRole[] = ["agente", "supervisor", "admin", "calidad"];
 const OPERACION: AppRole[] = ["supervisor", "admin"];
+/** Quien audita llamadas: jefaturas y el perfil Calidad. */
+const CALIDAD: AppRole[] = ["supervisor", "admin", "calidad"];
 
 /** Inventario compartido. WORKSPACE_SECTIONS define la arquitectura de cada rol. */
 const CONSOLE: NavSpace = {
@@ -383,16 +386,20 @@ const CONSOLE: NavSpace = {
         },
         {
           id: "calidad",
-          label: "Grabaciones y calidad",
-          href: "/dashboard/calidad/grabaciones",
+          label: { default: "Grabaciones y calidad", calidad: "Calidad" },
+          href: "/dashboard/calidad/resumen",
           icon: Headphones,
-          roles: OPERACION,
-          description: "Grabaciones, transcripciones y análisis de calidad",
+          roles: CALIDAD,
+          description: "Notas, cuartiles, brechas por atributo, evaluaciones, grabaciones y pautas",
           match: ["/dashboard/calidad"],
           tabs: [
+            { label: "Resumen", href: "/dashboard/calidad/resumen" },
+            { label: "Evaluaciones", href: "/dashboard/calidad/evaluaciones" },
+            { label: "Ejecutivos", href: "/dashboard/calidad/ejecutivos" },
             { label: "Grabaciones", href: "/dashboard/calidad/grabaciones" },
-            { label: "Reportes y análisis", href: "/dashboard/calidad/analisis" },
-            { label: "Loop IA", href: "/dashboard/calidad/loop" },
+            { label: "Pautas", href: "/dashboard/calidad/pautas" },
+            { label: "Transcripción", href: "/dashboard/calidad/analisis" },
+            { label: "Loop IA", href: "/dashboard/calidad/loop", roles: OPERACION },
           ],
           modules: ["contact_center"],
         },
@@ -444,6 +451,13 @@ const WORKSPACE_SECTIONS: Record<AppRole, Record<NavSpaceId, SectionSpec[]>> = {
   agente: {
     console: [
       { id: "attention-workspace", itemIds: ["inicio", "conversaciones", "registros", "agenda"] },
+    ],
+    admin: [],
+  },
+  // Calidad no opera clientes ni configura campañas: solo audita llamadas.
+  calidad: {
+    console: [
+      { id: "quality-workspace", itemIds: ["calidad"] },
     ],
     admin: [],
   },

@@ -11,6 +11,12 @@ import {
 import { evaluateQualityTranscriptionEligibility } from "@/lib/quality-transcription-policy";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import {
+  evaluateRecordingWithPauta,
+  QualityPipelineError,
+  vigentePautaForCampaign,
+} from "@/lib/quality-pipeline.server";
+import { getWorkspacePermissions } from "@/lib/workspace-permissions";
 
 export const maxDuration = 300;
 
@@ -43,6 +49,7 @@ type EvaluationRow = {
   status: "pending" | "processing" | "completed" | "failed";
   overall_score: number | string | null;
   verdict: "cumple" | "parcial" | "no_cumple" | "no_evaluable" | null;
+  invalid_reason?: string | null;
   speaker_confidence: number | string | null;
   summary: string | null;
   criteria: unknown[];
@@ -57,7 +64,7 @@ type EvaluationRow = {
 };
 
 const EVALUATION_SELECT =
-  "id, recording_id, transcription_id, transcription_source_sha256, rubric_key, rubric_version, rubric_name, status, overall_score, verdict, speaker_confidence, summary, criteria, strengths, improvements, objections, risk_flags, attempt_count, processing_started_at, completed_at, error_message";
+  "id, recording_id, transcription_id, transcription_source_sha256, rubric_key, rubric_version, rubric_name, status, overall_score, verdict, invalid_reason, speaker_confidence, summary, criteria, strengths, improvements, objections, risk_flags, attempt_count, processing_started_at, completed_at, error_message";
 
 function json(payload: object, status = 200) {
   return NextResponse.json(payload, {
@@ -69,7 +76,7 @@ function json(payload: object, status = 200) {
 async function authorizeRecording(id: string) {
   const profile = await getCurrentProfile();
   if (!profile) return { error: json({ error: "Debes iniciar sesión." }, 401) } as const;
-  if (!profile.active || (profile.role !== "admin" && profile.role !== "supervisor")) {
+  if (!profile.active || !getWorkspacePermissions(profile.role).canReviewQuality) {
     return { error: json({ error: "No tienes permiso para auditar grabaciones." }, 403) } as const;
   }
   if (!UUID_PATTERN.test(id)) return { error: json({ error: "Grabación inválida." }, 400) } as const;
@@ -93,6 +100,7 @@ function publicEvaluation(row: EvaluationRow) {
     status: row.status,
     score: row.overall_score === null ? null : Number(row.overall_score),
     verdict: row.verdict,
+    invalidReason: row.invalid_reason ?? null,
     speakerConfidence:
       row.speaker_confidence === null ? null : Number(row.speaker_confidence),
     summary: row.summary,
@@ -152,10 +160,26 @@ export async function GET(
   const authorized = await authorizeRecording(id);
   if ("error" in authorized) return authorized.error;
 
+  // Campañas con pauta cargada por la empresa (Equifax): la última evaluación.
+  const pauta = await vigentePautaForCampaign(createAdminClient(), authorized.recording.campaign_id).catch(() => null);
+  if (pauta) {
+    const { data, error } = await authorized.supabase
+      .from("call_quality_evaluations")
+      .select(EVALUATION_SELECT)
+      .eq("recording_id", id)
+      .not("pauta_id", "is", null)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) return json({ error: "No se pudo consultar la evaluación." }, 500);
+    if (!data) return json({ status: "pending" });
+    return json(publicEvaluation(data as EvaluationRow));
+  }
+
   const name = await campaignName(authorized.recording.campaign_id).catch(() => null);
   if (!name) return json({ error: "No se pudo validar la campaña." }, 500);
   if (!isSecretariaVirtualAuditCampaign(name)) {
-    return json({ status: "not_applicable", message: "Esta campaña no usa la pauta de Secretaría Virtual." });
+    return json({ status: "not_applicable", message: "Esta campaña no tiene pauta de calidad." });
   }
 
   const { data, error } = await authorized.supabase
@@ -178,10 +202,41 @@ export async function POST(
   const authorized = await authorizeRecording(id);
   if ("error" in authorized) return authorized.error;
 
+  const admin = createAdminClient();
+  const pauta = await vigentePautaForCampaign(admin, authorized.recording.campaign_id).catch(() => null);
+  if (pauta) {
+    const body = await request.json().catch(() => ({})) as { force?: unknown };
+    try {
+      const result = await evaluateRecordingWithPauta(
+        admin,
+        id,
+        {
+          id: authorized.profile.id,
+          role: authorized.profile.role,
+          userAgent: request.headers.get("user-agent"),
+          origin: "manual",
+        },
+        { force: body.force === true },
+      );
+      const { data, error } = await admin
+        .from("call_quality_evaluations")
+        .select(EVALUATION_SELECT)
+        .eq("id", result.evaluationId)
+        .single();
+      if (error || !data) return json({ error: "No se pudo leer la evaluación." }, 500);
+      return json(publicEvaluation(data as EvaluationRow));
+    } catch (error) {
+      if (error instanceof QualityPipelineError) {
+        return json({ error: error.message, code: error.code }, error.status);
+      }
+      return json({ error: "No se pudo evaluar la llamada. Intenta nuevamente." }, 500);
+    }
+  }
+
   const name = await campaignName(authorized.recording.campaign_id).catch(() => null);
   if (!name) return json({ error: "No se pudo validar la campaña." }, 500);
   if (!isSecretariaVirtualAuditCampaign(name)) {
-    return json({ error: "Esta campaña no usa la pauta de Secretaría Virtual." }, 422);
+    return json({ error: "Esta campaña no tiene pauta de calidad." }, 422);
   }
 
   const outcome = await callOutcome(authorized.recording.call_id).catch(() => undefined);
@@ -207,7 +262,6 @@ export async function POST(
     return json({ error: "Falta configurar INCEPTION_API_KEY en el entorno de producción." }, 503);
   }
 
-  const admin = createAdminClient();
   const { data: transcriptionData, error: transcriptionError } = await admin
     .from("call_transcriptions")
     .select("id, source_sha256, status, transcript_text, segments")

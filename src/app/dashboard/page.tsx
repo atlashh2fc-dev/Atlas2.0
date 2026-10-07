@@ -4,6 +4,7 @@ import { LiveDashboard } from "@/components/live-dashboard";
 import { Avatar, Badge, Callout, EmptyState, PageHeader, SectionCard, buttonClasses } from "@/components/ui";
 import { KpiStrip, KpiStripItem, type KpiTone } from "@/components/report-kit";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import type { AgentPerformance, HomeDashboardSummary, Profile } from "@/lib/types";
 import { endOfDay, REPORT_TIME_ZONE, startOfDay } from "@/lib/report-range";
 import {
@@ -92,6 +93,8 @@ function capitalize(text: string): string {
 
 export default async function DashboardPage() {
   const profile = await requireProfile();
+  // Calidad no tiene operación propia: su inicio es el tablero de calidad.
+  if (profile.role === "calidad") redirect("/dashboard/calidad/resumen");
 
   // Una clínica no tiene colas ni discador: su inicio es de presupuestos y
   // pacientes. El de contact center queda para la edición Center.

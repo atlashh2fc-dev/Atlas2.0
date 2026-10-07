@@ -42,7 +42,7 @@ export default async function DashboardLayout({
     listDemoViewAccounts(profile),
     // Ventas esperando que supervisión las apruebe o rechace (ya acotadas a
     // sus equipos por la RPC). Un fallo no debe tumbar el armazón.
-    profile.role === "agente"
+    profile.role === "agente" || profile.role === "calidad"
       ? Promise.resolve(0)
       : supabase.rpc("count_sale_validations").then(({ data }) =>
           ((data ?? []) as { status: string; total: number }[]).find((row) => row.status === "pendiente")?.total ?? 0,

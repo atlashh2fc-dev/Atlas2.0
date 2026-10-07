@@ -361,6 +361,12 @@ const ROLE_COPY: Record<AppRole, { title: string; description: string; scope: st
     scope: "Como Supervisor, ves la operación y los equipos que se te han asignado.",
     searches: ["Monitor en vivo", "Mi equipo", "Reportes", "Bandeja mail"],
   },
+  calidad: {
+    title: "Capacitación para calidad",
+    description: "Escucha llamadas, valida la evaluación de la pauta y sigue la nota, los cuartiles y las brechas de cada ejecutivo.",
+    scope: "Como Calidad, ves las grabaciones, evaluaciones y reportes de calidad de tu empresa. No operas clientes ni configuras campañas.",
+    searches: ["Evaluaciones por validar", "Pauta de calidad", "Cuartiles"],
+  },
   admin: {
     title: "Manual operativo de administración",
     description: "Configura campañas, flujos, personas, datos y discador con recorridos completos y controles de validación.",

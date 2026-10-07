@@ -5,10 +5,6 @@ import {
   evaluateQualityTranscriptionEligibility,
   type QualityTranscriptionEligibility,
 } from "@/lib/quality-transcription-policy";
-import {
-  SECRETARIA_VIRTUAL_RUBRIC_KEY,
-  SECRETARIA_VIRTUAL_RUBRIC_VERSION,
-} from "@/lib/secretaria-virtual-quality-rubric";
 import { getSupervisedTeamIds } from "@/lib/supervisor-scope";
 
 export const RECORDINGS_PAGE_SIZE = 50;
@@ -62,6 +58,11 @@ export type QualityRecordingRow = {
   evaluationStatus: QualityEvaluationStatus | null;
   evaluationScore: number | null;
   evaluationVerdict: QualityEvaluationVerdict | null;
+  /** La campaña tiene una pauta vigente cargada por la empresa. */
+  hasPauta: boolean;
+  /** Nota oficial de la analista de calidad, si ya la validó. */
+  reviewScore: number | null;
+  reviewVerdict: QualityEvaluationVerdict | null;
 };
 
 export type QualityRecordingsPage = {
@@ -101,7 +102,8 @@ export async function fetchQualityRecordings(
   profile: Pick<Profile, "id" | "role">,
   filters: RecordingFilters,
   requestedPage: number,
-  relatedDataClient: SupabaseClient = supabase
+  relatedDataClient: SupabaseClient = supabase,
+  pautaCampaignIds: string[] = []
 ): Promise<QualityRecordingsPage> {
   const pageSize = RECORDINGS_PAGE_SIZE;
   const empty = (error: string | null = null): QualityRecordingsPage => ({
@@ -182,6 +184,7 @@ export async function fetchQualityRecordings(
       transcriptionsResult,
       surveyResultsResult,
       evaluationsResult,
+      reviewsResult,
     ] = await Promise.all([
       leadIdSet.length
         ? relatedDataClient.from("leads").select("id, full_name, rut").in("id", leadIdSet)
@@ -216,10 +219,15 @@ export async function fetchQualityRecordings(
       recordings.length
         ? supabase
             .from("call_quality_evaluations")
-            .select("recording_id, status, overall_score, verdict")
+            .select("recording_id, status, overall_score, verdict, updated_at")
             .in("recording_id", recordings.map((recording) => recording.id))
-            .eq("rubric_key", SECRETARIA_VIRTUAL_RUBRIC_KEY)
-            .eq("rubric_version", SECRETARIA_VIRTUAL_RUBRIC_VERSION)
+            .order("updated_at", { ascending: true })
+        : Promise.resolve({ data: [], error: null }),
+      recordings.length
+        ? supabase
+            .from("call_quality_reviews")
+            .select("recording_id, overall_score, verdict")
+            .in("recording_id", recordings.map((recording) => recording.id))
         : Promise.resolve({ data: [], error: null }),
     ]);
 
@@ -230,7 +238,8 @@ export async function fetchQualityRecordings(
       callsResult.error ??
       dialAttemptsResult.error ??
       transcriptionsResult.error ??
-      evaluationsResult.error;
+      evaluationsResult.error ??
+      reviewsResult.error;
     const finalRelatedError = relatedError ?? surveyResultsResult.error;
     if (finalRelatedError) throw new Error(finalRelatedError.message);
 
@@ -261,6 +270,7 @@ export async function fetchQualityRecordings(
         transcription.status as QualityTranscriptionStatus,
       ])
     );
+    // Ordenadas de la más antigua a la más nueva: la última pisa a las anteriores.
     const evaluations = new Map(
       (evaluationsResult.data ?? []).map((evaluation) => [
         evaluation.recording_id as string,
@@ -271,6 +281,13 @@ export async function fetchQualityRecordings(
         },
       ])
     );
+    const reviews = new Map(
+      (reviewsResult.data ?? []).map((review) => [
+        review.recording_id as string,
+        review as { overall_score: number | string | null; verdict: QualityEvaluationVerdict },
+      ])
+    );
+    const pautaCampaigns = new Set(pautaCampaignIds);
     const surveyResults = new Map(
       (surveyResultsResult.data ?? []).map((result) => [
         result.dial_attempt_id as string,
@@ -296,6 +313,7 @@ export async function fetchQualityRecordings(
             : null;
         const queueTalkSeconds = exactQueueTalkSeconds ?? attemptTalkSeconds;
         const evaluation = evaluations.get(recording.id);
+        const review = reviews.get(recording.id);
         return {
           id: recording.id,
           callId: recording.call_id,
@@ -339,6 +357,10 @@ export async function fetchQualityRecordings(
               ? null
               : Number(evaluation.overall_score),
           evaluationVerdict: evaluation?.verdict ?? null,
+          hasPauta: pautaCampaigns.has(recording.campaign_id),
+          reviewScore:
+            review?.overall_score === null || review?.overall_score === undefined ? null : Number(review.overall_score),
+          reviewVerdict: review?.verdict ?? null,
         };
       }),
       total,

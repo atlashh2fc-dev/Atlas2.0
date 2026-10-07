@@ -1,7 +1,7 @@
 import type { CampaignDirection } from "@/lib/metric-definitions";
 import type { CampaignVertical } from "@/lib/campaign-vertical";
 
-export type AppRole = "agente" | "supervisor" | "admin";
+export type AppRole = "agente" | "supervisor" | "admin" | "calidad";
 
 export interface Profile {
   id: string;

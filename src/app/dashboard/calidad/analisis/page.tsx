@@ -75,7 +75,7 @@ export default async function CalidadAnalisisPage({
 }: {
   searchParams: Promise<{ preset?: string; from?: string; to?: string }>;
 }) {
-  await requireProfile(["admin", "supervisor"]);
+  await requireProfile(["admin", "supervisor", "calidad"]);
   const params = await searchParams;
   const range = resolveReportRange(params);
   const supabase = await createClient();

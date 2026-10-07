@@ -4,6 +4,15 @@ import { useEffect, useRef, useState } from "react";
 import { CircleAlert, LoaderCircle, Pause, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+/** Pide a un reproductor saltar a un segundo (citas de la evaluación, transcripción). */
+export const RECORDING_SEEK_EVENT = "atlas:recording-seek";
+/** El reproductor avisa por dónde va, para resaltar el tramo de la transcripción. */
+export const RECORDING_TIME_EVENT = "atlas:recording-time";
+
+export function seekRecording(recordingId: string, seconds: number) {
+  window.dispatchEvent(new CustomEvent(RECORDING_SEEK_EVENT, { detail: { recordingId, seconds } }));
+}
+
 function clock(seconds: number) {
   if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
   const minutes = Math.floor(seconds / 60);
@@ -33,6 +42,7 @@ export function RecordingAudioPlayer({
   const [duration, setDuration] = useState(0);
   const controllerRef = useRef<AbortController | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const pendingSeekRef = useRef<number | null>(null);
 
   useEffect(() => () => controllerRef.current?.abort(), []);
 
@@ -59,6 +69,24 @@ export function RecordingAudioPlayer({
       if (!controller.signal.aborted) setLoading(false);
     }
   };
+
+  // Saltos pedidos desde fuera: si el audio aún no está, se carga y salta al abrir.
+  useEffect(() => {
+    const onSeek = (event: Event) => {
+      const detail = (event as CustomEvent<{ recordingId: string; seconds: number }>).detail;
+      if (!detail || detail.recordingId !== recordingId || !playable) return;
+      const audio = audioRef.current;
+      if (url && audio) {
+        audio.currentTime = Math.max(0, detail.seconds);
+        void audio.play().catch(() => undefined);
+      } else {
+        pendingSeekRef.current = Math.max(0, detail.seconds);
+        if (!loading) void load();
+      }
+    };
+    window.addEventListener(RECORDING_SEEK_EVENT, onSeek);
+    return () => window.removeEventListener(RECORDING_SEEK_EVENT, onSeek);
+  });
 
   const toggle = () => {
     const audio = audioRef.current;
@@ -151,9 +179,19 @@ export function RecordingAudioPlayer({
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
           onEnded={() => setPlaying(false)}
-          onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
+          onLoadedMetadata={(event) => {
+            setDuration(event.currentTarget.duration);
+            if (pendingSeekRef.current !== null) {
+              event.currentTarget.currentTime = pendingSeekRef.current;
+              pendingSeekRef.current = null;
+            }
+          }}
           onDurationChange={(event) => setDuration(event.currentTarget.duration)}
-          onTimeUpdate={(event) => setCurrent(event.currentTarget.currentTime)}
+          onTimeUpdate={(event) => {
+            const seconds = event.currentTarget.currentTime;
+            setCurrent(seconds);
+            window.dispatchEvent(new CustomEvent(RECORDING_TIME_EVENT, { detail: { recordingId, seconds } }));
+          }}
           onError={() => {
             setUrl(null);
             setPlaying(false);

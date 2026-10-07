@@ -9,6 +9,7 @@ import { ActionForm, ActionSubmit, Button, Field, Input, Select, SlideOver, butt
 const ROLE_OPTIONS: { value: AppRole; label: string }[] = [
   { value: "agente", label: "Agente" },
   { value: "supervisor", label: "Supervisor" },
+  { value: "calidad", label: "Calidad" },
   { value: "admin", label: "Administrador" },
 ];
 

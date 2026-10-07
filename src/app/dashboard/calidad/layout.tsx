@@ -6,14 +6,14 @@ import { NavTabs, PageHeader } from "@/components/ui";
 
 export default async function CalidadLayout({ children }: { children: React.ReactNode }) {
   await requireModule("contact_center");
-  const profile = await requireProfile(["admin", "supervisor"]);
+  const profile = await requireProfile(["admin", "supervisor", "calidad"]);
 
   return (
     <div className="space-y-5">
       <PageHeader
         title="Calidad"
         icon={Headphones}
-        description="Revisa grabaciones, transcripciones y resultados del control de calidad."
+        description="Escucha, evalúa contra la pauta y sigue la nota de cada ejecutivo."
         className="border-b-0 pb-0"
       />
       <NavTabs tabs={getTabs("calidad", profile.role)} />
