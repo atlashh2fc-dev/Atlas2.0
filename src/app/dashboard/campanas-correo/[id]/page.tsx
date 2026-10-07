@@ -3,16 +3,17 @@ import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 import { ArrowLeft, CheckCircle2, Circle, Pause, Play, Rocket, Send } from "lucide-react";
 
-import { cambiarEstadoCampanaCorreo } from "@/app/actions/campanas-correo";
 import { AudienciaBigdata } from "@/components/campanas-correo/audiencia-bigdata";
+import { BotonDeAccion } from "@/components/campanas-correo/boton-de-accion";
 import { EditorCorreos } from "@/components/campanas-correo/editor-correos";
 import { Pasos, type PasoId } from "@/components/campanas-correo/pasos";
 import { ProgramacionCampana } from "@/components/campanas-correo/programacion-campana";
 import { PruebaCampana } from "@/components/campanas-correo/prueba-campana";
-import { ActionForm, ActionSubmit, Badge, Callout, PageHeader, SectionCard, SegmentTabs } from "@/components/ui";
+import { Badge, Callout, PageHeader, SectionCard, SegmentTabs } from "@/components/ui";
 import { requireProfile } from "@/lib/auth";
 import {
   ESTADO_CAMPANA,
+  PROGRAMACION_POR_DEFECTO,
   describirProgramacion,
   etiquetaDeAccion,
   formatearNumero,
@@ -21,6 +22,9 @@ import {
   type CampanaDetalle,
 } from "@/lib/campanas-correo";
 import { campanaDeCorreo, capacidadesDeCorreo, empresaActual } from "@/lib/campanas-correo.server";
+
+// Una carga de audiencia o una prueba de 5 correos puede tomar más de un minuto.
+export const maxDuration = 120;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const cuando = new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
@@ -39,20 +43,22 @@ function Cifra({ label, valor, detalle }: { label: string; valor: string; detall
 }
 
 function AccionesDeEstado({ campana, faltan }: { campana: CampanaDetalle; faltan: string[] }) {
-  const id = <input type="hidden" name="campana_id" value={campana.id} />;
   if (campana.estado === "borrador") {
     return (
-      <ActionForm
-        action={cambiarEstadoCampanaCorreo}
-        success="Campaña lanzada: sale según su programación"
-        confirm={{
+      <BotonDeAccion
+        accion={{ tipo: "estado", campanaId: campana.id, accion: "lanzar" }}
+        exito="Campaña lanzada: sale según su programación"
+        pendiente="Lanzando…"
+        disabled={faltan.length > 0}
+        title={faltan.length ? `Falta: ${faltan.join(", ").toLowerCase()}` : undefined}
+        confirmar={{
           title: `¿Lanzar «${campana.nombre}»?`,
           description: (
             <>
               <p>
                 Le escribe a {formatearNumero(campana.audiencia.total)} contactos desde {campana.remitente.email ?? campana.remitente.marca}.
               </p>
-              {campana.programacion && <p className="mt-2">{describirProgramacion(campana.programacion, campana.limite_diario)}</p>}
+              <p className="mt-2">{describirProgramacion(campana.programacion ?? PROGRAMACION_POR_DEFECTO, campana.limite_diario)}</p>
               <p className="mt-2">Puedes pausarla cuando quieras; lo que ya salió no se puede retirar.</p>
             </>
           ),
@@ -60,34 +66,22 @@ function AccionesDeEstado({ campana, faltan }: { campana: CampanaDetalle; faltan
           tone: "primary",
         }}
       >
-        {id}
-        <input type="hidden" name="accion" value="lanzar" />
-        <ActionSubmit pendingLabel="Lanzando…" disabled={faltan.length > 0}>
-          <Rocket size={16} aria-hidden="true" /> Lanzar campaña
-        </ActionSubmit>
-      </ActionForm>
+        <Rocket size={16} aria-hidden="true" /> Lanzar campaña
+      </BotonDeAccion>
     );
   }
   if (campana.estado === "pausada") {
     return (
-      <ActionForm action={cambiarEstadoCampanaCorreo} success="Campaña reanudada">
-        {id}
-        <input type="hidden" name="accion" value="reanudar" />
-        <ActionSubmit pendingLabel="Reanudando…">
-          <Play size={16} aria-hidden="true" /> Reanudar
-        </ActionSubmit>
-      </ActionForm>
+      <BotonDeAccion accion={{ tipo: "estado", campanaId: campana.id, accion: "reanudar" }} exito="Campaña reanudada" pendiente="Reanudando…">
+        <Play size={16} aria-hidden="true" /> Reanudar
+      </BotonDeAccion>
     );
   }
   if (["enviando", "en_espera", "programada"].includes(campana.estado)) {
     return (
-      <ActionForm action={cambiarEstadoCampanaCorreo} success="Campaña pausada: no sale nada hasta que la reanudes">
-        {id}
-        <input type="hidden" name="accion" value="pausar" />
-        <ActionSubmit variant="secondary" pendingLabel="Pausando…">
-          <Pause size={16} aria-hidden="true" /> Pausar
-        </ActionSubmit>
-      </ActionForm>
+      <BotonDeAccion variant="secondary" accion={{ tipo: "estado", campanaId: campana.id, accion: "pausar" }} exito="Campaña pausada: no sale nada hasta que la reanudes" pendiente="Pausando…">
+        <Pause size={16} aria-hidden="true" /> Pausar
+      </BotonDeAccion>
     );
   }
   return null;
@@ -175,7 +169,7 @@ export default async function CampanaCorreoPage({ params, searchParams }: { para
                   {[
                     { listo: campana.contenido.pasos.length > 0, texto: campana.contenido.pasos.length ? `${campana.contenido.pasos.length} ${campana.contenido.pasos.length === 1 ? "correo" : "correos"} escritos` : "Escribir al menos un correo", href: `${base}?tab=correos` },
                     { listo: campana.audiencia.total > 0, texto: campana.audiencia.total ? `${formatearNumero(campana.audiencia.total)} contactos en la audiencia` : "Cargar la audiencia desde Bigdata", href: `${base}?tab=audiencia` },
-                    { listo: Boolean(campana.programacion), texto: campana.programacion ? describirProgramacion(campana.programacion, campana.limite_diario) : "Definir días y horarios (si no, de lunes a viernes de 9 a 18 h)", href: `${base}?tab=programacion` },
+                    { listo: Boolean(campana.programacion), texto: campana.programacion ? describirProgramacion(campana.programacion, campana.limite_diario) : "Sin horario propio: saldrá de lunes a viernes, de 9 a 18 h. Puedes cambiarlo", href: `${base}?tab=programacion` },
                   ].map((item) => (
                     <li key={item.href}>
                       <Link href={item.href} className="flex min-h-12 items-start gap-3 px-5 py-3 transition-colors hover:bg-surface-muted/55">
@@ -220,23 +214,22 @@ export default async function CampanaCorreoPage({ params, searchParams }: { para
               <div className="rounded-xl border border-border px-5 py-4">
                 <p className="text-sm font-medium text-foreground">Cancelar la campaña</p>
                 <p className="mt-1 text-xs text-muted-foreground">Deja de enviar para siempre. Si solo quieres detenerla un tiempo, pausa.</p>
-                <ActionForm
-                  action={cambiarEstadoCampanaCorreo}
-                  success="Campaña cancelada"
+                <BotonDeAccion
+                  variant="ghost"
+                  size="sm"
                   className="mt-3"
-                  confirm={{
+                  accion={{ tipo: "estado", campanaId: campana.id, accion: "cancelar" }}
+                  exito="Campaña cancelada"
+                  pendiente="Cancelando…"
+                  confirmar={{
                     title: `¿Cancelar «${campana.nombre}»?`,
                     description: "No vuelve a salir ningún correo de esta campaña y no se puede reanudar. Lo enviado y sus métricas quedan.",
                     confirmLabel: "Cancelar campaña",
                     tone: "danger",
                   }}
                 >
-                  <input type="hidden" name="campana_id" value={campana.id} />
-                  <input type="hidden" name="accion" value="cancelar" />
-                  <ActionSubmit variant="ghost" size="sm" pendingLabel="Cancelando…">
-                    Cancelar campaña
-                  </ActionSubmit>
-                </ActionForm>
+                  Cancelar campaña
+                </BotonDeAccion>
               </div>
             )}
           </aside>

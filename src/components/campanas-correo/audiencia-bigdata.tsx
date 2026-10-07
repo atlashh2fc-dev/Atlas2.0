@@ -94,6 +94,7 @@ export function AudienciaBigdata({ campanaId, nombreCampana, audienciaActual, de
   const [errorOpciones, setErrorOpciones] = useState<string | null>(null);
   const [filtros, setFiltros] = useState<FiltrosAudiencia>({ contacto: "ambos", solo_activas: true, excluir_clientes_equifax: false });
   const [conteo, setConteo] = useState<ConteoAudiencia | null>(null);
+  const [errorConteo, setErrorConteo] = useState<string | null>(null);
   const [contando, setContando] = useState(false);
   const [maximo, setMaximo] = useState(String(MAXIMO_POR_DEFECTO));
   const [carga, setCarga] = useState<{ cargados: number; objetivo: number; bajas: number; bloqueados: number; terminado: boolean } | null>(null);
@@ -102,6 +103,17 @@ export function AudienciaBigdata({ campanaId, nombreCampana, audienciaActual, de
   const pedidoConteo = useRef(0);
 
   const regionesElegidas = useMemo(() => filtros.regiones ?? [], [filtros.regiones]);
+
+  // Si la persona se va de la pestaña, la carga se detiene; si cierra la página, se le avisa.
+  useEffect(() => () => {
+    cancelar.current = true;
+  }, []);
+  useEffect(() => {
+    if (!cargando) return;
+    const avisar = (evento: BeforeUnloadEvent) => evento.preventDefault();
+    window.addEventListener("beforeunload", avisar);
+    return () => window.removeEventListener("beforeunload", avisar);
+  }, [cargando]);
 
   useEffect(() => {
     let vigente = true;
@@ -123,10 +135,20 @@ export function AudienciaBigdata({ campanaId, nombreCampana, audienciaActual, de
     const numero = ++pedidoConteo.current;
     const espera = setTimeout(async () => {
       setContando(true);
-      const resultado = await contarAudienciaCorreo(filtros);
-      if (numero !== pedidoConteo.current) return;
-      setContando(false);
-      if (resultado.ok) setConteo(resultado.conteo);
+      try {
+        const resultado = await contarAudienciaCorreo(filtros);
+        if (numero !== pedidoConteo.current) return;
+        // Un conteo fallido no deja a la vista el número de otros filtros.
+        setConteo(resultado.ok ? resultado.conteo : null);
+        setErrorConteo(resultado.ok ? null : resultado.error);
+      } catch {
+        if (numero === pedidoConteo.current) {
+          setConteo(null);
+          setErrorConteo("No se pudo contar la audiencia. Inténtalo de nuevo.");
+        }
+      } finally {
+        if (numero === pedidoConteo.current) setContando(false);
+      }
     }, 450);
     return () => clearTimeout(espera);
   }, [filtros]);
@@ -150,6 +172,11 @@ export function AudienciaBigdata({ campanaId, nombreCampana, audienciaActual, de
     const nombre = `${nombreCampana} · Bigdata ${new Date().toLocaleDateString("es-CL")}`;
     try {
       for (;;) {
+        if (cancelar.current) {
+          // El lote queda a medias y sin asignar: la campaña mantiene su audiencia anterior.
+          setCarga(null);
+          break;
+        }
         const tramo = await transferirAudienciaCorreo({ campanaId, filtros, despues, loteId, cargados, maximo: objetivo, nombre });
         if (!tramo.ok) throw new Error(tramo.error);
         despues = tramo.despues;
@@ -200,7 +227,15 @@ export function AudienciaBigdata({ campanaId, nombreCampana, audienciaActual, de
             </div>
           ) : opciones ? (
             <>
-              <Chips etiqueta="Región" opciones={opciones.regiones} elegidas={regionesElegidas} onCambio={(regiones) => cambiar({ regiones, comunas: (filtros.comunas ?? []).filter((comuna) => comunas.some((opcion) => opcion.valor === comuna)) })} limite={16} />
+              <Chips etiqueta="Región" opciones={opciones.regiones} elegidas={regionesElegidas} onCambio={(regiones) =>
+                  cambiar({
+                    regiones,
+                    // Las comunas de una región que se quitó dejan de filtrar.
+                    comunas: (filtros.comunas ?? []).filter((comuna) =>
+                      (opciones.comunas ?? []).some((opcion) => opcion.valor === comuna && (!opcion.region || regiones.includes(opcion.region))),
+                    ),
+                  })
+                } limite={16} />
               {regionesElegidas.length > 0 && comunas.length > 0 && (
                 <Chips etiqueta="Comuna" opciones={comunas} elegidas={filtros.comunas ?? []} onCambio={(valores) => cambiar({ comunas: valores })} formato={capitalizar} limite={30} />
               )}
@@ -262,6 +297,11 @@ export function AudienciaBigdata({ campanaId, nombreCampana, audienciaActual, de
           <p className={cn("mt-2 text-[32px] font-semibold leading-none tracking-tight tabular-nums", contando && "opacity-60")} aria-live="polite">
             {conteo ? formatearNumero(conteo.contactos) : "—"}
           </p>
+          {errorConteo && (
+            <p role="alert" className="mt-2 text-xs text-danger">
+              {errorConteo}
+            </p>
+          )}
           <p className="mt-2 text-xs text-muted-foreground">
             {conteo
               ? `${formatearNumero(conteo.empresas)} empresas · ${formatearNumero(conteo.ejecutivos)} ejecutivos · ${formatearNumero(conteo.correos_generales)} correos generales`

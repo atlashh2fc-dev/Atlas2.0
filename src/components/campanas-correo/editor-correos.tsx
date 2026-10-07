@@ -14,6 +14,11 @@ import { SubirImagen } from "./subir-imagen";
 const TEXTAREA =
   "w-full rounded-lg border border-border-strong/70 bg-surface px-3 py-2 text-sm leading-relaxed text-foreground shadow-sm placeholder:text-muted-foreground/70 focus:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-60";
 
+type PasoEditable = Paso & { clave: string };
+
+let siguienteClave = 0;
+const nuevaClave = () => `paso-${++siguienteClave}`;
+
 type Inicial = {
   nombre: string;
   remitenteId?: string;
@@ -39,6 +44,15 @@ type Props = {
   cabeceraConTexto?: boolean;
 };
 
+function esEnlace(valor: string): boolean {
+  try {
+    const url = new URL(valor);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
 function nombreDelPaso(indice: number): string {
   return indice === 0 ? "Primer correo" : `Seguimiento ${indice}`;
 }
@@ -60,40 +74,52 @@ export function EditorCorreos({ modo, campanaId, version, remitentes, variables,
   const [ctaUrl, setCtaUrl] = useState(inicial.ctaUrl ?? "");
   const [ctaTexto, setCtaTexto] = useState(inicial.ctaTexto ?? "");
   const [cabecera, setCabecera] = useState<Cabecera>(inicial.cabecera);
-  const [pasos, setPasos] = useState<Paso[]>(inicial.pasos.length ? inicial.pasos : [{ ...PASO_NUEVO, espera_dias_habiles: 0 }]);
+  const [pasos, setPasos] = useState<PasoEditable[]>(() =>
+    (inicial.pasos.length ? inicial.pasos : [{ ...PASO_NUEVO, espera_dias_habiles: 0 }]).map((paso) => ({ ...paso, clave: nuevaClave() })),
+  );
   const [intentoGuardar, setIntentoGuardar] = useState(false);
   const [guardando, startGuardar] = useTransition();
   const [masOpciones, setMasOpciones] = useState(Boolean(inicial.ctaUrl || inicial.ctaTexto));
-  const ultimoCampo = useRef<{ paso: number; campo: "asunto" | "cuerpo"; elemento: HTMLInputElement | HTMLTextAreaElement } | null>(null);
+  const ultimoCampo = useRef<{ clave: string; campo: "asunto" | "cuerpo"; elemento: HTMLInputElement | HTMLTextAreaElement } | null>(null);
 
   const remitente = remitentes.find((item) => item.id === remitenteId) ?? null;
   const cabeceraConTexto = modo === "crear" ? Boolean(remitente?.cabecera_con_texto) : Boolean(cabeceraFija);
   const deshabilitado = Boolean(bloqueo);
 
+  // El botón solo viaja si se cambió: un enlace guardado sin https:// no impide guardar lo demás.
+  const ctaUrlCambiada = ctaUrl.trim() !== (inicial.ctaUrl ?? "");
+  const ctaTextoCambiado = ctaTexto.trim() !== (inicial.ctaTexto ?? "");
   const datos: DatosCampana = useMemo(
     () => ({
       nombre: nombre.trim(),
       remitente_id: modo === "crear" ? remitenteId : undefined,
       limite_diario: limite ? Math.max(1, Math.floor(Number(limite))) : null,
-      cta_url: ctaUrl.trim() || null,
-      cta_texto: ctaTexto.trim() || null,
+      cta_url: ctaUrlCambiada ? ctaUrl.trim() || null : undefined,
+      cta_texto: ctaTextoCambiado ? ctaTexto.trim() || null : undefined,
       cabecera: { ...cabecera, titulo: cabecera.titulo?.trim() || null, bajada: cabecera.bajada?.trim() || null, precio: cabecera.precio?.trim() || null },
-      pasos: pasos.map((paso, indice) => ({ ...paso, asunto: paso.asunto.trim(), cuerpo: paso.cuerpo.trim(), espera_dias_habiles: indice === 0 ? 0 : paso.espera_dias_habiles })),
+      pasos: pasos.map((paso, indice) => ({
+        asunto: paso.asunto.trim(),
+        cuerpo: paso.cuerpo.trim(),
+        imagen_url: paso.imagen_url,
+        espera_dias_habiles: indice === 0 ? 0 : paso.espera_dias_habiles,
+        condicion: paso.condicion,
+      })),
     }),
-    [nombre, modo, remitenteId, limite, ctaUrl, ctaTexto, cabecera, pasos],
+    [nombre, modo, remitenteId, limite, ctaUrl, ctaTexto, ctaUrlCambiada, ctaTextoCambiado, cabecera, pasos],
   );
 
   const errores = {
     nombre: datos.nombre.length < 3 ? "Ponle un nombre de al menos 3 letras." : null,
     remitente: modo === "crear" && !remitenteId ? "Elige el remitente." : null,
     limite: limite && (!Number.isFinite(Number(limite)) || Number(limite) < 1 || Number(limite) > 1000) ? "Entre 1 y 1.000 correos por día." : null,
+    ctaUrl: ctaUrlCambiada && ctaUrl.trim() && !esEnlace(ctaUrl.trim()) ? "Escribe el enlace completo, con https://" : null,
     cabecera: cabeceraConTexto && cabecera.imagen_url && !cabecera.titulo?.trim() ? "La cabecera con imagen necesita un título: se lee aunque el correo bloquee las imágenes." : null,
     pasos: pasos.map((paso) => ({
       asunto: paso.asunto.trim().length < 3 ? "Escribe el asunto." : null,
       cuerpo: paso.cuerpo.trim().length < 10 ? "Escribe el texto del correo." : null,
     })),
   };
-  const hayErrores = Boolean(errores.nombre || errores.remitente || errores.limite || errores.cabecera || errores.pasos.some((paso) => paso.asunto || paso.cuerpo));
+  const hayErrores = Boolean(errores.nombre || errores.remitente || errores.limite || errores.ctaUrl || errores.cabecera || errores.pasos.some((paso) => paso.asunto || paso.cuerpo));
 
   // ---- Vista previa ----------------------------------------------------
   const [pasoPrevia, setPasoPrevia] = useState(0);
@@ -101,26 +127,45 @@ export function EditorCorreos({ modo, campanaId, version, remitentes, variables,
   const [previaError, setPreviaError] = useState<string | null>(null);
   const [cargandoPrevia, setCargandoPrevia] = useState(false);
   const pedido = useRef(0);
-  const puedePrevia = (modo === "editar" ? Boolean(campanaId) : Boolean(remitenteId)) && pasos.every(pasoValido);
+  // Bloqueada, se muestra la campaña tal como está guardada (con lo que el editor no sabe mostrar).
+  const puedePrevia = modo === "editar" ? Boolean(campanaId) && (deshabilitado || pasos.every(pasoValido)) : Boolean(remitenteId) && pasos.every(pasoValido);
+
+  // Solo el contenido: el nombre o un límite a medio escribir no deben romper la vista previa.
+  const borrador = useMemo(
+    () => ({
+      ...(datos.nombre.length >= 3 ? { nombre: datos.nombre } : {}),
+      remitente_id: datos.remitente_id,
+      ...(datos.cta_url !== undefined && (!datos.cta_url || esEnlace(datos.cta_url)) ? { cta_url: datos.cta_url } : {}),
+      ...(datos.cta_texto !== undefined ? { cta_texto: datos.cta_texto } : {}),
+      cabecera: datos.cabecera,
+      pasos: datos.pasos,
+    }),
+    [datos],
+  );
 
   const actualizarPrevia = useCallback(async () => {
     if (!puedePrevia) return;
     const numero = ++pedido.current;
     setCargandoPrevia(true);
-    const resultado = await vistaPreviaCorreo({
-      campanaId: modo === "editar" ? campanaId : undefined,
-      paso: Math.min(pasoPrevia, pasos.length - 1),
-      borrador: datos,
-    });
-    if (numero !== pedido.current) return;
-    setCargandoPrevia(false);
-    if (resultado.ok) {
-      setPrevia({ html: resultado.html, asunto: resultado.asunto, empresa: resultado.empresaEjemplo });
-      setPreviaError(null);
-    } else {
-      setPreviaError(resultado.error);
+    try {
+      const resultado = await vistaPreviaCorreo({
+        campanaId: modo === "editar" ? campanaId : undefined,
+        paso: Math.min(pasoPrevia, Math.max(0, pasos.length - 1)),
+        borrador: deshabilitado ? undefined : borrador,
+      });
+      if (numero !== pedido.current) return;
+      if (resultado.ok) {
+        setPrevia({ html: resultado.html, asunto: resultado.asunto, empresa: resultado.empresaEjemplo });
+        setPreviaError(null);
+      } else {
+        setPreviaError(resultado.error);
+      }
+    } catch {
+      if (numero === pedido.current) setPreviaError("No se pudo armar la vista previa. Inténtalo de nuevo.");
+    } finally {
+      if (numero === pedido.current) setCargandoPrevia(false);
     }
-  }, [puedePrevia, modo, campanaId, pasoPrevia, pasos.length, datos]);
+  }, [puedePrevia, modo, campanaId, pasoPrevia, pasos.length, borrador, deshabilitado]);
 
   useEffect(() => {
     const espera = setTimeout(() => void actualizarPrevia(), 900);
@@ -134,10 +179,11 @@ export function EditorCorreos({ modo, campanaId, version, remitentes, variables,
 
   function insertar(texto: string) {
     const destino = ultimoCampo.current;
-    const indice = destino?.paso ?? pasos.length - 1;
+    const encontrado = destino ? pasos.findIndex((paso) => paso.clave === destino.clave) : -1;
+    const indice = encontrado >= 0 ? encontrado : pasos.length - 1;
     const campo = destino?.campo ?? "cuerpo";
     const actual = pasos[indice]?.[campo] ?? "";
-    const elemento = destino?.elemento;
+    const elemento = encontrado >= 0 ? destino?.elemento : undefined;
     const inicio = elemento?.selectionStart ?? actual.length;
     const fin = elemento?.selectionEnd ?? actual.length;
     const nuevo = `${actual.slice(0, inicio)}${texto}${actual.slice(fin)}`;
@@ -275,7 +321,7 @@ export function EditorCorreos({ modo, campanaId, version, remitentes, variables,
 
           <ol className="divide-y divide-border">
             {pasos.map((paso, indice) => (
-              <li key={indice} className="px-5 py-5">
+              <li key={paso.clave} className="px-5 py-5">
                 <div className="mb-3 flex items-center justify-between gap-2">
                   <h3 className="text-sm font-semibold text-foreground">
                     <span className="mr-2 inline-flex size-6 items-center justify-center rounded-full bg-primary/10 text-xs text-primary tabular-nums">{indice + 1}</span>
@@ -309,7 +355,7 @@ export function EditorCorreos({ modo, campanaId, version, remitentes, variables,
                       value={paso.asunto}
                       maxLength={200}
                       onChange={(evento) => cambiarPaso(indice, { asunto: evento.target.value })}
-                      onFocus={(evento) => (ultimoCampo.current = { paso: indice, campo: "asunto", elemento: evento.currentTarget })}
+                      onFocus={(evento) => (ultimoCampo.current = { clave: paso.clave, campo: "asunto", elemento: evento.currentTarget })}
                       placeholder={indice === 0 ? "[Nombre], ¿tu agenda se llena sola?" : "¿Lo alcanzaste a ver?"}
                       disabled={deshabilitado}
                       aria-invalid={Boolean(mostrar(errores.pasos[indice]?.asunto))}
@@ -322,7 +368,7 @@ export function EditorCorreos({ modo, campanaId, version, remitentes, variables,
                       rows={9}
                       maxLength={8000}
                       onChange={(evento) => cambiarPaso(indice, { cuerpo: evento.target.value })}
-                      onFocus={(evento) => (ultimoCampo.current = { paso: indice, campo: "cuerpo", elemento: evento.currentTarget })}
+                      onFocus={(evento) => (ultimoCampo.current = { clave: paso.clave, campo: "cuerpo", elemento: evento.currentTarget })}
                       placeholder={"Hola [Nombre],\n\nEscribe aquí el correo tal como lo va a leer el cliente. Deja una línea en blanco entre párrafos.\n\nSaludos"}
                       className={TEXTAREA}
                       disabled={deshabilitado}
@@ -339,7 +385,7 @@ export function EditorCorreos({ modo, campanaId, version, remitentes, variables,
           </ol>
           {!deshabilitado && pasos.length < maxPasos && (
             <div className="border-t border-border px-5 py-3">
-              <Button type="button" variant="secondary" onClick={() => setPasos((actuales) => [...actuales, { ...PASO_NUEVO }])}>
+              <Button type="button" variant="secondary" onClick={() => setPasos((actuales) => [...actuales, { ...PASO_NUEVO, clave: nuevaClave() }])}>
                 <Plus size={15} aria-hidden="true" /> Agregar seguimiento
               </Button>
             </div>
@@ -360,7 +406,8 @@ export function EditorCorreos({ modo, campanaId, version, remitentes, variables,
                 <Input value={ctaTexto} maxLength={60} onChange={(evento) => setCtaTexto(evento.target.value)} placeholder={remitente?.cta_texto ?? "Agenda una demo →"} disabled={deshabilitado} />
               </Field>
               <Field label="Enlace del botón">
-                <Input type="url" inputMode="url" value={ctaUrl} onChange={(evento) => setCtaUrl(evento.target.value)} placeholder={remitente?.cta_url ?? "https://"} disabled={deshabilitado} />
+                <Input type="url" inputMode="url" value={ctaUrl} onChange={(evento) => setCtaUrl(evento.target.value)} placeholder={remitente?.cta_url ?? "https://"} disabled={deshabilitado} aria-invalid={Boolean(errores.ctaUrl)} />
+                {errores.ctaUrl ? <span className="text-xs text-danger">{errores.ctaUrl}</span> : <span className="text-xs text-muted-foreground">Vacío: usa el botón del remitente.</span>}
               </Field>
             </div>
           )}

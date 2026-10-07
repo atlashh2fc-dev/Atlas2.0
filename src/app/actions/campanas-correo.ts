@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { unstable_rethrow } from "next/navigation";
 
 import { requireProfile } from "@/lib/auth";
 import type { CampanaDetalle, ConteoAudiencia, DatosCampana, FiltrosAudiencia, OpcionesAudiencia, Programacion } from "@/lib/campanas-correo";
@@ -26,10 +27,15 @@ type Falla = { ok: false; error: string };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const RUTA = "/dashboard/campanas-correo";
 
-async function contexto(roles: ("admin" | "supervisor")[] = ["admin", "supervisor"]) {
+async function contexto(roles: ("admin" | "supervisor")[] = ["admin", "supervisor"], conBigdata = false) {
   const perfil = await requireProfile(roles);
-  if (!(await modulosActivos()).includes("correo")) {
+  const modulos = await modulosActivos();
+  if (!modulos.includes("correo")) {
     throw new Error("Esta empresa no tiene Campañas de correo contratado.");
+  }
+  // La audiencia sale de la base de Bigdata: solo para quien la tiene contratada.
+  if (conBigdata && !modulos.includes("bigdata")) {
+    throw new Error("La audiencia sale de Bigdata, y esta empresa no lo tiene contratado.");
   }
   const empresa = await empresaActual();
   if (!empresa) throw new Error("No se pudo identificar la empresa que estás mirando.");
@@ -37,16 +43,23 @@ async function contexto(roles: ("admin" | "supervisor")[] = ["admin", "superviso
 }
 
 function falla(error: unknown): Falla {
+  // Un redirect de sesión vencida o rol sin permiso tiene que llegar al navegador, no a un toast.
+  unstable_rethrow(error);
   return { ok: false, error: error instanceof Error ? error.message : "No se pudo completar la operación." };
 }
 
 /** Conecta la empresa a Atlas Lead (la crea allá si no existe). Solo administración. */
-export async function conectarAtlasLead() {
-  const { empresa } = await contexto(["admin"]);
-  const resultado = await atlasLead(empresa.slug, "conectar", { nombre: empresa.nombre });
-  if (!resultado.ok) throw new Error(`No se pudo conectar con Atlas Lead: ${resultado.error}`);
-  revalidatePath(RUTA);
-  revalidatePath("/dashboard/admin/integraciones");
+export async function conectarAtlasLead(): Promise<Ok<object> | Falla> {
+  try {
+    const { empresa } = await contexto(["admin"]);
+    const resultado = await atlasLead(empresa.slug, "conectar", { nombre: empresa.nombre });
+    if (!resultado.ok) return { ok: false, error: `No se pudo conectar con Atlas Lead: ${resultado.error}` };
+    revalidatePath(RUTA);
+    revalidatePath("/dashboard/admin/integraciones");
+    return { ok: true };
+  } catch (error) {
+    return falla(error);
+  }
 }
 
 export async function guardarCampanaCorreo(input: {
@@ -127,7 +140,7 @@ export async function enviarPruebaCorreo(input: {
     if (!UUID.test(input.campanaId)) return { ok: false, error: "Campaña inválida." };
     const destinatarios = input.destinatarios
       .map((item) => ({ nombre: item.nombre.trim() || item.email.trim(), email: item.email.trim().toLowerCase() }))
-      .filter((item) => item.email);
+      .filter((item) => /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(item.email));
     if (!destinatarios.length) return { ok: false, error: "Escribe al menos un correo para la prueba." };
     const resultado = await atlasLead<{ enviados: number; fallidos: number; resultados: { email: string; paso: number; ok: boolean; error: string | null }[] }>(
       empresa.slug,
@@ -142,17 +155,25 @@ export async function enviarPruebaCorreo(input: {
   }
 }
 
-/** Lanzar, pausar, reanudar o cancelar (ActionForm: lanza si falla). */
-export async function cambiarEstadoCampanaCorreo(formData: FormData) {
-  const { empresa, actor } = await contexto();
-  const campanaId = String(formData.get("campana_id") ?? "");
-  const accion = String(formData.get("accion") ?? "");
-  if (!UUID.test(campanaId)) throw new Error("Campaña inválida.");
-  if (!["lanzar", "pausar", "reanudar", "cancelar"].includes(accion)) throw new Error("Acción inválida.");
-  const resultado = await atlasLead(empresa.slug, "estado", { campana_id: campanaId, accion, actor });
-  if (!resultado.ok) throw new Error(resultado.error);
-  revalidatePath(RUTA);
-  revalidatePath(`${RUTA}/${campanaId}`);
+/**
+ * Lanzar, pausar, reanudar o cancelar. Devuelve el motivo en vez de lanzar:
+ * en producción Next oculta el mensaje de un error de server action, y el
+ * motivo de Atlas Lead («carga la audiencia», «la fecha de término ya pasó») es
+ * justo lo que la persona necesita leer.
+ */
+export async function cambiarEstadoCampanaCorreo(input: { campanaId: string; accion: "lanzar" | "pausar" | "reanudar" | "cancelar" }): Promise<Ok<object> | Falla> {
+  try {
+    const { empresa, actor } = await contexto();
+    if (!UUID.test(input.campanaId)) return { ok: false, error: "Campaña inválida." };
+    if (!["lanzar", "pausar", "reanudar", "cancelar"].includes(input.accion)) return { ok: false, error: "Acción inválida." };
+    const resultado = await atlasLead(empresa.slug, "estado", { campana_id: input.campanaId, accion: input.accion, actor });
+    if (!resultado.ok) return { ok: false, error: resultado.error };
+    revalidatePath(RUTA);
+    revalidatePath(`${RUTA}/${input.campanaId}`);
+    return { ok: true };
+  } catch (error) {
+    return falla(error);
+  }
 }
 
 /** URL firmada para que el navegador suba la imagen directo a Atlas Lead. */
@@ -193,7 +214,7 @@ function limpiarFiltros(filtros: FiltrosAudiencia): FiltrosAudiencia {
 
 export async function opcionesDeAudienciaCorreo(filtros: FiltrosAudiencia): Promise<Ok<{ opciones: OpcionesAudiencia }> | Falla> {
   try {
-    await contexto();
+    await contexto(undefined, true);
     const resultado = await opcionesDeAudiencia(limpiarFiltros(filtros));
     return resultado.ok ? { ok: true, opciones: resultado.datos } : { ok: false, error: resultado.error };
   } catch (error) {
@@ -203,7 +224,7 @@ export async function opcionesDeAudienciaCorreo(filtros: FiltrosAudiencia): Prom
 
 export async function contarAudienciaCorreo(filtros: FiltrosAudiencia): Promise<Ok<{ conteo: ConteoAudiencia }> | Falla> {
   try {
-    await contexto();
+    await contexto(undefined, true);
     const resultado = await conteoDeAudiencia(limpiarFiltros(filtros));
     return resultado.ok ? { ok: true, conteo: resultado.datos } : { ok: false, error: resultado.error };
   } catch (error) {
@@ -213,18 +234,24 @@ export async function contarAudienciaCorreo(filtros: FiltrosAudiencia): Promise<
 
 const POR_PAGINA = 500;
 
+/** Un campo largo de Bigdata no puede tumbar la página entera: se recorta a lo que acepta Atlas Lead. */
+function corto(valor: string | null | undefined, largo: number): string | null {
+  const limpio = valor?.replace(/\s+/g, " ").trim();
+  return limpio ? limpio.slice(0, largo) : null;
+}
+
 function aContacto(fila: FilaDeAudiencia) {
   return {
-    email: fila.email,
-    nombre: fila.nombre,
-    empresa: fila.empresa,
-    rut: fila.rut,
-    cargo: fila.cargo,
-    telefono: fila.telefono,
-    region: fila.region,
-    comuna: fila.comuna,
-    rubro: fila.rubro,
-    referencia: fila.referencia.slice(0, 120),
+    email: fila.email.trim().toLowerCase().slice(0, 254),
+    nombre: corto(fila.nombre, 160),
+    empresa: corto(fila.empresa, 240),
+    rut: corto(fila.rut, 20),
+    cargo: corto(fila.cargo, 160),
+    telefono: corto(fila.telefono, 40),
+    region: corto(fila.region, 120),
+    comuna: corto(fila.comuna, 120),
+    rubro: corto(fila.rubro, 240),
+    referencia: corto(fila.referencia, 120),
   };
 }
 
@@ -247,7 +274,7 @@ export async function transferirAudienciaCorreo(input: {
   | Falla
 > {
   try {
-    const { empresa, actor } = await contexto();
+    const { empresa, actor } = await contexto(undefined, true);
     if (!UUID.test(input.campanaId)) return { ok: false, error: "Campaña inválida." };
     const filtros = limpiarFiltros(input.filtros);
     const maximo = Math.max(1, Math.min(50_000, Math.floor(input.maximo)));

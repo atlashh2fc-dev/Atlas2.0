@@ -122,8 +122,9 @@ export type DatosCampana = {
   nombre: string;
   remitente_id?: string;
   limite_diario: number | null;
-  cta_url: string | null;
-  cta_texto: string | null;
+  /** undefined = sin cambios; null = volver al botón del remitente. */
+  cta_url?: string | null;
+  cta_texto?: string | null;
   cabecera: Cabecera | null;
   pasos: Paso[];
   programacion?: Programacion | null;
@@ -145,7 +146,8 @@ export const PROGRAMACION_POR_DEFECTO: Programacion = {
   fin_fecha: null,
   fin_hora: null,
   dias: [1, 2, 3, 4, 5],
-  ventanas: [{ inicio: "09:00", fin: "13:00" }, { inicio: "15:00", fin: "18:00" }],
+  // El mismo horario que Atlas Lead aplica a una campaña lanzada sin horario propio.
+  ventanas: [{ inicio: "09:00", fin: "18:00" }],
 };
 
 export const PASO_NUEVO: Paso = { asunto: "", cuerpo: "", imagen_url: null, espera_dias_habiles: 3, condicion: "todos" };
@@ -224,12 +226,14 @@ export function etiquetaDeAccion(accion: string): string {
   return etiquetas[accion] ?? accion;
 }
 
-/** Lo que falta para poder lanzar, en orden. Vacío = lista para lanzar. */
-export function pendientesParaLanzar(campana: Pick<CampanaDetalle, "contenido" | "audiencia" | "programacion">): string[] {
+/**
+ * Lo que falta para poder lanzar, en orden. Vacío = lista para lanzar. El
+ * horario no es obligatorio: sin uno propio, sale de lunes a viernes de 9 a 18 h.
+ */
+export function pendientesParaLanzar(campana: Pick<CampanaDetalle, "contenido" | "audiencia">): string[] {
   const faltan: string[] = [];
   if (!campana.contenido.pasos.length) faltan.push("Escribir al menos un correo");
   if (!campana.audiencia.total) faltan.push("Cargar la audiencia");
-  if (!campana.programacion) faltan.push("Definir cuándo envía");
   return faltan;
 }
 

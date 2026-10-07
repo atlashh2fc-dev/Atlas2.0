@@ -2,8 +2,8 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { ChevronRight, MailPlus, Plug, Send } from "lucide-react";
 
-import { conectarAtlasLead } from "@/app/actions/campanas-correo";
-import { ActionForm, ActionSubmit, Badge, Callout, EmptyState, PageHeader, SectionCard, SegmentTabs, buttonClasses } from "@/components/ui";
+import { BotonDeAccion } from "@/components/campanas-correo/boton-de-accion";
+import { Badge, Callout, EmptyState, PageHeader, SectionCard, SegmentTabs, buttonClasses } from "@/components/ui";
 import { requireProfile } from "@/lib/auth";
 import { ESTADO_CAMPANA, formatearNumero, porcentaje, type CampanaResumen } from "@/lib/campanas-correo";
 import { campanasDeCorreo, capacidadesDeCorreo, empresaActual } from "@/lib/campanas-correo.server";
@@ -61,7 +61,8 @@ export default async function CampanasCorreoPage({ searchParams }: { searchParam
 
   const capacidades = await capacidadesDeCorreo(empresa.slug);
   if (!capacidades.ok) {
-    const sinConectar = capacidades.status === 404;
+    // Solo es "sin conectar" si Atlas Lead lo dice; un 404 de otra cosa es una falla.
+    const sinConectar = capacidades.status === 404 && /no está conectada/i.test(capacidades.error);
     return (
       <div className="space-y-5">
         <PageHeader title="Campañas de correo" icon={Send} description="Arma, programa y mide los correos de la empresa. Los envía Atlas Lead." />
@@ -77,11 +78,9 @@ export default async function CampanasCorreoPage({ searchParams }: { searchParam
               }
               action={
                 perfil.role === "admin" ? (
-                  <ActionForm action={conectarAtlasLead} success="Empresa conectada a Atlas Lead">
-                    <ActionSubmit pendingLabel="Conectando…">
-                      <Plug size={16} aria-hidden="true" /> Conectar Atlas Lead
-                    </ActionSubmit>
-                  </ActionForm>
+                  <BotonDeAccion accion={{ tipo: "conectar" }} exito="Empresa conectada a Atlas Lead" pendiente="Conectando…">
+                    <Plug size={16} aria-hidden="true" /> Conectar Atlas Lead
+                  </BotonDeAccion>
                 ) : undefined
               }
             />
