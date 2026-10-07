@@ -20,8 +20,7 @@ import {
   StickyNote,
   UserRound,
   Users,
-  XCircle,
-} from "lucide-react";
+  XCircle, Printer } from "lucide-react";
 
 import { moverEtapa, registrarGestion } from "@/app/actions/ventas";
 import { cerrarNegocio, escribirAlNegocio, fijarProximaAccion } from "@/app/actions/pipeline";
@@ -213,6 +212,12 @@ export default async function OportunidadPage({ params }: { params: Promise<{ id
         ]}
         actions={
           <>
+            {(await contextoDeMiEmpresa()).edicion !== "center" && (
+              <Link className={buttonClasses({ variant: "ghost", size: "sm" })} href={`/imprimir/presupuesto/${negocio.id}`} target="_blank">
+                <Printer size={13} aria-hidden="true" />
+                Imprimir o PDF
+              </Link>
+            )}
             {leadId && (
               <Link className={buttonClasses({ variant: "ghost", size: "sm" })} href={`/dashboard/leads/${leadId}`}>
                 Ver registro

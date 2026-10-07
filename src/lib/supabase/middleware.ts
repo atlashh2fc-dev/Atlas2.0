@@ -36,6 +36,9 @@ const PUBLIC_PATHS = [
   // clínica. Solo llama funciones públicas que exponen servicios y horas
   // libres; la cita propia se ve y cancela con un token largo.
   "/reservar/",
+  // El consentimiento que la clínica manda por WhatsApp se lee y firma sin
+  // cuenta; la llave es un token largo y la base solo acepta una firma.
+  "/firmar/",
 ];
 
 const MACHINE_ONLY_PATHS = new Set([

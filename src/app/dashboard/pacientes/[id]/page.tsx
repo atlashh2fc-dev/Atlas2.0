@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   CalendarClock,
   ChevronRight,
+  FileSignature,
   FileText,
   HandCoins,
   History,
@@ -20,6 +21,7 @@ import {
 
 import { agregarNota, registrarCuidado } from "@/app/actions/pacientes";
 import { crearOportunidad } from "@/app/actions/ventas";
+import { crearConsentimiento } from "@/app/actions/consentimientos";
 import { CreatePanel } from "@/components/create-panel";
 import {
   ActionForm,
@@ -178,6 +180,8 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
     { data: looksData },
     { data: mapasData },
     { data: modelosData },
+    { data: documentosData },
+    { data: plantillasConsentimiento },
   ] =
     await Promise.all([
       supabase
@@ -256,6 +260,8 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
       esVet
         ? supabase.from("mascota_modelos").select("especie, raza, modelo_path, giro").eq("elegido", true)
         : Promise.resolve({ data: [] as { especie: string; raza: string; modelo_path: string | null; giro: number }[] }),
+      supabase.from("consentimientos").select("id, titulo, estado, firmado_at, created_at").eq("cuenta_id", id).order("created_at", { ascending: false }),
+      supabase.from("plantillas_consentimiento").select("id, titulo").eq("activo", true).order("titulo"),
     ]);
 
   // Estudio de Look: las fotos del bucket privado, firmadas por una hora.
@@ -720,6 +726,51 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
                     </li>
                   );
                 })}
+              </ul>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            title={<span className="flex items-center gap-2">Consentimientos <CountBox>{(documentosData ?? []).length}</CountBox></span>}
+            description="Firmados en la clínica o desde el celular, con el texto exacto que se aceptó."
+            actions={
+              (plantillasConsentimiento ?? []).length > 0 ? (
+                <CreatePanel label="Nuevo" title="Nuevo consentimiento" description="Se arma con los datos de la ficha. Después se firma en pantalla o se manda el enlace." action={crearConsentimiento} submitLabel="Preparar" successLabel="Consentimiento listo para firmar">
+                  <input type="hidden" name="cuenta_id" value={id} />
+                  <Field label="Plantilla">
+                    <Select name="plantilla_id" required defaultValue={(plantillasConsentimiento ?? [])[0]?.id as string}>
+                      {(plantillasConsentimiento ?? []).map((plantilla) => <option key={plantilla.id as string} value={plantilla.id as string}>{plantilla.titulo as string}</option>)}
+                    </Select>
+                  </Field>
+                  {esVet && (mascotas ?? []).length > 0 && (
+                    <Field label="Mascota">
+                      <Select name="mascota_id" defaultValue={((mascotas ?? [])[0] as { id?: string })?.id ?? ""}>
+                        {((mascotas ?? []) as { id: string; nombre: string }[]).map((mascota) => <option key={mascota.id} value={mascota.id}>{mascota.nombre}</option>)}
+                      </Select>
+                    </Field>
+                  )}
+                </CreatePanel>
+              ) : (
+                <Link href="/dashboard/citas/configuracion#consentimientos" className={buttonClasses({ variant: "ghost", size: "sm" })}>Crear plantillas</Link>
+              )
+            }
+          >
+            {(documentosData ?? []).length === 0 ? (
+              <p className="px-5 pb-4 text-sm text-muted-foreground">Sin consentimientos todavía.</p>
+            ) : (
+              <ul className="divide-y divide-border/70 border-t border-border">
+                {(documentosData ?? []).map((documento) => (
+                  <li key={documento.id as string}>
+                    <Link href={`/dashboard/pacientes/${id}/consentimientos/${documento.id}`} className="group flex items-center gap-3 px-5 py-3 transition-colors hover:bg-surface-muted/55">
+                      <FileSignature size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium">{documento.titulo as string}</span>
+                      <Badge tone={documento.estado === "firmado" ? "success" : documento.estado === "anulado" ? "neutral" : "warning"}>
+                        {documento.estado === "firmado" ? "Firmado" : documento.estado === "anulado" ? "Anulado" : "Por firmar"}
+                      </Badge>
+                      <ChevronRight size={15} className="shrink-0 text-muted-foreground/50 group-hover:text-primary" aria-hidden="true" />
+                    </Link>
+                  </li>
+                ))}
               </ul>
             )}
           </SectionCard>

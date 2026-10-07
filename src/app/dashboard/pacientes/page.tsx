@@ -2,11 +2,11 @@ import Link from "next/link";
 import { EspecieYRaza } from "@/components/especie-y-raza";
 import { razasDe } from "@/lib/anatomia";
 import { connection } from "next/server";
-import { ChevronRight, PawPrint, Scissors, Search, SearchX, Users } from "lucide-react";
+import { ChevronRight, FileUp, PawPrint, Scissors, Search, SearchX, Users } from "lucide-react";
 
 import { crearPaciente } from "@/app/actions/pacientes";
 import { CreatePanel } from "@/components/create-panel";
-import { Avatar, Badge, EmptyState, Field, Input, PageHeader, SectionCard, SegmentTabs, Select, Table, Tbody, Td, Th, Thead, Tr } from "@/components/ui";
+import { Avatar, Badge, EmptyState, Field, Input, PageHeader, SectionCard, SegmentTabs, Select, Table, Tbody, Td, Th, Thead, Tr, buttonClasses } from "@/components/ui";
 import { ATENCION_POR_EDICION, PACIENTES_POR_EDICION, VENTAS_POR_EDICION, clinicaDe } from "@/lib/ediciones";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
 import { REPORT_TIME_ZONE } from "@/lib/report-range";
@@ -137,6 +137,10 @@ export default async function PacientesPage({
           </span>
         }
         actions={
+          <div className="flex flex-wrap items-center gap-2">
+          <Link href="/dashboard/pacientes/importar" className={buttonClasses({ variant: "ghost" })}>
+            <FileUp size={16} aria-hidden="true" /> Importar desde Excel
+          </Link>
           <CreatePanel
             label={voc.nuevo}
             title={voc.nuevo}
@@ -210,6 +214,7 @@ export default async function PacientesPage({
             </Field>
             <p className="text-xs text-muted-foreground">El {ventas.negocio.toLowerCase()} se crea después, desde la ficha.</p>
           </CreatePanel>
+          </div>
         }
       />
 
