@@ -232,6 +232,9 @@ export async function despacharMensajes(opciones: { generar?: boolean; limite?: 
   const admin = createAdminClient();
   let generados: Record<string, number> = {};
   if (opciones.generar !== false) {
+    // Las demos de clínica siempre muestran una agenda con citas por delante.
+    const { error: demoError } = await admin.rpc("refrescar_agenda_demo");
+    if (demoError) console.error("[mensajes] no se pudo refrescar la agenda de las demos", demoError.message);
     const { data, error } = await admin.rpc("generar_recordatorios");
     if (error) console.error("[mensajes] no se pudieron generar los recordatorios", error.message);
     else generados = (data as Record<string, number>) ?? {};
@@ -244,8 +247,19 @@ export async function despacharMensajes(opciones: { generar?: boolean; limite?: 
   if (error) throw new Error(error.message);
   const resultado: Resultado = { enviados: 0, simulados: 0, fallidos: 0 };
 
-  for (const fila of (reclamados ?? []) as Mensaje[]) {
-    const cuerpo = renderizarPlantilla(fila.plantilla, fila.variables ?? {});
+  // Los textos propios de cada empresa, una sola lectura por despacho.
+  const filas = (reclamados ?? []) as Mensaje[];
+  const empresas = [...new Set(filas.map((fila) => fila.organization_id))];
+  const textosPorEmpresa = new Map<string, Record<string, unknown>>();
+  if (empresas.length > 0) {
+    const { data: configuraciones } = await admin.from("configuracion_agenda").select("organization_id, textos").in("organization_id", empresas);
+    for (const configuracion of configuraciones ?? []) {
+      textosPorEmpresa.set(configuracion.organization_id as string, (configuracion.textos as Record<string, unknown>) ?? {});
+    }
+  }
+
+  for (const fila of filas) {
+    const cuerpo = renderizarPlantilla(fila.plantilla, fila.variables ?? {}, textosPorEmpresa.get(fila.organization_id));
     if (fila.canal === "correo") {
       await despacharCorreo(admin, fila, cuerpo, resultado);
       continue;

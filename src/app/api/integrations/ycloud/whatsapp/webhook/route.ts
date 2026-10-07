@@ -4,6 +4,7 @@ import { parseYCloudWebhook, verifyYCloudWebhookSignature } from "@/lib/whatsapp
 import { processWhatsAppEvents } from "@/lib/whatsapp-webhook-processing";
 import { respondToWhatsAppInbound } from "@/lib/mercury-whatsapp";
 import { captureWhatsAppMessageMedia } from "@/lib/whatsapp-media";
+import { despacharMensajes } from "@/lib/mensajes/despachar";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -36,10 +37,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "JSON inválido." }, { status: 400 });
   }
 
-  const { aiCandidates, mediaCandidates, ...result } = await processWhatsAppEvents(parseYCloudWebhook(decoded), "ycloud");
-  if (aiCandidates.length > 0 || mediaCandidates.length > 0) {
+  const { aiCandidates, mediaCandidates, despacharSalientes, ...result } = await processWhatsAppEvents(parseYCloudWebhook(decoded), "ycloud");
+  if (aiCandidates.length > 0 || mediaCandidates.length > 0 || despacharSalientes) {
     after(async () => {
       await Promise.allSettled([
+        // La respuesta a «¿confirmas tu hora?» sale al tiro, no en 10 minutos.
+        ...(despacharSalientes ? [despacharMensajes({ generar: false, limite: 10 })] : []),
         ...aiCandidates.map(respondToWhatsAppInbound),
         ...mediaCandidates.map(({ messageId }) => captureWhatsAppMessageMedia(messageId)),
       ]);

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { connection } from "next/server";
-import { CalendarDays, CalendarX2, Check, CheckCheck, ChevronLeft, ChevronRight, Clock, Stethoscope, XCircle } from "lucide-react";
+import { CalendarDays, CalendarX2, Check, CheckCheck, ChevronLeft, ChevronRight, Clock, Settings2, Stethoscope, XCircle } from "lucide-react";
 
 import { agendarCita, cambiarEstadoCita, type OpcionDeCita } from "@/app/actions/citas";
 import { CreatePanel } from "@/components/create-panel";
@@ -43,6 +43,13 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const fechaLarga = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, weekday: "long", day: "numeric", month: "long" });
 const hora = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+
+/** De dónde vino la confirmación, cuando no la hizo la recepción. */
+const ORIGEN_CONFIRMACION: Record<string, string> = {
+  whatsapp: "Confirmó por WhatsApp",
+  correo: "Confirmó por correo",
+  reserva_online: "Reservó en línea",
+};
 
 function capitalizar(texto: string): string {
   return texto.charAt(0).toUpperCase() + texto.slice(1);
@@ -112,7 +119,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       supabase.from("profesionales").select("id, nombre, especialidad, color, activo").eq("activo", true).order("orden").order("nombre"),
       supabase
         .from("citas")
-        .select("id, cuenta_id, mascota_id, profesional_id, inicio, fin, motivo, estado, nota, sales_companies(name, phone), mascotas(nombre, especie)")
+        .select("id, cuenta_id, mascota_id, profesional_id, inicio, fin, motivo, estado, nota, confirmada_por, sales_companies(name, phone), mascotas(nombre, especie)")
         .gte("inicio", desde.toISOString())
         .lt("inicio", hasta.toISOString())
         .order("inicio"),
@@ -187,6 +194,9 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
         }
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            <Link href="/dashboard/citas/configuracion" className={buttonClasses({ variant: "ghost", size: "sm" })} aria-label="Configurar la agenda" title="Recordatorios, confirmación y mensajes">
+              <Settings2 size={16} aria-hidden="true" />
+            </Link>
             <Link href={`/dashboard/citas?dia=${sumarDias(dia, -1)}`} className={buttonClasses({ variant: "secondary", size: "sm" })} aria-label="Día anterior">
               <ChevronLeft size={16} aria-hidden="true" />
             </Link>
@@ -436,6 +446,9 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
                       </Td>
                       <Td>
                         <Badge tone={etiqueta.tone}>{etiqueta.label}</Badge>
+                        {cita.estado === "confirmada" && cita.confirmada_por && cita.confirmada_por !== "recepcion" && (
+                          <span className="mt-1 block text-xs text-muted-foreground">{ORIGEN_CONFIRMACION[cita.confirmada_por] ?? ""}</span>
+                        )}
                       </Td>
                       <Td>
                         <div className="flex flex-wrap justify-end gap-1.5">

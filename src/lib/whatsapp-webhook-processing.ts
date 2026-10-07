@@ -12,6 +12,12 @@ export type WhatsAppWebhookResult = {
   failed: number;
   aiCandidates: Array<{ conversationId: string; inboundMessageId: string }>;
   mediaCandidates: Array<{ messageId: string }>;
+  /**
+   * Entró texto a una clínica: puede ser la respuesta a un recordatorio de
+   * cita, que la base ya aplicó y dejó con su respuesta programada. El
+   * webhook la despacha al tiro en vez de esperar al cron.
+   */
+  despacharSalientes?: boolean;
 };
 
 async function campaignForEvent(
@@ -253,6 +259,9 @@ export async function processWhatsAppEvents(
         const fila = typeof ingestado === "object" && ingestado !== null ? (ingestado as Record<string, unknown>) : {};
         if (fila.duplicate !== true && typeof fila.message_id === "string" && (event.messageType === "image" || event.messageType === "audio")) {
           result.mediaCandidates.push({ messageId: fila.message_id });
+        }
+        if (fila.duplicate !== true && event.direction === "inbound" && event.messageType === "text") {
+          result.despacharSalientes = true;
         }
         await admin
           .from("whatsapp_channels")

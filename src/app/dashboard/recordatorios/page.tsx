@@ -91,6 +91,7 @@ function Enviar({
   variables,
   ultimo,
   telefono,
+  textos,
 }: {
   cuenta: string;
   plantilla: ClavePlantilla;
@@ -100,13 +101,15 @@ function Enviar({
   ultimo?: Mensaje;
   /** Sin celular, el mensaje sale por correo. */
   telefono?: string | null;
+  /** Los textos propios de la empresa, para que la vista previa sea lo que sale. */
+  textos?: Record<string, unknown> | null;
 }) {
   const canal = telefono && telefono.trim() ? "whatsapp" : "correo";
   const etiqueta = ultimo ? ETIQUETA_ESTADO_MENSAJE[ultimo.estado] : null;
   const yaSalio = ultimo && !["fallido", "cancelado"].includes(ultimo.estado);
   // Lo que va a recibir la persona, a la vista antes de enviarlo: si ya salió,
   // el texto real; si no, la plantilla con sus datos.
-  const texto = (yaSalio ? ultimo?.cuerpo : null) ?? renderizarPlantilla(plantilla, variables);
+  const texto = (yaSalio ? ultimo?.cuerpo : null) ?? renderizarPlantilla(plantilla, variables, textos);
   return (
     <div className="flex w-full min-w-0 flex-col gap-1 sm:w-80">
       <div className="flex items-center justify-end gap-2">
@@ -199,6 +202,11 @@ export default async function RecordatoriosPage() {
       .limit(400),
     supabase.from("whatsapp_channels").select("status, display_phone_number").eq("canal", "whatsapp").order("created_at").limit(1).maybeSingle(),
   ]);
+  const { data: orgId } = await supabase.rpc("current_org_id");
+  const { data: configuracionData } = typeof orgId === "string"
+    ? await supabase.from("configuracion_agenda").select("textos").eq("organization_id", orgId).maybeSingle()
+    : { data: null };
+  const textosPropios = (configuracionData?.textos as Record<string, unknown> | null) ?? null;
 
   const citas = (citasData ?? []) as unknown as (Cita & { profesionales: { nombre: string } | { nombre: string }[] | null })[];
   const vacunas = ((vacunasData ?? []) as unknown as Vacuna[]).filter((mascota) => {
@@ -245,6 +253,10 @@ export default async function RecordatoriosPage() {
           </span>
         }
         actions={
+          <div className="flex flex-wrap items-center gap-2">
+          <Link href="/dashboard/citas/configuracion" className={buttonClasses({ variant: "ghost" })}>
+            Configurar mensajes
+          </Link>
           <ActionForm
             action={despacharAhora}
             success="Despacho hecho: revisa el estado en «Lo que Atlas escribió»"
@@ -268,6 +280,7 @@ export default async function RecordatoriosPage() {
               <Send size={16} aria-hidden="true" /> Enviar pendientes{programados ? ` (${programados})` : ""}
             </ActionSubmit>
           </ActionForm>
+          </div>
         }
       />
 
@@ -322,7 +335,7 @@ export default async function RecordatoriosPage() {
                       </Badge>
                     </p>
                   </div>
-                  <Enviar cuenta={cita.cuenta_id} plantilla={plantilla} regla="cita_manana" origen={cita.id} variables={variables} ultimo={ultimo("cita_manana", cita.id)} telefono={tutor?.phone} />
+                  <Enviar cuenta={cita.cuenta_id} plantilla={plantilla} regla="cita_manana" origen={cita.id} variables={variables} ultimo={ultimo("cita_manana", cita.id)} telefono={tutor?.phone} textos={textosPropios} />
                   {cita.estado === "reservada" && (
                     <ActionForm action={cambiarEstadoCita} success="Cita confirmada">
                       <input type="hidden" name="cita_id" value={cita.id} />
@@ -363,7 +376,7 @@ export default async function RecordatoriosPage() {
                         <Badge tone={estado === "vencida" ? "danger" : "warning"} className="text-xs">{estado === "vencida" ? "Vencida" : "Por vencer"}</Badge>
                       </p>
                     </div>
-                    {tutor && <Enviar cuenta={tutor.id} plantilla="vacuna" regla="vacuna" origen={mascota.id} variables={variables} ultimo={ultimo("vacuna", mascota.id)} telefono={tutor.phone} />}
+                    {tutor && <Enviar cuenta={tutor.id} plantilla="vacuna" regla="vacuna" origen={mascota.id} variables={variables} ultimo={ultimo("vacuna", mascota.id)} telefono={tutor.phone} textos={textosPropios} />}
                     <Link href={tutor ? `/dashboard/citas?cuenta=${tutor.id}&mascota=${mascota.id}` : "/dashboard/citas"} className={buttonClasses({ variant: "secondary", size: "sm" })}>
                       Agendar
                     </Link>
@@ -395,7 +408,7 @@ export default async function RecordatoriosPage() {
                       <Badge tone="warning" className="text-xs">{dias(presupuesto.next_action_at as string)} días sin respuesta</Badge>
                     </p>
                   </div>
-                  <Enviar cuenta={presupuesto.company_id} plantilla="presupuesto" regla="presupuesto" origen={presupuesto.id} variables={variables} ultimo={ultimo("presupuesto", presupuesto.id)} telefono={cuentaDe?.phone} />
+                  <Enviar cuenta={presupuesto.company_id} plantilla="presupuesto" regla="presupuesto" origen={presupuesto.id} variables={variables} ultimo={ultimo("presupuesto", presupuesto.id)} telefono={cuentaDe?.phone} textos={textosPropios} />
                 </li>
               );
             })}
@@ -422,7 +435,7 @@ export default async function RecordatoriosPage() {
                       Última atención {ficha.ultima ? fecha.format(new Date(`${ficha.ultima}T12:00:00`)).replace(".", "") : "—"}
                     </p>
                   </div>
-                  <Enviar cuenta={ficha.id} plantilla={reglaVuelta} regla={reglaVuelta} origen={ficha.id} variables={variables} ultimo={ultimo(reglaVuelta, ficha.id)} telefono={ficha.phone} />
+                  <Enviar cuenta={ficha.id} plantilla={reglaVuelta} regla={reglaVuelta} origen={ficha.id} variables={variables} ultimo={ultimo(reglaVuelta, ficha.id)} telefono={ficha.phone} textos={textosPropios} />
                 </li>
               );
             })}
@@ -449,7 +462,7 @@ export default async function RecordatoriosPage() {
               <Tbody>
                 {mensajes.slice(0, 80).map((mensaje) => {
                   const etiqueta = ETIQUETA_ESTADO_MENSAJE[mensaje.estado];
-                  const cuerpo = mensaje.cuerpo ?? renderizarPlantilla(mensaje.plantilla, mensaje.variables ?? {});
+                  const cuerpo = mensaje.cuerpo ?? renderizarPlantilla(mensaje.plantilla, mensaje.variables ?? {}, textosPropios);
                   const instante = new Date(mensaje.enviado_at ?? mensaje.programado_para);
                   const destinatario = mensaje.nombre_destinatario ?? mensaje.destinatario;
                   return (

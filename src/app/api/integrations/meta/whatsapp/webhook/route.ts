@@ -8,6 +8,7 @@ import { parseMensajeriaSocial } from "@/lib/mensajeria-social";
 import { processMensajesSociales, processWhatsAppEvents } from "@/lib/whatsapp-webhook-processing";
 import { respondToWhatsAppInbound } from "@/lib/mercury-whatsapp";
 import { captureWhatsAppMessageMedia } from "@/lib/whatsapp-media";
+import { despacharMensajes } from "@/lib/mensajes/despachar";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -76,15 +77,17 @@ export async function POST(request: NextRequest) {
   // Instagram y Messenger llegan a esta misma URL con otro sobre (object
   // «instagram» o «page»); WhatsApp trae «whatsapp_business_account».
   const sociales = parseMensajeriaSocial(decoded);
-  const { aiCandidates, mediaCandidates, ...result } = sociales.length > 0
+  const { aiCandidates, mediaCandidates, despacharSalientes, ...result } = sociales.length > 0
     ? await processMensajesSociales(sociales)
     : await processWhatsAppEvents(parseWhatsAppWebhook(decoded), "meta");
 
   // Meta receives its acknowledgement without waiting for model inference.
   // Each inbound message is idempotently claimed by whatsapp_ai_runs.
-  if (aiCandidates.length > 0 || mediaCandidates.length > 0) {
+  if (aiCandidates.length > 0 || mediaCandidates.length > 0 || despacharSalientes) {
     after(async () => {
       await Promise.allSettled([
+        // La respuesta a «¿confirmas tu hora?» sale al tiro, no en 10 minutos.
+        ...(despacharSalientes ? [despacharMensajes({ generar: false, limite: 10 })] : []),
         ...aiCandidates.map(respondToWhatsAppInbound),
         ...mediaCandidates.map(({ messageId }) => captureWhatsAppMessageMedia(messageId)),
       ]);

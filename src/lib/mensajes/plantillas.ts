@@ -10,17 +10,29 @@ import type { BadgeTone } from "@/components/ui";
  * de la plantilla registrada allá y las variables van en el mismo orden.
  */
 
-export type ClavePlantilla = "cita_confirmar" | "cita_recordatorio" | "vacuna" | "presupuesto" | "control" | "mantencion" | "look" | "enlace_pago" | "seguimiento_propuesta" | "libre";
+export type ClavePlantilla = "cita_confirmar" | "cita_recordatorio" | "cita_confirmada" | "cita_cancelada" | "cita_reagendar" | "vacuna" | "presupuesto" | "control" | "mantencion" | "look" | "enlace_pago" | "seguimiento_propuesta" | "libre";
 
 export const PLANTILLAS: Record<ClavePlantilla, { nombre: string; cuerpo: string }> = {
   cita_confirmar: {
-    nombre: "Cita de mañana, por confirmar",
+    nombre: "Cita próxima, por confirmar",
     cuerpo:
-      "Hola {{nombre}}, te recordamos {{de_quien}} mañana a las {{hora}} con {{profesional}} en {{clinica}} ({{motivo}}). ¿Nos confirmas que vienes? Responde SÍ y queda confirmada.",
+      "Hola {{nombre}}, te recordamos {{de_quien}} {{cuando}} a las {{hora}} con {{profesional}} en {{clinica}} ({{motivo}}). ¿Nos confirmas que vienes? Responde SÍ y queda confirmada, o NO si no puedes.",
   },
   cita_recordatorio: {
-    nombre: "Cita de mañana, confirmada",
-    cuerpo: "Hola {{nombre}}, mañana a las {{hora}} te esperamos en {{clinica}} con {{profesional}} ({{motivo}}{{mascota_sufijo}}). Si no puedes venir, avísanos por acá.",
+    nombre: "Cita próxima, ya confirmada",
+    cuerpo: "Hola {{nombre}}, {{cuando}} a las {{hora}} te esperamos en {{clinica}} con {{profesional}} ({{motivo}}{{mascota_sufijo}}). Si no puedes venir, responde NO y liberamos la hora.",
+  },
+  cita_confirmada: {
+    nombre: "Respuesta: cita confirmada",
+    cuerpo: "¡Listo, {{nombre}}! Tu hora del {{fecha}} quedó confirmada. Te esperamos en {{clinica}}.",
+  },
+  cita_cancelada: {
+    nombre: "Respuesta: cita cancelada",
+    cuerpo: "Gracias por avisar, {{nombre}}. Cancelamos tu hora del {{fecha}}. Si quieres otra, responde por acá y te damos la primera disponible.",
+  },
+  cita_reagendar: {
+    nombre: "Respuesta: quiere otra hora",
+    cuerpo: "Perfecto, {{nombre}}. Te escribimos en un rato con otras horas disponibles en {{clinica}}. Tu hora del {{fecha}} sigue reservada mientras tanto.",
   },
   vacuna: {
     nombre: "Vacuna por vencer o vencida",
@@ -67,7 +79,8 @@ export const ETIQUETA_ESTADO_MENSAJE: Record<EstadoMensaje, { label: string; ton
 };
 
 export const ETIQUETA_REGLA: Record<string, string> = {
-  cita_manana: "Cita de mañana",
+  cita_manana: "Cita próxima",
+  cita_respuesta: "Respuesta a la cita",
   vacuna: "Vacuna",
   presupuesto: "Presupuesto",
   control: "Control",
@@ -79,9 +92,61 @@ export const ETIQUETA_REGLA: Record<string, string> = {
   seguimiento: "Seguimiento",
 };
 
-/** Rellena una plantilla con sus variables. Las que faltan quedan vacías, sin llaves sueltas. */
-export function renderizarPlantilla(clave: string, variables: Record<string, unknown>): string {
-  const plantilla = PLANTILLAS[clave as ClavePlantilla] ?? PLANTILLAS.libre;
+/**
+ * Las plantillas que cada empresa puede reescribir con su propio tono, con
+ * las variables que puede usar en cada una. Las de campañas, pagos y el
+ * mensaje libre no: su texto ya lo escribe quien las manda.
+ */
+export const PLANTILLAS_EDITABLES: Partial<Record<ClavePlantilla, string[]>> = {
+  cita_confirmar: ["nombre", "de_quien", "cuando", "hora", "profesional", "clinica", "motivo"],
+  cita_recordatorio: ["nombre", "cuando", "hora", "profesional", "clinica", "motivo", "mascota_sufijo"],
+  cita_confirmada: ["nombre", "fecha", "clinica"],
+  cita_cancelada: ["nombre", "fecha", "clinica"],
+  cita_reagendar: ["nombre", "fecha", "clinica"],
+  vacuna: ["nombre", "mascota", "vence_o_vencio", "fecha", "clinica"],
+  presupuesto: ["nombre", "presupuesto", "monto", "clinica"],
+  control: ["nombre", "meses", "clinica"],
+  mantencion: ["nombre", "semanas", "clinica"],
+};
+
+/** Ejemplo para la vista previa de un texto propio. */
+export const VARIABLES_DE_EJEMPLO: Record<string, string> = {
+  nombre: "Camila",
+  cuando: "mañana",
+  hora: "10:30",
+  profesional: "Dra. Vidal",
+  clinica: "tu clínica",
+  motivo: "Control",
+  mascota: "Luna",
+  fecha: "09/10 a las 10:30",
+  presupuesto: "Tratamiento de conducto",
+  monto: "$180.000",
+  meses: "6",
+  semanas: "5",
+};
+
+/** Un texto propio es válido si no está vacío, cabe en un WhatsApp y solo usa variables conocidas. */
+export function validarTextoPropio(clave: ClavePlantilla, texto: string): string | null {
+  const limpio = texto.trim();
+  if (limpio.length < 10) return "El mensaje es muy corto.";
+  if (limpio.length > 900) return "El mensaje no puede pasar de 900 caracteres.";
+  const permitidas = new Set(PLANTILLAS_EDITABLES[clave] ?? []);
+  for (const [, nombre] of limpio.matchAll(/\{\{\s*([a-z_]+)\s*\}\}/g)) {
+    if (!permitidas.has(nombre)) return `{{${nombre}}} no existe en este mensaje.`;
+  }
+  return null;
+}
+
+/**
+ * Rellena una plantilla con sus variables. Las que faltan quedan vacías, sin
+ * llaves sueltas. Si la empresa escribió su propio texto para esa plantilla,
+ * se usa ese.
+ */
+export function renderizarPlantilla(clave: string, variables: Record<string, unknown>, textosPropios?: Record<string, unknown> | null): string {
+  const propio = textosPropios?.[clave];
+  const plantilla = typeof propio === "string" && propio.trim() && clave in PLANTILLAS_EDITABLES
+    ? { cuerpo: propio }
+    : PLANTILLAS[clave as ClavePlantilla] ?? PLANTILLAS.libre;
   const valores: Record<string, string> = {};
   for (const [nombre, valor] of Object.entries(variables)) {
     valores[nombre] = valor === null || valor === undefined ? "" : String(valor);
@@ -90,6 +155,8 @@ export function renderizarPlantilla(clave: string, variables: Record<string, unk
   const mascota = valores.mascota?.trim();
   valores.de_quien = mascota ? `la hora de ${mascota}` : "tu hora";
   valores.mascota_sufijo = mascota ? ` · ${mascota}` : "";
+  // Los recordatorios anteriores a la anticipación configurable no traen «cuando».
+  valores.cuando = valores.cuando?.trim() || "mañana";
   valores.vence_o_vencio = variables.vencida === true || variables.vencida === "true" ? "venció" : "vence";
   return plantilla.cuerpo
     .replace(/\{\{\s*([a-z_]+)\s*\}\}/g, (_, nombre: string) => valores[nombre] ?? "")
