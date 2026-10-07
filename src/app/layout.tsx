@@ -20,6 +20,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Atlas | CRM",
   description: "Atlas — la suite CRM: leads, ventas, scoring, correo, contact center y WhatsApp en un solo lugar",
+  // Instalable en el celular: ícono propio y pantalla completa en iPhone.
+  appleWebApp: { capable: true, title: "Atlas", statusBarStyle: "default" },
+  icons: { apple: "/iconos/apple-touch-icon.png" },
 };
 
 export default function RootLayout({

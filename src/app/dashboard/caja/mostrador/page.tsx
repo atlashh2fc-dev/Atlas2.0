@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { connection } from "next/server";
-import { HandCoins, ShoppingBag, Wallet } from "lucide-react";
+import { Gift, HandCoins, ShoppingBag, Wallet } from "lucide-react";
 
+import { canjearGiftcard, venderGiftcard } from "@/app/actions/fidelizacion";
 import { registrarPropina, venderProducto } from "@/app/actions/mostrador";
 import { CreatePanel } from "@/components/create-panel";
 import { KpiStrip, KpiStripItem } from "@/components/report-kit";
-import { EmptyState, Field, Input, NavTabs, PageHeader, SectionCard, Select, Table, Tbody, Td, Th, Thead, Tr } from "@/components/ui";
+import { ActionForm, ActionSubmit, Badge, Callout, EmptyState, Field, Input, NavTabs, PageHeader, SectionCard, Select, Table, Tbody, Td, Th, Thead, Tr } from "@/components/ui";
 import { ZONA_CLINICA, esFechaValida, fechaEnChile, sumarDias } from "@/lib/citas";
 import { ATENCION_POR_EDICION, VENTAS_POR_EDICION, clinicaDe } from "@/lib/ediciones";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
@@ -49,27 +50,30 @@ function finDeMes(inicio: string): string {
   return new Date(Date.UTC(anio, mes, 0)).toISOString().slice(0, 10);
 }
 
-export default async function MostradorPage({ searchParams }: { searchParams: Promise<{ mes?: string }> }) {
+export default async function MostradorPage({ searchParams }: { searchParams: Promise<{ mes?: string; giftcard?: string }> }) {
   await connection();
   const { edicion } = await contextoDeMiEmpresa();
   const clinica = clinicaDe(edicion);
   const at = ATENCION_POR_EDICION[clinica];
   const ventas = VENTAS_POR_EDICION[clinica];
   const hoy = fechaEnChile(new Date());
-  const { mes } = await searchParams;
+  const { mes, giftcard } = await searchParams;
+  const codigoVendido = giftcard && /^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(giftcard) ? giftcard : null;
   const desde = mes && /^\d{4}-\d{2}$/.test(mes) && esFechaValida(`${mes}-01`) ? `${mes}-01` : `${hoy.slice(0, 7)}-01`;
   const hasta = finDeMes(desde);
   const mesAnterior = sumarDias(desde, -1).slice(0, 7);
   const mesSiguiente = sumarDias(hasta, 1).slice(0, 7);
 
   const supabase = await createClient();
-  const [{ data: liquidacionData, error }, { data: productosData }, { data: profesionalesData }, { data: ventasData }, { data: propinasData }] = await Promise.all([
+  const [{ data: liquidacionData, error }, { data: productosData }, { data: profesionalesData }, { data: ventasData }, { data: propinasData }, { data: giftcardsData }] = await Promise.all([
     supabase.rpc("liquidacion_de_profesionales", { p_desde: desde, p_hasta: hasta }),
     supabase.from("insumos").select("id, nombre, precio_venta, stock").eq("activo", true).order("nombre").limit(400),
     supabase.from("profesionales").select("id, nombre").eq("activo", true).order("orden").order("nombre"),
     supabase.from("ventas_productos").select("id, nombre, cantidad, total, medio, vendido_at, profesional_id").gte("vendido_at", `${desde}T00:00:00-03:00`).lte("vendido_at", `${hasta}T23:59:59-03:00`).order("vendido_at", { ascending: false }).limit(200),
     supabase.from("propinas").select("id, monto, medio, recibida_at, profesional_id, nota").gte("recibida_at", `${desde}T00:00:00-03:00`).lte("recibida_at", `${hasta}T23:59:59-03:00`).order("recibida_at", { ascending: false }).limit(200),
+    supabase.from("giftcards").select("id, codigo, monto_inicial, saldo, para, vence, estado, created_at").order("created_at", { ascending: false }).limit(50),
   ]);
+  const giftcards = (giftcardsData ?? []) as { id: string; codigo: string; monto_inicial: number; saldo: number; para: string | null; vence: string | null; estado: string; created_at: string }[];
   const liquidacion = ((liquidacionData ?? []) as Liquidacion[]).map((fila) => ({
     ...fila,
     atenciones: Number(fila.atenciones),
@@ -99,6 +103,16 @@ export default async function MostradorPage({ searchParams }: { searchParams: Pr
         description={`Productos vendidos, propinas y lo que corresponde pagarle a cada ${at.profesional.toLowerCase()} en ${titulo}.`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            <CreatePanel label="Giftcard" title="Vender giftcard" description="Se genera un código para entregar. Se canjea en una o varias visitas." action={venderGiftcard} submitLabel="Vender" successLabel="Giftcard vendida">
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Monto"><Input name="monto" required inputMode="numeric" placeholder="20000" /></Field>
+                <Field label="Medio">
+                  <Select name="medio" defaultValue="debito">{MEDIOS.map((medio) => <option key={medio.valor} value={medio.valor}>{medio.etiqueta}</option>)}</Select>
+                </Field>
+              </div>
+              <Field label="Para (opcional)"><Input name="para" placeholder="Regalo para Martina" /></Field>
+              <Field label="Vence (opcional, por defecto en un año)"><Input type="date" name="vence" min={hoy} /></Field>
+            </CreatePanel>
             <CreatePanel label="Propina" title="Registrar propina" description="Queda en la liquidación del profesional." action={registrarPropina} submitLabel="Registrar" successLabel="Propina registrada">
               <Field label={`¿Para qué ${at.profesional.toLowerCase()}?`}>
                 <Select name="profesional_id" required defaultValue="">
@@ -148,6 +162,14 @@ export default async function MostradorPage({ searchParams }: { searchParams: Pr
           { label: ventas.negocios, href: "/dashboard/ventas" },
         ]}
       />
+
+      {codigoVendido && (
+        <Callout tone="success">
+          <span className="flex flex-wrap items-center gap-3">
+            Giftcard vendida. Código para entregar: <span className="rounded-md bg-surface px-3 py-1 font-mono text-lg font-semibold tracking-widest">{codigoVendido}</span>
+          </span>
+        </Callout>
+      )}
 
       <nav aria-label="Período" className="flex items-center gap-2 text-sm">
         <Link href={`/dashboard/caja/mostrador?mes=${mesAnterior}`} className="inline-flex min-h-9 items-center rounded-lg border border-border px-3 text-muted-foreground hover:text-foreground">← Mes anterior</Link>
@@ -201,6 +223,32 @@ export default async function MostradorPage({ searchParams }: { searchParams: Pr
             </Table>
           </div>
         )}
+      </SectionCard>
+
+      <SectionCard title={<span className="flex items-center gap-2"><Gift size={16} aria-hidden="true" /> Giftcards</span>} description="Canjea con el código: se descuenta del saldo y queda el movimiento.">
+        <div className="space-y-4">
+          <ActionForm action={canjearGiftcard} success="Giftcard canjeada" className="flex flex-wrap items-end gap-2">
+            <Field label="Código"><Input name="codigo" required placeholder="ABCD-2345" className="w-36 font-mono uppercase" /></Field>
+            <Field label="Monto a usar"><Input name="monto" required inputMode="numeric" placeholder="15000" className="w-36" /></Field>
+            <ActionSubmit variant="secondary" pendingLabel="Canjeando…">Canjear</ActionSubmit>
+          </ActionForm>
+          {giftcards.length > 0 && (
+            <ul className="divide-y divide-border text-sm">
+              {giftcards.slice(0, 15).map((tarjeta) => (
+                <li key={tarjeta.id} className="flex flex-wrap items-center justify-between gap-3 py-2">
+                  <span className="min-w-0">
+                    <span className="font-mono font-medium">{tarjeta.codigo}</span>
+                    {tarjeta.para && <span className="text-muted-foreground"> · {tarjeta.para}</span>}
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <span className="tabular-nums">{pesos.format(Number(tarjeta.saldo))} de {pesos.format(Number(tarjeta.monto_inicial))}</span>
+                    <Badge tone={tarjeta.estado === "activa" ? "success" : "neutral"}>{tarjeta.estado === "activa" ? "Activa" : tarjeta.estado === "usada" ? "Usada" : "Anulada"}</Badge>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </SectionCard>
 
       <div className="grid gap-5 lg:grid-cols-2">

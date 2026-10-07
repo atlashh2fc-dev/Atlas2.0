@@ -22,6 +22,9 @@ import {
 import { agregarNota, registrarCuidado } from "@/app/actions/pacientes";
 import { crearOportunidad } from "@/app/actions/ventas";
 import { crearConsentimiento } from "@/app/actions/consentimientos";
+import { canjearSellos } from "@/app/actions/fidelizacion";
+import { cambiarEstadoOrden, crearOrdenLaboratorio } from "@/app/actions/laboratorio";
+import { ESTADO_ORDEN, ordenAtrasada } from "@/lib/laboratorio";
 import { CreatePanel } from "@/components/create-panel";
 import {
   ActionForm,
@@ -182,6 +185,9 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
     { data: modelosData },
     { data: documentosData },
     { data: plantillasConsentimiento },
+    { data: sellosData },
+    { data: ordenesData },
+    { data: profesionalesFicha },
   ] =
     await Promise.all([
       supabase
@@ -262,6 +268,11 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
         : Promise.resolve({ data: [] as { especie: string; raza: string; modelo_path: string | null; giro: number }[] }),
       supabase.from("consentimientos").select("id, titulo, estado, firmado_at, created_at").eq("cuenta_id", id).order("created_at", { ascending: false }),
       supabase.from("plantillas_consentimiento").select("id, titulo").eq("activo", true).order("titulo"),
+      supabase.rpc("sellos_de_ficha", { p_cuenta: id }),
+      esDental
+        ? supabase.from("ordenes_laboratorio").select("id, laboratorio, trabajo, piezas, color, enviada_el, entrega_estimada, estado").eq("cuenta_id", id).order("created_at", { ascending: false })
+        : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+      esDental ? supabase.from("profesionales").select("id, nombre").eq("activo", true).order("orden") : Promise.resolve({ data: [] as Record<string, unknown>[] }),
     ]);
 
   // Estudio de Look: las fotos del bucket privado, firmadas por una hora.
@@ -729,6 +740,85 @@ export default async function FichaPacientePage({ params }: { params: Promise<{ 
               </ul>
             )}
           </SectionCard>
+
+          {(() => {
+            const sellos = sellosData as { activa: boolean; meta: number; premio: string | null; sellos: number; canjes: number } | null;
+            if (!sellos?.activa) return null;
+            const completa = sellos.sellos >= sellos.meta;
+            return (
+              <SectionCard title="Tarjeta de sellos" description={`${Math.min(sellos.sellos, sellos.meta)} de ${sellos.meta} visitas${sellos.premio ? ` · premio: ${sellos.premio}` : ""}${sellos.canjes ? ` · ${sellos.canjes} ${sellos.canjes === 1 ? "premio canjeado" : "premios canjeados"}` : ""}`}>
+                <div className="flex flex-wrap items-center justify-between gap-4 px-5 pb-4">
+                  <div className="flex flex-wrap gap-1.5" role="img" aria-label={`${Math.min(sellos.sellos, sellos.meta)} de ${sellos.meta} sellos`}>
+                    {Array.from({ length: sellos.meta }).map((_, indice) => (
+                      <span key={indice} className={`size-6 rounded-full border-2 ${indice < sellos.sellos ? "border-primary bg-primary" : "border-border bg-surface"}`} aria-hidden="true" />
+                    ))}
+                  </div>
+                  {completa && (
+                    <ActionForm action={canjearSellos} success="Premio canjeado: la tarjeta parte de cero">
+                      <input type="hidden" name="cuenta_id" value={id} />
+                      <ActionSubmit pendingLabel="Canjeando…">Canjear {sellos.premio ?? "premio"}</ActionSubmit>
+                    </ActionForm>
+                  )}
+                </div>
+              </SectionCard>
+            );
+          })()}
+
+          {esDental && (
+            <SectionCard
+              title={<span className="flex items-center gap-2">Laboratorio <CountBox>{(ordenesData ?? []).length}</CountBox></span>}
+              description="Trabajos enviados al laboratorio y cuándo vuelven."
+              actions={
+                <CreatePanel label="Nueva orden" title="Nueva orden de laboratorio" description="Queda en la ficha y en la lista de Laboratorio, con aviso si se atrasa." action={crearOrdenLaboratorio} submitLabel="Guardar orden" successLabel="Orden guardada">
+                  <input type="hidden" name="cuenta_id" value={id} />
+                  <Field label="Laboratorio"><Input name="laboratorio" required placeholder="Laboratorio Dental Andes" /></Field>
+                  <Field label="Trabajo"><Input name="trabajo" required placeholder="Corona de zirconio" /></Field>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Piezas"><Input name="piezas" placeholder="1.6, 2.6" /></Field>
+                    <Field label="Color"><Input name="color" placeholder="A2" /></Field>
+                    <Field label="Entrega estimada"><Input type="date" name="entrega_estimada" /></Field>
+                    <Field label="Costo (opcional)"><Input name="costo" inputMode="numeric" placeholder="85000" /></Field>
+                  </div>
+                  {(profesionalesFicha ?? []).length > 0 && (
+                    <Field label="Profesional">
+                      <Select name="profesional_id" defaultValue="">
+                        <option value="">Sin asignar</option>
+                        {((profesionalesFicha ?? []) as { id: string; nombre: string }[]).map((profesional) => <option key={profesional.id} value={profesional.id}>{profesional.nombre}</option>)}
+                      </Select>
+                    </Field>
+                  )}
+                </CreatePanel>
+              }
+            >
+              {(ordenesData ?? []).length === 0 ? (
+                <p className="px-5 pb-4 text-sm text-muted-foreground">Sin órdenes de laboratorio.</p>
+              ) : (
+                <ul className="divide-y divide-border/70 border-t border-border">
+                  {((ordenesData ?? []) as { id: string; laboratorio: string; trabajo: string; piezas: string | null; color: string | null; entrega_estimada: string | null; estado: string }[]).map((orden) => {
+                    const info = ESTADO_ORDEN[orden.estado] ?? ESTADO_ORDEN.enviada;
+                    const atrasada = ordenAtrasada(orden, new Date().toISOString().slice(0, 10));
+                    return (
+                      <li key={orden.id} className="flex flex-wrap items-center gap-3 px-5 py-3">
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium">{orden.trabajo}{orden.piezas ? ` · ${orden.piezas}` : ""}{orden.color ? ` · ${orden.color}` : ""}</span>
+                          <span className={`block text-xs ${atrasada ? "text-danger" : "text-muted-foreground"}`}>{orden.laboratorio}{orden.entrega_estimada ? ` · ${atrasada ? "atrasada, se esperaba" : "llega"} el ${orden.entrega_estimada.split("-").reverse().join("/")}` : ""}</span>
+                        </span>
+                        <Badge tone={atrasada ? "danger" : info.tone}>{atrasada ? "Atrasada" : info.label}</Badge>
+                        {info.siguiente && (
+                          <ActionForm action={cambiarEstadoOrden} success="Orden actualizada">
+                            <input type="hidden" name="id" value={orden.id} />
+                            <input type="hidden" name="cuenta_id" value={id} />
+                            <input type="hidden" name="estado" value={info.siguiente.estado} />
+                            <ActionSubmit size="sm" variant="secondary" pendingLabel="…">{info.siguiente.label}</ActionSubmit>
+                          </ActionForm>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </SectionCard>
+          )}
 
           <SectionCard
             title={<span className="flex items-center gap-2">Consentimientos <CountBox>{(documentosData ?? []).length}</CountBox></span>}

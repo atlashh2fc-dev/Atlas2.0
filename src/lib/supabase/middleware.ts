@@ -39,6 +39,11 @@ const PUBLIC_PATHS = [
   // El consentimiento que la clínica manda por WhatsApp se lee y firma sin
   // cuenta; la llave es un token largo y la base solo acepta una firma.
   "/firmar/",
+  // La agenda de cada profesional para Google, Apple u Outlook: el
+  // calendario no tiene sesión; la llave es el token largo del enlace.
+  "/api/calendario/",
+  // El manifiesto de la app instalable se pide antes de iniciar sesión.
+  "/manifest.webmanifest",
 ];
 
 const MACHINE_ONLY_PATHS = new Set([

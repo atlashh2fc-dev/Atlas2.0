@@ -1,4 +1,5 @@
 import {
+  FlaskConical,
   Activity,
   BadgeCheck,
   BarChart3,
@@ -181,6 +182,17 @@ const CONSOLE: NavSpace = {
           ],
           modules: ["ventas_b2c"],
           ediciones: ["dental", "vet", "barber"],
+        },
+        {
+          id: "laboratorio",
+          label: "Laboratorio",
+          href: "/dashboard/laboratorio",
+          icon: FlaskConical,
+          roles: ["admin", "supervisor"],
+          description: "Trabajos en el laboratorio, cuándo vuelven y lo atrasado",
+          match: ["/dashboard/laboratorio"],
+          modules: ["ventas_b2c"],
+          ediciones: ["dental"],
         },
         {
           id: "campanas-clinica",
@@ -450,7 +462,7 @@ const WORKSPACE_SECTIONS: Record<AppRole, Record<NavSpaceId, SectionSpec[]>> = {
     console: [
       { id: "control-home", itemIds: ["inicio"] },
       { id: "control-live", label: "Operación en vivo", itemIds: ["operacion", "agenda-clinica", "recordatorios", "correo"] },
-      { id: "control-work", label: "Gestión", itemIds: ["pacientes", "caja", "campanas-clinica", "campanas-correo", "ventas", "registros", "validacion-ventas", "marketing", "orbita"] },
+      { id: "control-work", label: "Gestión", itemIds: ["pacientes", "caja", "laboratorio", "campanas-clinica", "campanas-correo", "ventas", "registros", "validacion-ventas", "marketing", "orbita"] },
       { id: "control-analysis", label: "Análisis y calidad", itemIds: ["conversaciones", "conversaciones-clinica", "reportes", "reportes-clinica", "calidad"] },
     ],
     admin: [
@@ -466,7 +478,7 @@ const WORKSPACE_SECTIONS: Record<AppRole, Record<NavSpaceId, SectionSpec[]>> = {
     console: [
       { id: "supervision-home", itemIds: ["inicio"] },
       { id: "supervision-live", label: "Operación en vivo", itemIds: ["operacion", "equipo", "agenda-clinica", "recordatorios", "correo"] },
-      { id: "supervision-work", label: "Gestión", itemIds: ["pacientes", "caja", "campanas-clinica", "campanas-correo", "campanas-operativas", "ventas", "registros", "validacion-ventas", "marketing", "orbita"] },
+      { id: "supervision-work", label: "Gestión", itemIds: ["pacientes", "caja", "laboratorio", "campanas-clinica", "campanas-correo", "campanas-operativas", "ventas", "registros", "validacion-ventas", "marketing", "orbita"] },
       { id: "supervision-analysis", label: "Análisis y calidad", itemIds: ["conversaciones", "conversaciones-clinica", "reportes", "reportes-clinica", "calidad"] },
     ],
     admin: [

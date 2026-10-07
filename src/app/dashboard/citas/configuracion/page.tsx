@@ -4,6 +4,7 @@ import { ArrowLeft, ExternalLink, MessageSquareText, Settings2 } from "lucide-re
 
 import { guardarHorarioEmpresa, guardarOfertaEnLinea, guardarRecordatorios, guardarReservaEnLinea } from "@/app/actions/configuracion-agenda";
 import { agregarPlantillasSugeridas, crearPlantillaConsentimiento, guardarPlantillaConsentimiento } from "@/app/actions/consentimientos";
+import { guardarTarjetaDeSellos } from "@/app/actions/fidelizacion";
 import { CreatePanel } from "@/components/create-panel";
 import { PLANTILLAS_SUGERIDAS } from "@/lib/consentimientos";
 import { CopiarTexto, HorarioSemanal } from "@/components/agenda-config-cliente";
@@ -112,6 +113,7 @@ export default async function ConfiguracionAgendaPage() {
           ["#recordatorio", "Recordatorio"],
           ["#mensajes", "Mensajes"],
           ["#consentimientos", "Consentimientos"],
+          ["#sellos", "Tarjeta de sellos"],
         ].map(([href, texto]) => (
           <a key={href} href={href} className="inline-flex min-h-9 items-center rounded-full border border-border px-3 text-muted-foreground hover:border-border-strong hover:text-foreground">
             {texto}
@@ -353,6 +355,22 @@ export default async function ConfiguracionAgendaPage() {
               </ActionForm>
             )}
           </div>
+        </SectionCard>
+      </div>
+
+      <div id="sellos" className="scroll-mt-20">
+        <SectionCard title="Tarjeta de sellos" description="Cada visita atendida suma un sello. Al completar la meta, la ficha muestra el botón para canjear el premio.">
+          <ActionForm action={guardarTarjetaDeSellos} success="Tarjeta de sellos guardada" className="space-y-4">
+            <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-border px-3 py-2 text-sm font-medium">
+              <input type="checkbox" name="sellos_activa" value="si" defaultChecked={data?.sellos_activa === true} disabled={!puedeEditar} className="size-4" />
+              Usar tarjeta de sellos
+            </label>
+            <div className="grid gap-4 sm:grid-cols-[10rem_1fr]">
+              <Field label="Visitas para el premio"><Input name="sellos_meta" inputMode="numeric" defaultValue={String(data?.sellos_meta ?? 10)} disabled={!puedeEditar} /></Field>
+              <Field label="Premio"><Input name="sellos_premio" maxLength={120} defaultValue={(data?.sellos_premio as string | null) ?? ""} placeholder={tipo === "barber" ? "Corte gratis" : tipo === "vet" ? "Baño gratis" : "Limpieza con 50% de descuento"} disabled={!puedeEditar} /></Field>
+            </div>
+            {puedeEditar && <div className="flex justify-end"><ActionSubmit variant="secondary" pendingLabel="Guardando…">Guardar tarjeta</ActionSubmit></div>}
+          </ActionForm>
         </SectionCard>
       </div>
 
