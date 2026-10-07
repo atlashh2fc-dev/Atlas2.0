@@ -30,6 +30,7 @@ export async function agendarCita(formData: FormData) {
   const hora = texto(formData, "hora");
   const duracion = Number(texto(formData, "duracion") || 30);
   const motivo = texto(formData, "motivo");
+  const recurso = texto(formData, "recurso_id");
 
   if (!UUID.test(cuenta)) throw new Error("Elige a quién atender.");
   if (!UUID.test(profesional)) throw new Error("Elige con quién.");
@@ -37,6 +38,7 @@ export async function agendarCita(formData: FormData) {
   if (!esFechaValida(fecha) || !HORA.test(hora)) throw new Error("Revisa la fecha y la hora.");
   if (!Number.isInteger(duracion) || duracion < 5 || duracion > 480) throw new Error("Duración inválida.");
   if (motivo.length < 2) throw new Error("Escribe el motivo de la cita.");
+  if (recurso && !UUID.test(recurso)) throw new Error("Sillón o box inválido.");
 
   const supabase = await createClient();
   const { error } = await supabase.rpc("agendar_cita", {
@@ -47,6 +49,7 @@ export async function agendarCita(formData: FormData) {
     p_motivo: motivo,
     p_mascota: mascota || null,
     p_nota: texto(formData, "nota", 600) || null,
+    p_recurso: recurso || null,
   });
   if (error) throw errorDeAccion(error);
   revalidatePath("/dashboard/citas");

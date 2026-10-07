@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { connection } from "next/server";
-import { CalendarDays, CalendarX2, Check, CheckCheck, ChevronLeft, ChevronRight, Clock, Settings2, Stethoscope, XCircle } from "lucide-react";
+import { CalendarDays, CalendarX2, Check, CheckCheck, ChevronLeft, ChevronRight, Clock, Settings2, Stethoscope, Users, XCircle } from "lucide-react";
 
 import { agendarCita, cambiarEstadoCita, type OpcionDeCita } from "@/app/actions/citas";
 import { CreatePanel } from "@/components/create-panel";
@@ -18,11 +18,13 @@ import {
   type Cita,
   type Profesional,
 } from "@/lib/citas";
+import { HORARIO_POR_DEFECTO, rangoDeLaGrilla, type TramoHorario } from "@/lib/configuracion-agenda";
 import { ATENCION_POR_EDICION, PACIENTES_POR_EDICION, clinicaDe } from "@/lib/ediciones";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
 import { createClient } from "@/lib/supabase/server";
 
 import { SelectorPaciente } from "./selector-paciente";
+import { SemanaDeAgenda } from "./semana";
 
 /**
  * La agenda del día, por profesional.
@@ -33,8 +35,6 @@ import { SelectorPaciente } from "./selector-paciente";
  * la próxima cita.
  */
 
-const HORA_APERTURA = 8;
-const HORA_CIERRE = 20;
 const ALTO_MEDIA_HORA = 36;
 const ANCHO_COLUMNA = 240;
 const ANCHO_HORAS = 56;
@@ -43,6 +43,16 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const fechaLarga = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, weekday: "long", day: "numeric", month: "long" });
 const hora = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+const diaSemana = new Intl.DateTimeFormat("es-CL", { timeZone: "UTC", weekday: "short", day: "numeric" });
+const mesLargo = new Intl.DateTimeFormat("es-CL", { timeZone: "UTC", day: "numeric", month: "long" });
+
+/** Lunes de la semana de una fecha "2026-10-07". */
+function lunesDe(fecha: string): string {
+  const dia = new Date(`${fecha}T12:00:00Z`).getUTCDay();
+  return sumarDias(fecha, dia === 0 ? -6 : 1 - dia);
+}
+
+type Bloqueo = { id: string; profesional_id: string | null; desde: string; hasta: string; motivo: string | null };
 
 /** De dónde vino la confirmación, cuando no la hizo la recepción. */
 const ORIGEN_CONFIRMACION: Record<string, string> = {
@@ -64,6 +74,7 @@ function Accion({
   variant = "secondary",
   success,
   confirm,
+  volver,
 }: {
   cita: Cita;
   estado: Cita["estado"];
@@ -73,13 +84,15 @@ function Accion({
   variant?: "secondary" | "ghost" | "danger";
   success: string;
   confirm?: ConfirmOptions;
+  /** A dónde vuelve la agenda después del cambio (conserva vista y filtro). */
+  volver?: string;
 }) {
   return (
     <ActionForm action={cambiarEstadoCita} success={success} confirm={confirm}>
       <input type="hidden" name="cita_id" value={cita.id} />
       <input type="hidden" name="cuenta_id" value={cita.cuenta_id} />
       <input type="hidden" name="estado" value={estado} />
-      <input type="hidden" name="volver" value={`/dashboard/citas?dia=${dia}`} />
+      <input type="hidden" name="volver" value={volver ?? `/dashboard/citas?dia=${dia}`} />
       {abrirFicha && <input type="hidden" name="abrir_ficha" value="si" />}
       <ActionSubmit variant={variant} size="sm" pendingLabel="…">
         {label}
@@ -88,7 +101,7 @@ function Accion({
   );
 }
 
-export default async function AgendaPage({ searchParams }: { searchParams: Promise<{ dia?: string; cuenta?: string; mascota?: string }> }) {
+export default async function AgendaPage({ searchParams }: { searchParams: Promise<{ dia?: string; cuenta?: string; mascota?: string; vista?: string; prof?: string }> }) {
   await connection();
   const { edicion, empresa } = await contextoDeMiEmpresa();
   const clinica = clinicaDe(edicion);
@@ -98,13 +111,23 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
   const Cita1 = at.cita[0].toUpperCase() + at.cita.slice(1);
   const ahora = new Date();
   const hoy = fechaEnChile(ahora);
-  const { dia: diaParam, cuenta: cuentaParam, mascota: mascotaParam } = await searchParams;
+  const { dia: diaParam, cuenta: cuentaParam, mascota: mascotaParam, vista: vistaParam, prof: profParam } = await searchParams;
+  const semanal = vistaParam === "semana";
+  const profFiltro = profParam && UUID.test(profParam) ? profParam : "";
   // Desde Recordatorios (vacuna por vencer) se llega con la persona y la mascota ya elegidas.
   const cuentaElegida = cuentaParam && UUID.test(cuentaParam) ? cuentaParam : "";
   const mascotaElegida = mascotaParam && UUID.test(mascotaParam) ? mascotaParam : "";
   const dia = esFechaValida(diaParam) ? diaParam : hoy;
-  const desde = instanteEnChile(dia, "00:00");
-  const hasta = instanteEnChile(sumarDias(dia, 1), "00:00");
+  const lunes = lunesDe(dia);
+  const diasSemana = Array.from({ length: 7 }, (_, indice) => sumarDias(lunes, indice));
+  const desde = instanteEnChile(semanal ? lunes : dia, "00:00");
+  const hasta = instanteEnChile(sumarDias(semanal ? lunes : dia, semanal ? 7 : 1), "00:00");
+  const enlace = (cambios: Record<string, string | null>) => {
+    const parametros = new URLSearchParams();
+    const valores = { dia, vista: semanal ? "semana" : null, prof: profFiltro || null, ...cambios };
+    for (const [clave, valor] of Object.entries(valores)) if (valor) parametros.set(clave, valor);
+    return `/dashboard/citas?${parametros.toString()}`;
+  };
 
   const supabase = await createClient();
   const [
@@ -115,11 +138,14 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
     { data: productos },
     { data: cuentaPedida },
     { data: mascotaPedida },
+    { data: horariosData },
+    { data: bloqueosData },
+    { data: recursosData },
   ] = await Promise.all([
       supabase.from("profesionales").select("id, nombre, especialidad, color, activo").eq("activo", true).order("orden").order("nombre"),
       supabase
         .from("citas")
-        .select("id, cuenta_id, mascota_id, profesional_id, inicio, fin, motivo, estado, nota, confirmada_por, origen, sales_companies(name, phone), mascotas(nombre, especie)")
+        .select("id, cuenta_id, mascota_id, profesional_id, inicio, fin, motivo, estado, nota, confirmada_por, origen, box, sales_companies(name, phone), mascotas(nombre, especie)")
         .gte("inicio", desde.toISOString())
         .lt("inicio", hasta.toISOString())
         .order("inicio"),
@@ -134,10 +160,19 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       esVet && mascotaElegida
         ? supabase.from("mascotas").select("id, nombre, especie, cuenta_id").eq("id", mascotaElegida).maybeSingle()
         : Promise.resolve({ data: null }),
+      supabase.from("horarios_atencion").select("profesional_id, dia_semana, desde, hasta"),
+      supabase.from("bloqueos_agenda").select("id, profesional_id, desde, hasta, motivo").lt("desde", hasta.toISOString()).gt("hasta", desde.toISOString()),
+      supabase.from("recursos_agenda").select("id, nombre").eq("activo", true).order("orden").order("nombre"),
     ]);
 
-  const profesionales = (profesionalesData ?? []) as Profesional[];
-  const citas = (citasData ?? []) as unknown as Cita[];
+  const todosLosProfesionales = (profesionalesData ?? []) as Profesional[];
+  const profesionales = semanal || !profFiltro ? todosLosProfesionales : todosLosProfesionales.filter((profesional) => profesional.id === profFiltro);
+  const horarios = (horariosData ?? []) as (TramoHorario & { profesional_id: string | null })[];
+  const bloqueos = (bloqueosData ?? []) as Bloqueo[];
+  const recursos = (recursosData ?? []) as { id: string; nombre: string }[];
+  const { apertura: HORA_APERTURA, cierre: HORA_CIERRE } = rangoDeLaGrilla(horarios.length ? horarios : HORARIO_POR_DEFECTO);
+  const todasLasCitas = (citasData ?? []) as unknown as (Cita & { box?: string | null })[];
+  const citas = profFiltro ? todasLasCitas.filter((cita) => cita.profesional_id === profFiltro) : todasLasCitas;
   const nombreCuenta = new Map((cuentas ?? []).map((cuenta) => [cuenta.id as string, cuenta.name as string]));
   if (cuentaPedida) nombreCuenta.set(cuentaPedida.id as string, cuentaPedida.name as string);
   const opcionDeCuenta = (cuenta: { id: unknown; name: unknown; rut?: unknown }): OpcionDeCita => ({
@@ -181,7 +216,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       <PageHeader
         title="Agenda"
         icon={CalendarDays}
-        description={capitalizar(fechaLarga.format(desde))}
+        description={semanal ? `Semana del ${mesLargo.format(new Date(`${lunes}T12:00:00Z`))} al ${mesLargo.format(new Date(`${sumarDias(lunes, 6)}T12:00:00Z`))}` : capitalizar(fechaLarga.format(desde))}
         meta={
           <>
             <span>
@@ -194,19 +229,35 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
         }
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <Link href="/dashboard/citas/configuracion" className={buttonClasses({ variant: "ghost", size: "sm" })} aria-label="Configurar la agenda" title="Recordatorios, confirmación y mensajes">
+            <Link href="/dashboard/citas/equipo" className={buttonClasses({ variant: "ghost", size: "sm" })} aria-label="Equipo y horarios" title="Equipo, horarios, sillones y bloqueos">
+              <Users size={16} aria-hidden="true" />
+            </Link>
+            <Link href="/dashboard/citas/configuracion" className={buttonClasses({ variant: "ghost", size: "sm" })} aria-label="Configurar la agenda" title="Reserva en línea, recordatorios y mensajes">
               <Settings2 size={16} aria-hidden="true" />
             </Link>
-            <Link href={`/dashboard/citas?dia=${sumarDias(dia, -1)}`} className={buttonClasses({ variant: "secondary", size: "sm" })} aria-label="Día anterior">
+            <div className="inline-flex rounded-lg border border-border p-0.5" role="group" aria-label="Vista">
+              <Link href={enlace({ vista: null })} aria-current={!semanal ? "page" : undefined} className={`inline-flex min-h-8 items-center rounded-md px-2.5 text-sm ${!semanal ? "bg-surface-muted font-medium text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                Día
+              </Link>
+              <Link href={enlace({ vista: "semana" })} aria-current={semanal ? "page" : undefined} className={`inline-flex min-h-8 items-center rounded-md px-2.5 text-sm ${semanal ? "bg-surface-muted font-medium text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                Semana
+              </Link>
+            </div>
+            <Link href={enlace({ dia: sumarDias(dia, semanal ? -7 : -1) })} className={buttonClasses({ variant: "secondary", size: "sm" })} aria-label={semanal ? "Semana anterior" : "Día anterior"}>
               <ChevronLeft size={16} aria-hidden="true" />
             </Link>
-            <Link href="/dashboard/citas" aria-current={dia === hoy ? "date" : undefined} className={buttonClasses({ variant: "secondary", size: "sm", className: dia === hoy ? "border-primary/50 text-primary" : "" })}>
+            <Link href={enlace({ dia: null })} aria-current={dia === hoy ? "date" : undefined} className={buttonClasses({ variant: "secondary", size: "sm", className: dia === hoy ? "border-primary/50 text-primary" : "" })}>
               Hoy
             </Link>
-            <Link href={`/dashboard/citas?dia=${sumarDias(dia, 1)}`} className={buttonClasses({ variant: "secondary", size: "sm" })} aria-label="Día siguiente">
+            <Link href={enlace({ dia: sumarDias(dia, semanal ? 7 : 1) })} className={buttonClasses({ variant: "secondary", size: "sm" })} aria-label={semanal ? "Semana siguiente" : "Día siguiente"}>
               <ChevronRight size={16} aria-hidden="true" />
             </Link>
             <form action="/dashboard/citas" className="flex items-center gap-1">
+              {semanal && <input type="hidden" name="vista" value="semana" />}
+              <Select name="prof" defaultValue={profFiltro} aria-label={`Filtrar por ${at.profesional.toLowerCase()}`} className="w-40">
+                <option value="">{`Todo el equipo`}</option>
+                {todosLosProfesionales.map((profesional) => <option key={profesional.id} value={profesional.id}>{profesional.nombre}</option>)}
+              </Select>
               <Input type="date" name="dia" defaultValue={dia} aria-label="Fecha a mostrar" className="w-40" />
               <button type="submit" className={buttonClasses({ variant: "secondary", size: "sm" })}>
                 Ir
@@ -231,8 +282,8 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
                 mascotaInicial={mascotaInicial}
               />
               <Field label={at.profesional}>
-                <Select name="profesional_id" required defaultValue={profesionales[0]?.id ?? ""}>
-                  {profesionales.map((profesional) => (
+                <Select name="profesional_id" required defaultValue={profFiltro || todosLosProfesionales[0]?.id || ""}>
+                  {todosLosProfesionales.map((profesional) => (
                     <option key={profesional.id} value={profesional.id}>
                       {profesional.nombre}
                     </option>
@@ -256,6 +307,14 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
                   </Select>
                 </Field>
               </div>
+              {recursos.length > 0 && (
+                <Field label={clinica === "dental" ? "Sillón (opcional)" : clinica === "vet" ? "Box o sala (opcional)" : "Silla (opcional)"}>
+                  <Select name="recurso_id" defaultValue="">
+                    <option value="">Sin asignar</option>
+                    {recursos.map((recurso) => <option key={recurso.id} value={recurso.id}>{recurso.nombre}</option>)}
+                  </Select>
+                </Field>
+              )}
               <Field label="Motivo">
                 <Input name="motivo" required list="motivos-de-cita" placeholder={at.motivoPlaceholder} />
                 <datalist id="motivos-de-cita">
@@ -280,12 +339,29 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
         </Callout>
       )}
 
-      {profesionales.length === 0 ? (
-        <EmptyState icon={Stethoscope} title={`Todavía no hay ${at.profesionales.toLowerCase()}`} description={`La agenda se arma por ${at.profesional.toLowerCase()}. Registra la primera atención y aparecerá acá, o pídenos que los carguemos.`} />
+      {todosLosProfesionales.length === 0 ? (
+        <EmptyState
+          icon={Stethoscope}
+          title={`Todavía no hay ${at.profesionales.toLowerCase()}`}
+          description={`La agenda se arma con una columna por ${at.profesional.toLowerCase()}.`}
+          action={<Link href="/dashboard/citas/equipo" className={buttonClasses()}>Agregar al equipo</Link>}
+        />
+      ) : semanal ? (
+        <SemanaDeAgenda
+          dias={diasSemana}
+          hoy={hoy}
+          citas={citas}
+          profesionales={todosLosProfesionales}
+          bloqueos={bloqueos.filter((bloqueo) => !profFiltro || !bloqueo.profesional_id || bloqueo.profesional_id === profFiltro)}
+          apertura={HORA_APERTURA}
+          cierre={HORA_CIERRE}
+          enlaceDia={(fecha) => enlace({ dia: fecha, vista: null })}
+          quien={quien}
+        />
       ) : (
         <SectionCard
           title={`Por ${at.profesional.toLowerCase()}`}
-          description={`${profesionales.length} ${profesionales.length === 1 ? "agenda" : "agendas"} · ${HORA_APERTURA}:00 a ${HORA_CIERRE}:00. Lo cancelado y quien no vino quedan en gris y liberan la hora.`}
+          description={`${profesionales.length} ${profesionales.length === 1 ? "agenda" : "agendas"} · ${HORA_APERTURA}:00 a ${HORA_CIERRE}:00. Lo cancelado y quien no vino quedan en gris y liberan la hora; lo rayado es tiempo bloqueado.`}
         >
           <div className="relative max-h-[70vh] overflow-auto">
             <div className="w-max min-w-full">
@@ -331,6 +407,25 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
                         aria-hidden="true"
                       />
                     ))}
+                    {bloqueos
+                      .filter((bloqueo) => !bloqueo.profesional_id || bloqueo.profesional_id === profesional.id)
+                      .map((bloqueo) => {
+                        const inicioVisible = Math.max(new Date(bloqueo.desde).getTime(), desde.getTime());
+                        const finVisible = Math.min(new Date(bloqueo.hasta).getTime(), hasta.getTime());
+                        const top = Math.max(0, posicion(new Date(inicioVisible).toISOString()));
+                        const bajo = Math.min(altoGrilla, finVisible >= hasta.getTime() ? altoGrilla : posicion(new Date(finVisible).toISOString()));
+                        if (bajo <= top) return null;
+                        return (
+                          <div
+                            key={bloqueo.id}
+                            className="absolute inset-x-0 z-[1] flex items-start justify-center overflow-hidden border-y border-border/60 text-[11px] text-muted-foreground"
+                            style={{ top, height: bajo - top, backgroundImage: "repeating-linear-gradient(135deg, var(--surface-muted) 0 6px, transparent 6px 12px)" }}
+                            title={bloqueo.motivo ?? "Bloqueado"}
+                          >
+                            <span className="mt-1 rounded bg-surface px-1.5">{bloqueo.motivo ?? "Bloqueado"}</span>
+                          </div>
+                        );
+                      })}
                     {citas
                       .filter((cita) => cita.profesional_id === profesional.id)
                       .map((cita) => {
@@ -392,11 +487,11 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       )}
 
       <SectionCard
-        title={`${capitalizar(at.citas)} del día`}
+        title={`${capitalizar(at.citas)} ${semanal ? "de la semana" : "del día"}`}
         description={`${atendidas} ${atendidas === 1 ? "atendida" : "atendidas"} de ${activas.length}. Confirmar, pasar a sala y dar por atendida se hace desde acá.`}
       >
         {citas.length === 0 ? (
-          <EmptyState icon={CalendarX2} title={`Sin ${at.citas} este día`} description={`Agenda la primera con «Nueva ${at.cita}».`} />
+          <EmptyState icon={CalendarX2} title={`Sin ${at.citas} ${semanal ? "esta semana" : "este día"}`} description={`Agenda la primera con «Nueva ${at.cita}».`} />
         ) : (
           <div className="overflow-x-auto">
             <Table>
@@ -420,6 +515,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
                   return (
                     <Tr key={cita.id} className={activa ? "" : "text-muted-foreground"}>
                       <Td className="whitespace-nowrap">
+                        {semanal && <span className="block text-xs capitalize text-muted-foreground">{diaSemana.format(new Date(`${fechaEnChile(new Date(cita.inicio))}T12:00:00Z`))}</span>}
                         <span className={`block font-semibold tabular-nums ${activa ? "text-foreground" : ""}`}>{hora.format(new Date(cita.inicio))}</span>
                         <span className="block text-xs tabular-nums text-muted-foreground">hasta {hora.format(new Date(cita.fin))}</span>
                       </Td>
@@ -439,6 +535,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
                           {cita.motivo}
                           {cita.origen === "reserva_online" && <Badge tone="info" className="ml-2 align-middle">En línea</Badge>}
                         </span>
+                        {cita.box && <span className="block text-xs text-muted-foreground">{cita.box}</span>}
                         {cita.nota && <span className="block text-xs text-muted-foreground">{cita.nota}</span>}
                       </Td>
                       <Td>
@@ -456,13 +553,13 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
                       <Td>
                         <div className="flex flex-wrap justify-end gap-1.5">
                           {/* Acciones de fila en secundario: el único primario de la vista es «Nueva cita». */}
-                          {cita.estado === "reservada" && <Accion cita={cita} estado="confirmada" label="Confirmar" dia={dia} success={`${Cita1} confirmada`} />}
+                          {cita.estado === "reservada" && <Accion cita={cita} estado="confirmada" label="Confirmar" dia={dia} volver={enlace({})} success={`${Cita1} confirmada`} />}
                           {(cita.estado === "reservada" || cita.estado === "confirmada") && (
-                            <Accion cita={cita} estado="en_sala" label="En sala" dia={dia} success="Pasó a sala" />
+                            <Accion cita={cita} estado="en_sala" label="En sala" dia={dia} volver={enlace({})} success="Pasó a sala" />
                           )}
-                          {cita.estado === "en_sala" && <Accion cita={cita} estado="atendida" label="Atendida · registrar" dia={dia} abrirFicha success={`${Cita1} atendida`} />}
+                          {cita.estado === "en_sala" && <Accion cita={cita} estado="atendida" label="Atendida · registrar" dia={dia} volver={enlace({})} abrirFicha success={`${Cita1} atendida`} />}
                           {(cita.estado === "reservada" || cita.estado === "confirmada") && yaPaso && (
-                            <Accion cita={cita} estado="no_vino" label="No vino" dia={dia} variant="ghost" success="Marcada como no vino" />
+                            <Accion cita={cita} estado="no_vino" label="No vino" dia={dia} volver={enlace({})} variant="ghost" success="Marcada como no vino" />
                           )}
                           {(cita.estado === "reservada" || cita.estado === "confirmada") && !yaPaso && (
                             <Accion
@@ -470,6 +567,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
                               estado="cancelada"
                               label={`Cancelar ${at.cita}`}
                               dia={dia}
+                              volver={enlace({})}
                               variant="ghost"
                               success={`${Cita1} cancelada`}
                               confirm={{

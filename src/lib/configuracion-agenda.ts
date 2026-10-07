@@ -125,3 +125,32 @@ export function tramosPorDia(tramos: TramoHorario[]): Record<number, { desde: st
   for (const dia of Object.keys(porDia)) porDia[Number(dia)].sort((a, b) => a.desde.localeCompare(b.desde));
   return porDia;
 }
+
+const DIA_CORTO: Record<number, string> = { 1: "lun", 2: "mar", 3: "mié", 4: "jue", 5: "vie", 6: "sáb", 7: "dom" };
+
+/** «lun a vie 09:00–13:30 y 14:30–19:00 · sáb 10:00–14:00»: días seguidos con el mismo horario van juntos. */
+export function resumenHorario(porDia: Record<number, { desde: string; hasta: string }[]>): string {
+  const firma = (dia: number) => (porDia[dia] ?? []).map((tramo) => `${tramo.desde}–${tramo.hasta}`).join(" y ");
+  const partes: string[] = [];
+  let dia = 1;
+  while (dia <= 7) {
+    const actual = firma(dia);
+    if (!actual) {
+      dia += 1;
+      continue;
+    }
+    let fin = dia;
+    while (fin < 7 && firma(fin + 1) === actual) fin += 1;
+    partes.push(`${fin === dia ? DIA_CORTO[dia] : `${DIA_CORTO[dia]} a ${DIA_CORTO[fin]}`} ${actual}`);
+    dia = fin + 1;
+  }
+  return partes.length ? partes.join(" · ") : "sin días abiertos";
+}
+
+/** El rango que la grilla de la agenda tiene que mostrar: de la primera apertura a la última hora de cierre. */
+export function rangoDeLaGrilla(tramos: { desde: string; hasta: string }[]): { apertura: number; cierre: number } {
+  if (tramos.length === 0) return { apertura: 8, cierre: 20 };
+  const minimo = Math.min(...tramos.map((tramo) => Number(tramo.desde.slice(0, 2))));
+  const maximo = Math.max(...tramos.map((tramo) => Math.ceil((Number(tramo.hasta.slice(0, 2)) * 60 + Number(tramo.hasta.slice(3, 5))) / 60)));
+  return { apertura: Math.max(0, Math.min(minimo, 23)), cierre: Math.min(24, Math.max(maximo, minimo + 1)) };
+}

@@ -80,3 +80,33 @@ export function HorarioSemanal({ inicial, puedeEditar }: { inicial: Record<numbe
     </div>
   );
 }
+
+/**
+ * El horario de un profesional: por defecto el de la clínica; si atiende
+ * otros días u horas, se marca «horario propio» y se edita aparte.
+ */
+export function HorarioProfesional({
+  propio,
+  inicial,
+  deLaClinica,
+  puedeEditar,
+}: {
+  propio: boolean;
+  inicial: Record<number, { desde: string; hasta: string }[]>;
+  deLaClinica: string;
+  puedeEditar: boolean;
+}) {
+  const [usaPropio, setUsaPropio] = useState(propio);
+  return (
+    <div className="space-y-3">
+      <label className="flex min-h-9 cursor-pointer items-start gap-2 text-sm">
+        <input type="checkbox" name="horario_propio" value="si" checked={usaPropio} disabled={!puedeEditar} onChange={(evento) => setUsaPropio(evento.target.checked)} className="mt-0.5 size-4" />
+        <span>
+          <span className="block font-medium">Tiene horario propio</span>
+          <span className="block text-xs text-muted-foreground">{usaPropio ? "Solo se le agenda y reserva en estas horas." : `Usa el de la clínica: ${deLaClinica}.`}</span>
+        </span>
+      </label>
+      {usaPropio && <HorarioSemanal inicial={inicial} puedeEditar={puedeEditar} />}
+    </div>
+  );
+}
