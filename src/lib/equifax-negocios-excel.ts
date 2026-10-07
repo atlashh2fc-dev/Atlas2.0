@@ -10,7 +10,8 @@ import * as XLSX from "xlsx";
  * BUSCARV que ya usan sigan funcionando al pegar las filas.
  *
  * Las filas vienen de la RPC get_equifax_negocios: una por negocio (empresa con
- * cotización o venta tipificada). Q es la cantidad de consultas o registros
+ * cotización o venta tipificada). Una recompra es otro negocio: la empresa
+ * sale una vez por cada venta aprobada y otra por lo que se cotizó después. Q es la cantidad de consultas o registros
  * (de Atlas 1 o de la ficha). Lo que Atlas no registra —$, número de contrato
  * y Back— queda vacío para que operación lo complete.
  */
