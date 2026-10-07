@@ -1,5 +1,6 @@
 import { ImapFlow } from "imapflow";
 
+import { correoParaAtlasLead, entregarCorreosAAtlasLead, type CorreoParaAtlasLead } from "@/lib/correo/a-atlas-lead";
 import { buzonesActivos, type Buzon } from "@/lib/correo/buzon";
 import PostalMime from "postal-mime";
 
@@ -83,6 +84,7 @@ export async function syncMailbox(buzon: Buzon): Promise<InboundSyncResult> {
   let imported = 0;
   let skipped = 0;
   let highestUid = Number(mailbox.last_uid || 0);
+  const paraAtlasLead: CorreoParaAtlasLead[] = [];
   const syncedAt = new Date().toISOString();
 
   try {
@@ -140,6 +142,11 @@ export async function syncMailbox(buzon: Buzon): Promise<InboundSyncResult> {
           ).select("id").maybeSingle();
 
           if (error) throw error;
+          // Solo lo nuevo: una respuesta a una campaña de correo también va a Atlas Lead.
+          if (guardado?.id) {
+            const paraEntregar = correoParaAtlasLead(parsed, parsed.messageId || message.envelope?.messageId || null, receivedAt);
+            if (paraEntregar) paraAtlasLead.push(paraEntregar);
+          }
           if (deEmpresa && guardado?.id) {
             // Cada función revisa la edición de la empresa y no hace nada fuera de la suya.
             const { error: ligaError } = await admin.rpc("ligar_correo_a_ficha", { p_email: guardado.id });
@@ -159,6 +166,8 @@ export async function syncMailbox(buzon: Buzon): Promise<InboundSyncResult> {
       .update({ last_uid: highestUid, last_synced_at: syncedAt, last_sync_error: null })
       .eq("id", mailbox.id);
     if (stateError) throw stateError;
+
+    await entregarCorreosAAtlasLead(buzon.organization_id, buzon.address, paraAtlasLead);
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 500) : "Error desconocido de sincronización";
     await admin

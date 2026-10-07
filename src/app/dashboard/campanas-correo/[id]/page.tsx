@@ -14,6 +14,7 @@ import { requireProfile } from "@/lib/auth";
 import {
   ESTADO_CAMPANA,
   PROGRAMACION_POR_DEFECTO,
+  coberturaDeCasilla,
   describirProgramacion,
   etiquetaDeAccion,
   formatearNumero,
@@ -21,7 +22,7 @@ import {
   porcentaje,
   type CampanaDetalle,
 } from "@/lib/campanas-correo";
-import { campanaDeCorreo, capacidadesDeCorreo, empresaActual } from "@/lib/campanas-correo.server";
+import { campanaDeCorreo, capacidadesDeCorreo, casillasDelCrm, empresaActual } from "@/lib/campanas-correo.server";
 
 // Una carga de audiencia o una prueba de 5 correos puede tomar más de un minuto.
 export const maxDuration = 120;
@@ -42,7 +43,7 @@ function Cifra({ label, valor, detalle }: { label: string; valor: string; detall
   );
 }
 
-function AccionesDeEstado({ campana, faltan }: { campana: CampanaDetalle; faltan: string[] }) {
+function AccionesDeEstado({ campana, faltan, sinLector }: { campana: CampanaDetalle; faltan: string[]; sinLector: string | null }) {
   if (campana.estado === "borrador") {
     return (
       <BotonDeAccion
@@ -59,6 +60,11 @@ function AccionesDeEstado({ campana, faltan }: { campana: CampanaDetalle; faltan
                 Le escribe a {formatearNumero(campana.audiencia.total)} contactos desde {campana.remitente.email ?? campana.remitente.marca}.
               </p>
               <p className="mt-2">{describirProgramacion(campana.programacion ?? PROGRAMACION_POR_DEFECTO, campana.limite_diario)}</p>
+              {sinLector && (
+                <p className="mt-2 font-medium text-danger">
+                  Ojo: nadie lee {sinLector}, la casilla a la que responden los clientes. Sus respuestas no llegarán al CRM hasta que la conectes.
+                </p>
+              )}
               <p className="mt-2">Puedes pausarla cuando quieras; lo que ya salió no se puede retirar.</p>
             </>
           ),
@@ -106,6 +112,10 @@ export default async function CampanaCorreoPage({ params, searchParams }: { para
   const variables = capacidades.ok ? capacidades.datos.variables : [];
 
   const faltan = pendientesParaLanzar(campana);
+  // ¿Alguien lee la casilla a la que responden los clientes de esta campaña?
+  const casillaRespuesta = (campana.remitente.responder_a ?? campana.remitente.email ?? "").trim().toLowerCase().replace(/\+[^@]*@/, "@");
+  const casilla = capacidades.ok ? (capacidades.datos.casillas_respuesta ?? []).find((item) => item.direccion === casillaRespuesta) : undefined;
+  const sinLector = casilla && coberturaDeCasilla(casilla, await casillasDelCrm(empresa.id)).estado === "nadie" ? casilla.direccion : null;
   const borrador = campana.estado === "borrador";
   const cancelada = campana.estado === "cancelada";
   const { tab: tabPedida } = await searchParams;
@@ -142,8 +152,19 @@ export default async function CampanaCorreoPage({ params, searchParams }: { para
         }
         icon={Send}
         description={`${campana.remitente.marca}${campana.remitente.email ? ` · ${campana.remitente.email}` : ""} · ${estado.ayuda}`}
-        actions={<AccionesDeEstado campana={campana} faltan={faltan} />}
+        actions={<AccionesDeEstado campana={campana} faltan={faltan} sinLector={sinLector} />}
       />
+
+      {sinLector && !["cancelada", "terminada"].includes(campana.estado) && (
+        <Callout tone="danger">
+          Nadie lee <strong>{sinLector}</strong>, la casilla a la que responden los clientes de esta campaña: sus respuestas no llegarán al CRM ni detendrán la
+          secuencia. Conéctala en{" "}
+          <Link href="/dashboard/admin/correo" className="font-medium underline">
+            Administración → Correo
+          </Link>{" "}
+          o reenvíala a una casilla que el CRM ya lea.
+        </Callout>
+      )}
 
       {borrador && <Pasos actual={pasoActual} hechos={hechos} base={base} />}
 

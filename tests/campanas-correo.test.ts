@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   PROGRAMACION_POR_DEFECTO,
+  coberturaDeCasilla,
   describirProgramacion,
   etiquetaDeAccion,
   pendientesParaLanzar,
@@ -37,4 +38,14 @@ test("porcentajes y acciones se muestran en palabras", () => {
   assert.equal(porcentaje(5, 0), "—");
   assert.equal(etiquetaDeAccion("ajuste_agente"), "Órbita ajustó la campaña");
   assert.equal(etiquetaDeAccion("otra"), "otra");
+});
+
+test("una casilla de respuestas sin lector se marca como pérdida", () => {
+  const base = { direccion: "equifax@geoinfobusiness.cl", campanas: 7, campanas_activas: 7, lee_atlas_lead: false, ultimo_correo_at: null, visto_por: null, subdirecciones: "sin_comprobar" as const };
+  const ahora = Date.parse("2026-10-07T12:00:00Z");
+  assert.equal(coberturaDeCasilla(base, [], ahora).estado, "nadie");
+  assert.equal(coberturaDeCasilla({ ...base, lee_atlas_lead: true }, [], ahora).estado, "atlas_lead");
+  assert.equal(coberturaDeCasilla(base, ["Equifax@GeoInfobusiness.cl"], ahora).estado, "crm");
+  assert.equal(coberturaDeCasilla({ ...base, visto_por: "crm", ultimo_correo_at: "2026-10-01T12:00:00Z" }, [], ahora).estado, "reenvio");
+  assert.equal(coberturaDeCasilla({ ...base, visto_por: "crm", ultimo_correo_at: "2026-08-01T12:00:00Z" }, [], ahora).estado, "nadie");
 });

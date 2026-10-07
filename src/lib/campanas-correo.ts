@@ -33,9 +33,36 @@ export type Remitente = {
   cabecera_con_texto: boolean;
 };
 
+/** Una casilla a la que responden los clientes, según Atlas Lead. */
+export type CasillaRespuesta = {
+  direccion: string;
+  campanas: number;
+  campanas_activas: number;
+  lee_atlas_lead: boolean;
+  ultimo_correo_at: string | null;
+  visto_por: string | null;
+  subdirecciones: "verificada" | "comprobando" | "sin_comprobar";
+};
+
+export type Cobertura = { estado: "atlas_lead" | "crm" | "reenvio" | "nadie"; texto: string; tone: "success" | "warning" | "danger" };
+
+const TREINTA_DIAS = 30 * 24 * 60 * 60 * 1000;
+
+/** Quién lee una casilla de respuestas. Sin lector, las respuestas de esa campaña se pierden. */
+export function coberturaDeCasilla(casilla: CasillaRespuesta, casillasDelCrm: readonly string[], ahora = Date.now()): Cobertura {
+  const direccion = casilla.direccion.toLowerCase();
+  if (casilla.lee_atlas_lead) return { estado: "atlas_lead", texto: "La lee Atlas Lead", tone: "success" };
+  if (casillasDelCrm.some((item) => item.toLowerCase() === direccion)) return { estado: "crm", texto: "La lee el CRM", tone: "success" };
+  if (casilla.visto_por === "crm" && casilla.ultimo_correo_at && ahora - Date.parse(casilla.ultimo_correo_at) < TREINTA_DIAS) {
+    return { estado: "reenvio", texto: "Llega por reenvío a una casilla del CRM", tone: "success" };
+  }
+  return { estado: "nadie", texto: "Nadie la lee: sus respuestas se pierden", tone: "danger" };
+}
+
 export type Capacidades = {
   empresa: { slug: string; nombre: string; cupo_diario: number | null };
   remitentes: Remitente[];
+  casillas_respuesta?: CasillaRespuesta[];
   zona_horaria: string;
   limites: { imagenMb: number; pruebaMax: number; pasosMax: number; audienciaLoteMax: number; limiteDiarioMax: number };
   variables: { clave: string; descripcion: string }[];

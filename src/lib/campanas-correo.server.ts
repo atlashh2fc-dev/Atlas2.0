@@ -11,6 +11,7 @@ import type {
 } from "./campanas-correo";
 import { integrationV2Destinations, integrationV2Signature } from "./integration-v2";
 import { llamarAtlasLead, type Resultado } from "./marketing-correo.server";
+import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
 
 /*
@@ -118,3 +119,13 @@ export type FilaDeAudiencia = {
 
 export const paginaDeAudiencia = (filtros: FiltrosAudiencia, despues: string | null, limite: number) =>
   llamarBigdata<{ filas: FilaDeAudiencia[]; siguiente: string | null; bloqueados: number }>({ accion: "pagina", filtros, despues, limite });
+
+/** Casillas activas que lee el CRM para la empresa (Administración → Correo). */
+export async function casillasDelCrm(organizationId: string): Promise<string[]> {
+  const { data } = await createAdminClient()
+    .from("inbound_mailboxes")
+    .select("address")
+    .eq("organization_id", organizationId)
+    .eq("active", true);
+  return (data ?? []).map((row) => String(row.address).trim().toLowerCase());
+}

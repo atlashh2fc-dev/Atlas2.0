@@ -5,8 +5,8 @@ import { ChevronRight, Inbox, MailPlus, Plug, Send } from "lucide-react";
 import { BotonDeAccion } from "@/components/campanas-correo/boton-de-accion";
 import { Badge, Callout, EmptyState, PageHeader, SectionCard, SegmentTabs, buttonClasses } from "@/components/ui";
 import { requireProfile } from "@/lib/auth";
-import { ESTADO_CAMPANA, formatearNumero, porcentaje, type CampanaResumen } from "@/lib/campanas-correo";
-import { campanasDeCorreo, capacidadesDeCorreo, correosSinAsociar, empresaActual } from "@/lib/campanas-correo.server";
+import { ESTADO_CAMPANA, coberturaDeCasilla, formatearNumero, porcentaje, type CampanaResumen } from "@/lib/campanas-correo";
+import { campanasDeCorreo, capacidadesDeCorreo, casillasDelCrm, correosSinAsociar, empresaActual } from "@/lib/campanas-correo.server";
 
 /**
  * Campañas de correo de la empresa.
@@ -108,6 +108,9 @@ export default async function CampanasCorreoPage({ searchParams }: { searchParam
     vista === "todas" ? true : vista === "borradores" ? campana.estado === "borrador" : EN_CURSO.has(campana.estado),
   );
   const sinRemitentes = capacidades.datos.remitentes.length === 0;
+  const delCrm = await casillasDelCrm(empresa.id);
+  const casillas = (capacidades.datos.casillas_respuesta ?? []).map((casilla) => ({ ...casilla, cobertura: coberturaDeCasilla(casilla, delCrm) }));
+  const sinLector = casillas.filter((casilla) => casilla.cobertura.estado === "nadie" && casilla.campanas_activas > 0);
 
   return (
     <div className="space-y-5">
@@ -125,6 +128,16 @@ export default async function CampanasCorreoPage({ searchParams }: { searchParam
       />
 
       {!lista.ok && <Callout tone="danger">No se pudieron leer las campañas: {lista.error}. Vuelve a cargar para reintentar.</Callout>}
+      {sinLector.length > 0 && (
+        <Callout tone="danger">
+          {sinLector.length === 1 ? "Una casilla de respuestas no la lee nadie" : `${sinLector.length} casillas de respuestas no las lee nadie`}:{" "}
+          {sinLector.map((casilla) => casilla.direccion).join(", ")}. Si esas campañas envían, las respuestas de los clientes se pierden. Conéctalas en{" "}
+          <Link href="/dashboard/admin/correo" className="font-medium underline">
+            Administración → Correo
+          </Link>{" "}
+          o reenvíalas a una casilla que el CRM ya lea.
+        </Callout>
+      )}
       {sinRemitentes && (
         <Callout tone="warning">
           La empresa no tiene todavía un remitente verificado en Atlas Lead, y una campaña nueva necesita salir desde uno. Pide al equipo de Atlas Lead que
@@ -216,6 +229,53 @@ export default async function CampanasCorreoPage({ searchParams }: { searchParam
           </div>
         )}
       </SectionCard>
+
+      {casillas.length > 0 && (
+        <SectionCard
+          title="Casillas de respuesta"
+          description="Adónde responden los clientes de cada remitente y quién lee esas respuestas para asociarlas a su campaña."
+          actions={
+            perfil.role === "admin" ? (
+              <Link href="/dashboard/admin/correo" className="text-sm text-primary hover:underline">
+                Conectar una casilla
+              </Link>
+            ) : undefined
+          }
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] text-sm">
+              <thead>
+                <tr className="border-y border-border text-left text-xs font-medium text-muted-foreground">
+                  <th className="px-5 py-2.5 font-medium">Casilla</th>
+                  <th className="px-3 py-2.5 font-medium">Campañas</th>
+                  <th className="px-3 py-2.5 font-medium">Quién la lee</th>
+                  <th className="px-3 py-2.5 font-medium">Respuesta por envío</th>
+                  <th className="px-3 py-2.5 font-medium">Último correo recibido</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/70">
+                {casillas.map((casilla) => (
+                  <tr key={casilla.direccion}>
+                    <td className="px-5 py-3 font-medium text-foreground">{casilla.direccion}</td>
+                    <td className="px-3 py-3 tabular-nums text-muted-foreground">
+                      {casilla.campanas_activas ? `${casilla.campanas_activas} activas de ${casilla.campanas}` : `${casilla.campanas}, ninguna activa`}
+                    </td>
+                    <td className="px-3 py-3">
+                      <Badge tone={casilla.cobertura.tone}>{casilla.cobertura.texto}</Badge>
+                    </td>
+                    <td className="px-3 py-3 text-xs text-muted-foreground">
+                      {casilla.subdirecciones === "verificada" ? "Activa" : casilla.subdirecciones === "comprobando" ? "Comprobando" : "Se comprueba al conectarla"}
+                    </td>
+                    <td className="px-3 py-3 text-xs text-muted-foreground">
+                      {casilla.ultimo_correo_at ? cuando.format(new Date(casilla.ultimo_correo_at)).replace(".", "") : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </SectionCard>
+      )}
 
       {sinAsociar?.ok && sinAsociar.datos.correos.length > 0 && (
         <SectionCard
