@@ -99,6 +99,17 @@ export const CALL_VALIDITIES = Object.keys(CALL_VALIDITY_LABEL) as CallValidity[
 export const QUALITY_ACTIONS = Object.keys(ACTION_LABEL) as QualityAction[];
 export const CRITERION_STATUSES: CriterionStatus[] = ["cumple", "parcial", "no_cumple", "no_aplica"];
 
+/**
+ * Tipificaciones que no son una conversación evaluable con el cliente. No
+ * entran a la muestra automática (se pueden evaluar a mano igual): la IA las
+ * marca «no válidas» y el ejecutivo se quedaba sin nota del día.
+ */
+const NOT_SAMPLEABLE_REASON = /N[UÚ]MERO\s+ERR[OÓ]NEO|NO\s+CORRESPONDE|TERCERO\s+NO\s+ENTREGA|CORTA\s+LLAMADA|BUZ[OÓ]N|FAX/i;
+
+export function isSampleableReason(reason: string | null | undefined) {
+  return !reason || !NOT_SAMPLEABLE_REASON.test(reason);
+}
+
 /** Clave con la que la evaluación IA queda guardada: pauta + rúbrica. */
 export function pautaRubricKey(pautaKey: string, rubricKey: string) {
   return `${pautaKey}.${rubricKey}`;

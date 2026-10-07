@@ -4,6 +4,7 @@ import test from "node:test";
 import * as XLSX from "xlsx";
 import {
   agreementRate,
+  isSampleableReason,
   parsePautaRows,
   scorePauta,
   selectRubric,
@@ -185,4 +186,13 @@ test("brechas ordenadas por puntos perdidos y calibración IA ↔ analista", () 
   const calib = calibration(calls);
   assert.equal(calib.overall, 50);
   assert.equal(calib.rows.find((row) => row.id === "a")?.aiStricter, 1);
+});
+
+test("la muestra automática deja fuera las tipificaciones que no son conversación", () => {
+  assert.equal(isSampleableReason("NUMERO ERRONEO / NO CORRESPONDE"), false);
+  assert.equal(isSampleableReason("TERCERO NO ENTREGA INFORMACION"), false);
+  assert.equal(isSampleableReason("CLIENTE CORTA LLAMADA"), false);
+  assert.equal(isSampleableReason("NO ENTREGA CREDITO / PAGO CONTADO"), true);
+  assert.equal(isSampleableReason("VOLVER A LLAMAR"), true);
+  assert.equal(isSampleableReason(null), true);
 });
