@@ -52,8 +52,12 @@ export default async function UsersAdminPage({
     ]);
   }
 
+  // Solo campañas activas: una membresía vieja a una campaña cerrada no se
+  // trabaja, y su nombre no viene en la lista (salía como "Campaña").
+  const activeCampaignIds = new Set((campaigns ?? []).map((campaign) => campaign.id));
   const campaignIdsByAgent = new Map<string, string[]>();
   for (const membership of campaignMemberships ?? []) {
+    if (!activeCampaignIds.has(membership.campaign_id)) continue;
     campaignIdsByAgent.set(membership.profile_id, [
       ...(campaignIdsByAgent.get(membership.profile_id) ?? []),
       membership.campaign_id,
