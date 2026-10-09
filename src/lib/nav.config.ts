@@ -392,6 +392,8 @@ const CONSOLE: NavSpace = {
             // Señales de tipificación automatizada: es información sobre el
             // desempeño individual que puede escalar a un proceso disciplinario.
             { label: "Integridad", href: "/dashboard/reportes/integridad", roles: ["admin", "supervisor"] },
+            // Vendedores en la calle (Mercado Pago): visitas, embudo y ventas.
+            { label: "Terreno", href: "/dashboard/reportes/terreno", roles: ["admin", "supervisor"] },
           ],
           modules: ["contact_center"],
         },

@@ -96,6 +96,22 @@ export default async function DashboardPage() {
   // Calidad no tiene operación propia: su inicio es el tablero de calidad.
   if (profile.role === "calidad") redirect("/dashboard/calidad/resumen");
 
+  // El vendedor que solo trabaja campañas de terreno no usa el panel (ni
+  // discador ni colas): entra directo a su vista para el celular.
+  if (profile.role === "agente") {
+    const supabase = await createClient();
+    const { data: membresias } = await supabase
+      .from("campaign_agents")
+      .select("campaigns!inner(modalidad, is_active)")
+      .eq("profile_id", profile.id)
+      .eq("campaigns.is_active", true);
+    const modalidades = (membresias ?? []).map((fila) => {
+      const campaign = fila.campaigns as { modalidad?: string } | { modalidad?: string }[] | null;
+      return (Array.isArray(campaign) ? campaign[0] : campaign)?.modalidad;
+    });
+    if (modalidades.length > 0 && modalidades.every((modalidad) => modalidad === "terreno")) redirect("/terreno");
+  }
+
   // Una clínica no tiene colas ni discador: su inicio es de presupuestos y
   // pacientes. El de contact center queda para la edición Center.
   const contexto = await contextoDeMiEmpresa();
