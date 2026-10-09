@@ -3,10 +3,12 @@ import Link from "next/link";
 import { GraduationCap, LayoutDashboard, LogOut, MapPinned } from "lucide-react";
 
 import { signOut } from "@/app/actions/auth";
+import { AsistenteCurso } from "@/components/asistente-curso";
 import { TerrenoNav } from "@/components/terreno/terreno-nav";
 import { ToastProvider } from "@/components/ui";
 import { requireProfile } from "@/lib/auth";
 import { modulosActivos, requireModule } from "@/lib/modules.server";
+import { createClient } from "@/lib/supabase/server";
 import { campanaTerrenoActual } from "@/lib/terreno.server";
 
 export const metadata: Metadata = { title: "Terreno | Atlas" };
@@ -23,6 +25,10 @@ export default async function TerrenoLayout({ children }: { children: React.Reac
   await requireModule("leads");
   const profile = await requireProfile(["agente", "supervisor", "admin"]);
   const [campana, modulos] = await Promise.all([campanaTerrenoActual(), modulosActivos()]);
+  // El asistente aparece solo si la campaña tiene curso en Aprende.
+  const { data: conCurso } = campana
+    ? await (await createClient()).from("campaigns").select("curso_aprende").eq("id", campana.id).maybeSingle()
+    : { data: null };
 
   return (
     <ToastProvider>
@@ -85,6 +91,7 @@ export default async function TerrenoLayout({ children }: { children: React.Reac
         </main>
 
         {campana && <TerrenoNav />}
+        {campana && conCurso?.curso_aprende && <AsistenteCurso campaignId={campana.id} nombre={campana.name} />}
       </div>
     </ToastProvider>
   );
