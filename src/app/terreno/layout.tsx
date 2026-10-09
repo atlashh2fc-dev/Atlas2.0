@@ -1,12 +1,12 @@
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
-import { LayoutDashboard, LogOut, MapPinned } from "lucide-react";
+import { GraduationCap, LayoutDashboard, LogOut, MapPinned } from "lucide-react";
 
 import { signOut } from "@/app/actions/auth";
 import { TerrenoNav } from "@/components/terreno/terreno-nav";
 import { ToastProvider } from "@/components/ui";
 import { requireProfile } from "@/lib/auth";
-import { requireModule } from "@/lib/modules.server";
+import { modulosActivos, requireModule } from "@/lib/modules.server";
 import { campanaTerrenoActual } from "@/lib/terreno.server";
 
 export const metadata: Metadata = { title: "Terreno | Atlas" };
@@ -22,7 +22,7 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1, view
 export default async function TerrenoLayout({ children }: { children: React.ReactNode }) {
   await requireModule("leads");
   const profile = await requireProfile(["agente", "supervisor", "admin"]);
-  const campana = await campanaTerrenoActual();
+  const [campana, modulos] = await Promise.all([campanaTerrenoActual(), modulosActivos()]);
 
   return (
     <ToastProvider>
@@ -39,6 +39,17 @@ export default async function TerrenoLayout({ children }: { children: React.Reac
               <p className="truncate text-[15px] font-semibold leading-tight">{campana?.name ?? "Terreno"}</p>
               <p className="truncate text-xs text-muted-foreground">{profile.full_name}</p>
             </div>
+            {modulos.includes("aprende") && (
+              <a
+                href="/capacitacion"
+                target="_blank"
+                rel="noopener"
+                aria-label="Capacitación en Atlas Aprende"
+                className="flex size-11 items-center justify-center rounded-lg text-muted-foreground hover:bg-surface-muted"
+              >
+                <GraduationCap size={20} aria-hidden="true" />
+              </a>
+            )}
             {profile.role !== "agente" && (
               <Link
                 href="/dashboard"

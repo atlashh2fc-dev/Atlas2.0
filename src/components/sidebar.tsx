@@ -31,6 +31,7 @@ import {
   ArrowUp,
   ChevronDown,
   CircleHelp,
+  GraduationCap,
   Eye,
   EyeOff,
   PanelLeftClose,
@@ -443,6 +444,7 @@ function FooterEntry({
   rail,
   icon: Icon,
   label,
+  nuevaPestana = false,
 }: {
   href?: string;
   onClick?: () => void;
@@ -450,6 +452,8 @@ function FooterEntry({
   rail: boolean;
   icon: typeof Settings;
   label: string;
+  /** Otra app de la suite: se abre aparte para no cortar la llamada en curso. */
+  nuevaPestana?: boolean;
 }) {
   const className = `${FOOTER_LINK} ${rail ? "min-h-12 flex-col justify-center gap-1 px-1 py-1.5 text-[10px] leading-tight" : "h-8 gap-2.5 px-2.5 text-[13px]"} ${
     active ? NAV_ROW_ACTIVE : NAV_ROW_IDLE
@@ -460,6 +464,13 @@ function FooterEntry({
       {rail ? <span className="line-clamp-2 w-full text-center">{label}</span> : label}
     </>
   );
+  if (href && nuevaPestana) {
+    return (
+      <a href={href} target="_blank" rel="noopener" onClick={onClick} title={rail ? label : undefined} className={className}>
+        {body}
+      </a>
+    );
+  }
   if (href) {
     return (
       <Link href={href} onClick={onClick} title={rail ? label : undefined} aria-current={active ? "page" : undefined} className={className}>
@@ -539,6 +550,9 @@ export function NavFooter({
       )}
       {personalization && onToggleEditing && !rail && !editing && (
         <FooterEntry onClick={onToggleEditing} rail={rail} icon={SlidersHorizontal} label="Personalizar menú" />
+      )}
+      {modules?.includes("aprende") && (
+        <FooterEntry href="/capacitacion" onClick={onNavigate} rail={rail} icon={GraduationCap} label="Capacitación" nuevaPestana />
       )}
       <FooterEntry href={HELP_HREF} onClick={onNavigate} active={helpActive} rail={rail} icon={CircleHelp} label="Ayuda" />
 
