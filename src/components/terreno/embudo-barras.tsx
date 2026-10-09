@@ -54,7 +54,7 @@ export function EmbudoBarras({ totales }: { totales: Totales }) {
               <span className="tabular-nums">
                 <span className="font-semibold">{paso.valor.toLocaleString("es-CL")}</span>
                 {anterior !== null && (
-                  <span className="ml-1.5 text-xs text-muted-foreground">{porcentaje(paso.valor, anterior)} del paso anterior</span>
+                  <span className="ml-1.5 text-xs text-muted-foreground">{porcentaje(paso.valor, anterior)} del anterior</span>
                 )}
               </span>
             </div>

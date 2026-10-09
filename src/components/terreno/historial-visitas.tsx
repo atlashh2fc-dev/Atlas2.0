@@ -18,16 +18,21 @@ export function HistorialVisitas({
   visitas,
   fotos,
   mostrarVendedor,
+  sinTitulo,
 }: {
   visitas: (VisitaTerreno & { vendedor?: string | null; cliente?: string | null })[];
   fotos: Record<string, string>;
   mostrarVendedor?: boolean;
+  /** Dentro de una sección que ya tiene su propio título. */
+  sinTitulo?: boolean;
 }) {
   return (
     <section className="space-y-3">
-      <h2 className="text-base font-semibold">
-        Visitas <span className="font-normal text-muted-foreground">({visitas.length})</span>
-      </h2>
+      {!sinTitulo && (
+        <h2 className="text-base font-semibold">
+          Visitas <span className="font-normal text-muted-foreground">({visitas.length})</span>
+        </h2>
+      )}
       {visitas.length === 0 ? (
         <p className="rounded-xl border border-dashed border-border p-5 text-center text-sm text-muted-foreground">
           Todavía no hay visitas. La primera se registra desde el local, con foto y ubicación.

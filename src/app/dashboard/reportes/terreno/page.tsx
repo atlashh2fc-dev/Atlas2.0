@@ -124,15 +124,18 @@ export default async function ReportesTerrenoPage({
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
         <SectionCard title="Embudo" description="Clientes ingresados en el período y la etapa más alta a la que llegaron.">
-          {t.clientes === 0 ? (
-            <p className="text-sm text-muted-foreground">Sin clientes ingresados en el período.</p>
-          ) : (
-            <EmbudoBarras totales={t} />
-          )}
+          {/* SectionCard no rellena el cuerpo (está hecho para tablas a borde). */}
+          <div className="px-5 pb-5">
+            {t.clientes === 0 ? (
+              <p className="text-sm text-muted-foreground">Sin clientes ingresados en el período.</p>
+            ) : (
+              <EmbudoBarras totales={t} />
+            )}
+          </div>
         </SectionCard>
 
         <SectionCard title="Por vendedor" description="Ordenado por ventas y luego por visitas.">
-          <div className="-mx-5 overflow-x-auto">
+          <div className="overflow-x-auto border-t border-border">
             <Table>
               <Thead>
                 <Th>Vendedor</Th>
@@ -145,7 +148,7 @@ export default async function ReportesTerrenoPage({
                 <Th align="right">Lectores</Th>
                 <Th align="right">Conv.</Th>
                 <Th align="right">GPS</Th>
-                <Th align="right">Última visita</Th>
+                <Th align="right" className="whitespace-nowrap">Última visita</Th>
               </Thead>
               <Tbody>
                 {filas.length === 0 ? (
@@ -193,11 +196,14 @@ export default async function ReportesTerrenoPage({
           </span>
         }
       >
-        <HistorialVisitas
-          visitas={visitas.map((visita) => ({ ...visita, vendedor: nombres.get(visita.vendedor_id) ?? null }))}
-          fotos={Object.fromEntries(fotos)}
-          mostrarVendedor
-        />
+        <div className="px-5 pb-5">
+          <HistorialVisitas
+            visitas={visitas.map((visita) => ({ ...visita, vendedor: nombres.get(visita.vendedor_id) ?? null }))}
+            fotos={Object.fromEntries(fotos)}
+            mostrarVendedor
+            sinTitulo
+          />
+        </div>
       </SectionCard>
     </div>
   );
