@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CircleAlert, LoaderCircle, Pause, Play } from "lucide-react";
+import { CircleAlert, Download, LoaderCircle, Pause, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /** Pide a un reproductor saltar a un segundo (citas de la evaluación, transcripción). */
@@ -23,7 +23,8 @@ function clock(seconds: number) {
 /**
  * Reproductor de grabaciones al estilo de Gong: un botón redondo de reproducir,
  * la línea de avance y los tiempos. El enlace firmado se pide recién al primer
- * clic (vence rápido), y desde ahí el mismo botón pausa y reanuda.
+ * clic (vence rápido), y desde ahí el mismo botón pausa y reanuda. A la derecha,
+ * la descarga puntual del archivo (queda auditada en el servidor).
  */
 export function RecordingAudioPlayer({
   recordingId,
@@ -167,6 +168,18 @@ export function RecordingAudioPlayer({
           {url && duration > 0 && <span>{clock(duration)}</span>}
         </p>
       </div>
+
+      <a
+        href={`/api/calidad/grabaciones/${encodeURIComponent(recordingId)}/download`}
+        aria-label="Descargar grabación"
+        title="Descargar grabación"
+        className={cn(
+          "flex shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
+          compact ? "size-8" : "size-10"
+        )}
+      >
+        <Download size={compact ? 14 : 16} aria-hidden="true" />
+      </a>
 
       {url && (
         <audio
