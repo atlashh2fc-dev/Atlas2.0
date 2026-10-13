@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Database, Loader2, Users } from "lucide-react";
+import { CheckCircle2, Database, Loader2, Search, Users } from "lucide-react";
 
 import { contarAudienciaCorreo, opcionesDeAudienciaCorreo, transferirAudienciaCorreo } from "@/app/actions/campanas-correo";
 import { Button, Callout, Field, Input, useToast } from "@/components/ui";
 import {
+  ANTIGUEDAD_LABEL,
   CARGO_LABEL,
   CONTACTO_LABEL,
   TAMANO_LABEL,
@@ -28,28 +29,50 @@ type Props = {
 
 const MAXIMO_POR_DEFECTO = 5000;
 
+function sinAcentos(valor: string): string {
+  return valor.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
 function Chips({
   opciones,
   elegidas,
   onCambio,
   etiqueta,
+  ayuda,
   formato,
   limite = 24,
+  buscable,
 }: {
   opciones: OpcionConConteo[];
   elegidas: string[];
   onCambio: (valores: string[]) => void;
   etiqueta: string;
+  /** Una línea bajo el título que explica de dónde sale el dato. */
+  ayuda?: string;
   formato?: (valor: string) => string;
   limite?: number;
+  /** Listas largas (cientos de valores) se buscan por texto; las elegidas quedan siempre a la vista. */
+  buscable?: { placeholder: string };
 }) {
   const [verTodas, setVerTodas] = useState(false);
-  const visibles = verTodas ? opciones : opciones.slice(0, limite);
+  const [busqueda, setBusqueda] = useState("");
+  const texto = sinAcentos(busqueda.trim());
+  const coinciden = texto ? opciones.filter((opcion) => elegidas.includes(opcion.valor) || sinAcentos(opcion.valor).includes(texto)) : opciones;
+  const visibles = verTodas ? coinciden : coinciden.slice(0, limite);
+  const resumen = elegidas.length ? `${elegidas.length} elegidas` : "Sin elegir: entran todas";
   return (
     <fieldset>
       <legend className="text-[13px] font-medium text-foreground">{etiqueta}</legend>
-      <p className="mt-0.5 text-xs text-muted-foreground">{elegidas.length ? `${elegidas.length} elegidas` : "Sin elegir: entran todas"}</p>
+      <p className="mt-0.5 text-xs text-muted-foreground">{ayuda ? `${ayuda} · ${resumen}` : resumen}</p>
+      {buscable && (
+        <label className="relative mt-2 block max-w-sm">
+          <span className="sr-only">Buscar en {etiqueta}</span>
+          <Search size={14} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input value={busqueda} onChange={(evento) => setBusqueda(evento.target.value)} placeholder={buscable.placeholder} className="pl-9" />
+        </label>
+      )}
       <div className="mt-2 flex flex-wrap gap-1.5">
+        {texto && coinciden.length === 0 && <p className="text-xs text-muted-foreground">Ninguna coincide con «{busqueda.trim()}».</p>}
         {visibles.map((opcion) => {
           const activa = elegidas.includes(opcion.valor);
           return (
@@ -58,6 +81,7 @@ function Chips({
               type="button"
               aria-pressed={activa}
               onClick={() => onCambio(activa ? elegidas.filter((valor) => valor !== opcion.valor) : [...elegidas, opcion.valor])}
+              title={opcion.rubro ? `Rubro: ${capitalizar(opcion.rubro)}` : undefined}
               className={cn(
                 "inline-flex min-h-11 items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors sm:min-h-8",
                 activa ? "border-primary bg-primary/10 font-medium text-primary" : "border-border bg-surface text-foreground hover:border-primary/50",
@@ -68,9 +92,9 @@ function Chips({
             </button>
           );
         })}
-        {opciones.length > limite && (
+        {coinciden.length > limite && (
           <button type="button" onClick={() => setVerTodas((valor) => !valor)} className="min-h-11 rounded-full px-3 text-xs font-medium text-primary hover:underline sm:min-h-8">
-            {verTodas ? "Ver menos" : `Ver las ${opciones.length}`}
+            {verTodas ? "Ver menos" : `Ver las ${coinciden.length}`}
           </button>
         )}
       </div>
@@ -240,7 +264,25 @@ export function AudienciaBigdata({ campanaId, nombreCampana, audienciaActual, de
                 <Chips etiqueta="Comuna" opciones={comunas} elegidas={filtros.comunas ?? []} onCambio={(valores) => cambiar({ comunas: valores })} formato={capitalizar} limite={30} />
               )}
               <Chips etiqueta="Rubro" opciones={opciones.rubros} elegidas={filtros.rubros ?? []} onCambio={(rubros) => cambiar({ rubros })} formato={capitalizar} limite={12} />
+              <Chips
+                etiqueta="Actividad (giro en el SII)"
+                ayuda="Más fina que el rubro y se suma a los rubros elegidos"
+                opciones={opciones.actividades ?? []}
+                elegidas={filtros.actividades ?? []}
+                onCambio={(actividades) => cambiar({ actividades })}
+                formato={capitalizar}
+                limite={10}
+                buscable={{ placeholder: "Restaurantes, administración de edificios, clínicas…" }}
+              />
               <Chips etiqueta="Tamaño (por ventas en el SII)" opciones={opciones.tamanos} elegidas={filtros.tamanos ?? []} onCambio={(tamanos) => cambiar({ tamanos })} formato={(valor) => TAMANO_LABEL[valor] ?? valor} />
+              <Chips
+                etiqueta="Antigüedad"
+                ayuda="Según el primer año con ventas declaradas en el SII (2020–2024); el SII no publica la fecha de inicio de actividades"
+                opciones={opciones.antiguedad ?? []}
+                elegidas={filtros.antiguedad ?? []}
+                onCambio={(antiguedad) => cambiar({ antiguedad })}
+                formato={(valor) => ANTIGUEDAD_LABEL[valor] ?? valor}
+              />
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Trabajadores desde">
                   <Input type="number" inputMode="numeric" min={0} value={filtros.trabajadores_min ?? ""} onChange={(evento) => cambiar({ trabajadores_min: evento.target.value === "" ? null : Math.max(0, Number(evento.target.value)) })} placeholder="Cualquiera" />

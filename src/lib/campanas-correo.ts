@@ -195,7 +195,11 @@ export type FiltrosAudiencia = {
   regiones?: string[];
   comunas?: string[];
   rubros?: string[];
+  /** Actividad económica del SII; se suma a los rubros elegidos. */
+  actividades?: string[];
   tamanos?: string[];
+  /** Primer año (2020–2024) con ventas declaradas en el SII. */
+  antiguedad?: string[];
   cargos?: string[];
   trabajadores_min?: number | null;
   trabajadores_max?: number | null;
@@ -205,12 +209,14 @@ export type FiltrosAudiencia = {
   nombre_contiene?: string | null;
 };
 
-export type OpcionConConteo = { valor: string; contactos: number; region?: string };
+export type OpcionConConteo = { valor: string; contactos: number; region?: string; rubro?: string };
 
 export type OpcionesAudiencia = {
   regiones: OpcionConConteo[];
   rubros: OpcionConConteo[];
+  actividades: OpcionConConteo[];
   tamanos: OpcionConConteo[];
+  antiguedad: OpcionConConteo[];
   cargos: OpcionConConteo[];
   comunas: OpcionConConteo[];
   actualizada_at: string | null;
@@ -224,6 +230,20 @@ export const TAMANO_LABEL: Record<string, string> = {
   mediana: "Mediana",
   grande: "Grande",
   sin_info: "Sin información de ventas",
+};
+
+/**
+ * Bigdata no tiene la fecha de inicio de actividades (la nómina del SII no la
+ * publica): la antigüedad sale del primer año con ventas declaradas entre 2020
+ * y 2024.
+ */
+export const ANTIGUEDAD_LABEL: Record<string, string> = {
+  hasta_2020: "Ya vendía en 2020 (5 años o más)",
+  "2021": "Empezó a vender en 2021",
+  "2022": "Empezó a vender en 2022",
+  "2023": "Empezó a vender en 2023",
+  "2024": "Empezó a vender en 2024",
+  sin_info: "Sin ventas declaradas",
 };
 
 export const CARGO_LABEL: Record<string, string> = {

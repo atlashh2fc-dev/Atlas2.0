@@ -115,6 +115,8 @@ export type FilaDeAudiencia = {
   region: string | null;
   comuna: string | null;
   rubro: string | null;
+  actividad?: string | null;
+  antiguedad?: string | null;
 };
 
 export const paginaDeAudiencia = (filtros: FiltrosAudiencia, despues: string | null, limite: number) =>
