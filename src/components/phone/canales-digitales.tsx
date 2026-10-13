@@ -11,6 +11,7 @@ import {
   type PresenciaDigital,
 } from "@/app/actions/presencia-digital";
 import { cn } from "@/lib/utils";
+import { sondeoVisible } from "@/lib/sondeo-visible";
 
 const REFRESCO_MS = 30_000;
 /** Avisa al indicador de la barra que un canal se prendió o apagó. */
@@ -43,8 +44,7 @@ export function CanalesDigitales({ abierto }: { abierto: boolean }) {
 
   useEffect(() => {
     cargar();
-    const id = window.setInterval(cargar, REFRESCO_MS);
-    return () => window.clearInterval(id);
+    return sondeoVisible(cargar, REFRESCO_MS);
   }, [cargar]);
 
   useEffect(() => {
@@ -144,12 +144,12 @@ export function IndicadorDigital({ onAbrir }: { onAbrir: () => void }) {
         .catch(() => undefined);
     };
     cargar();
-    const id = window.setInterval(cargar, REFRESCO_MS);
+    const pararSondeo = sondeoVisible(cargar, REFRESCO_MS);
     const alCambiar = (evento: Event) => setPresencia((evento as CustomEvent<PresenciaDigital>).detail);
     window.addEventListener(EVENTO_PRESENCIA, alCambiar);
     return () => {
       vigente = false;
-      window.clearInterval(id);
+      pararSondeo();
       window.removeEventListener(EVENTO_PRESENCIA, alCambiar);
     };
   }, []);

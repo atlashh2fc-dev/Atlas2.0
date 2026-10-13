@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getMyStatusDay, type MyStatusDay } from "@/app/actions/agent-status";
 import { cn } from "@/lib/utils";
+import { sondeoVisible } from "@/lib/sondeo-visible";
 
 const REFRESH_MS = 20_000;
 
@@ -24,7 +25,8 @@ function formatDuration(seconds: number | null | undefined): string {
  * desde el último cambio y aquí se ve lo acumulado del día, sin repetir cuál
  * es el estado actual.
  *
- * Se consulta cada 20 s y entre consultas el estado actual avanza solo.
+ * Se consulta cada 20 s mientras la pestaña está a la vista y entre
+ * consultas el estado actual avanza solo.
  */
 export function AgentDayBar() {
   const [day, setDay] = useState<MyStatusDay | null>(null);
@@ -44,11 +46,11 @@ export function AgentDayBar() {
       }
     }
     void load();
-    const refresh = window.setInterval(load, REFRESH_MS);
+    const pararRefresh = sondeoVisible(() => void load(), REFRESH_MS);
     const tick = window.setInterval(() => setNow(Date.now()), 1000);
     return () => {
       disposed = true;
-      window.clearInterval(refresh);
+      pararRefresh();
       window.clearInterval(tick);
     };
   }, []);

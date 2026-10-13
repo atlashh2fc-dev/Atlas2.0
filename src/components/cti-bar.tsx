@@ -76,6 +76,7 @@ import {
 } from "@/components/phone/format";
 import { Elapsed, StatusMenu, type StatusTone } from "@/components/phone/status-menu";
 import { CanalesDigitales, IndicadorDigital } from "@/components/phone/canales-digitales";
+import { sondeoVisible } from "@/lib/sondeo-visible";
 
 const HEARTBEAT_MS = 20_000;
 const SIP_DOMAIN = process.env.NEXT_PUBLIC_SIP_DOMAIN ?? "ws-atlas.geimser.cl";
@@ -412,10 +413,14 @@ export function CtiBar({ profile }: { profile: Profile }) {
     }
 
     void refreshOperatingMode();
-    const modeTimer = setInterval(refreshOperatingMode, 2_000);
+    // Antes cada 2 s en toda pestaña abierta: era la consulta más pesada de
+    // la barra (un RPC más cuatro lecturas) y la mayor parte de la cuenta de
+    // Vercel. Cada 5 s y solo con la pestaña a la vista alcanza para seguir
+    // un cambio de modo del supervisor.
+    const pararModo = sondeoVisible(() => void refreshOperatingMode(), 5_000);
     return () => {
       disposed = true;
-      clearInterval(modeTimer);
+      pararModo();
     };
   }, [profile.role]);
 
@@ -624,11 +629,11 @@ export function CtiBar({ profile }: { profile: Profile }) {
   useEffect(() => {
     if (profile.role !== "agente") return;
     queueMicrotask(() => void refreshOpenManagement());
-    const timer = setInterval(() => void refreshOpenManagement(), 5_000);
+    const pararSondeo = sondeoVisible(() => void refreshOpenManagement(), 5_000);
     const onClosed = () => void refreshOpenManagement();
     window.addEventListener(AGENT_MANAGEMENT_CLOSED_EVENT, onClosed);
     return () => {
-      clearInterval(timer);
+      pararSondeo();
       window.removeEventListener(AGENT_MANAGEMENT_CLOSED_EVENT, onClosed);
     };
   }, [profile.role, refreshOpenManagement]);

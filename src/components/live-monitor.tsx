@@ -71,8 +71,14 @@ import {
   type Column,
   type IconTone,
 } from "@/components/ui";
+import { sondeoVisible } from "@/lib/sondeo-visible";
 
-const POLL_MS = 2000;
+/**
+ * Estado en vivo cada 5 s y solo con la pestaña a la vista. A 2 s, un monitor
+ * abierto en una pestaña de fondo costaba unas 100 mil funciones al día en
+ * Vercel sin que nadie lo mirara.
+ */
+const POLL_MS = 5000;
 /** Hora Chile para el aviso de «sin actualizar desde»: nunca UTC en pantalla. */
 const horaChile = new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 /** Las métricas del día cambian por minuto, no por segundo. */
@@ -608,8 +614,8 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
       }
     }
     poll();
-    const id = setInterval(poll, POLL_MS);
-    return () => { disposed = true; clearInterval(id); };
+    const parar = sondeoVisible(() => void poll(), POLL_MS);
+    return () => { disposed = true; parar(); };
   }, [liveRetry]);
 
   useEffect(() => {
@@ -643,8 +649,8 @@ export function LiveMonitor({ canForceLogout = false }: { canForceLogout?: boole
       }
     }
     pollWallboard();
-    const id = setInterval(pollWallboard, WALLBOARD_POLL_MS);
-    return () => { disposed = true; clearInterval(id); };
+    const parar = sondeoVisible(() => void pollWallboard(), WALLBOARD_POLL_MS);
+    return () => { disposed = true; parar(); };
   }, [wallboardRetry]);
 
   const todayByAgent = useMemo(
