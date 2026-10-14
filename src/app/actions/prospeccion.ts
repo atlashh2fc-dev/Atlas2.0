@@ -45,6 +45,28 @@ export async function registrarToque(formData: FormData) {
   if (resultado === "interesado" && negocio) redirect(`/dashboard/ventas/${negocio}`);
 }
 
+/**
+ * Encender o apagar el WhatsApp automático a prospectos. Solo administración:
+ * es escribir a desconocidos a nombre de la empresa. Encender limpia la pausa
+ * que Atlas haya dejado.
+ */
+export async function cambiarWhatsappAutomatico(formData: FormData) {
+  const profile = await requireProfile(["admin"]);
+  const org = profile.viewing_organization_id ?? profile.organization_id;
+  if (!org) throw new Error("No hay una empresa activa.");
+  const encender = String(formData.get("encender") ?? "") === "1";
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("sales_agent_configs")
+    .update({ whatsapp_automatico: encender, whatsapp_pausa: null, whatsapp_cambiado_at: new Date().toISOString() })
+    .eq("organization_id", org)
+    .select("organization_id");
+  if (error) throw errorDeAccion(error);
+  if (!data?.length) throw new Error("Esta empresa todavía no tiene el asistente de ventas configurado.");
+  revalidar();
+}
+
 /** Deshacer un toque propio de las últimas 24 horas (la política lo acota). */
 export async function deshacerToque(formData: FormData) {
   await requireProfile(["admin", "supervisor"]);

@@ -5,6 +5,7 @@ import { Briefcase, CheckCheck, ChevronRight, Flame, History, Inbox, Undo2 } fro
 import { deshacerToque } from "@/app/actions/prospeccion";
 import { BandejaProspeccion, type FilaProspecto } from "@/components/bandeja-prospeccion";
 import { RespuestasDelAgente, type BorradorAgente, type ConfigAgente } from "@/components/respuestas-del-agente";
+import { WhatsappAutomatico, type EstadoWhatsappAutomatico } from "@/components/whatsapp-automatico";
 import { KpiStrip, KpiStripItem } from "@/components/report-kit";
 import { masReciente, recortar, tiempoRelativo, type Canal, type UltimaLinea } from "@/components/pipeline-kit";
 import { Avatar, Badge, Callout, EmptyState, NavTabs, PageHeader, SegmentTabs, SubmitButton, buttonClasses, type BadgeTone, type SegmentTab } from "@/components/ui";
@@ -23,6 +24,7 @@ import {
   temaDeLosCorreos,
   type Prospecto,
 } from "@/lib/prospeccion";
+import { EMPRESAS_CON_WHATSAPP_AUTOMATICO, PLANTILLAS_DE_PROSPECCION, REGLAS, esNotaDeAtlas } from "@/lib/prospeccion-whatsapp";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 import { PESTANAS_VENTAS } from "@/lib/ventas-pestanas";
@@ -116,6 +118,7 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
   const ahora = new Date();
   const inicioHoy = instanteEnChile(fechaEnChile(ahora), "00:00");
   const haceSieteDias = new Date(ahora.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const orgId = profile.viewing_organization_id ?? profile.organization_id ?? null;
 
   const supabase = await createClient();
   const [
@@ -127,6 +130,9 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
     { data: ultimosWhatsappData },
     { data: enviadosPorIaData },
     { data: correosRecibidosData },
+    { data: organizacionData },
+    { data: canalWhatsappData },
+    { count: automaticosHoy },
   ] = await Promise.all([
     supabase.rpc("bandeja_de_prospeccion", { p_dias: 14 }),
     supabase
@@ -135,7 +141,7 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
       .gte("created_at", haceSieteDias.toISOString())
       .order("created_at", { ascending: false })
       .limit(300),
-    supabase.from("sales_agent_configs").select("enabled, modo").maybeSingle(),
+    supabase.from("sales_agent_configs").select("enabled, modo, whatsapp_automatico, whatsapp_por_dia, whatsapp_pausa").maybeSingle(),
     supabase
       .from("sales_agent_drafts")
       .select("id, para_email, asunto, cuerpo, intencion, razonamiento, escalar, created_at, opportunity_id, lead_id")
@@ -155,6 +161,14 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
     supabase.from("prospeccion_whatsapp").select("lead_id, direction, texto, occurred_at").order("occurred_at", { ascending: false }).limit(1000),
     supabase.from("sales_agent_drafts").select("lead_id, cuerpo, decidido_at").eq("estado", "enviado").not("lead_id", "is", null).order("decidido_at", { ascending: false }).limit(300),
     supabase.from("inbound_emails").select("lead_id, subject, preview, received_at").not("lead_id", "is", null).order("received_at", { ascending: false }).limit(300),
+    // El WhatsApp automático: de qué empresa es esta bandeja, su número y cuánto escribió Atlas hoy.
+    orgId ? supabase.from("organizations").select("slug").eq("id", orgId).maybeSingle() : Promise.resolve({ data: null }),
+    orgId
+      ? supabase.from("whatsapp_channels").select("status, plantillas_aprobadas").eq("organization_id", orgId).eq("canal", "whatsapp").order("created_at").limit(1).maybeSingle()
+      : Promise.resolve({ data: null }),
+    orgId
+      ? supabase.from("prospeccion_whatsapp").select("id", { count: "exact", head: true }).eq("organization_id", orgId).eq("automatico", true).gte("occurred_at", inicioHoy.toISOString())
+      : Promise.resolve({ count: 0 }),
   ]);
   if (error) console.error("[prospeccion] bandeja:", error.message);
   const respondieronPorWhatsapp = new Set((porWhatsappData ?? []).map((fila) => fila.lead_id as string));
@@ -218,6 +232,21 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
   const remitente = (profile.full_name ?? "").split(" ")[0] || "el equipo";
   const borradores = (borradoresData ?? []) as BorradorAgente[];
   const config = (configAgente ?? null) as ConfigAgente;
+  const configWhatsapp = (configAgente ?? null) as { whatsapp_automatico?: boolean; whatsapp_por_dia?: number; whatsapp_pausa?: string | null } | null;
+  const slug = (organizacionData as { slug?: string } | null)?.slug ?? null;
+  const canalWhatsapp = canalWhatsappData as { status?: string; plantillas_aprobadas?: string[] | null } | null;
+  const whatsappAutomatico: EstadoWhatsappAutomatico | null =
+    configWhatsapp && slug && (EMPRESAS_CON_WHATSAPP_AUTOMATICO as readonly string[]).includes(slug)
+      ? {
+          conectado: canalWhatsapp?.status === "active",
+          encendido: configWhatsapp.whatsapp_automatico === true,
+          pausa: configWhatsapp.whatsapp_pausa ?? null,
+          porDia: configWhatsapp.whatsapp_por_dia ?? REGLAS.porDiaPorDefecto,
+          hoy: automaticosHoy ?? 0,
+          aprobado: (canalWhatsapp?.plantillas_aprobadas ?? []).includes(PLANTILLAS_DE_PROSPECCION.pregunta.nombre),
+          puedeCambiar: profile.role === "admin",
+        }
+      : null;
   // Sin agente y sin nada pendiente, la vista de respuestas sería una puerta a un cuarto vacío.
   const conAgente = Boolean(config?.enabled) || borradores.length > 0;
   const vistaActiva = vista === "historial" ? "historial" : vista === "respuestas" && conAgente ? "respuestas" : "cola";
@@ -285,6 +314,8 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
           active={vistaActiva === "historial" && filtroHistorial === "hoy"}
         />
       </KpiStrip>
+
+      {whatsappAutomatico && <WhatsappAutomatico estado={whatsappAutomatico} />}
 
       {error && <Callout tone="danger">No se pudo leer la bandeja de prospección. Vuelve a cargar la página; si sigue igual, avisa a soporte.</Callout>}
 
@@ -397,8 +428,8 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
             {toquesVisibles.map((t) => {
               const lead = primero(t.leads);
               const nombre = String(lead?.extra?.company_name ?? lead?.full_name ?? "Prospecto");
-              // Sin autor: lo anotó el eco de un mensaje enviado desde la app del teléfono.
-              const quien = primero(t.profiles)?.full_name ?? (t.hecho_por ? "—" : "Desde tu WhatsApp");
+              // Sin autor: lo anotó Atlas solo, o el eco de un mensaje enviado desde la app del teléfono.
+              const quien = primero(t.profiles)?.full_name ?? (t.hecho_por ? "—" : esNotaDeAtlas(t.nota) ? "Atlas, automático" : "Desde tu WhatsApp");
               const deshacible = t.hecho_por === profile.id && t.resultado !== "interesado" && ahora.getTime() - new Date(t.created_at).getTime() < 24 * 60 * 60 * 1000;
               return (
                 <li key={t.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 transition-colors hover:bg-surface-muted/55">

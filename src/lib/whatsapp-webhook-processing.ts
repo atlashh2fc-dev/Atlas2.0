@@ -121,6 +121,25 @@ async function registrarWhatsAppDeProspecto(admin: AdminClient, organizationId: 
   if (error) console.error("whatsapp_prospecto_sin_registrar", { code: error.code, message: error.message.slice(0, 200) });
 }
 
+/**
+ * Lo que Atlas le escribe solo a un prospecto no vive en una conversación del
+ * CRM (la conversación sigue en el teléfono): su entrega se anota junto al
+ * prospecto. Un estado no retrocede (un «entregado» que llega tarde no pisa un
+ * «leído»), y un fallo siempre se anota: el agente lo devuelve a una persona.
+ */
+async function anotarEntregaAProspecto(admin: AdminClient, event: ParsedWhatsAppEvent) {
+  if (event.kind !== "status" || !["delivered", "read", "failed"].includes(event.status)) return;
+  const previos = event.status === "delivered" ? ["accepted", "sent"] : event.status === "read" ? ["accepted", "sent", "delivered"] : null;
+  let consulta = admin
+    .from("prospeccion_whatsapp")
+    .update({ estado: event.status, error: event.status === "failed" ? (event.errorMessage ?? "sin detalle").slice(0, 300) : null })
+    .eq("wamid", event.providerMessageId)
+    .eq("automatico", true);
+  if (previos) consulta = consulta.in("estado", previos);
+  const { error } = await consulta;
+  if (error) console.error("whatsapp_entrega_de_prospecto_sin_anotar", { code: error.code, message: error.message.slice(0, 200) });
+}
+
 async function anotarEnvioDesdeElTelefono(admin: AdminClient, organizationId: string, telefono: string, enviadoAt: string) {
   const { error } = await admin.rpc("anotar_whatsapp_desde_el_telefono", {
     p_organization_id: organizationId,
@@ -200,6 +219,7 @@ export async function processWhatsAppEvents(
             if (providerIdError) throw providerIdError;
           }
         }
+        await anotarEntregaAProspecto(admin, event);
         const { error: statusError } = await admin.rpc("update_whatsapp_message_status", {
           p_provider_message_id: event.providerMessageId,
           p_status: event.status,

@@ -85,7 +85,7 @@ export function nombreComoSeDice(razonSocial: string | null | undefined): string
 }
 
 /** Lo que el cliente de esa empresa pide por WhatsApp; la bandeja no trae rubro, así que se lee del nombre. */
-function loQuePide(empresa: string | null): { pide: string; pierde: string } {
+export function loQuePide(empresa: string | null): { pide: string; pierde: string } {
   const nombre = (empresa ?? "").toLowerCase();
   if (/(restaurant|resto|comida|gastronom|cafeter|sushi|pizzer)/.test(nombre)) return { pide: "una reserva", pierde: "reserve en otro lugar" };
   if (/(cl[ií]nica|dental|odontol|veterin|m[eé]dic|salud|est[eé]tica|belleza|peluquer|kine)/.test(nombre)) return { pide: "una hora", pierde: "la reserve en otro lugar" };

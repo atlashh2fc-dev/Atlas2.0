@@ -42,6 +42,10 @@
       "schedule": "*/15 * * * *"
     },
     {
+      "path": "/api/agentes/whatsapp-prospectos",
+      "schedule": "*/20 12-23 * * 1-5"
+    },
+    {
       "path": "/api/mensajes/despachar",
       "schedule": "*/10 * * * *"
     },
