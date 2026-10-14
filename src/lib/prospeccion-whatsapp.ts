@@ -10,24 +10,29 @@
  * Reglas, en orden de importancia:
  * - Solo a quien abrió o hizo clic, con celular, sin «no contactar» y sin
  *   respuesta: quien respondió ya está conversando con una persona.
- * - Dos mensajes automáticos por persona, como máximo: la pregunta y, si no
- *   contesta en tres días, un solo seguimiento. Después decide una persona.
- * - Nunca dice que abrió el correo, y espera una hora desde la última señal:
- *   un WhatsApp a los dos minutos de abrir se siente vigilancia.
+ * - Dos mensajes automáticos por persona, como máximo: un saludo que retoma
+ *   el correo («te mandé un correo sobre…») y pregunta si quiere que le
+ *   cuenten, y, si no contesta en tres días, un último mensaje. Ese «último,
+ *   prometido» se cumple: después sale de Por contactar, salvo que responda o
+ *   vuelva a abrir un correo.
+ * - Tono Hugo: humano, liviano, con humor y sin presión (nada de vendedor ni
+ *   de bot). Dice que se le mandó un correo, nunca que lo abrió, y espera una
+ *   hora desde la última señal: un WhatsApp a los dos minutos de abrir se
+ *   siente vigilancia.
  * - De lunes a viernes, de 10:00 a 19:00 de Chile, con tope diario.
- * - Cada mensaje trae el botón «No me interesa, gracias»: la baja en un clic
- *   (Ley 19.496, art. 28 B). Quien lo toca sale de la bandeja.
+ * - Cada mensaje trae el botón «No, gracias»: la baja en un clic (Ley 19.496,
+ *   art. 28 B). Quien lo toca sale de la bandeja y no recibe nada más.
  *
  * WhatsApp exige una plantilla aprobada por Meta para escribirle primero a
  * alguien; por eso el texto vive acá con sus variables. Puro: sin red ni base.
  */
 
-import { celularChileno, loQuePide, nombreComoSeDice, type Prospecto } from "./prospeccion.ts";
+import { celularChileno, nombreComoSeDice, type CorreoEnviado, type Prospecto } from "./prospeccion.ts";
 
 /** Las empresas cuyo agente escribe solo (las plantillas están a su nombre). */
 export const EMPRESAS_CON_WHATSAPP_AUTOMATICO = ["altius"] as const;
 
-export type ClavePlantillaProspeccion = "pregunta" | "seguimiento";
+export type ClavePlantillaProspeccion = "saludo" | "ultimo";
 
 export type PlantillaDeProspeccion = {
   /** Nombre en Meta: minúsculas, números y guion bajo. Si el texto cambia, se registra con otro nombre. */
@@ -42,29 +47,62 @@ export type PlantillaDeProspeccion = {
   boton: string;
 };
 
-export const BOTON_DE_BAJA = "No me interesa, gracias";
+export const BOTON_DE_BAJA = "No, gracias";
 
-/** Las dos únicas cosas que Atlas dice solo. De tú, firmadas y con una sola pregunta (ver mensajeDeWhatsapp). */
+/**
+ * Las dos únicas cosas que Atlas dice solo, con el texto que eligió Hugo el
+ * 14-10-2026 (retomar el correo, menos máquina, estilo Virgin). De tú y
+ * firmadas. El saludo no vende: pregunta si quiere que le cuenten, y su «sí»
+ * abre la conversación para que siga una persona.
+ */
 export const PLANTILLAS_DE_PROSPECCION: Record<ClavePlantillaProspeccion, PlantillaDeProspeccion> = {
-  pregunta: {
-    nombre: "altius_prospecto_pregunta_v1",
+  saludo: {
+    nombre: "altius_prospecto_saludo_v1",
     idioma: "es",
     categoria: "MARKETING",
     cuerpo:
-      "Hola, soy Hugo, de Altius, en Santiago. Una pregunta corta sobre {{1}}: si un cliente te pide {{2}} a las 10 de la noche, ¿alguien alcanza a responderle antes de que {{3}}?",
-    ejemplo: ["Ferretería Los Andes", "una cotización", "cotice con otra empresa"],
+      "Hola, soy Hugo, de Altius 👋 Hace poco te mandé un correo sobre {{1}}. Como los correos se pierden entre facturas y promociones, preferí escribirte por acá. ¿Te cuento en dos líneas de qué se trata?",
+    ejemplo: ["cómo responderle a tus clientes a las 11 de la noche sin estar despierto"],
     boton: BOTON_DE_BAJA,
   },
-  seguimiento: {
-    nombre: "altius_prospecto_seguimiento_v1",
+  ultimo: {
+    nombre: "altius_prospecto_ultimo_v1",
     idioma: "es",
     categoria: "MARKETING",
     cuerpo:
-      "Te dejo el dato por si te sirve: en Altius hacemos que la web y el WhatsApp de empresas como {{1}} respondan solos, con la información que ustedes aprueban. ¿Te mando un ejemplo de cómo quedaría?",
-    ejemplo: ["Ferretería Los Andes"],
+      "Último mensaje, prometido 🤞 Si algún día quieres que la web y el WhatsApp de {{1}} respondan solos a cualquier hora, con lo que ustedes aprueban, me escribes y lo vemos. Y si no es tema, cero drama.",
+    ejemplo: ["Ferretería los Andes"],
     boton: BOTON_DE_BAJA,
   },
 };
+
+/**
+ * De qué le hablamos, en palabras de WhatsApp, según el asunto del correo. Los
+ * temas concretos ganan al genérico («Último correo sobre su sitio web»).
+ */
+const TEMAS_CONCRETOS: { patron: RegExp; tema: string }[] = [
+  { patron: /(atlas pulso|11 de la noche|pregunta r[aá]pida)/i, tema: "cómo responderle a tus clientes a las 11 de la noche sin estar despierto" },
+  { patron: /(chatgpt|google|\bla ia\b)/i, tema: "cómo lograr que Google y ChatGPT recomienden a tu empresa" },
+];
+const TEMAS_GENERICOS: { patron: RegExp; tema: string }[] = [{ patron: /sitio web/i, tema: "tu sitio web" }];
+
+/**
+ * El tema del saludo: el del último correo que leyó y, si ninguno se
+ * reconoce, el del último que se le mandó. Sin tema, «una idea para» su
+ * empresa: nunca se inventa de qué trataba el correo.
+ */
+export function temaParaWhatsapp(correos: CorreoEnviado[] | null | undefined, empresa: string | null): string {
+  const recientes = [...(correos ?? [])].reverse();
+  for (const temas of [TEMAS_CONCRETOS, TEMAS_GENERICOS]) {
+    for (const lista of [recientes.filter((c) => c.abierto_at), recientes]) {
+      for (const correo of lista) {
+        const encontrado = temas.find(({ patron }) => patron.test(correo.asunto ?? ""));
+        if (encontrado) return encontrado.tema;
+      }
+    }
+  }
+  return `una idea para ${nombreComoSeDice(empresa) ?? "tu negocio"}`;
+}
 
 export const REGLAS = {
   porDiaPorDefecto: 15,
@@ -72,7 +110,11 @@ export const REGLAS = {
   porCorrida: 3,
   esperaDesdeLaSenalMs: 60 * 60 * 1000,
   diasHastaElSeguimiento: 3,
-  diasDespuesDelSeguimiento: 4,
+  /**
+   * «Último mensaje, prometido»: queda esperando hasta salir de la ventana de
+   * la bandeja (14 días sin señales). Solo vuelve si responde o abre otro correo.
+   */
+  diasDespuesDelUltimo: 30,
   horaDesde: 10,
   horaHasta: 19,
 } as const;
@@ -82,8 +124,8 @@ export const REGLAS = {
  * bandeja las reconoce por el comienzo (ver esNotaDeAtlas).
  */
 export const NOTAS = {
-  pregunta: "Atlas le escribió por WhatsApp",
-  seguimiento: "Atlas le escribió por WhatsApp (seguimiento)",
+  saludo: "Atlas le escribió por WhatsApp",
+  ultimo: "Atlas le mandó el último WhatsApp automático",
   baja: "Atlas: pidió no recibir más mensajes por WhatsApp",
   numeroSinWhatsapp: "Atlas: WhatsApp no pudo entregarle el mensaje; el número no usaría WhatsApp. Llámalo o escríbele por correo.",
   noEntregado: "Atlas: WhatsApp no entregó el mensaje automático. Escríbele tú.",
@@ -124,12 +166,12 @@ export function enHorario(ahora: Date): boolean {
   return dia >= 1 && dia <= 5 && hora >= REGLAS.horaDesde && hora < REGLAS.horaHasta;
 }
 
-const sinTildes = (texto: string) => texto.normalize("NFD").replace(/[̀-ͯ]/g, "");
+const sinTildes = (texto: string) => texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
 /**
  * ¿Pide que no le escriban más? El botón, o lo mismo escrito corto. Un «No»
- * solo no cuenta: es la respuesta a la pregunta («¿alguien alcanza a
- * responderle?») y es justo el que más interesa.
+ * solo no cuenta: puede ser la respuesta a «¿Te cuento en dos líneas?» dicha
+ * a medias, y de todos modos cualquier respuesta frena lo automático.
  */
 export function esBaja(texto: string | null | undefined): boolean {
   const limpio = sinTildes((texto ?? "").toLowerCase()).replace(/[¡!¿?.]/g, "").replace(/\s+/g, " ").trim();
@@ -140,7 +182,7 @@ export function esBaja(texto: string | null | undefined): boolean {
 
 export type FilaDeBandeja = Pick<
   Prospecto,
-  "lead_id" | "empresa" | "telefono" | "respondio" | "ultima_senal_at" | "ultimo_resultado" | "ultimo_toque_at" | "toques" | "estado" | "prioridad" | "no_contactar"
+  "lead_id" | "empresa" | "telefono" | "respondio" | "ultima_senal_at" | "ultimo_resultado" | "ultimo_toque_at" | "toques" | "estado" | "prioridad" | "no_contactar" | "correos"
 >;
 
 export type Envio = {
@@ -161,7 +203,7 @@ const antesDe = (instante: string | null, limite: number) => instante !== null &
 export function pasoQueToca(fila: FilaDeBandeja, ahora: Date): ClavePlantillaProspeccion | null {
   if (fila.no_contactar || fila.respondio) return null;
   if (!antesDe(fila.ultima_senal_at, ahora.getTime() - REGLAS.esperaDesdeLaSenalMs)) return null;
-  if (fila.toques === 0 && fila.estado === "nuevo") return "pregunta";
+  if (fila.toques === 0 && fila.estado === "nuevo") return "saludo";
   const seguimientoDesde = ahora.getTime() - REGLAS.diasHastaElSeguimiento * 24 * 60 * 60 * 1000;
   if (
     fila.toques === 1 &&
@@ -169,7 +211,7 @@ export function pasoQueToca(fila: FilaDeBandeja, ahora: Date): ClavePlantillaPro
     (fila.estado === "seguimiento" || fila.estado === "volvio") &&
     antesDe(fila.ultimo_toque_at, seguimientoDesde)
   ) {
-    return "seguimiento";
+    return "ultimo";
   }
   return null;
 }
@@ -185,9 +227,7 @@ export function elegirEnvios(filas: FilaDeBandeja[], { ahora, cupo }: { ahora: D
     const clave = pasoQueToca(fila, ahora);
     if (!clave) continue;
     celulares.add(celular);
-    const nombre = nombreComoSeDice(fila.empresa);
-    const { pide, pierde } = loQuePide(fila.empresa);
-    const parametros = clave === "pregunta" ? [nombre ?? "tu empresa", pide, pierde] : [nombre ?? "la tuya"];
+    const parametros = clave === "saludo" ? [temaParaWhatsapp(fila.correos, fila.empresa)] : [nombreComoSeDice(fila.empresa) ?? "tu empresa"];
     envios.push({
       leadId: fila.lead_id,
       empresa: fila.empresa,
@@ -196,7 +236,7 @@ export function elegirEnvios(filas: FilaDeBandeja[], { ahora, cupo }: { ahora: D
       parametros,
       texto: textoDePlantilla(clave, parametros),
       nota: NOTAS[clave],
-      seguirEnDias: clave === "pregunta" ? REGLAS.diasHastaElSeguimiento : REGLAS.diasDespuesDelSeguimiento,
+      seguirEnDias: clave === "saludo" ? REGLAS.diasHastaElSeguimiento : REGLAS.diasDespuesDelUltimo,
     });
   }
   return envios;

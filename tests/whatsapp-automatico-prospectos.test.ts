@@ -11,13 +11,13 @@ import test from "node:test";
 import {
   BOTON_DE_BAJA,
   PLANTILLAS_DE_PROSPECCION,
-  REGLAS,
   definicionParaMeta,
   elegirEnvios,
   enHorario,
   esBaja,
   numeroSinWhatsapp,
   pideFrenar,
+  temaParaWhatsapp,
   textoDePlantilla,
   type FilaDeBandeja,
 } from "../src/lib/prospeccion-whatsapp.ts";
@@ -27,6 +27,7 @@ const leer = (ruta: string) => readFileSync(new URL(`../${ruta}`, import.meta.ur
 // Martes 14-10-2026, 15:00 en Chile (UTC-3).
 const AHORA = new Date("2026-10-14T18:00:00Z");
 const hace = (horas: number) => new Date(AHORA.getTime() - horas * 60 * 60 * 1000).toISOString();
+const correo = (asunto: string, abierto: boolean) => ({ asunto, enviado_at: hace(72), abierto_at: abierto ? hace(3) : null, clic: false });
 
 function fila(parcial: Partial<FilaDeBandeja> = {}): FilaDeBandeja {
   return {
@@ -41,24 +42,33 @@ function fila(parcial: Partial<FilaDeBandeja> = {}): FilaDeBandeja {
     estado: "nuevo",
     prioridad: 4,
     no_contactar: null,
+    correos: [correo("Ferretería Los Andes: ¿Quién le contesta a sus clientes a las 11 de la noche?", true)],
     ...parcial,
   };
 }
 
-test("a quien abrió y no le hemos escrito le llega la pregunta, con su nombre como se dice", () => {
+test("a quien abrió y no le hemos escrito le llega el saludo que retoma su correo", () => {
   const [envio] = elegirEnvios([fila()], { ahora: AHORA, cupo: 5 });
-  assert.equal(envio.clave, "pregunta");
+  assert.equal(envio.clave, "saludo");
   assert.equal(envio.celular, "56912345678");
-  // Sin «Limitada» y con las palabras menores en minúscula, como lo diría una persona (nombreComoSeDice).
-  assert.deepEqual(envio.parametros, ["Ferretería los Andes", "una cotización", "cotice con otra empresa"]);
-  assert.match(envio.texto, /^Hola, soy Hugo, de Altius/);
-  assert.doesNotMatch(envio.texto, /abri|abrió|leíste|viste/i, "nunca dice que abrió el correo");
+  assert.equal(
+    envio.texto,
+    "Hola, soy Hugo, de Altius 👋 Hace poco te mandé un correo sobre cómo responderle a tus clientes a las 11 de la noche sin estar despierto. Como los correos se pierden entre facturas y promociones, preferí escribirte por acá. ¿Te cuento en dos líneas de qué se trata?",
+  );
+  assert.doesNotMatch(envio.texto, /abri|abrió|leíste|viste/i, "dice que se le mandó, nunca que lo abrió");
   assert.doesNotMatch(envio.texto, /\{\{\d\}\}/, "no quedan variables sin poner");
 });
 
-test("sin nombre usable, habla de «tu empresa»", () => {
-  const [envio] = elegirEnvios([fila({ empresa: null })], { ahora: AHORA, cupo: 5 });
-  assert.match(envio.texto, /Una pregunta corta sobre tu empresa:/);
+test("el tema sale del correo que leyó, y nunca se inventa", () => {
+  const chatgpt = correo("Aliwen Spa: ¿los recomienda ChatGPT cuando buscan su rubro?", true);
+  const pulso = correo("Aliwen Spa: ¿Le mostramos cómo quedaría su sitio con Atlas Pulso?", false);
+  const generico = correo("Último correo sobre su sitio web, Aliwen Spa", true);
+  const cierre = correo("Aliwen Spa: ¿lo dejamos para más adelante?", true);
+  assert.equal(temaParaWhatsapp([pulso, chatgpt], "Aliwen Spa"), "cómo lograr que Google y ChatGPT recomienden a tu empresa", "gana el que leyó");
+  assert.equal(temaParaWhatsapp([pulso, generico], "Aliwen Spa"), "cómo responderle a tus clientes a las 11 de la noche sin estar despierto", "un tema concreto gana al genérico");
+  assert.equal(temaParaWhatsapp([generico], "Aliwen Spa"), "tu sitio web");
+  assert.equal(temaParaWhatsapp([cierre], "Aliwen Spa"), "una idea para Aliwen");
+  assert.equal(temaParaWhatsapp([], null), "una idea para tu negocio");
 });
 
 test("no le escribe a quien no corresponde", () => {
@@ -77,14 +87,16 @@ test("no le escribe a quien no corresponde", () => {
   assert.equal(nadie.length, 0);
 });
 
-test("un solo seguimiento, y solo pasados tres días sin respuesta", () => {
+test("un solo último mensaje, pasados tres días sin respuesta, y después sale de la lista", () => {
   const pronto = fila({ toques: 1, ultimo_resultado: "whatsapp", ultimo_toque_at: hace(24 * 2), estado: "volvio" });
   const aTiempo = fila({ toques: 1, ultimo_resultado: "whatsapp", ultimo_toque_at: hace(24 * 3 + 1), estado: "seguimiento" });
   const envios = elegirEnvios([pronto, aTiempo], { ahora: AHORA, cupo: 5 });
   assert.equal(envios.length, 1);
   assert.equal(envios[0].leadId, aTiempo.lead_id);
-  assert.equal(envios[0].clave, "seguimiento");
-  assert.equal(envios[0].seguirEnDias, REGLAS.diasDespuesDelSeguimiento);
+  assert.equal(envios[0].clave, "ultimo");
+  assert.match(envios[0].texto, /^Último mensaje, prometido 🤞 Si algún día quieres que la web y el WhatsApp de Ferretería los Andes respondan solos/);
+  // «Prometido» se cumple: vuelve recién pasada la ventana de 14 días de la bandeja, o sea, no vuelve.
+  assert.ok(envios[0].seguirEnDias > 14);
 });
 
 test("respeta el cupo, empieza por los más interesados y no escribe dos veces al mismo celular", () => {
@@ -94,7 +106,6 @@ test("respeta el cupo, empieza por los más interesados y no escribe dos veces a
   const otro = fila({ prioridad: 4, telefono: "998877665" });
   const envios = elegirEnvios([abrio, otro, clic, mismoCelular], { ahora: AHORA, cupo: 2 });
   assert.deepEqual(envios.map((e) => e.leadId), [clic.lead_id, abrio.lead_id]);
-  assert.equal(envios[0].parametros[1], "una hora", "a una clínica le piden una hora");
   assert.ok(envios.every((e, i) => envios.findIndex((x) => x.celular === e.celular) === i));
 });
 
@@ -126,7 +137,7 @@ test("las plantillas son las que Meta acepta: marketing, sin variables en los bo
     assert.ok(plantilla.boton.length <= 25, "Meta corta las respuestas rápidas a 25 caracteres");
     const meta = definicionParaMeta(plantilla);
     assert.deepEqual(meta.components[1], { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: BOTON_DE_BAJA }] });
-    assert.ok(textoDePlantilla("pregunta", ["A", "B", "C"]).includes("A"));
+    assert.ok(textoDePlantilla("saludo", ["un tema"]).includes("sobre un tema."));
   }
 });
 

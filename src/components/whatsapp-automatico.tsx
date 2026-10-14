@@ -12,7 +12,7 @@ export type EstadoWhatsappAutomatico = {
   pausa: string | null;
   porDia: number;
   hoy: number;
-  /** Meta aprobó la pregunta (sin ella no sale nada). */
+  /** Meta aprobó el saludo (sin él no sale nada). */
   aprobado: boolean;
   puedeCambiar: boolean;
 };
@@ -21,8 +21,8 @@ const RUTA_CONECTAR = "/dashboard/admin/integraciones/whatsapp";
 
 /** Los dos mensajes tal como llegan, con un ejemplo: encender es aceptar este texto. */
 const EJEMPLOS = [
-  { titulo: "Primero", texto: textoDePlantilla("pregunta", PLANTILLAS_DE_PROSPECCION.pregunta.ejemplo) },
-  { titulo: `Si no contesta en ${REGLAS.diasHastaElSeguimiento} días`, texto: textoDePlantilla("seguimiento", PLANTILLAS_DE_PROSPECCION.seguimiento.ejemplo) },
+  { titulo: "Primero", texto: textoDePlantilla("saludo", PLANTILLAS_DE_PROSPECCION.saludo.ejemplo) },
+  { titulo: `Si no contesta en ${REGLAS.diasHastaElSeguimiento} días, el último`, texto: textoDePlantilla("ultimo", PLANTILLAS_DE_PROSPECCION.ultimo.ejemplo) },
 ];
 
 /**
@@ -51,7 +51,7 @@ export function WhatsappAutomatico({ estado }: { estado: EstadoWhatsappAutomatic
         : "Meta está revisando los mensajes (suele tardar minutos, a veces un día). Atlas empieza a escribir apenas los apruebe."
       : pausa
         ? `${pausa} Mientras, nadie recibe mensajes automáticos.`
-        : `Le escribe a quien abre o hace clic en tu campaña: una pregunta y, si no contesta en ${REGLAS.diasHastaElSeguimiento} días, un seguimiento. Hasta ${porDia} al día, de lunes a viernes de ${REGLAS.horaDesde} a ${REGLAS.horaHasta} h.`;
+        : `Le escribe a quien abre o hace clic en tu campaña: un saludo que retoma el correo y, si no contesta en ${REGLAS.diasHastaElSeguimiento} días, un último mensaje. Hasta ${porDia} al día, de lunes a viernes de ${REGLAS.horaDesde} a ${REGLAS.horaHasta} h.`;
 
   return (
     <section aria-label="WhatsApp automático" className="atlas-panel rounded-xl border border-border bg-surface px-5 py-3.5 shadow-sm">
@@ -80,7 +80,7 @@ export function WhatsappAutomatico({ estado }: { estado: EstadoWhatsappAutomatic
               ))}
             </div>
             <p className="mt-2 text-muted-foreground">
-              Quien toca «{BOTON_DE_BAJA}» sale de la lista. Quien responde deja de recibir mensajes automáticos: sigues tú desde el teléfono.
+              Quien toca «{BOTON_DE_BAJA}» sale de la lista. Quien responde deja de recibir mensajes automáticos: sigues tú desde el teléfono. Quien no contesta el último sale de Por contactar, salvo que vuelva a abrir un correo.
             </p>
           </details>
         </div>

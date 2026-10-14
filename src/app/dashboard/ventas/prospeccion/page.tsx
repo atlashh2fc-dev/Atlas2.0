@@ -243,7 +243,7 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
           pausa: configWhatsapp.whatsapp_pausa ?? null,
           porDia: configWhatsapp.whatsapp_por_dia ?? REGLAS.porDiaPorDefecto,
           hoy: automaticosHoy ?? 0,
-          aprobado: (canalWhatsapp?.plantillas_aprobadas ?? []).includes(PLANTILLAS_DE_PROSPECCION.pregunta.nombre),
+          aprobado: (canalWhatsapp?.plantillas_aprobadas ?? []).includes(PLANTILLAS_DE_PROSPECCION.saludo.nombre),
           puedeCambiar: profile.role === "admin",
         }
       : null;
