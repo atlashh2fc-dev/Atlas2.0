@@ -153,4 +153,6 @@ test("el agente tiene correa: apagado por defecto, tope, pausa sola y ensayo que
   const cron = crons.crons.find((c) => c.path === "/api/agentes/whatsapp-prospectos");
   assert.ok(cron, "falta el cron");
   assert.match(cron.schedule, /1-5$/, "solo días hábiles");
+  // Sin esto el middleware manda el cron al login y el agente nunca corre.
+  assert.match(leer("src/lib/supabase/middleware.ts"), /"\/api\/agentes\/whatsapp-prospectos"/);
 });

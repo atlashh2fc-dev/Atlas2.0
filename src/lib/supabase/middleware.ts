@@ -65,6 +65,8 @@ const MACHINE_ONLY_PATHS = new Set([
   "/api/orbita/tareas",
   "/api/agentes/vigilante",
   "/api/agentes/vendedor",
+  // WhatsApp automático a prospectos: Vercel Cron con CRON_SECRET.
+  "/api/agentes/whatsapp-prospectos",
   // El despacho de mensajes lo despierta el cron con el mismo secreto.
   "/api/mensajes/despachar",
   // Borra las fotos originales del Estudio de Look que cumplieron 90 días.
