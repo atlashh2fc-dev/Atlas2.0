@@ -1,8 +1,9 @@
 import { ChevronRight, Send, Smartphone, Webhook } from "lucide-react";
 
-import { saveWhatsAppChannelConfig } from "@/app/actions/whatsapp";
+import { conectarWhatsAppConTokenDelSistema, saveWhatsAppChannelConfig } from "@/app/actions/whatsapp";
 import { ConectarWhatsAppMeta } from "@/components/conectar-whatsapp-meta";
 import { registroDeMeta } from "@/lib/meta-registro";
+import { contextoDeMiEmpresa } from "@/lib/modules.server";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { isWhatsAppProviderConfigured, whatsappProvider } from "@/lib/whatsapp-provider";
@@ -41,6 +42,7 @@ export default async function WhatsAppIntegrationPage() {
   // Solo el canal de la empresa que se está mirando: el dueño de la plataforma
   // ve todas por RLS, y antes esta página mostraba el de Geimser en cualquiera.
   const { data: organizationId } = await supabase.rpc("current_org_id");
+  const { duenio } = await contextoDeMiEmpresa();
   const [{ data: channelData }, { data: campaigns }] = await Promise.all([
     supabase.from("whatsapp_channels").select("*").eq("organization_id", organizationId as string).eq("canal", "whatsapp").order("created_at").limit(1).maybeSingle(),
     supabase.from("campaigns").select("id, name").eq("is_active", true).order("name"),
@@ -128,6 +130,32 @@ export default async function WhatsAppIntegrationPage() {
               </p>
             )}
           </div>
+          {/* El portfolio dueño de la app no puede compartirse su WhatsApp a sí mismo por el botón de Meta. */}
+          {duenio && (
+            <details className="group border-t border-border px-5 py-4">
+              <summary className="cursor-pointer select-none text-[13px] font-medium text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                ¿Es el número de la empresa dueña de Atlas? Conéctalo con un token
+              </summary>
+              <p className="mt-2 max-w-2xl text-xs text-muted-foreground">
+                Para el portfolio dueño de la app «Atlas CRM», el botón de Meta falla en el último paso: Meta no deja compartir la cuenta consigo
+                misma. Genera el token de un usuario del sistema con la app y la cuenta de mensajes asignadas, y pégalo aquí. Atlas comprueba
+                que el número esté habilitado para enviar antes de conectarlo, y el token queda cifrado.
+              </p>
+              <ActionForm action={conectarWhatsAppConTokenDelSistema} success="WhatsApp conectado a Atlas" className="mt-3 grid max-w-xl gap-3">
+                <Field label="Token del usuario del sistema">
+                  <Input name="token" type="password" autoComplete="off" spellCheck={false} required placeholder="EAA…" />
+                </Field>
+                <Field label="Identificador de la cuenta de mensajes (solo si Atlas no la encuentra)">
+                  <Input name="waba_id" inputMode="numeric" autoComplete="off" placeholder="Opcional" />
+                </Field>
+                <div>
+                  <ActionSubmit size="sm" variant="secondary" pendingLabel="Comprobando con Meta…">
+                    Conectar con el token
+                  </ActionSubmit>
+                </div>
+              </ActionForm>
+            </details>
+          )}
         </SectionCard>
       )}
 

@@ -7,7 +7,8 @@ import { revalidatePath } from "next/cache";
 import { requireProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { canjearCodigo, cuentaDelToken, datosDelNumero, sincronizarAppDelTelefono, suscribirApp, vencimientoDelToken } from "@/lib/meta-registro";
+import { canjearCodigo, cuentaDelToken, cuentaDelTokenDelSistema, datosDelNumero, sincronizarAppDelTelefono, suscribirApp, vencimientoDelToken } from "@/lib/meta-registro";
+import { contextoDeMiEmpresa } from "@/lib/modules.server";
 import { esCanalSocial } from "@/lib/mensajeria-social";
 import { olvidarTokenDelCanal } from "@/lib/whatsapp-credenciales";
 import { assertCanOperateAssignedConversation } from "@/lib/workspace-permissions";
@@ -630,6 +631,64 @@ export async function saveWhatsAppChannelConfig(formData: FormData) {
   revalidatePath("/dashboard/conversaciones/whatsapp");
 }
 
+/**
+ * Lo común a las dos formas de conectar un número de Meta: suscribe la app de
+ * Altius a su WhatsApp, guarda el canal en la empresa que se está mirando con
+ * el token en la bóveda y, si el número sigue en la app del teléfono, pide a
+ * Meta los contactos y el historial.
+ */
+async function guardarCanalDeMeta(
+  admin: ReturnType<typeof createAdminClient>,
+  entrada: { organizationId: string; perfilId: string; token: string; wabaId: string; phoneNumberId: string; coexistencia: boolean },
+): Promise<ResultadoConexionMeta> {
+  const { organizationId, perfilId, token, wabaId, phoneNumberId, coexistencia } = entrada;
+  const { data: existente } = await admin
+    .from("whatsapp_channels")
+    .select("id, organization_id")
+    .eq("phone_number_id", phoneNumberId)
+    .maybeSingle();
+  if (existente && existente.organization_id !== organizationId) {
+    return { ok: false, error: "Ese número ya está conectado a otra empresa." };
+  }
+
+  await suscribirApp(wabaId, token);
+  const [{ numero, nombre }, venceAt] = await Promise.all([datosDelNumero(phoneNumberId, token), vencimientoDelToken(token)]);
+
+  const { data: canal, error: canalError } = await admin
+    .from("whatsapp_channels")
+    .upsert(
+      {
+        organization_id: organizationId,
+        provider: "meta",
+        waba_id: wabaId,
+        phone_number_id: phoneNumberId,
+        display_phone_number: numero ?? phoneNumberId,
+        business_name: nombre ?? "WhatsApp Business",
+        status: "active",
+        coexistencia,
+        conectado_at: new Date().toISOString(),
+        token_vence_at: venceAt,
+        last_error: null,
+        created_by: perfilId,
+        updated_by: perfilId,
+      },
+      { onConflict: "phone_number_id" },
+    )
+    .select("id")
+    .single();
+  if (canalError || !canal) throw errorDeAccion(canalError, "No se pudo guardar el canal.");
+
+  const { error: tokenError } = await admin.rpc("guardar_token_de_canal_whatsapp", { p_channel_id: canal.id, p_token: token });
+  if (tokenError) throw new Error("No se pudo guardar la credencial del número.");
+  olvidarTokenDelCanal(canal.id);
+
+  const avisos = coexistencia ? await sincronizarAppDelTelefono(phoneNumberId, token) : [];
+
+  revalidatePath("/dashboard/admin/integraciones/whatsapp");
+  revalidatePath("/dashboard/conversaciones/whatsapp");
+  return { ok: true, numero: numero ?? phoneNumberId, coexistencia, avisos };
+}
+
 export type ResultadoConexionMeta =
   | { ok: true; numero: string; coexistencia: boolean; avisos: string[] }
   | { ok: false; error: string };
@@ -666,56 +725,40 @@ export async function conectarWhatsAppDesdeMeta(entrada: {
     const cuenta = delAviso
       ? { wabaId: entrada.wabaId!.trim(), phoneNumberId: entrada.phoneNumberId!.trim(), coexistencia: entrada.coexistencia ?? false }
       : await cuentaDelToken(token).then((datos) => ({ ...datos, coexistencia: datos.enLaApp ?? true }));
-    const { wabaId, phoneNumberId, coexistencia } = cuenta;
-
-    const { data: existente } = await admin
-      .from("whatsapp_channels")
-      .select("id, organization_id")
-      .eq("phone_number_id", phoneNumberId)
-      .maybeSingle();
-    if (existente && existente.organization_id !== organizationId) {
-      return { ok: false, error: "Ese número ya está conectado a otra empresa." };
-    }
-
-    await suscribirApp(wabaId, token);
-    const [{ numero, nombre }, venceAt] = await Promise.all([datosDelNumero(phoneNumberId, token), vencimientoDelToken(token)]);
-
-    const { data: canal, error: canalError } = await admin
-      .from("whatsapp_channels")
-      .upsert(
-        {
-          organization_id: organizationId,
-          provider: "meta",
-          waba_id: wabaId,
-          phone_number_id: phoneNumberId,
-          display_phone_number: numero ?? phoneNumberId,
-          business_name: nombre ?? "WhatsApp Business",
-          status: "active",
-          coexistencia,
-          conectado_at: new Date().toISOString(),
-          token_vence_at: venceAt,
-          last_error: null,
-          created_by: profile.id,
-          updated_by: profile.id,
-        },
-        { onConflict: "phone_number_id" },
-      )
-      .select("id")
-      .single();
-    if (canalError || !canal) throw errorDeAccion(canalError, "No se pudo guardar el canal.");
-
-    const { error: tokenError } = await admin.rpc("guardar_token_de_canal_whatsapp", { p_channel_id: canal.id, p_token: token });
-    if (tokenError) throw new Error("No se pudo guardar la credencial del número.");
-    olvidarTokenDelCanal(canal.id);
-
-    const avisos = coexistencia ? await sincronizarAppDelTelefono(phoneNumberId, token) : [];
-
-    revalidatePath("/dashboard/admin/integraciones/whatsapp");
-    revalidatePath("/dashboard/conversaciones/whatsapp");
-    return { ok: true, numero: numero ?? phoneNumberId, coexistencia, avisos };
+    return await guardarCanalDeMeta(admin, { organizationId, perfilId: profile.id, token, ...cuenta });
   } catch (error) {
     const mensaje = error instanceof Error ? error.message : "Meta no respondió.";
     console.error("whatsapp_registro_meta_fallido", { message: mensaje.slice(0, 300) });
     return { ok: false, error: mensaje };
   }
+}
+
+/**
+ * Conecta el WhatsApp de la empresa dueña de la app con el token de un usuario
+ * del sistema de su portfolio (ver cuentaDelTokenDelSistema). Solo para el
+ * dueño de la plataforma: un cliente conecta con el botón de Meta. El token se
+ * pega en Atlas y va directo a la bóveda; no se registra en ningún log.
+ */
+export async function conectarWhatsAppConTokenDelSistema(formData: FormData) {
+  const profile = await requireProfile(["admin"]);
+  if (!(await contextoDeMiEmpresa()).duenio) throw new Error("Esta conexión es solo para la empresa dueña de Atlas. Usa el botón de Meta.");
+  const token = String(formData.get("token") ?? "").replace(/\s+/g, "");
+  const wabaIndicado = String(formData.get("waba_id") ?? "").trim();
+  if (token.length < 50) throw new Error("Pega el token completo que generó Meta.");
+
+  const supabase = await createClient();
+  const { data: organizationId } = await supabase.rpc("current_org_id");
+  if (typeof organizationId !== "string") throw new Error("No se pudo saber en qué empresa estás.");
+
+  const cuenta = await cuentaDelTokenDelSistema(token, wabaIndicado || null);
+  const resultado = await guardarCanalDeMeta(createAdminClient(), {
+    organizationId,
+    perfilId: profile.id,
+    token,
+    wabaId: cuenta.wabaId,
+    phoneNumberId: cuenta.phoneNumberId,
+    coexistencia: cuenta.enLaApp ?? true,
+  });
+  if (!resultado.ok) throw new Error(resultado.error);
+  if (resultado.avisos.length) console.error("whatsapp_sincronizacion_pendiente", { avisos: resultado.avisos.map((aviso) => aviso.slice(0, 200)) });
 }

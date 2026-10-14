@@ -143,6 +143,79 @@ export async function cuentaDelToken(token: string): Promise<{ wabaId: string; p
   return { wabaId, phoneNumberId: lista[0].id, enLaApp };
 }
 
+/**
+ * El camino del dueño de la app. El registro insertado comparte el WhatsApp
+ * de la empresa con el portfolio dueño de «Atlas CRM»; para Altius, que es ese
+ * mismo portfolio, Meta rechaza compartírselo a sí mismo («no es un
+ * identificador del negocio válido», 14-10-2026). Como la app y el número son
+ * de Altius, no hace falta compartir: basta el token de un usuario del sistema
+ * de su portfolio con la app y la cuenta asignadas.
+ *
+ * Antes de guardar nada se comprueba que el token sea de esta app y tenga los
+ * dos permisos de WhatsApp, y que Meta tenga el número habilitado para la API
+ * (platform_type CLOUD_API). Un número que solo vive en la app del teléfono
+ * se ve «Conectado» en Meta, pero no envía ni recibe desde Atlas.
+ */
+export async function cuentaDelTokenDelSistema(
+  token: string,
+  wabaIdIndicado?: string | null,
+): Promise<{ wabaId: string; phoneNumberId: string; enLaApp: boolean | null; numero: string | null; nombre: string | null }> {
+  const { appId } = registroDeMeta();
+  const appSecret = process.env.ATLAS_META_APP_SECRET?.trim();
+  if (!appSecret) throw new Error("Falta ATLAS_META_APP_SECRET en el servidor.");
+
+  const depurado = await graph("debug_token", { query: { input_token: token, access_token: `${appId}|${appSecret}` } });
+  const info = (depurado.data ?? {}) as Json;
+  if (info.is_valid !== true) throw new Error("Meta dice que ese token no es válido. Genera uno nuevo y pégalo completo.");
+  if (String(info.app_id ?? "") !== appId) throw new Error("Ese token es de otra app. Genéralo para la app «Atlas CRM».");
+  const permisos = new Set(((info.scopes ?? []) as string[]).map(String));
+  const faltan = ["whatsapp_business_messaging", "whatsapp_business_management"].filter((permiso) => !permisos.has(permiso));
+  if (faltan.length) throw new Error(`Al token le falta el permiso ${faltan.join(" y ")}. Vuelve a generarlo marcándolo.`);
+
+  let wabaId = wabaIdIndicado?.trim() || null;
+  if (wabaId && !/^\d+$/.test(wabaId)) throw new Error("El identificador de la cuenta son solo números.");
+  if (!wabaId) {
+    const cuentas = new Set(
+      ((info.granular_scopes ?? []) as { scope?: string; target_ids?: string[] }[])
+        .filter((permiso) => permiso.scope === "whatsapp_business_management" || permiso.scope === "whatsapp_business_messaging")
+        .flatMap((permiso) => permiso.target_ids ?? []),
+    );
+    if (cuentas.size !== 1) {
+      throw new Error(
+        cuentas.size === 0
+          ? "El token no dice a qué cuenta de WhatsApp tiene acceso. Pega también el identificador de la cuenta de mensajes."
+          : "El token tiene acceso a varias cuentas de WhatsApp. Pega también el identificador de la que quieres conectar.",
+      );
+    }
+    [wabaId] = cuentas;
+  }
+
+  const numeros = await graph(`${encodeURIComponent(wabaId)}/phone_numbers`, {
+    token,
+    query: { fields: "id,display_phone_number,verified_name,platform_type" },
+  });
+  const lista = (numeros.data ?? []) as { id?: string; display_phone_number?: string; verified_name?: string; platform_type?: string }[];
+  if (lista.length !== 1 || !lista[0].id) {
+    throw new Error(lista.length === 0 ? "Esa cuenta de WhatsApp no tiene números." : "Esa cuenta de WhatsApp tiene varios números; Atlas conecta uno por empresa.");
+  }
+  const [numero] = lista;
+  if (numero.platform_type !== "CLOUD_API") {
+    throw new Error(
+      `Meta todavía no habilita ${numero.display_phone_number ?? "el número"} para enviar desde Atlas (plataforma: ${numero.platform_type ?? "sin dato"}). ` +
+        "No se conectó nada: hay que terminar la habilitación con Meta.",
+    );
+  }
+
+  let enLaApp: boolean | null = null;
+  try {
+    const detalle = await graph(encodeURIComponent(numero.id!), { token, query: { fields: "is_on_biz_app" } });
+    if (typeof detalle.is_on_biz_app === "boolean") enLaApp = detalle.is_on_biz_app;
+  } catch {
+    // Campo que Meta no siempre expone: se asume que sigue en la app del teléfono.
+  }
+  return { wabaId, phoneNumberId: numero.id!, enLaApp, numero: numero.display_phone_number ?? null, nombre: numero.verified_name ?? null };
+}
+
 /** Cuándo vence el token (null: no vence o Meta no lo dijo). */
 export async function vencimientoDelToken(token: string): Promise<string | null> {
   const { appId } = registroDeMeta();
