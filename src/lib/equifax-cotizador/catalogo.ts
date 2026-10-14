@@ -543,6 +543,23 @@ export function desglosePorProducto(lineas: MontoLinea[]): string {
   return lineas.map((linea) => `${linea.nombre} ${montoLinea(linea)}`).join(" · ") || "Sin valor";
 }
 
+/** Las líneas guardadas en equifax_cotizaciones.lineas, con su nombre corto de Atlas. */
+export function lineasGuardadas(valor: unknown): MontoLinea[] {
+  if (!Array.isArray(valor)) return [];
+  return valor.flatMap((linea) => {
+    if (!linea || typeof linea !== "object") return [];
+    const { atlas, nombre, cobro, uf_venta, publicacion } = linea as Record<string, unknown>;
+    if (cobro !== "mensual" && cobro !== "unico" && cobro !== "anual" && cobro !== "clp") return [];
+    const total = (publicacion as { total?: unknown } | null)?.total;
+    return [{
+      nombre: String(atlas ?? nombre ?? "Producto"),
+      cobro,
+      ufVenta: uf_venta == null ? null : Number(uf_venta),
+      clp: total == null ? null : Number(total),
+    }];
+  });
+}
+
 /** Una línea cotizada con el nombre corto de Atlas, para el registro y la ficha. */
 export const montoAtlas = (linea: LineaCotizada): MontoLinea => ({
   nombre: linea.atlas,

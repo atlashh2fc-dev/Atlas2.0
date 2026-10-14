@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { cotizarLinea, desglosePorProducto, montoAtlas, normalizarConfig, totales } from "../src/lib/equifax-cotizador/catalogo.ts";
+import { cotizarLinea, desglosePorProducto, lineasGuardadas, montoAtlas, normalizarConfig, totales } from "../src/lib/equifax-cotizador/catalogo.ts";
 import { asuntoDeRespuesta, respuestaHtml } from "../src/lib/equifax-cotizador/correo-cuenta.ts";
 import { asuntoPropuesta, correoHtml, mensajeWhatsapp, remitenteDeEjecutivo, vocativo, type DatosPropuesta } from "../src/lib/equifax-cotizador/propuesta.ts";
 
@@ -171,4 +171,15 @@ test("con varios productos la propuesta muestra el precio de cada uno y no la su
   assert.ok(whatsapp.includes(`• ${mora.nombre}: *2,50 UF* + IVA mensual`));
 
   assert.equal(desglosePorProducto([portfolio, mora].map(montoAtlas)), "Portfolio Monitor 1,50 UF/mes · Mora Control 2,50 UF/mes");
+});
+
+test("Enviados lee las líneas guardadas en equifax_cotizaciones con su precio, y descarta lo que no entiende", () => {
+  const guardadas = [
+    { atlas: "Bundle", nombre: "Mora Control Ilimitado + Informes Comerciales", cobro: "mensual", uf_venta: 3, publicacion: null },
+    { atlas: "Publicación Única", cobro: "clp", uf_venta: null, publicacion: { total: 25000 } },
+    { atlas: "Roto", cobro: "semanal", uf_venta: 1 },
+    null,
+  ];
+  assert.equal(desglosePorProducto(lineasGuardadas(guardadas)), "Bundle 3 UF/mes · Publicación Única $25.000 publicación");
+  assert.deepEqual(lineasGuardadas("no es una lista"), []);
 });

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ChevronRight, ClipboardCheck, ExternalLink, Inbox, Mail } from "lucide-react";
+import { ChevronRight, ClipboardCheck, ExternalLink, Inbox, Mail, Send } from "lucide-react";
 
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -8,9 +8,10 @@ import { getOpenCall } from "@/app/actions/calls";
 import { CallTypificationForm } from "@/components/call-typification-form";
 import { CorreoRegistroPanel, type CorreoEnviado, type CorreoRecibido } from "@/components/correo-registro-panel";
 import { OPEN_CALL_FORM_ATTRIBUTE } from "@/lib/call-management-navigation";
+import { desglosePorProducto, lineasGuardadas, montoLinea } from "@/lib/equifax-cotizador/catalogo";
 import { contextoDeTipificacion } from "@/lib/tipificacion-contexto.server";
 import { EsperaDelCliente, RefrescoDeBandeja, TipificarCorreo } from "@/components/puesto-correo";
-import { Avatar, EmptyState, SectionCard, SegmentTabs, type SegmentTab } from "@/components/ui";
+import { Avatar, Badge, buttonClasses, EmptyState, SectionCard, SegmentTabs, type BadgeTone, type SegmentTab } from "@/components/ui";
 import { cn } from "@/lib/utils";
 
 /**
@@ -19,7 +20,8 @@ import { cn } from "@/lib/utils";
  * Para el ejecutivo es su bandeja: los clientes cuyo correo le asignó la cola
  * (o que son suyos por agenda, propuesta o registro), el hilo al centro y el
  * cliente al lado, como el WhatsApp. Se responde por el buzón de la cuenta y
- * se cierra con la tipificación de siempre.
+ * se cierra con la tipificación de siempre. En «Enviados» repasa lo que él
+ * mismo mandó por correo: propuestas y respuestas, con su estado.
  *
  * Para supervisión sigue siendo la entrada a los buzones: el de la cuenta se
  * supervisa como cola en Correo › Buzón, y los de campaña en su campaña.
@@ -27,7 +29,7 @@ import { cn } from "@/lib/utils";
 export default async function MailAttentionPage({
   searchParams,
 }: {
-  searchParams: Promise<{ registro?: string; vista?: string }>;
+  searchParams: Promise<{ registro?: string; vista?: string; envio?: string }>;
 }) {
   const profile = await requireProfile(["agente", "supervisor", "admin"]);
   if (profile.role !== "agente") return <BuzonesDeSupervision />;
@@ -125,9 +127,9 @@ function conversaciones(filas: FilaCorreo[]): Conversacion[] {
   return [...porRegistro.values()];
 }
 
-async function BandejaDelEjecutivo({ profileId, params }: { profileId: string; params: { registro?: string; vista?: string } }) {
+async function BandejaDelEjecutivo({ profileId, params }: { profileId: string; params: { registro?: string; vista?: string; envio?: string } }) {
   const supabase = await createClient();
-  const vista = params.vista === "atendidos" ? "atendidos" : "pendientes";
+  const vista = params.vista === "atendidos" || params.vista === "enviados" ? params.vista : "pendientes";
   const ahora = new Date();
   const desde = new Date(ahora.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -151,6 +153,16 @@ async function BandejaDelEjecutivo({ profileId, params }: { profileId: string; p
   const lista = vista === "atendidos" ? atendidos : porAtender;
   const elegida = todas.find((c) => c.leadId === params.registro) ?? lista[0] ?? null;
 
+  // Solo la cola por atender lleva cifra: es la que pide acción, y con tres
+  // pestañas en la columna de 20rem no caben tres conteos.
+  const pestanas: SegmentTab[] = [
+    { id: "pendientes", label: "Por atender", href: "/dashboard/conversaciones/correo?vista=pendientes", count: porAtender.length },
+    { id: "atendidos", label: "Atendidos", href: "/dashboard/conversaciones/correo?vista=atendidos" },
+    { id: "enviados", label: "Enviados", href: "/dashboard/conversaciones/correo?vista=enviados" },
+  ];
+
+  if (vista === "enviados") return <EnviadosDelEjecutivo profileId={profileId} envio={params.envio} pestanas={pestanas} />;
+
   if (todas.length === 0) {
     return (
       <>
@@ -159,6 +171,11 @@ async function BandejaDelEjecutivo({ profileId, params }: { profileId: string; p
           icon={Inbox}
           title="Sin correos de clientes"
           description="Cuando un cliente responda al buzón de tu campaña, o la cola te entregue una conversación, aparece acá. Si no quieres recibir correo nuevo, apágalo en tu estado, arriba."
+          action={
+            <Link href="/dashboard/conversaciones/correo?vista=enviados" className={buttonClasses({ variant: "secondary", size: "sm" })}>
+              <Send size={14} aria-hidden="true" /> Ver los correos que enviaste
+            </Link>
+          }
         />
         <RefrescoDeBandeja />
       </>
@@ -203,11 +220,6 @@ async function BandejaDelEjecutivo({ profileId, params }: { profileId: string; p
     campaigns: Relacion<{ name: string }>;
   } | null;
   const hrefDe = (leadId: string) => `/dashboard/conversaciones/correo?${new URLSearchParams({ vista, registro: leadId })}`;
-
-  const pestanas: SegmentTab[] = [
-    { id: "pendientes", label: "Por atender", href: "/dashboard/conversaciones/correo?vista=pendientes", count: porAtender.length },
-    { id: "atendidos", label: "Atendidos", href: "/dashboard/conversaciones/correo?vista=atendidos", count: atendidos.length },
-  ];
   const nombreCliente = ficha?.full_name ?? elegida?.nombre ?? "";
   const datosCliente: [string, string | null | undefined][] = [
     ["Campaña", uno(ficha?.campaigns ?? null)?.name],
@@ -346,6 +358,248 @@ async function BandejaDelEjecutivo({ profileId, params }: { profileId: string; p
           </div>
         </aside>
       )}
+    </div>
+  );
+}
+
+type Envio = {
+  /** "p-<id>" para una propuesta, "r-<id>" para una respuesta: va en ?envio=. */
+  clave: string;
+  tipo: "propuesta" | "respuesta";
+  id: string;
+  leadId: string;
+  cliente: string;
+  destinatario: string;
+  asunto: string;
+  /** Lo que se mandó en una línea: los productos con su precio, o el asunto. */
+  resumen: string;
+  fecha: string;
+  estado: "enviando" | "enviado" | "fallido";
+  error: string | null;
+  respondidaAt: string | null;
+  cuerpo: string | null;
+  lineas: unknown;
+};
+
+const ESTADO_ENVIO: Record<Envio["estado"], { texto: string; tono: BadgeTone }> = {
+  enviando: { texto: "Enviando", tono: "warning" },
+  enviado: { texto: "Enviado", tono: "neutral" },
+  fallido: { texto: "No salió", tono: "danger" },
+};
+
+function EstadoDelEnvio({ envio }: { envio: Envio }) {
+  if (envio.respondidaAt && envio.estado === "enviado") return <Badge tone="success">Respondió</Badge>;
+  const { texto, tono } = ESTADO_ENVIO[envio.estado];
+  return <Badge tone={tono}>{texto}</Badge>;
+}
+
+/** Cada producto de la propuesta como lo leyó el cliente, con su precio por separado. */
+function lineasDeLaPropuesta(valor: unknown) {
+  if (!Array.isArray(valor)) return [];
+  return valor.flatMap((linea) => {
+    const [monto] = lineasGuardadas([linea]);
+    if (!monto) return [];
+    const { nombre, detalle } = linea as Record<string, unknown>;
+    return [{
+      nombre: typeof nombre === "string" && nombre ? nombre : monto.nombre,
+      detalle: typeof detalle === "string" && detalle ? detalle : null,
+      monto: montoLinea(monto),
+    }];
+  });
+}
+
+/**
+ * Lo que el ejecutivo mandó por correo desde Atlas: las propuestas del
+ * cotizador y las respuestas a clientes. Sale todo del buzón de la cuenta, así
+ * que no hay otra carpeta de enviados donde mirarlo.
+ */
+async function EnviadosDelEjecutivo({ profileId, envio, pestanas }: { profileId: string; envio?: string; pestanas: SegmentTab[] }) {
+  const supabase = await createClient();
+  const [propuestas, respuestas] = await Promise.all([
+    supabase
+      .from("equifax_cotizaciones")
+      .select("id, lead_id, destinatario, asunto, lineas, estado, error, created_at, enviada_at, respondida_at, leads(full_name)")
+      .eq("agent_id", profileId)
+      .eq("canal", "correo")
+      .order("created_at", { ascending: false })
+      .limit(150),
+    supabase
+      .from("correos_de_registro")
+      .select("id, lead_id, destinatario, asunto, cuerpo, estado, error, created_at, enviado_at, leads(full_name)")
+      .eq("agent_id", profileId)
+      .order("created_at", { ascending: false })
+      .limit(150),
+  ]);
+  const error = propuestas.error ?? respuestas.error;
+
+  type Lead = Relacion<{ full_name: string | null }>;
+  const envios: Envio[] = [
+    ...((propuestas.data ?? []) as unknown as {
+      id: string; lead_id: string; destinatario: string; asunto: string | null; lineas: unknown;
+      estado: "enviando" | "enviada" | "fallida"; error: string | null; created_at: string;
+      enviada_at: string | null; respondida_at: string | null; leads: Lead;
+    }[]).map((fila): Envio => ({
+      clave: `p-${fila.id}`,
+      tipo: "propuesta",
+      id: fila.id,
+      leadId: fila.lead_id,
+      cliente: uno(fila.leads)?.full_name || fila.destinatario,
+      destinatario: fila.destinatario,
+      asunto: fila.asunto ?? "Propuesta comercial",
+      resumen: `Propuesta · ${desglosePorProducto(lineasGuardadas(fila.lineas))}`,
+      fecha: fila.enviada_at ?? fila.created_at,
+      estado: fila.estado === "enviada" ? "enviado" : fila.estado === "fallida" ? "fallido" : "enviando",
+      error: fila.error,
+      respondidaAt: fila.respondida_at,
+      cuerpo: null,
+      lineas: fila.lineas,
+    })),
+    ...((respuestas.data ?? []) as unknown as {
+      id: string; lead_id: string; destinatario: string; asunto: string; cuerpo: string;
+      estado: "enviando" | "enviado" | "fallido"; error: string | null; created_at: string;
+      enviado_at: string | null; leads: Lead;
+    }[]).map((fila): Envio => ({
+      clave: `r-${fila.id}`,
+      tipo: "respuesta",
+      id: fila.id,
+      leadId: fila.lead_id,
+      cliente: uno(fila.leads)?.full_name || fila.destinatario,
+      destinatario: fila.destinatario,
+      asunto: fila.asunto,
+      resumen: `Respuesta · ${fila.asunto}`,
+      fecha: fila.enviado_at ?? fila.created_at,
+      estado: fila.estado,
+      error: fila.error,
+      respondidaAt: null,
+      cuerpo: fila.cuerpo,
+      lineas: null,
+    })),
+  ].sort((a, b) => b.fecha.localeCompare(a.fecha));
+
+  const elegido = envios.find((e) => e.clave === envio) ?? envios[0] ?? null;
+  const ahora = new Date();
+  const lineas = elegido?.tipo === "propuesta" ? lineasDeLaPropuesta(elegido.lineas) : [];
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
+      <nav aria-label="Correos enviados" className="atlas-panel min-w-0 overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
+        <div className="border-b border-border px-2">
+          <SegmentTabs tabs={pestanas} activeId="enviados" label="Qué conversaciones ver" />
+        </div>
+        {error && <p role="alert" className="px-4 pt-3 text-xs text-danger">No se pudo leer todo lo enviado: {error.message}</p>}
+        {envios.length === 0 ? (
+          <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+            Todavía no envías correos desde Atlas. Las propuestas del cotizador y tus respuestas a clientes quedan acá.
+          </p>
+        ) : (
+          <ul className="max-h-[calc(100dvh-16rem)] overflow-y-auto">
+            {envios.map((e) => {
+              const activo = e.clave === elegido?.clave;
+              return (
+                <li key={e.clave}>
+                  <Link
+                    href={`/dashboard/conversaciones/correo?${new URLSearchParams({ vista: "enviados", envio: e.clave })}`}
+                    aria-current={activo ? "true" : undefined}
+                    className={cn(
+                      "flex gap-3 px-3.5 py-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                      activo ? "bg-primary/[0.07]" : "hover:bg-surface-muted/60",
+                    )}
+                  >
+                    <Avatar name={e.cliente} size="md" />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-baseline justify-between gap-2">
+                        <span className="truncate text-[13px] font-medium text-foreground">{e.cliente}</span>
+                        <time dateTime={e.fecha} title={cuando.format(new Date(e.fecha))} className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                          {horaRelativa(e.fecha, ahora)}
+                        </time>
+                      </span>
+                      <span className="mt-0.5 block truncate text-xs text-foreground/85">{e.resumen}</span>
+                      <span className="mt-0.5 flex items-center justify-between gap-2">
+                        <span className="truncate text-xs text-muted-foreground">Para {e.destinatario}</span>
+                        {(e.estado !== "enviado" || e.respondidaAt) && (
+                          <span className="shrink-0 text-[11px]">
+                            <EstadoDelEnvio envio={e} />
+                          </span>
+                        )}
+                      </span>
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </nav>
+
+      <section aria-label="Correo enviado" className="min-w-0">
+        {elegido ? (
+          <SectionCard
+            title={elegido.tipo === "propuesta" ? "Propuesta comercial" : "Respuesta al cliente"}
+            description={elegido.asunto}
+            actions={<EstadoDelEnvio envio={elegido} />}
+          >
+            <dl className="grid gap-x-6 gap-y-2.5 border-t border-border/70 px-5 py-4 text-xs sm:grid-cols-2">
+              {(
+                [
+                  ["Cliente", elegido.cliente],
+                  ["Para", elegido.destinatario],
+                  ["Enviado", cuando.format(new Date(elegido.fecha))],
+                  elegido.tipo === "propuesta" ? ["Folio", elegido.id.slice(0, 8).toUpperCase()] : null,
+                ].filter(Boolean) as [string, string][]
+              ).map(([etiqueta, valor]) => (
+                <div key={etiqueta} className="flex min-w-0 items-baseline justify-between gap-3 sm:justify-start">
+                  <dt className="w-16 shrink-0 text-muted-foreground">{etiqueta}</dt>
+                  <dd className="min-w-0 break-words font-medium text-foreground">{valor}</dd>
+                </div>
+              ))}
+            </dl>
+
+            {elegido.tipo === "propuesta" && lineas.length > 0 && (
+              <div className="border-t border-border/70 px-5 py-4">
+                <p className="text-xs font-medium text-muted-foreground">Lo que le propusiste</p>
+                <ul className="mt-1 divide-y divide-border/70">
+                  {lineas.map((linea, indice) => (
+                    <li key={indice} className="flex items-start justify-between gap-4 py-2.5">
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium text-foreground">{linea.nombre}</span>
+                        {linea.detalle && <span className="block text-xs text-muted-foreground">{linea.detalle}</span>}
+                      </span>
+                      <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">{linea.monto}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {elegido.cuerpo && (
+              <div className="border-t border-border/70 px-5 py-4">
+                <p className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground">{elegido.cuerpo}</p>
+              </div>
+            )}
+
+            {elegido.estado === "fallido" && (
+              <p role="alert" className="border-t border-border/70 px-5 py-3 text-xs text-danger">
+                No salió: {elegido.error ?? "el servidor de correo lo rechazó"}. Puedes volver a enviarlo desde la ficha.
+              </p>
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/70 bg-surface-raised px-5 py-3">
+              <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+                {elegido.respondidaAt
+                  ? `El cliente respondió el ${cuando.format(new Date(elegido.respondidaAt))}.`
+                  : elegido.estado === "enviado"
+                    ? "«Enviado» quiere decir que el servidor de correo lo aceptó; Atlas no sabe si el cliente lo abrió."
+                    : null}
+              </p>
+              <Link href={`/dashboard/leads/${elegido.leadId}`} className={buttonClasses({ variant: "secondary", size: "sm" })}>
+                Abrir la ficha <ExternalLink size={12} aria-hidden="true" />
+              </Link>
+            </div>
+          </SectionCard>
+        ) : (
+          <EmptyState icon={Send} title="Sin correos enviados" description="Cuando envíes una propuesta desde el cotizador o le respondas a un cliente, la verás acá con su estado." />
+        )}
+      </section>
     </div>
   );
 }

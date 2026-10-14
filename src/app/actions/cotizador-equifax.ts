@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { requireProfile } from "@/lib/auth";
 import { buzonDeCampana } from "@/lib/correo/buzon";
 import { enviarCorreo } from "@/lib/correo/smtp";
-import { cotizarLinea, normalizarConfig, totales, type ConfigLinea, type MontoLinea } from "@/lib/equifax-cotizador/catalogo";
+import { cotizarLinea, lineasGuardadas, normalizarConfig, totales, type ConfigLinea, type MontoLinea } from "@/lib/equifax-cotizador/catalogo";
 import { COPIA_OCULTA_EQUIFAX } from "@/lib/equifax-cotizador/correo-cuenta";
 import { LOGO_EQUIFAX_CID, LOGO_EQUIFAX_PNG_BASE64 } from "@/lib/equifax-cotizador/logo";
 import { asuntoPropuesta, correoHtml, correoTexto, firmaDesdePerfil, remitenteDeEjecutivo, type DatosPropuesta } from "@/lib/equifax-cotizador/propuesta";
@@ -83,23 +83,6 @@ async function leerFirma(supabase: Awaited<ReturnType<typeof createClient>>, use
     correoAcceso: data.email,
     firma: data.firma_comercial,
   };
-}
-
-/** Las líneas guardadas en equifax_cotizaciones.lineas, con su nombre corto de Atlas. */
-function lineasGuardadas(valor: unknown): MontoLinea[] {
-  if (!Array.isArray(valor)) return [];
-  return valor.flatMap((linea) => {
-    if (!linea || typeof linea !== "object") return [];
-    const { atlas, nombre, cobro, uf_venta, publicacion } = linea as Record<string, unknown>;
-    if (cobro !== "mensual" && cobro !== "unico" && cobro !== "anual" && cobro !== "clp") return [];
-    const total = (publicacion as { total?: unknown } | null)?.total;
-    return [{
-      nombre: String(atlas ?? nombre ?? "Producto"),
-      cobro,
-      ufVenta: uf_venta == null ? null : Number(uf_venta),
-      clp: total == null ? null : Number(total),
-    }];
-  });
 }
 
 async function leerHistorial(supabase: Awaited<ReturnType<typeof createClient>>, leadId: string): Promise<CotizacionEnviada[]> {
