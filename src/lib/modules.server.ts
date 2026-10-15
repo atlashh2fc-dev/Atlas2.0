@@ -64,10 +64,9 @@ export const contextoDeMiEmpresa = cache(async (): Promise<ContextoDeEmpresa> =>
 });
 
 /**
- * Puede leer el contenido de las conversaciones: ejecutivos y supervisión por
- * su rol, y el dueño de la plataforma aunque sea admin. Administración no lee
- * mensajes; el dueño sí, para mostrar y auditar el producto. Leer no es
- * atender: responder sigue siendo del ejecutivo asignado.
+ * Puede leer el contenido de las conversaciones: ejecutivos, supervisión y
+ * administración por su rol, y el dueño de la plataforma en cualquier empresa
+ * que mire. Leer no es atender: responder sigue siendo del ejecutivo asignado.
  */
 export async function puedeLeerConversaciones(role: AppRole): Promise<boolean> {
   if (getWorkspacePermissions(role).canReadConversationContent) return true;

@@ -133,7 +133,8 @@ for (const [, input] of actionCases) {
 }
 
 test("workspace capabilities separate administration, supervision and attention", () => {
-  assert.equal(getWorkspacePermissions("admin").canReadConversationContent, false);
+  // Leer no es atender: el admin lee conversaciones pero no responde.
+  assert.equal(getWorkspacePermissions("admin").canReadConversationContent, true);
   assert.equal(getWorkspacePermissions("admin").canAttendCustomers, false);
   assert.equal(getWorkspacePermissions("admin").canConfigurePlatform, true);
   assert.equal(getWorkspacePermissions("supervisor").canReadConversationContent, true);
@@ -187,12 +188,12 @@ for (const [name, input] of actionCases) {
   });
 }
 
-test("direct media URL returns 403 for admin before querying messages or signing storage", async () => {
+test("direct media URL returns 403 without read permission before querying messages or signing storage", async () => {
   const h = harness("admin");
   const route = loadModule("../src/app/api/conversaciones/whatsapp/mensajes/[id]/media/route.ts", {
     ...h.dependencies,
     "next/server": { NextResponse: { json: (body: unknown, init: unknown) => ({ body, ...init as object }) } },
-    // Un admin que no es el dueño de la plataforma no lee mensajes.
+    // Sin permiso de lectura (simulado): la ruta corta antes de tocar datos.
     "@/lib/modules.server": { puedeLeerConversaciones: async (role: string) => role !== "admin" },
   });
   const response = await route.GET({} as never, { params: Promise.resolve({ id: conversationId }) } as never) as { status: number };

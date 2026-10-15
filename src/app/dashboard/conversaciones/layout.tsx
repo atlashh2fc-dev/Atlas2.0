@@ -23,10 +23,10 @@ export default async function AttentionLayout({ children }: { children: React.Re
   await requireModule("contact_center", "whatsapp", "correo");
   const profile = await requireProfile();
   const permissions = getWorkspacePermissions(profile.role);
-  // Administración vigila metadatos; nunca abre la conversación de un cliente.
-  // La excepción es el dueño de la plataforma, que lee sin poder responder.
+  // Administración y el dueño de la plataforma leen sin poder responder; la
+  // supervisión consulta el historial de sus equipos.
   if (!(await puedeLeerConversaciones(profile.role))) redirect("/dashboard/operacion");
-  const soloLectura = !permissions.canAttendCustomers && !permissions.canReadConversationContent;
+  const soloLectura = !permissions.canAttendCustomers && profile.role !== "supervisor";
 
   const { canales, pendientes } = await puestoDeAtencion();
   const tabs = ATTENTION_TABS.filter((tab) => canales.includes(tab.channel));

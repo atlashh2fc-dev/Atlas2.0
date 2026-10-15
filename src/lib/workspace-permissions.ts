@@ -4,7 +4,9 @@ import type { AppRole, Profile } from "./types";
 export function getWorkspacePermissions(role: AppRole) {
   return {
     canAttendCustomers: role === "agente",
-    canReadConversationContent: role === "agente" || role === "supervisor",
+    // Leer no es atender: el admin ve las conversaciones de su empresa para
+    // controlar la operación (15-10-2026); responder sigue siendo del ejecutivo.
+    canReadConversationContent: role === "agente" || role === "supervisor" || role === "admin",
     canManageAssignments: role === "admin" || role === "supervisor",
     canMonitorOperations: role === "admin" || role === "supervisor",
     canConfigurePlatform: role === "admin",

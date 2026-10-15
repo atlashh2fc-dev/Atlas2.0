@@ -887,8 +887,10 @@ export default async function LeadDetailPage({
 
       {!permissions.canAttendCustomers && (
         <Callout tone="info">
-          Vista de consulta y control. La atención y la tipificación pertenecen al ejecutivo responsable.
-          {!leeConversaciones && " El contenido de las conversaciones WhatsApp no se consulta desde Administración."}
+          Vista de consulta y control.{" "}
+          {leeConversaciones
+            ? "Puedes leer las conversaciones; la atención y la tipificación pertenecen al ejecutivo responsable."
+            : "La atención y la tipificación pertenecen al ejecutivo responsable."}
         </Callout>
       )}
 
