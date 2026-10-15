@@ -7,6 +7,7 @@ import { requireProfile } from "@/lib/auth";
 import type { CampanaDetalle, ConteoAudiencia, DatosCampana, FiltrosAudiencia, OpcionesAudiencia, Programacion } from "@/lib/campanas-correo";
 import {
   atlasLead,
+  campanaDeCorreo,
   conteoDeAudiencia,
   empresaActual,
   opcionesDeAudiencia,
@@ -14,6 +15,7 @@ import {
   type FilaDeAudiencia,
 } from "@/lib/campanas-correo.server";
 import { modulosActivos } from "@/lib/modules.server";
+import { conectarCampanaDeCorreoAlCrm, opcionesDeVinculo, vinculoDeCampanaDeCorreo } from "@/lib/vinculo-correo-crm.server";
 
 /*
  * Lo que se hace con una campaña de correo desde el CRM. Atlas Lead valida el
@@ -173,10 +175,61 @@ export async function cambiarEstadoCampanaCorreo(input: { campanaId: string; acc
     const { empresa, actor } = await contexto();
     if (!UUID.test(input.campanaId)) return { ok: false, error: "Campaña inválida." };
     if (!["lanzar", "pausar", "reanudar", "cancelar"].includes(input.accion)) return { ok: false, error: "Acción inválida." };
+    // Una campaña que sale sin vínculo con el CRM manda correos que nadie puede
+    // gestionar: se conecta antes de lanzarla (con la campaña del CRM sugerida).
+    if (input.accion === "lanzar" || input.accion === "reanudar") {
+      const conexion = await asegurarVinculo(empresa.id, empresa.slug, input.campanaId);
+      if (!conexion.ok && input.accion === "lanzar") return conexion;
+    }
     const resultado = await atlasLead(empresa.slug, "estado", { campana_id: input.campanaId, accion: input.accion, actor });
     if (!resultado.ok) return { ok: false, error: resultado.error };
     revalidatePath(RUTA);
     revalidatePath(`${RUTA}/${input.campanaId}`);
+    return { ok: true };
+  } catch (error) {
+    return falla(error);
+  }
+}
+
+async function conectar(organizacionId: string, slug: string, campanaId: string, campaignId: string, teamId: string) {
+  const detalle = await campanaDeCorreo(slug, campanaId);
+  if (!detalle.ok) throw new Error(`No se pudo leer la campaña: ${detalle.error}`);
+  const campana = detalle.datos.campana;
+  await conectarCampanaDeCorreoAlCrm({
+    organizacionId,
+    campanaCorreoId: campanaId,
+    nombre: campana.nombre,
+    campaignId,
+    teamId,
+    metadata: { brand_name: campana.remitente.marca, sender_email: campana.remitente.email },
+  });
+  revalidatePath(`${RUTA}/${campanaId}`);
+  revalidatePath("/dashboard/mail");
+}
+
+async function asegurarVinculo(organizacionId: string, slug: string, campanaId: string): Promise<Ok<object> | Falla> {
+  if (await vinculoDeCampanaDeCorreo(campanaId)) return { ok: true };
+  const { sugerencia } = await opcionesDeVinculo(organizacionId);
+  if (!sugerencia) {
+    return { ok: false, error: "Antes de lanzar, elige en «Gestión en el CRM» qué campaña y equipo atienden a quienes abran o respondan." };
+  }
+  try {
+    await conectar(organizacionId, slug, campanaId, sugerencia.campaignId, sugerencia.teamId);
+    return { ok: true };
+  } catch (error) {
+    return falla(error);
+  }
+}
+
+/**
+ * Conecta la campaña de correo con la campaña del CRM donde se gestionan sus
+ * aperturas, clics y respuestas, y trae al CRM lo que ya pasó.
+ */
+export async function conectarCampanaCorreoAlCrm(input: { campanaId: string; campaignId: string; teamId: string }): Promise<Ok<object> | Falla> {
+  try {
+    const { empresa } = await contexto();
+    if (![input.campanaId, input.campaignId, input.teamId].every((id) => UUID.test(id))) return { ok: false, error: "Faltan la campaña o el equipo." };
+    await conectar(empresa.id, empresa.slug, input.campanaId, input.campaignId, input.teamId);
     return { ok: true };
   } catch (error) {
     return falla(error);

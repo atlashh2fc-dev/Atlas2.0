@@ -6,6 +6,7 @@ import { ArrowLeft, CheckCircle2, Circle, Pause, Play, Rocket, Send } from "luci
 import { AudienciaBigdata } from "@/components/campanas-correo/audiencia-bigdata";
 import { BotonDeAccion } from "@/components/campanas-correo/boton-de-accion";
 import { EditorCorreos } from "@/components/campanas-correo/editor-correos";
+import { GestionEnCrm } from "@/components/campanas-correo/gestion-en-crm";
 import { Pasos, type PasoId } from "@/components/campanas-correo/pasos";
 import { ProgramacionCampana } from "@/components/campanas-correo/programacion-campana";
 import { PruebaCampana } from "@/components/campanas-correo/prueba-campana";
@@ -23,6 +24,7 @@ import {
   type CampanaDetalle,
 } from "@/lib/campanas-correo";
 import { campanaDeCorreo, capacidadesDeCorreo, casillasDelCrm, empresaActual } from "@/lib/campanas-correo.server";
+import { opcionesDeVinculo, vinculoDeCampanaDeCorreo } from "@/lib/vinculo-correo-crm.server";
 
 // Una carga de audiencia o una prueba de 5 correos puede tomar más de un minuto.
 export const maxDuration = 120;
@@ -33,17 +35,26 @@ const cuando = new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", 
 type Tab = "resumen" | "correos" | "audiencia" | "programacion" | "actividad";
 const TABS: Tab[] = ["resumen", "correos", "audiencia", "programacion", "actividad"];
 
-function Cifra({ label, valor, detalle }: { label: string; valor: string; detalle?: string }) {
-  return (
-    <div className="bg-surface px-5 py-4">
+function Cifra({ label, valor, detalle, href, accion }: { label: string; valor: string; detalle?: string; href?: string; accion?: string }) {
+  const contenido = (
+    <>
       <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
       <dd className="mt-2 text-[24px] font-semibold leading-none tracking-tight tabular-nums text-foreground">{valor}</dd>
       {detalle && <p className="mt-2 text-xs text-muted-foreground">{detalle}</p>}
-    </div>
+      {href && accion && <p className="mt-2 text-xs font-medium text-primary group-hover:underline">{accion} →</p>}
+    </>
+  );
+  // Un indicador con gente detrás se pincha y lleva a la cola donde se asigna.
+  return href ? (
+    <Link href={href} className="group block bg-surface px-5 py-4 transition-colors hover:bg-surface-muted/55">
+      {contenido}
+    </Link>
+  ) : (
+    <div className="bg-surface px-5 py-4">{contenido}</div>
   );
 }
 
-function AccionesDeEstado({ campana, faltan, sinLector }: { campana: CampanaDetalle; faltan: string[]; sinLector: string | null }) {
+function AccionesDeEstado({ campana, faltan, sinLector, gestion }: { campana: CampanaDetalle; faltan: string[]; sinLector: string | null; gestion: string | null }) {
   if (campana.estado === "borrador") {
     return (
       <BotonDeAccion
@@ -60,6 +71,7 @@ function AccionesDeEstado({ campana, faltan, sinLector }: { campana: CampanaDeta
                 Le escribe a {formatearNumero(campana.audiencia.total)} contactos desde {campana.remitente.email ?? campana.remitente.marca}.
               </p>
               <p className="mt-2">{describirProgramacion(campana.programacion ?? PROGRAMACION_POR_DEFECTO, campana.limite_diario)}</p>
+              {gestion && <p className="mt-2">Quienes abran o respondan quedan en Correo, en {gestion}, para asignarlos.</p>}
               {sinLector && (
                 <p className="mt-2 font-medium text-danger">
                   Ojo: nadie lee {sinLector}, la casilla a la que responden los clientes. Sus respuestas no llegarán al CRM hasta que la conectes.
@@ -111,7 +123,12 @@ export default async function CampanaCorreoPage({ params, searchParams }: { para
   const limites = capacidades.ok ? capacidades.datos.limites : { imagenMb: 5, pruebaMax: 5, pasosMax: 5, audienciaLoteMax: 500, limiteDiarioMax: 1000 };
   const variables = capacidades.ok ? capacidades.datos.variables : [];
 
+  const [vinculo, opcionesCrm] = await Promise.all([vinculoDeCampanaDeCorreo(campana.id), opcionesDeVinculo(empresa.id)]);
+  const sugerida = opcionesCrm.sugerencia ? opcionesCrm.campanas.find((item) => item.id === opcionesCrm.sugerencia?.campaignId) : undefined;
+  const gestion = vinculo ? vinculo.campaignName : (sugerida?.nombre ?? null);
   const faltan = pendientesParaLanzar(campana);
+  // Sin campaña del CRM que la reciba, lo que la campaña genere no tiene dónde gestionarse.
+  if (!gestion) faltan.push("Elegir la campaña del CRM que la atiende");
   // ¿Alguien lee la casilla a la que responden los clientes de esta campaña?
   const casillaRespuesta = (campana.remitente.responder_a ?? campana.remitente.email ?? "").trim().toLowerCase().replace(/\+[^@]*@/, "@");
   const casilla = capacidades.ok ? (capacidades.datos.casillas_respuesta ?? []).find((item) => item.direccion === casillaRespuesta) : undefined;
@@ -123,6 +140,8 @@ export default async function CampanaCorreoPage({ params, searchParams }: { para
   const estado = ESTADO_CAMPANA[campana.estado] ?? ESTADO_CAMPANA.borrador;
   const base = `/dashboard/campanas-correo/${campana.id}`;
   const m = campana.metricas;
+  // La cola de Correo filtrada por esta campaña: ahí se ve quién abrió y se asigna en bloque.
+  const colaDeCorreo = vinculo ? `/dashboard/mail?mailCampaign=${vinculo.mailCampaignId}` : undefined;
 
   const hechos: PasoId[] = [];
   if (campana.contenido.pasos.length) hechos.push("correos");
@@ -152,7 +171,7 @@ export default async function CampanaCorreoPage({ params, searchParams }: { para
         }
         icon={Send}
         description={`${campana.remitente.marca}${campana.remitente.email ? ` · ${campana.remitente.email}` : ""} · ${estado.ayuda}`}
-        actions={<AccionesDeEstado campana={campana} faltan={faltan} sinLector={sinLector} />}
+        actions={<AccionesDeEstado campana={campana} faltan={faltan} sinLector={sinLector} gestion={gestion} />}
       />
 
       {sinLector && !["cancelada", "terminada"].includes(campana.estado) && (
@@ -163,6 +182,13 @@ export default async function CampanaCorreoPage({ params, searchParams }: { para
             Administración → Correo
           </Link>{" "}
           o reenvíala a una casilla que el CRM ya lea.
+        </Callout>
+      )}
+
+      {!vinculo && !borrador && !cancelada && (
+        <Callout tone="danger">
+          Esta campaña no está conectada al CRM: quienes la abren o responden no aparecen en Correo ni se pueden asignar. Conéctala en «Gestión en el CRM»; se trae también
+          lo que ya pasó.
         </Callout>
       )}
 
@@ -206,9 +232,9 @@ export default async function CampanaCorreoPage({ params, searchParams }: { para
               <>
                 <dl className="grid gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-3">
                   <Cifra label="Contactados" valor={formatearNumero(m?.contactados)} detalle={m?.base ? `de ${formatearNumero(m.base)} en la audiencia` : undefined} />
-                  <Cifra label="Abrieron" valor={m ? porcentaje(m.abrieron, m.contactados) : "—"} detalle={`${formatearNumero(m?.abrieron)} personas`} />
-                  <Cifra label="Hicieron clic" valor={m ? porcentaje(m.clics, m.contactados) : "—"} detalle={`${formatearNumero(m?.clics)} personas`} />
-                  <Cifra label="Respondieron" valor={formatearNumero(m?.respuestas)} detalle="Llegan a la bandeja de Correo" />
+                  <Cifra label="Abrieron" valor={m ? porcentaje(m.abrieron, m.contactados) : "—"} detalle={`${formatearNumero(m?.abrieron)} personas`} href={m?.abrieron ? colaDeCorreo : undefined} accion="Ver y asignar" />
+                  <Cifra label="Hicieron clic" valor={m ? porcentaje(m.clics, m.contactados) : "—"} detalle={`${formatearNumero(m?.clics)} personas`} href={m?.clics && colaDeCorreo ? `${colaDeCorreo}&queue=clicked_uncontacted` : undefined} accion="Clic sin gestión" />
+                  <Cifra label="Respondieron" valor={formatearNumero(m?.respuestas)} detalle="Llegan a la bandeja de Correo" href={m?.respuestas && colaDeCorreo ? `${colaDeCorreo}&queue=customer_replied` : undefined} accion="Por responder" />
                   <Cifra label="Se dieron de baja" valor={formatearNumero(m?.bajas)} detalle={m?.contactados ? porcentaje(m.bajas, m.contactados) : undefined} />
                   <Cifra label="Rebotaron" valor={formatearNumero(m?.rebotes)} detalle={m?.contactados ? porcentaje(m.rebotes, m.contactados) : undefined} />
                 </dl>
@@ -216,7 +242,7 @@ export default async function CampanaCorreoPage({ params, searchParams }: { para
                   title={`Respuestas${campana.respuestas.length ? ` · ${campana.respuestas.length}` : ""}`}
                   description="Lo que contestaron los clientes. También llegan a la bandeja de Correo para seguirlas."
                   actions={
-                    <Link href="/dashboard/mail" className="text-sm text-primary hover:underline">
+                    <Link href={colaDeCorreo ?? "/dashboard/mail"} className="text-sm text-primary hover:underline">
                       Abrir bandeja
                     </Link>
                   }
@@ -255,6 +281,13 @@ export default async function CampanaCorreoPage({ params, searchParams }: { para
             )}
           </div>
           <aside className="space-y-5">
+            {!cancelada && (
+              <SectionCard title="Gestión en el CRM">
+                <div className="border-t border-border px-5 py-4">
+                  <GestionEnCrm campanaId={campana.id} vinculo={vinculo} opciones={opcionesCrm} borrador={borrador} />
+                </div>
+              </SectionCard>
+            )}
             {!cancelada && (
               <SectionCard title="Enviar una prueba">
                 <div className="border-t border-border px-5 py-4">
