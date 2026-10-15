@@ -8,6 +8,9 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 type ClaimedItem = { item_id: string; event_type: string };
+const TANDA = 20;
+// Deja margen dentro de maxDuration (60 s) para la última tanda.
+const PRESUPUESTO_MS = 40_000;
 type ProcessResult = { item_id: string; success: boolean; error_code: string | null };
 const NON_RETRYABLE_PROJECTION_ERRORS = new Set([
   "invalid_priority_rank",
@@ -86,28 +89,39 @@ async function handle(request: NextRequest, requestedLimit: number) {
   const limit = Math.min(Math.max(requestedLimit, 1), 500);
   const workerId = `atlas-v2-${randomUUID()}`;
   const admin = createAdminClient();
+  const inicio = Date.now();
+  const totales = { claimed: 0, succeeded: 0, retried: 0, rejected: 0 };
 
   try {
-    const { data, error } = await admin.rpc("claim_integration_items_v2", {
-      p_worker_id: workerId,
-      p_limit: limit,
-      p_lease_seconds: 60,
-    });
-    if (error) throw error;
-    const claimed = (data ?? []) as ClaimedItem[];
-    const decisions = claimed.filter((item) => item.event_type === "intelligence.decision.v1").map((item) => item.item_id);
-    const engagements = claimed.filter((item) => item.event_type === "engagement.event.v1").map((item) => item.item_id);
-    const mailMessages = claimed.filter((item) => item.event_type === "mail.message.v1").map((item) => item.item_id);
+    // En tandas chicas: cada evento de correo crea o enruta su lead (~0,3 s), y
+    // un lote de 100 en una sola RPC superaba el statement timeout. Pasó el
+    // 15-10-2026 al reenviar la historia de cuatro campañas (962 eventos): todos
+    // los lotes fallaban y la cola no avanzaba.
+    while (totales.claimed < limit && Date.now() - inicio < PRESUPUESTO_MS) {
+      const { data, error } = await admin.rpc("claim_integration_items_v2", {
+        p_worker_id: workerId,
+        p_limit: Math.min(TANDA, limit - totales.claimed),
+        p_lease_seconds: 60,
+      });
+      if (error) throw error;
+      const claimed = (data ?? []) as ClaimedItem[];
+      if (!claimed.length) break;
+      const decisions = claimed.filter((item) => item.event_type === "intelligence.decision.v1").map((item) => item.item_id);
+      const engagements = claimed.filter((item) => item.event_type === "engagement.event.v1").map((item) => item.item_id);
+      const mailMessages = claimed.filter((item) => item.event_type === "mail.message.v1").map((item) => item.item_id);
 
-    const decisionResult = await processGroup(admin, workerId, decisions, "apply_intelligence_decisions_v2");
-    const engagementResult = await processGroup(admin, workerId, engagements, "apply_engagement_events_v2");
-    const mailResult = await processGroup(admin, workerId, mailMessages, "apply_mail_messages_v1");
-    return NextResponse.json({
-      claimed: claimed.length,
-      succeeded: decisionResult.succeeded + engagementResult.succeeded + mailResult.succeeded,
-      retried: decisionResult.retried + engagementResult.retried + mailResult.retried,
-      rejected: decisionResult.rejected + engagementResult.rejected + mailResult.rejected,
-    });
+      for (const resultado of [
+        await processGroup(admin, workerId, decisions, "apply_intelligence_decisions_v2"),
+        await processGroup(admin, workerId, engagements, "apply_engagement_events_v2"),
+        await processGroup(admin, workerId, mailMessages, "apply_mail_messages_v1"),
+      ]) {
+        totales.succeeded += resultado.succeeded;
+        totales.retried += resultado.retried;
+        totales.rejected += resultado.rejected;
+      }
+      totales.claimed += claimed.length;
+    }
+    return NextResponse.json(totales);
   } catch (error) {
     const message = error instanceof Error ? error.message : "worker_failed";
     console.error("integration_v2_worker_failed", { workerId, message });
