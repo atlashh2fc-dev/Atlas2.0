@@ -4,6 +4,7 @@ import { Header } from "@/components/header";
 import { DialerListener } from "@/components/dialer-listener";
 import { AgendaBanner, AgendaProvider } from "@/components/agenda-reminder";
 import { CtiBar } from "@/components/cti-bar";
+import { AvisoChatNuevo } from "@/components/aviso-chat-nuevo";
 import { AgentDayBar } from "@/components/agent-day-bar";
 import { ToastProvider } from "@/components/ui";
 import { createClient } from "@/lib/supabase/server";
@@ -100,6 +101,8 @@ export default async function DashboardLayout({
           </main>
         </div>
         {canAttendCustomers && <CtiBar profile={profile} />}
+        {/* Chat nuevo asignado: suena y se ve en cualquier pantalla, también en llamada. */}
+        {canAttendCustomers && <AvisoChatNuevo userId={profile.id} />}
       </div>
     </ToastProvider>
     </div>

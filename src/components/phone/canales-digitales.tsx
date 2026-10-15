@@ -12,6 +12,7 @@ import {
 } from "@/app/actions/presencia-digital";
 import { cn } from "@/lib/utils";
 import { sondeoVisible } from "@/lib/sondeo-visible";
+import { EVENTO_CHAT_NUEVO } from "@/components/aviso-chat-nuevo";
 
 const REFRESCO_MS = 30_000;
 /** Avisa al indicador de la barra que un canal se prendió o apagó. */
@@ -44,7 +45,13 @@ export function CanalesDigitales({ abierto }: { abierto: boolean }) {
 
   useEffect(() => {
     cargar();
-    return sondeoVisible(cargar, REFRESCO_MS);
+    const pararSondeo = sondeoVisible(cargar, REFRESCO_MS);
+    // Un chat nuevo no espera al próximo sondeo para subir el contador.
+    window.addEventListener(EVENTO_CHAT_NUEVO, cargar);
+    return () => {
+      pararSondeo();
+      window.removeEventListener(EVENTO_CHAT_NUEVO, cargar);
+    };
   }, [cargar]);
 
   useEffect(() => {
@@ -147,10 +154,12 @@ export function IndicadorDigital({ onAbrir }: { onAbrir: () => void }) {
     const pararSondeo = sondeoVisible(cargar, REFRESCO_MS);
     const alCambiar = (evento: Event) => setPresencia((evento as CustomEvent<PresenciaDigital>).detail);
     window.addEventListener(EVENTO_PRESENCIA, alCambiar);
+    window.addEventListener(EVENTO_CHAT_NUEVO, cargar);
     return () => {
       vigente = false;
       pararSondeo();
       window.removeEventListener(EVENTO_PRESENCIA, alCambiar);
+      window.removeEventListener(EVENTO_CHAT_NUEVO, cargar);
     };
   }, []);
 
