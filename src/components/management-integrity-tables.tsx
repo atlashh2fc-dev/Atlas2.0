@@ -1,30 +1,25 @@
 "use client";
 
-import type { IntegrityAgentRow, IntegrityDetailRow } from "@/app/actions/management-integrity";
-import { Avatar, Badge, DataTable, type Column } from "@/components/ui";
+import Link from "next/link";
+import { X } from "lucide-react";
+import type { IntegrityAgentRow, IntegrityDetailRow, ManagementIntegrityReport } from "@/app/actions/management-integrity";
+import { Avatar, DataTable, type Column } from "@/components/ui";
+import { explainIntegrityCase, formatSeconds, integrityMotiveLabel } from "@/lib/integrity-copy";
 
-function formatSeconds(value: number | null): string {
-  if (value === null || value === undefined) return "—";
-  if (value < 60) return `${value.toFixed(1)} s`;
-  return `${Math.floor(value / 60)} m ${Math.round(value % 60)} s`;
-}
-
-/** Día del cierre en hora de Chile ("24 may"). */
-function formatDay(iso: string): string {
-  return new Date(iso)
-    .toLocaleDateString("es-CL", { day: "numeric", month: "short", timeZone: "America/Santiago" })
-    .replace(".", "");
-}
-
-/** Hora con segundos: en integridad importa la cadencia entre cierres. */
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString("es-CL", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-    timeZone: "America/Santiago",
-  });
+/** Día y hora del cierre en hora de Chile ("15 oct · 12:40"). */
+function formatWhen(iso: string): { day: string; time: string } {
+  const date = new Date(iso);
+  return {
+    day: date
+      .toLocaleDateString("es-CL", { day: "numeric", month: "short", timeZone: "America/Santiago" })
+      .replace(".", ""),
+    time: date.toLocaleTimeString("es-CL", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZone: "America/Santiago",
+    }),
+  };
 }
 
 /** Las tipificaciones llegan en mayúsculas desde el flujo; se leen mejor en tipo oración. */
@@ -43,143 +38,186 @@ function PersonCell({ name }: { name: string }) {
   );
 }
 
-/** Cifra de una señal: gris si es cero, con color solo cuando hay algo que mirar. */
-function SignalCount({ value, tone = "warning" }: { value: number; tone?: "warning" | "danger" }) {
-  if (value === 0) return <span className="text-muted-foreground">0</span>;
-  return <span className={tone === "danger" ? "font-medium text-danger" : "font-medium text-warning"}>{value.toLocaleString("es-CL")}</span>;
+/** Un cero no pide atención: va en gris. */
+function Count({ value, tone }: { value: number; tone?: "danger" | "muted" }) {
+  if (value === 0) return <span className="text-muted-foreground/60">0</span>;
+  if (tone === "danger") return <span className="font-semibold text-danger">{value.toLocaleString("es-CL")}</span>;
+  return <span className="text-muted-foreground">{value.toLocaleString("es-CL")}</span>;
 }
 
-/** Título de bloque sobre una tabla, sin tarjeta extra: la tabla ya es la tarjeta. */
-function BlockHeading({ title, description }: { title: string; description?: string }) {
+/** Lo que hay que revisar: cifra y qué parte de sus gestiones es. */
+function ShareCell({ value, total }: { value: number; total: number }) {
+  if (value === 0) return <span className="text-muted-foreground/60">0</span>;
+  const share = (value / Math.max(total, 1)) * 100;
   return (
-    <div className="mb-3">
-      <h2 className="text-[15px] font-semibold tracking-tight text-foreground">{title}</h2>
-      {description && <p className="mt-0.5 text-[13px] text-muted-foreground">{description}</p>}
+    <span className="inline-flex items-baseline justify-end gap-1.5">
+      <span className={share >= 5 ? "font-semibold text-danger" : "font-semibold text-warning"}>{value.toLocaleString("es-CL")}</span>
+      <span className="w-12 text-right text-[11px] tabular-nums text-muted-foreground">
+        {share.toLocaleString("es-CL", { maximumFractionDigits: 1 })} %
+      </span>
+    </span>
+  );
+}
+
+function BlockHeading({ id, title, description, action }: { id?: string; title: string; description?: string; action?: React.ReactNode }) {
+  return (
+    <div id={id} className="mb-3 flex scroll-mt-4 flex-wrap items-end justify-between gap-2">
+      <div>
+        <h2 className="text-[15px] font-semibold tracking-tight text-foreground">{title}</h2>
+        {description && <p className="mt-0.5 text-[13px] text-muted-foreground">{description}</p>}
+      </div>
+      {action}
     </div>
   );
 }
 
-const AGENT_COLUMNS: Column<IntegrityAgentRow>[] = [
-  { id: "ejecutivo", header: "Ejecutivo", value: (row) => row.full_name, cell: (row) => <PersonCell name={row.full_name} /> },
-  { id: "gestiones", header: "Gestiones", align: "right", value: (row) => row.gestiones },
+/**
+ * Columnas por ejecutivo. Una señal que en todo el período está en cero no
+ * ocupa columna: son tres columnas vacías que el supervisor tenía que leer
+ * para concluir que no había nada.
+ */
+function agentColumns(totals: ManagementIntegrityReport["totals"]): Column<IntegrityAgentRow>[] {
+  const columns: Column<IntegrityAgentRow>[] = [
+    { id: "ejecutivo", header: "Ejecutivo", value: (row) => row.full_name, cell: (row) => <PersonCell name={row.full_name} /> },
+    { id: "gestiones", header: "Gestiones", align: "right", value: (row) => row.gestiones },
+    {
+      id: "para_revisar",
+      header: "Para revisar",
+      align: "right",
+      value: (row) => row.para_revisar,
+      cell: (row) => <ShareCell value={row.para_revisar} total={row.gestiones} />,
+    },
+  ];
+  if (totals.contacto_sin_conexion > 0) {
+    columns.push({
+      id: "sin_respaldo",
+      header: "Contacto sin respaldo",
+      align: "right",
+      value: (row) => row.contacto_sin_conexion,
+      cell: (row) => <Count value={row.contacto_sin_conexion} tone="danger" />,
+    });
+  }
+  if (totals.cierres_rapidos > 0) {
+    columns.push({
+      id: "cierres_rapidos",
+      header: "Contactos de segundos",
+      align: "right",
+      value: (row) => row.cierres_rapidos,
+      cell: (row) => <Count value={row.cierres_rapidos} tone="danger" />,
+    });
+  }
+  if (totals.rafagas > 0) {
+    columns.push({
+      id: "rafagas",
+      header: "Cierres en ráfaga",
+      align: "right",
+      value: (row) => row.rafagas,
+      cell: (row) => <Count value={row.rafagas} tone="danger" />,
+    });
+  }
+  columns.push(
+    {
+      id: "reagendados",
+      header: "Reagendadas sin contacto",
+      align: "right",
+      value: (row) => row.reagendados_sin_contacto,
+      cell: (row) => <Count value={row.reagendados_sin_contacto} tone="muted" />,
+    },
+    {
+      id: "mediana",
+      header: "Duración típica",
+      align: "right",
+      value: (row) => row.mediana_segundos ?? 0,
+      cell: (row) => <span className="text-muted-foreground">{formatSeconds(row.mediana_segundos)}</span>,
+    },
+  );
+  return columns;
+}
+
+const DETAIL_COLUMNS: Column<IntegrityDetailRow>[] = [
   {
-    id: "sospechosas",
-    header: "Marcadas",
-    align: "right",
-    value: (row) => row.sospechosas,
+    id: "cuando",
+    header: "Cuándo",
+    value: (row) => row.ended_at,
+    exportValues: (row) => ({ Cuándo: `${formatWhen(row.ended_at).day} ${formatWhen(row.ended_at).time}` }),
     cell: (row) => {
-      if (row.sospechosas === 0) return <span className="text-muted-foreground">0</span>;
-      const share = row.sospechosas / Math.max(row.gestiones, 1);
-      const danger = share > 0.25;
+      const when = formatWhen(row.ended_at);
       return (
-        <span className="ml-auto block w-24">
-          <span className="flex items-baseline justify-end gap-1.5">
-            <span className={danger ? "font-semibold text-danger" : "font-semibold text-warning"}>{row.sospechosas}</span>
-            <span className="text-[11px] text-muted-foreground">{(share * 100).toFixed(0)}%</span>
-          </span>
-          <span className="mt-1 block h-1 overflow-hidden rounded-full bg-surface-muted" aria-hidden="true">
-            <span
-              className={danger ? "block h-full rounded-full bg-danger" : "block h-full rounded-full bg-warning"}
-              style={{ width: `${Math.min(100, share * 100)}%` }}
-            />
-          </span>
+        <span className="block whitespace-nowrap">
+          <span className="block text-foreground">{when.day}</span>
+          <span className="block text-xs tabular-nums text-muted-foreground">{when.time}</span>
         </span>
       );
     },
   },
-  { id: "instantaneos", header: "Cierres instantáneos", align: "right", value: (row) => row.cierres_instantaneos, cell: (row) => <SignalCount value={row.cierres_instantaneos} /> },
-  { id: "sin_respaldo", header: "Contacto sin llamada", align: "right", value: (row) => row.contactos_sin_respaldo, cell: (row) => <SignalCount value={row.contactos_sin_respaldo} tone="danger" /> },
-  { id: "rafagas", header: "En ráfaga", align: "right", value: (row) => row.rafagas, cell: (row) => <SignalCount value={row.rafagas} /> },
-  {
-    id: "mediana",
-    header: "Mediana de gestión",
-    align: "right",
-    value: (row) => row.mediana_segundos ?? 0,
-    cell: (row) => formatSeconds(row.mediana_segundos),
-  },
-  {
-    id: "minimo",
-    header: "Mínimo",
-    align: "right",
-    value: (row) => row.minimo_segundos ?? 0,
-    cell: (row) => formatSeconds(row.minimo_segundos),
-  },
-];
-
-const DETAIL_COLUMNS: Column<IntegrityDetailRow>[] = [
-  {
-    id: "cierre",
-    header: "Cierre",
-    value: (row) => row.ended_at,
-    cell: (row) => (
-      <span className="block whitespace-nowrap">
-        <span className="block text-foreground">{formatDay(row.ended_at)}</span>
-        <span className="block text-xs tabular-nums text-muted-foreground">{formatTime(row.ended_at)}</span>
-      </span>
-    ),
-  },
   { id: "ejecutivo", header: "Ejecutivo", value: (row) => row.full_name, cell: (row) => <PersonCell name={row.full_name} /> },
   {
-    id: "registro",
-    header: "Registro",
+    id: "cliente",
+    header: "Cliente y tipificación",
     value: (row) => row.lead_name,
-    exportValues: (row) => ({ Registro: row.lead_name, "Tipificación": row.reason ?? "—" }),
+    exportValues: (row) => ({ Cliente: row.lead_name, Tipificación: row.reason ?? "—" }),
     cell: (row) => (
-      <span className="block min-w-0">
+      <span className="block min-w-0 max-w-64">
         <span className="block truncate text-foreground">{row.lead_name}</span>
         <span className="block truncate text-xs text-muted-foreground">{row.reason ? sentenceCase(row.reason) : "Sin tipificación"}</span>
       </span>
     ),
   },
   {
+    id: "que_no_calza",
+    header: "Qué no calza",
+    value: (row) => integrityMotiveLabel(row.motivo),
+    exportValues: (row) => ({ Motivo: integrityMotiveLabel(row.motivo), Detalle: explainIntegrityCase(row) }),
+    cell: (row) => <span className="block min-w-64 whitespace-normal text-foreground">{explainIntegrityCase(row)}</span>,
+  },
+  {
     id: "duracion",
     header: "Duración",
     align: "right",
     value: (row) => row.handle_seconds ?? 0,
-    cell: (row) => formatSeconds(row.handle_seconds),
-  },
-  {
-    id: "desde_anterior",
-    header: "Desde el anterior",
-    align: "right",
-    value: (row) => row.seconds_since_previous ?? 0,
-    cell: (row) => formatSeconds(row.seconds_since_previous),
-  },
-  {
-    id: "senales",
-    header: "Señales",
-    sortable: false,
-    value: (row) => [
-      row.cierre_instantaneo && "instantáneo",
-      row.contacto_sin_respaldo && "sin llamada",
-      row.rafaga && "ráfaga",
-    ].filter(Boolean).join(", "),
-    cell: (row) => (
-      <span className="flex flex-wrap gap-x-3 gap-y-1">
-        {row.cierre_instantaneo && <Badge tone="warning">Instantáneo</Badge>}
-        {row.contacto_sin_respaldo && <Badge tone="danger">Contacto sin llamada</Badge>}
-        {row.rafaga && <Badge tone="warning">Ráfaga</Badge>}
-      </span>
-    ),
+    cell: (row) => <span className="text-muted-foreground">{formatSeconds(row.handle_seconds)}</span>,
   },
 ];
 
 export function ManagementIntegrityTables({
   agents,
   detail,
+  totals,
+  selectedAgentId,
+  query,
 }: {
   agents: IntegrityAgentRow[];
   detail: IntegrityDetailRow[];
+  totals: ManagementIntegrityReport["totals"];
+  selectedAgentId: string | null;
+  /** Parámetros de la página (período, campaña) que se conservan al filtrar. */
+  query: Record<string, string>;
 }) {
+  const selectedAgent = agents.find((agent) => agent.agent_id === selectedAgentId) ?? null;
+
+  // Abrir un ejecutivo conserva el período y la campaña, y baja a sus casos.
+  function hrefFor(agentId: string | null) {
+    const params = new URLSearchParams(query);
+    if (agentId) params.set("ejecutivo", agentId);
+    else params.delete("ejecutivo");
+    const search = params.toString();
+    return `/dashboard/reportes/integridad${search ? `?${search}` : ""}#casos`;
+  }
+
   return (
     <>
       <section>
-        <BlockHeading title="Por ejecutivo" description="Señales acumuladas en el período; la barra muestra qué parte de sus gestiones quedó marcada." />
+        <BlockHeading
+          title="Por ejecutivo"
+          description="Ordenado por lo que hay que revisar. Toca un ejecutivo para ver sus casos."
+        />
         <DataTable
           rows={agents}
-          columns={AGENT_COLUMNS}
+          columns={agentColumns(totals)}
           getRowId={(row) => row.agent_id}
-          storageKey="integridad-agentes"
+          rowHref={(row) => hrefFor(row.agent_id)}
+          rowActionLabel={() => "Ver sus casos"}
+          storageKey="integridad-agentes-v2"
           exportFilename="integridad-por-ejecutivo"
           emptyTitle="Sin gestiones en el período"
           emptyDescription="Ajusta el período o la campaña para revisar otro tramo."
@@ -187,17 +225,36 @@ export function ManagementIntegrityTables({
       </section>
 
       <section>
-        <BlockHeading title="Gestiones marcadas" description="Hasta 500 gestiones, de la más reciente a la más antigua." />
+        <BlockHeading
+          id="casos"
+          title={selectedAgent ? `Casos de ${selectedAgent.full_name}` : "Casos para revisar"}
+          description={
+            detail.length >= 500
+              ? "Los 500 más recientes. Abre uno para ver la ficha y escuchar la grabación."
+              : "Del más reciente al más antiguo. Abre uno para ver la ficha y escuchar la grabación."
+          }
+          action={
+            selectedAgent && (
+              <Link
+                href={hrefFor(null)}
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border sm:min-h-9 border-border px-3 text-[13px] font-medium text-foreground hover:bg-surface-muted"
+              >
+                <X size={14} aria-hidden="true" />
+                Ver todos los ejecutivos
+              </Link>
+            )
+          }
+        />
         <DataTable
           rows={detail}
           columns={DETAIL_COLUMNS}
           getRowId={(row) => row.call_id}
           rowHref={(row) => `/dashboard/leads/${row.lead_id}`}
           rowActionLabel={() => "Abrir ficha"}
-          storageKey="integridad-detalle"
-          exportFilename="integridad-detalle"
-          emptyTitle="Ninguna gestión marcada"
-          emptyDescription="En este período no hay cierres instantáneos, contactos sin respaldo ni ráfagas."
+          storageKey="integridad-casos"
+          exportFilename="integridad-casos"
+          emptyTitle={selectedAgent ? "Nada que revisar para este ejecutivo" : "Nada que revisar en el período"}
+          emptyDescription="Cada contacto tipificado tiene su llamada en la central."
         />
       </section>
     </>

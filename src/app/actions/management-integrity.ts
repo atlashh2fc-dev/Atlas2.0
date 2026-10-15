@@ -17,13 +17,18 @@ export type IntegrityAgentRow = {
   agent_id: string;
   full_name: string;
   gestiones: number;
-  sospechosas: number;
-  cierres_instantaneos: number;
-  contactos_sin_respaldo: number;
+  /** Contacto sin conexión, contacto cerrado en segundos o cierre en ráfaga. */
+  para_revisar: number;
+  contacto_sin_conexion: number;
+  cierres_rapidos: number;
   rafagas: number;
+  /** «Volver a llamar» sin hablar con el cliente: tema de proceso, no de integridad. */
+  reagendados_sin_contacto: number;
   mediana_segundos: number | null;
-  minimo_segundos: number | null;
 };
+
+/** Por qué un caso quedó para revisar; si hay varias señales, la más fuerte. */
+export type IntegrityMotive = "contacto_sin_conexion" | "cierre_rapido" | "rafaga";
 
 export type IntegrityDetailRow = {
   call_id: string;
@@ -33,14 +38,12 @@ export type IntegrityDetailRow = {
   lead_name: string;
   status: string | null;
   reason: string | null;
-  started_at: string;
   ended_at: string;
   handle_seconds: number | null;
   seconds_since_previous: number | null;
-  tuvo_conexion: boolean;
-  cierre_instantaneo: boolean;
-  contacto_sin_respaldo: boolean;
-  rafaga: boolean;
+  motivo: IntegrityMotive;
+  /** Último estado que registró la central para esa gestión; null = no hubo llamada desde Atlas. */
+  ultimo_intento: string | null;
 };
 
 export type ManagementIntegrityReport = {
@@ -48,10 +51,11 @@ export type ManagementIntegrityReport = {
   thresholds: { fast_close_seconds: number; burst_seconds: number };
   totals: {
     gestiones: number;
-    sospechosas: number;
-    cierres_instantaneos: number;
-    contactos_sin_respaldo: number;
+    para_revisar: number;
+    contacto_sin_conexion: number;
+    cierres_rapidos: number;
     rafagas: number;
+    reagendados_sin_contacto: number;
   };
   agents: IntegrityAgentRow[];
   detail: IntegrityDetailRow[];
@@ -61,6 +65,8 @@ export async function getManagementIntegrityReport(input: {
   from: string;
   to: string;
   campaignId?: string | null;
+  /** Acota la lista de casos a un ejecutivo; los totales siguen siendo del equipo. */
+  agentId?: string | null;
   fastCloseSeconds?: number;
   burstSeconds?: number;
 }): Promise<ManagementIntegrityReport> {
@@ -73,6 +79,7 @@ export async function getManagementIntegrityReport(input: {
     p_campaign_id: input.campaignId ?? null,
     p_fast_close_seconds: input.fastCloseSeconds ?? 10,
     p_burst_seconds: input.burstSeconds ?? 5,
+    p_agent_id: input.agentId ?? null,
   });
 
   if (error) throw errorDeAccion(error);
