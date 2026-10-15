@@ -3,18 +3,29 @@ import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { CheckCircle2, ChevronRight, Database, Mail, PhoneCall, Sparkles, Users, Workflow } from "lucide-react";
-import { mapAtlasLeadMailCampaign, setCampaignVertical, setCampaignWorkflow } from "@/app/actions/campaigns";
+import {
+  mapAtlasLeadMailCampaign,
+  setCampaignGrouping,
+  setCampaignVertical,
+  setCampaignWorkflow,
+} from "@/app/actions/campaigns";
 import { CAMPAIGN_VERTICALS, parseCampaignVertical } from "@/lib/campaign-vertical";
 import { CampaignDashboardSummary, type ContactabilityHour } from "@/components/campaign-dashboard-summary";
 import type {
   CampaignDashboardSummary as CampaignDashboardSummaryData,
   AiVoiceCampaignConfig,
   DialerCampaignConfig,
-  SecretariaVirtualChannelFunnelRow,
+  CampaignChannelFunnelRow,
 } from "@/lib/types";
 import { ActionForm, ActionSubmit, Avatar, Badge, Callout, Field, Input, SectionCard, Select } from "@/components/ui";
 import { Grupo, PieDeFormulario } from "../../_diseno";
-import { isSecretariaVirtualAuditCampaign } from "@/lib/secretaria-virtual-quality-rubric";
+
+const REPORT_CHANNEL_OPTIONS = [
+  { value: "voz_saliente", label: "Llamada saliente" },
+  { value: "voz_entrante", label: "Llamada entrante" },
+  { value: "whatsapp", label: "WhatsApp" },
+  { value: "correo", label: "Correo" },
+] as const;
 
 const DASHBOARD_WINDOW_DAYS = 30;
 
@@ -56,6 +67,18 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
     p_campaign_id: id,
   });
 
+  // Campañas de la misma empresa: para elegir la principal y para saber si esta
+  // ya agrupa a otras (entonces tiene desglose por canal y no puede ser hija).
+  const { data: siblingRows } = await supabase
+    .from("campaigns")
+    .select("id, name, parent_campaign_id")
+    .eq("organization_id", campaign.organization_id)
+    .order("name");
+  const siblings = (siblingRows ?? []) as { id: string; name: string; parent_campaign_id: string | null }[];
+  const children = siblings.filter((row) => row.parent_campaign_id === id);
+  const parentOptions = siblings.filter((row) => row.id !== id && row.parent_campaign_id === null);
+  const parentCampaign = siblings.find((row) => row.id === campaign.parent_campaign_id) ?? null;
+
   const [
     { data: summary, error: summaryError },
     { data: channelFunnel },
@@ -74,10 +97,11 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
       p_previous_from: previousFrom.toISOString(),
       p_previous_to: previousTo.toISOString(),
     }),
-    isSecretariaVirtualAuditCampaign(campaign.name)
-      ? supabase.rpc("get_secretaria_virtual_channel_funnel", {
+    children.length > 0
+      ? supabase.rpc("get_campaign_channel_funnel", {
           p_from: from.toISOString(),
           p_to: to.toISOString(),
+          p_campaign_id: id,
         })
       : Promise.resolve({ data: null, error: null }),
     supabase.from("leads").select("id", { count: "exact", head: true }).eq("campaign_id", id),
@@ -290,6 +314,70 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
               {CAMPAIGN_VERTICALS.find((option) => option.value === campaignVertical)?.description}
             </p>
           </Grupo>
+
+          <div id="reportes" className="scroll-mt-4">
+            <Grupo
+              titulo="Agrupación en reportes"
+              descripcion="Una iniciativa con varios canales se ve como una sola campaña en Reportes, con sus KPI abiertos por canal. No cambia el discador, el flujo ni la línea de WhatsApp."
+              columnas={1}
+            >
+              <ActionForm action={setCampaignGrouping} success="Agrupación guardada" className="flex flex-wrap items-end gap-3">
+                <input type="hidden" name="campaign_id" value={id} />
+                <Field label="Se reporta dentro de" className="w-full max-w-72">
+                  <Select
+                    name="parent_campaign_id"
+                    defaultValue={campaign.parent_campaign_id ?? ""}
+                    disabled={children.length > 0}
+                  >
+                    <option value="">Ninguna · es una campaña principal</option>
+                    {parentOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Canal" className="w-full max-w-56">
+                  <Select name="report_channel" defaultValue={campaign.report_channel ?? "voz_saliente"}>
+                    {REPORT_CHANNEL_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <ActionSubmit variant="secondary" pendingLabel="Guardando…">
+                  Guardar
+                </ActionSubmit>
+              </ActionForm>
+              <p className="text-xs text-muted-foreground">
+                {children.length > 0 ? (
+                  <>
+                    Agrupa a{" "}
+                    {children.map((child, index) => (
+                      <span key={child.id}>
+                        {index > 0 && (index === children.length - 1 ? " y " : ", ")}
+                        <Link href={`/dashboard/admin/campanas/${child.id}#reportes`} className="font-medium text-primary hover:underline">
+                          {child.name}
+                        </Link>
+                      </span>
+                    ))}
+                    . Por eso no puede quedar dentro de otra.
+                  </>
+                ) : parentCampaign ? (
+                  <>
+                    En Reportes se suma a{" "}
+                    <Link href={`/dashboard/admin/campanas/${parentCampaign.id}#reportes`} className="font-medium text-primary hover:underline">
+                      {parentCampaign.name}
+                    </Link>{" "}
+                    y aparece como su canal.
+                  </>
+                ) : (
+                  "El canal es por dónde entra el contacto. Si esta campaña es otro canal de una iniciativa existente, elige esa campaña arriba."
+                )}
+              </p>
+            </Grupo>
+          </div>
         </div>
       </SectionCard>
 
@@ -361,8 +449,8 @@ export default async function CampaignSummaryPage({ params }: { params: Promise<
           hourly={(hourly ?? []) as ContactabilityHour[]}
           vertical={campaignVertical}
           channelFunnel={
-            isSecretariaVirtualAuditCampaign(campaign.name)
-              ? ((channelFunnel ?? []) as SecretariaVirtualChannelFunnelRow[])
+            children.length > 0 && channelFunnel
+              ? { campaignId: id, rows: channelFunnel as CampaignChannelFunnelRow[] }
               : undefined
           }
         />

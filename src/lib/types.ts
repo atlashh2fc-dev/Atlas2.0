@@ -447,9 +447,15 @@ export interface CampaignDashboardSummaryMetric {
   previous: number;
 }
 
-export interface SecretariaVirtualChannelFunnelRow {
-  channel: "Mail" | "WhatsApp" | "Llamada / base";
+/**
+ * Fila de `get_campaign_channel_funnel`: una por canal de la campaña y sus
+ * hijas. Cada lead cuenta en un solo canal (el de entrada), así que la suma
+ * de las filas es el total de la campaña.
+ */
+export interface CampaignChannelFunnelRow {
+  channel: "Llamada saliente" | "Llamada entrante" | "WhatsApp" | "Correo";
   base: number;
+  managed: number;
   contacted: number;
   interested: number;
   sales: number;

@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { ReactNode } from "react";
 import type {
   CampaignDashboardSummary as CampaignDashboardSummaryData,
-  SecretariaVirtualChannelFunnelRow,
+  CampaignChannelFunnelRow,
 } from "@/lib/types";
 import { CampaignDashboardSummary, type ContactabilityHour } from "@/components/campaign-dashboard-summary";
 import { TipificationBreakdown } from "@/components/tipification-breakdown";
@@ -56,7 +56,10 @@ import {
   funnelStageLabel,
 } from "@/lib/campaign-vertical";
 import { formatReportRangeLabel, resolveReportRange, toDateInput } from "@/lib/report-range";
-import { isSecretariaVirtualAuditCampaign } from "@/lib/secretaria-virtual-quality-rubric";
+import { CampaignChannelTable } from "@/components/campaign-channel-table";
+
+/** Fila de `get_report_scope_campaign_groups`: una opción por iniciativa. */
+type ReportCampaignGroup = { id: string; name: string; has_channels: boolean };
 
 /** Fila de `get_campaign_tipification_breakdown`. */
 type CampaignTipificationRow = {
@@ -285,16 +288,23 @@ export default async function ReportesPage({
   if (profile.role === "supervisor") {
     // El vocabulario del reporte lo decide la campaña, no el rol: una cartera
     // de cobranza no cierra ventas ni envía cotizaciones.
-    const vertical = await fetchCampaignVertical(supabase, campaignScope || null);
+    // El selector lista una opción por iniciativa: las campañas hijas
+    // (WhatsApp, entrante) se suman a su madre y se abren en «Resultado por
+    // canal». Sale antes que el resto porque decide si se pide ese desglose.
+    const [vertical, { data: campaignRows }] = await Promise.all([
+      fetchCampaignVertical(supabase, campaignScope || null),
+      supabase.rpc("get_report_scope_campaign_groups"),
+    ]);
     const vocabulary = getCampaignVocabulary(vertical);
-    const [{ data, error }, { data: campaignRows }, { data: breakdownRows }] = await Promise.all([
+    const campaigns = (campaignRows ?? []) as ReportCampaignGroup[];
+    const selectedCampaign = campaigns.find((campaign) => campaign.id === campaignScope) ?? null;
+    const [{ data, error }, { data: breakdownRows }, { data: channelRows }] = await Promise.all([
       supabase.rpc("get_supervisor_report_summary", {
         p_from: dashboardFrom.toISOString(),
         p_to: dashboardTo.toISOString(),
         p_team_id: null,
         p_campaign_id: campaignScope || null,
       }),
-      supabase.rpc("get_report_scope_campaigns"),
       // El mismo desglose por resultado que ve el admin. Es SECURITY INVOKER:
       // la seguridad por fila de calls y leads lo acota a los equipos del
       // supervisor. Si falla, el reporte sigue y el panel queda vacío.
@@ -303,6 +313,13 @@ export default async function ReportesPage({
         p_to: dashboardTo.toISOString(),
         p_campaign_id: campaignScope || null,
       }),
+      selectedCampaign?.has_channels
+        ? supabase.rpc("get_campaign_channel_funnel", {
+            p_from: dashboardFrom.toISOString(),
+            p_to: dashboardTo.toISOString(),
+            p_campaign_id: selectedCampaign.id,
+          })
+        : Promise.resolve({ data: null, error: null }),
     ]);
 
     // La RPC levanta excepciones de negocio legibles ("tu supervisor no tiene
@@ -327,8 +344,6 @@ export default async function ReportesPage({
     }
 
     const report = data as SupervisorReportSummary;
-    const campaigns = (campaignRows ?? []) as { id: string; name: string }[];
-    const selectedCampaign = campaigns.find((campaign) => campaign.id === campaignScope) ?? null;
     const campaignQuery = selectedCampaign ? `?campaign=${encodeURIComponent(selectedCampaign.id)}` : "";
     const kpis = report.kpis;
     const tipificationsByResult = groupTipificationsByResult(
@@ -497,6 +512,14 @@ export default async function ReportesPage({
           <KpiStripItem label="Ejecutivos reportados" icon={Users} value={formatNumber(report.agents.length)} />
         </KpiStrip>
 
+        {selectedCampaign && channelRows && (
+          <CampaignChannelTable
+            rows={channelRows as CampaignChannelFunnelRow[]}
+            campaignId={selectedCampaign.id}
+            range={{ from: dashboardFrom.toISOString(), to: dashboardTo.toISOString() }}
+          />
+        )}
+
         <section>
           <h2 className="mb-3 flex items-center gap-2.5 text-sm font-semibold text-foreground">
             <Users size={16} className="text-muted-foreground" aria-hidden="true" />
@@ -558,16 +581,29 @@ export default async function ReportesPage({
     );
   }
 
-  const { data: campaignList } = await supabase.from("campaigns").select("id, name, vertical").order("name");
-  const campaigns = (campaignList ?? []) as { id: string; name: string; vertical?: string | null }[];
-  const selectedCampaignId = campaigns.some((campaign) => campaign.id === campaignScope) ? campaignScope : null;
-  const selectedCampaign = campaigns.find((c) => c.id === selectedCampaignId) ?? null;
+  const { data: campaignList } = await supabase
+    .from("campaigns")
+    .select("id, name, vertical, parent_campaign_id")
+    .order("name");
+  const allCampaigns = (campaignList ?? []) as {
+    id: string;
+    name: string;
+    vertical?: string | null;
+    parent_campaign_id: string | null;
+  }[];
+  const selectedCampaignId = allCampaigns.some((campaign) => campaign.id === campaignScope) ? campaignScope : null;
+  const selectedCampaign = allCampaigns.find((c) => c.id === selectedCampaignId) ?? null;
+  // Una opción por iniciativa: las hijas se suman a su madre. Si alguien llega
+  // con el enlace de una hija, se respeta y se muestra en el selector.
+  const campaigns = allCampaigns.filter(
+    (campaign) => campaign.parent_campaign_id === null || campaign.id === selectedCampaignId
+  );
+  const hasChannels =
+    selectedCampaign !== null && allCampaigns.some((campaign) => campaign.parent_campaign_id === selectedCampaign.id);
   // Sin campaña elegida el tablero mezcla verticales, así que se queda con el
   // vocabulario comercial, que es el común a todas.
   const adminVertical = parseCampaignVertical(selectedCampaign?.vertical);
   let dashboardSummary: CampaignDashboardSummaryData | null = null;
-  const showChannelFunnel =
-    selectedCampaign !== null && isSecretariaVirtualAuditCampaign(selectedCampaign.name);
 
   const [hourlyResult, summaryResult, channelFunnelResult, tipificationResult] = await Promise.all([
     supabase.rpc("get_contactability_by_hour", {
@@ -584,10 +620,11 @@ export default async function ReportesPage({
       p_previous_to: range.previousTo.toISOString(),
       p_campaign_id: selectedCampaignId,
     }),
-    showChannelFunnel
-      ? supabase.rpc("get_secretaria_virtual_channel_funnel", {
+    hasChannels
+      ? supabase.rpc("get_campaign_channel_funnel", {
           p_from: dashboardFrom.toISOString(),
           p_to: dashboardTo.toISOString(),
+          p_campaign_id: selectedCampaignId,
         })
       : Promise.resolve({ data: null, error: null }),
     // Trae el estado y el desenlace que dejó grabado cada cierre. Es lo que
@@ -649,8 +686,8 @@ export default async function ReportesPage({
           hourly={(hourlyData ?? []) as ContactabilityHour[]}
           vertical={adminVertical}
           channelFunnel={
-            showChannelFunnel
-              ? ((channelFunnelResult.data ?? []) as SecretariaVirtualChannelFunnelRow[])
+            hasChannels && selectedCampaignId && channelFunnelResult.data
+              ? { campaignId: selectedCampaignId, rows: channelFunnelResult.data as CampaignChannelFunnelRow[] }
               : undefined
           }
           tipificationRows={

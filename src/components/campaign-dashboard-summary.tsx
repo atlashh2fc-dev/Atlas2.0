@@ -17,7 +17,6 @@ import {
   Clock,
   Coins,
   Headset,
-  Network,
   PhoneCall,
   Trophy,
   TrendingUp,
@@ -36,17 +35,11 @@ import { ChartLegend, ChartTooltip, DeltaChip, KpiStrip, KpiStripItem, Leaderboa
 import type {
   CampaignDashboardSummary as CampaignDashboardSummaryData,
   CampaignDashboardSummaryMetric,
-  SecretariaVirtualChannelFunnelRow,
+  CampaignChannelFunnelRow,
 } from "@/lib/types";
 import { CALL_REASONS } from "@/lib/call-typification";
-import Link from "next/link";
 import { REPORT_TIME_ZONE } from "@/lib/report-range";
-import {
-  channelSegmentHref,
-  channelSlug,
-  type ChannelSlug,
-  type ChannelStage,
-} from "@/lib/channel-segment";
+import { CampaignChannelTable } from "@/components/campaign-channel-table";
 import { TipificationBreakdown } from "@/components/tipification-breakdown";
 import {
   groupTipificationsByResult,
@@ -74,7 +67,8 @@ interface Props {
   /** Vocabulario del tablero: una cartera no cierra ventas, recupera deuda. */
   vertical?: CampaignVertical;
   showFunnelOrigins?: boolean;
-  channelFunnel?: SecretariaVirtualChannelFunnelRow[];
+  /** Desglose por canal de una campaña madre; los números abren sus registros. */
+  channelFunnel?: { campaignId: string; rows: CampaignChannelFunnelRow[] };
   /**
    * Tipificaciones con el estado y el desenlace que dejó grabado el cierre.
    * Cuando llegan, mandan sobre `summary.reasons`, que sólo trae el motivo:
@@ -332,117 +326,6 @@ function ratio(current: number, total: number): number {
   return total > 0 ? current / total : 0;
 }
 
-/**
- * Cada número abre Registros con exactamente los leads que cuenta. Un cero no
- * lleva a ninguna parte: sería abrir una lista vacía.
- */
-function ChannelFunnelCell({
-  value,
-  channel,
-  stage,
-  range,
-  className,
-}: {
-  value: number;
-  channel: ChannelSlug | null;
-  stage: ChannelStage;
-  range: { from: string; to: string };
-  className: string;
-}) {
-  if (value <= 0) return <td className={className}>{fmtInt(value)}</td>;
-  return (
-    <td className={className}>
-      <Link
-        href={channelSegmentHref({ channel, stage, from: range.from, to: range.to })}
-        className="rounded underline-offset-2 hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-        title="Ver estos registros"
-      >
-        {fmtInt(value)}
-      </Link>
-    </td>
-  );
-}
-
-function ChannelFunnelTable({
-  rows,
-  range,
-}: {
-  rows: SecretariaVirtualChannelFunnelRow[];
-  range: { from: string; to: string };
-}) {
-  const totals = rows.reduce(
-    (sum, row) => ({
-      base: sum.base + row.base,
-      contacted: sum.contacted + row.contacted,
-      interested: sum.interested + row.interested,
-      sales: sum.sales + row.sales,
-    }),
-    { base: 0, contacted: 0, interested: 0, sales: 0 }
-  );
-  const rowCell = "py-2.5 text-right tabular-nums text-muted-foreground";
-  const totalCell = "pt-2.5 text-right tabular-nums";
-
-  return (
-    <SectionCard
-      title="Resultado por canal de origen"
-      icon={Network}
-      tone="teal"
-      description={
-        <>
-          Atribuye cada lead a su canal de entrada original; una conversación posterior por WhatsApp no cambia su origen.
-          Toca un número para ver esos registros.
-        </>
-      }
-    >
-      <div className="overflow-x-auto px-5 pt-2">
-        <table className="w-full min-w-[560px] text-left text-sm">
-          <thead className="border-b border-border text-left text-xs text-muted-foreground">
-            <tr>
-              <th className="h-10 font-medium">Canal</th>
-              <th className="py-2 text-right font-semibold">Base</th>
-              <th className="py-2 text-right font-semibold">Contactados</th>
-              <th className="py-2 text-right font-semibold">Interesados</th>
-              <th className="py-2 text-right font-semibold">Ventas</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {rows.map((row) => {
-              const channel = channelSlug(row.channel);
-              return (
-                <tr key={row.channel}>
-                  <td className="py-2.5 font-medium text-foreground">{row.channel}</td>
-                  <ChannelFunnelCell value={row.base} channel={channel} stage="base" range={range} className={rowCell} />
-                  <ChannelFunnelCell value={row.contacted} channel={channel} stage="contactados" range={range} className={rowCell} />
-                  <ChannelFunnelCell value={row.interested} channel={channel} stage="interesados" range={range} className={rowCell} />
-                  <ChannelFunnelCell
-                    value={row.sales}
-                    channel={channel}
-                    stage="ventas"
-                    range={range}
-                    className="py-2.5 text-right font-semibold tabular-nums text-success"
-                  />
-                </tr>
-              );
-            })}
-          </tbody>
-          <tfoot className="border-t border-border font-semibold text-foreground">
-            <tr>
-              <td className="pt-2.5">Total</td>
-              <ChannelFunnelCell value={totals.base} channel={null} stage="base" range={range} className={totalCell} />
-              <ChannelFunnelCell value={totals.contacted} channel={null} stage="contactados" range={range} className={totalCell} />
-              <ChannelFunnelCell value={totals.interested} channel={null} stage="interesados" range={range} className={totalCell} />
-              <ChannelFunnelCell value={totals.sales} channel={null} stage="ventas" range={range} className={totalCell} />
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-      <p className="px-5 pb-5 pt-4 text-xs text-muted-foreground">
-        Contactado: conversación efectiva. Interesado: seguimiento, derivación o agenda. Venta: venta en validación registrada.
-      </p>
-    </SectionCard>
-  );
-}
-
 function isVisibleAgendaItem(item: CampaignDashboardSummaryData["agenda"][number]): boolean {
   const assigneeTokens = item.agent_name
     .normalize("NFD")
@@ -535,7 +418,9 @@ export function CampaignDashboardSummary({
         />
       </KpiStrip>
 
-      {channelFunnel && channelFunnel.length > 0 && <ChannelFunnelTable rows={channelFunnel} range={summary.range} />}
+      {channelFunnel && (
+        <CampaignChannelTable rows={channelFunnel.rows} campaignId={channelFunnel.campaignId} range={summary.range} />
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <SectionCard

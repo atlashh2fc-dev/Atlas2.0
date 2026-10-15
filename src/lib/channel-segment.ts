@@ -1,22 +1,27 @@
 import { REPORT_TIME_ZONE } from "./report-range.ts";
 
 /**
- * Celda de "Resultado por canal de origen" convertida en filtro de Registros.
+ * Celda de "Resultado por canal" convertida en filtro de Registros.
  *
  * La lista y el número salen de la misma función SQL
- * (`get_secretaria_virtual_channel_leads`), así que abrir una celda muestra
- * exactamente los leads que cuenta. El período viaja en la URL porque
- * contactados, interesados y ventas dependen de él; la base no.
+ * (`get_campaign_channel_leads`), así que abrir una celda muestra exactamente
+ * los leads que cuenta. La campaña (madre) y el período viajan en la URL
+ * porque las etapas dependen de ellos; la base no depende del período.
+ *
+ * La campaña va en `grupo` y no en `campaign`: el filtro de campaña de
+ * Registros mira solo la campaña exacta y dejaría fuera a las hijas.
  */
 
 export const CHANNEL_SEGMENT_CHANNELS = {
-  mail: "Mail",
+  saliente: "Llamada saliente",
+  entrante: "Llamada entrante",
   whatsapp: "WhatsApp",
-  llamada: "Llamada / base",
+  correo: "Correo",
 } as const;
 
 export const CHANNEL_SEGMENT_STAGES = {
   base: "Base",
+  gestionados: "Gestionados",
   contactados: "Contactados",
   interesados: "Interesados",
   ventas: "Ventas",
@@ -27,12 +32,16 @@ export type ChannelName = (typeof CHANNEL_SEGMENT_CHANNELS)[ChannelSlug];
 export type ChannelStage = keyof typeof CHANNEL_SEGMENT_STAGES;
 
 export type ChannelSegment = {
+  /** Campaña madre (o campaña suelta) cuyo desglose se abrió. */
+  campaignId: string;
   /** Null = todos los canales (fila Total). */
   channel: ChannelSlug | null;
   stage: ChannelStage;
   from: string;
   to: string;
 };
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const CHANNEL_BY_NAME = new Map<string, ChannelSlug>(
   Object.entries(CHANNEL_SEGMENT_CHANNELS).map(([slug, name]) => [name, slug as ChannelSlug])
@@ -44,6 +53,7 @@ export function channelSlug(name: string): ChannelSlug | null {
 
 export function channelSegmentHref(segment: ChannelSegment): string {
   const params = new URLSearchParams({
+    grupo: segment.campaignId,
     canal: segment.channel ?? "todos",
     etapa: segment.stage,
     desde: segment.from,
@@ -59,22 +69,24 @@ function validDate(value: string | undefined): string | null {
 }
 
 export function parseChannelSegment(params: {
+  grupo?: string;
   canal?: string;
   etapa?: string;
   desde?: string;
   hasta?: string;
 }): ChannelSegment | null {
-  const { canal, etapa } = params;
+  const { grupo, canal, etapa } = params;
+  if (!grupo || !UUID.test(grupo)) return null;
   if (!canal || !etapa || !(etapa in CHANNEL_SEGMENT_STAGES)) return null;
   const channel = canal === "todos" ? null : canal in CHANNEL_SEGMENT_CHANNELS ? (canal as ChannelSlug) : undefined;
   if (channel === undefined) return null;
   const from = validDate(params.desde);
   const to = validDate(params.hasta);
   if (!from || !to) return null;
-  return { channel, stage: etapa as ChannelStage, from, to };
+  return { campaignId: grupo, channel, stage: etapa as ChannelStage, from, to };
 }
 
-export function channelSegmentLabel(segment: ChannelSegment): string {
+export function channelSegmentLabel(segment: ChannelSegment, campaignName?: string | null): string {
   const formatter = new Intl.DateTimeFormat("es-CL", {
     timeZone: REPORT_TIME_ZONE,
     day: "2-digit",
@@ -87,5 +99,5 @@ export function channelSegmentLabel(segment: ChannelSegment): string {
     segment.stage === "base"
       ? "toda la base del canal"
       : `${formatter.format(new Date(segment.from))} a ${formatter.format(new Date(segment.to))}`;
-  return `${channel} · ${stage} · ${period}`;
+  return [campaignName, channel, stage, period].filter(Boolean).join(" · ");
 }

@@ -82,6 +82,49 @@ export async function setCampaignVertical(formData: FormData) {
   revalidatePath("/dashboard/leads");
 }
 
+const REPORT_CHANNELS = new Set(["voz_saliente", "voz_entrante", "whatsapp", "correo"]);
+
+/**
+ * Agrupa la campaña dentro de otra para los reportes (jerarquía de campañas).
+ * La hija sigue operando igual —discador, flujo, línea de WhatsApp—; solo se
+ * suma a su madre en Reportes y aparece como un canal de ella. Un solo nivel y
+ * misma empresa: lo exige la base, acá solo se traduce el mensaje.
+ */
+export async function setCampaignGrouping(formData: FormData) {
+  await requireProfile(["admin"]);
+  const campaignId = String(formData.get("campaign_id") ?? "").trim();
+  const parentId = String(formData.get("parent_campaign_id") ?? "").trim();
+  const reportChannel = String(formData.get("report_channel") ?? "").trim();
+
+  if (!UUID.test(campaignId)) throw new Error("Campaña inválida.");
+  if (parentId && !UUID.test(parentId)) throw new Error("Elige una campaña principal válida.");
+  if (parentId === campaignId) throw new Error("Una campaña no puede agruparse dentro de sí misma.");
+  if (!REPORT_CHANNELS.has(reportChannel)) throw new Error("Canal no reconocido.");
+
+  const supabase = await createClient();
+  const { data: previous } = await supabase
+    .from("campaigns")
+    .select("parent_campaign_id")
+    .eq("id", campaignId)
+    .maybeSingle();
+  const { error } = await supabase
+    .from("campaigns")
+    .update({
+      parent_campaign_id: parentId || null,
+      report_channel: reportChannel,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", campaignId);
+
+  if (error) throw errorDeAccion(error);
+  revalidatePath(`/dashboard/admin/campanas/${campaignId}`);
+  for (const affected of [parentId, previous?.parent_campaign_id]) {
+    if (affected) revalidatePath(`/dashboard/admin/campanas/${affected}`);
+  }
+  revalidatePath("/dashboard/reportes");
+  revalidatePath("/dashboard/leads");
+}
+
 export async function mapAtlasLeadMailCampaign(formData: FormData) {
   await requireProfile(["admin"]);
   const campaignId = String(formData.get("campaign_id") ?? "").trim();

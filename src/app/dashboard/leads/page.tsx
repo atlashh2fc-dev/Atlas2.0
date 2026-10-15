@@ -66,6 +66,7 @@ export default async function LeadsPage({
     campaign?: string;
     status?: string;
     page?: string;
+    grupo?: string;
     canal?: string;
     etapa?: string;
     desde?: string;
@@ -82,7 +83,7 @@ export default async function LeadsPage({
   // Sale junto con las demás consultas, no antes: solo cambia textos.
   const verticalPromise = fetchCampaignVertical(supabase, campaignScope || null);
   const canManage = profile.role === "supervisor" || profile.role === "admin";
-  // Llega desde una celda de "Resultado por canal de origen" en Reportes.
+  // Llega desde una celda de "Resultado por canal" en Reportes.
   const segment = canManage ? parseChannelSegment(params) : null;
 
   const filters: LeadFilters = {
@@ -274,6 +275,7 @@ export default async function LeadsPage({
         <input type="hidden" name="view" value={view} />
         {segment && (
           <>
+            <input type="hidden" name="grupo" value={params.grupo} />
             <input type="hidden" name="canal" value={params.canal} />
             <input type="hidden" name="etapa" value={params.etapa} />
             <input type="hidden" name="desde" value={params.desde} />
@@ -285,7 +287,10 @@ export default async function LeadsPage({
       {segment && (
         <Callout tone="info">
           <p>
-            <span className="font-medium">Desde Reportes:</span> {channelSegmentLabel(segment)}.{" "}
+            <span className="font-medium">Desde Reportes:</span> {channelSegmentLabel(
+              segment,
+              ((campaignOptions ?? []) as FilterOption[]).find((option) => option.id === segment.campaignId)?.name
+            )}.{" "}
             {`${result.total.toLocaleString("es-CL")} ${result.total === 1 ? "registro" : "registros"}`}
             {activeFilters.length > 0 && `, con ${activeFilters.join(", ")}`}.
           </p>

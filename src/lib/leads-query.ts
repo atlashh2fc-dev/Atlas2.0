@@ -99,13 +99,14 @@ function applyFilters(
   query: Query,
   filters: LeadFilters,
   ids: string[] | null,
-  role: AppRole
+  role: AppRole,
+  campaignIds: string[] | null
 ) {
   if (ids) query = query.in("id", ids);
   if (role !== "agente" && filters.agent) {
     query = query.or(`assigned_to.eq.${filters.agent},managed_by.eq.${filters.agent}`);
   }
-  if (filters.campaign) query = query.eq("campaign_id", filters.campaign);
+  if (campaignIds) query = query.in("campaign_id", campaignIds);
   if (filters.status) query = query.eq("status", filters.status);
   return query;
 }
@@ -175,9 +176,10 @@ export async function fetchLeadsPage<T>(
   // (POST) porque un filtro `in` de ese tamaño no cabe en la URL.
   const segment = options.role === "agente" ? null : options.segment ?? null;
   if (segment) {
-    const { data, error } = await supabase.rpc("get_secretaria_virtual_channel_lead_ids", {
+    const { data, error } = await supabase.rpc("get_campaign_channel_lead_ids", {
       p_from: segment.from,
       p_to: segment.to,
+      p_campaign_id: segment.campaignId,
       p_channel: segment.channel ? CHANNEL_SEGMENT_CHANNELS[segment.channel] : null,
       p_stage: segment.stage,
     });
@@ -188,6 +190,14 @@ export async function fetchLeadsPage<T>(
     if (ids.length === 0) {
       return emptyPage(pageSize, search && { ...search, matches: searchIds?.size ?? 0 }, null);
     }
+  }
+
+  // Una campaña madre trae también a sus hijas (WhatsApp, entrante): es la
+  // misma iniciativa, y el número de Reportes tiene que calzar con la lista.
+  let campaignIds: string[] | null = null;
+  if (filters.campaign) {
+    const { data } = await supabase.rpc("campaign_family_ids", { p_campaign_id: filters.campaign });
+    campaignIds = Array.isArray(data) && data.length > 0 ? (data as string[]) : [filters.campaign];
   }
 
   const [countsResult, listing] = await Promise.all([
@@ -211,7 +221,8 @@ export async function fetchLeadsPage<T>(
             supabase.rpc("leads_by_ids", { p_ids: ids }, { count: "exact" }).select(LEAD_SELECT) as unknown as Query,
             filters,
             null,
-            options.role
+            options.role,
+            campaignIds
           )
         : applyFilters(
             // Una cuenta exacta recorría decenas de miles de filas bajo RLS antes
@@ -221,7 +232,8 @@ export async function fetchLeadsPage<T>(
             supabase.from(relation).select(LEAD_SELECT, { count: "planned" }),
             filters,
             ids,
-            options.role
+            options.role,
+            campaignIds
           );
       // Buscar o abrir una celda del reporte manda sobre la cola: se quiere
       // exactamente ese conjunto, no "ese conjunto siempre que además esté en
