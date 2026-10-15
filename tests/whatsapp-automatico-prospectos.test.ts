@@ -10,11 +10,13 @@ import test from "node:test";
 
 import {
   BOTON_DE_BAJA,
+  DESPEDIDAS,
   PLANTILLAS_DE_PROSPECCION,
   definicionParaMeta,
   elegirEnvios,
   enHorario,
   esBaja,
+  esNoSuave,
   numeroSinWhatsapp,
   pideFrenar,
   esRespuestaAutomatica,
@@ -214,4 +216,42 @@ test("las tandas se espacian aunque el cron se dispare varias veces seguidas", (
   const corrida = leer("src/lib/prospeccion-whatsapp.server.ts");
   assert.match(corrida, /minutos < REGLAS\.minutosEntreTandas/);
   assert.match(corrida, /esRespuestaAutomatica\(respuesta\.texto, segundos\)/);
+});
+
+// --- 15-10-2026: el primer «no» real fue «Por ahora no, gracias» y no partía con «no». ---
+
+test("un «por ahora no» es un no suave: sin video, con despedida", () => {
+  for (const texto of ["Por ahora no, gracias", "Ahora no, quizás más adelante", "No por ahora", "Hoy no, gracias", "Todavía no lo necesitamos", "En otra oportunidad"]) {
+    assert.equal(esNoSuave(texto), true, texto);
+    assert.equal(quiereVerElVideo(texto), false, texto);
+  }
+  for (const texto of ["Sí, cuéntame", "¿Cuánto cuesta?", "Ya, dale", "Bienvenid@ a Veterinaria San Ignacio Arica, estamos abiertos"]) {
+    assert.equal(esNoSuave(texto), false, texto);
+  }
+  assert.equal(DESPEDIDAS.suave.length < 200, true);
+  assert.equal(DESPEDIDAS.baja.length < 200, true);
+  assert.doesNotMatch(DESPEDIDAS.suave, /1\.|2\.|opci[oó]n/i);
+});
+
+test("el saludo solo sale a quien pasó la verificación, y con el celular corregido si lo hubo", () => {
+  const sinVerificar = fila({ empresa: "Sociedad Sin Presencia Limitada" });
+  const aprobado = fila({ empresa: "Clinica Veterinaria Real Limitada", telefono: "+56 9 2222 2222" });
+  const corregido = fila({ empresa: "Catrico Inversiones Limitada", telefono: "+56 9 3222 0151" });
+  const aprobados = new Map([
+    [aprobado.lead_id, "56922222222"],
+    [corregido.lead_id, "56961254532"],
+  ]);
+  const envios = elegirEnvios([sinVerificar, aprobado, corregido], { ahora: AHORA, cupo: 5, aprobados });
+  assert.deepEqual(
+    envios.map((e) => [e.empresa, e.celular]),
+    [
+      ["Clinica Veterinaria Real Limitada", "56922222222"],
+      ["Catrico Inversiones Limitada", "56961254532"],
+    ],
+  );
+  // Sin mapa (el agente viejo, o las pruebas de arriba) nada cambia.
+  assert.equal(elegirEnvios([sinVerificar], { ahora: AHORA, cupo: 5 }).length, 1);
+  // El último mensaje no pasa por la verificación: ya se le escribió una vez.
+  const ultimo = fila({ toques: 1, ultimo_resultado: "whatsapp", estado: "seguimiento", ultimo_toque_at: hace(4 * 24) });
+  assert.equal(elegirEnvios([ultimo], { ahora: AHORA, cupo: 5, aprobados: new Map() })[0]?.clave, "ultimo");
 });

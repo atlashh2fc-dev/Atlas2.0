@@ -118,11 +118,36 @@ export function esRespuestaAutomatica(texto: string | null | undefined, segundos
   return /bienvenid|gracias por (comunicarte|escribir|contactar|tu mensaje|preferir)|horario de atencion|te responderemos|en breve te|mensaje automatico|no estamos disponibles|fuera de (nuestro )?horario|nuestro horario|estamos abiertos/.test(limpio);
 }
 
-/** ¿Su respuesta deja espacio para mandarle el video? No si pide la baja ni si parte con un «no». */
+/**
+ * ¿Es un «no» suave, de los que dejan la puerta abierta? «Por ahora no,
+ * gracias», «más adelante», «en otro momento». El 15-10 la primera respuesta
+ * fue exactamente «Por ahora no, gracias» y no partía con «no».
+ */
+export function esNoSuave(texto: string | null | undefined): boolean {
+  const limpio = sinTildes((texto ?? "").toLowerCase()).replace(/[¡!¿?.,]/g, " ").replace(/\s+/g, " ").trim();
+  if (!limpio || limpio.length > 120) return false;
+  return /^no\b|\b(por ahora|ahora|hoy|todavia|aun) no\b|\bno por ahora\b|\bmas adelante\b|\botro momento\b|\botra oportunidad\b|\bquizas despues\b|\bno (es|estoy|estamos) (el momento|en condiciones)\b|\bno (lo )?(necesit|ocup)/.test(limpio);
+}
+
+/** ¿Su respuesta deja espacio para mandarle el video? No si pide la baja ni si es un «no», suave o seco. */
 export function quiereVerElVideo(texto: string | null | undefined): boolean {
   const limpio = sinTildes((texto ?? "").toLowerCase()).trim();
-  return Boolean(limpio) && !esBaja(texto) && !/^no\b/.test(limpio);
+  return Boolean(limpio) && !esBaja(texto) && !esNoSuave(texto);
 }
+
+/**
+ * Cómo se despide Atlas cuando dicen que no (Hugo, 15-10: «para una respuesta
+ * así debemos tener un mensaje educado de despedida»). Sale una sola vez,
+ * dentro de las 24 horas que WhatsApp da para responder, y la conversación
+ * queda cerrada por un tiempo (suave) o para siempre (baja).
+ */
+export const DESPEDIDAS = {
+  suave: "Todo bien, gracias por responder 🙏 No te molesto más. Si más adelante te dan ganas de verlo, me escribes por acá y te lo muestro en 5 minutos. ¡Que te vaya muy bien!",
+  baja: "Perfecto, gracias por decírmelo 🙏 No te escribo más por acá. ¡Que te vaya muy bien!",
+} as const;
+
+/** Un «por ahora no» vuelve a la bandeja en 30 días (el máximo del cierre automático). */
+export const DIAS_TRAS_UN_NO_SUAVE = 30;
 
 /**
  * El tema del saludo: el del último correo que leyó y, si ninguno se
@@ -170,6 +195,7 @@ export const NOTAS = {
   baja: "Atlas: pidió no recibir más mensajes por WhatsApp",
   numeroSinWhatsapp: "Atlas: WhatsApp no pudo entregarle el mensaje; el número no usaría WhatsApp. Llámalo o escríbele por correo.",
   noEntregado: "Atlas: WhatsApp no entregó el mensaje automático. Escríbele tú.",
+  noSuave: "Atlas: respondió «por ahora no» al WhatsApp; se despidió y vuelve en 30 días",
 } as const;
 
 export function esNotaDeAtlas(nota: string | null | undefined): boolean {
@@ -262,16 +288,21 @@ export function pasoQueToca(fila: FilaDeBandeja, ahora: Date): ClavePlantillaPro
  * primeros mensajes a veterinarias, me urge») y, dentro de cada grupo, en el
  * orden de la bandeja (los más interesados primero).
  */
-export function elegirEnvios(filas: FilaDeBandeja[], { ahora, cupo }: { ahora: Date; cupo: number }): Envio[] {
+export function elegirEnvios(
+  filas: FilaDeBandeja[],
+  { ahora, cupo, aprobados }: { ahora: Date; cupo: number; aprobados?: Map<string, string> },
+): Envio[] {
   const envios: Envio[] = [];
   const celulares = new Set<string>();
   const orden = (fila: FilaDeBandeja) => (esVeterinaria(fila) ? 0 : 1);
   for (const fila of [...filas].sort((a, b) => orden(a) - orden(b) || a.prioridad - b.prioridad)) {
     if (envios.length >= cupo) break;
-    const celular = celularChileno(fila.telefono);
-    if (!celular || celulares.has(celular)) continue;
     const clave = pasoQueToca(fila, ahora);
     if (!clave) continue;
+    // El primer mensaje solo va a quien pasó la verificación (ver verificacion-prospecto.ts); el celular bueno puede venir de ahí.
+    if (clave === "saludo" && aprobados && !aprobados.has(fila.lead_id)) continue;
+    const celular = celularChileno((clave === "saludo" && aprobados?.get(fila.lead_id)) || fila.telefono);
+    if (!celular || celulares.has(celular)) continue;
     celulares.add(celular);
     const parametros = clave === "saludo" ? [temaParaWhatsapp(fila.correos, fila.empresa, fila.campana ?? null)] : [nombreComoSeDice(fila.empresa) ?? "tu empresa"];
     envios.push({

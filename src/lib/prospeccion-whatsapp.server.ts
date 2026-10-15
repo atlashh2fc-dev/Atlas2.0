@@ -5,6 +5,8 @@ import { randomUUID } from "node:crypto";
 import { fechaEnChile, instanteEnChile } from "@/lib/citas";
 import { graph } from "@/lib/meta-registro";
 import {
+  DESPEDIDAS,
+  DIAS_TRAS_UN_NO_SUAVE,
   EMPRESAS_CON_WHATSAPP_AUTOMATICO,
   NOTAS,
   PLANTILLAS_DE_PROSPECCION,
@@ -14,6 +16,7 @@ import {
   elegirEnvios,
   enHorario,
   esBaja,
+  esNoSuave,
   esRespuestaAutomatica,
   esVeterinaria,
   numeroSinWhatsapp,
@@ -25,7 +28,8 @@ import {
 import { createAdminClient } from "@/lib/supabase/admin";
 import { accesoDeMeta } from "@/lib/whatsapp-credenciales";
 import { celularChileno } from "@/lib/prospeccion";
-import { isWhatsAppProviderConfigured, sendWhatsAppMedia, sendWhatsAppTemplate, whatsappProvider } from "@/lib/whatsapp-provider";
+import { verificarCandidatos, type ResultadoDeVerificacion } from "@/lib/verificacion-prospecto.server";
+import { isWhatsAppProviderConfigured, sendWhatsAppMedia, sendWhatsAppTemplate, sendWhatsAppText, whatsappProvider } from "@/lib/whatsapp-provider";
 
 /**
  * La corrida del WhatsApp automático (reglas en prospeccion-whatsapp.ts).
@@ -39,8 +43,12 @@ import { isWhatsAppProviderConfigured, sendWhatsAppMedia, sendWhatsAppTemplate, 
  * rechaza por spam o velocidad, apaga el interruptor y deja el motivo. Un
  * número bloqueado no se recupera; un día sin mensajes, sí.
  *
+ * Antes del primer mensaje, verifica al negocio en la web (ver
+ * verificacion-prospecto.ts): solo le escribe a quien pasó. A quien contesta
+ * que no, se despide una vez (ver DESPEDIDAS) y lo cierra.
+ *
  * En ensayo no escribe nada (ni en Meta ni en la base): devuelve a quién le
- * escribiría hoy y con qué texto.
+ * escribiría hoy y con qué texto, y qué dio la verificación de los que faltaban.
  */
 
 type Admin = ReturnType<typeof createAdminClient>;
@@ -59,7 +67,11 @@ export type InformeWhatsapp = {
   bajas: number;
   noEntregados: number;
   videos: number;
+  /** Despedidas enviadas a quienes contestaron que no. */
+  despedidas: number;
   plantillas: Partial<Record<ClavePlantillaProspeccion, EstadoPlantilla>>;
+  /** Qué dio la verificación en la web de los candidatos de esta corrida. */
+  verificaciones: ResultadoDeVerificacion[];
 };
 
 type Canal = {
@@ -74,7 +86,7 @@ type Canal = {
 
 export async function escribirAProspectos({ ensayo = false, ahora = new Date() }: { ensayo?: boolean; ahora?: Date } = {}): Promise<InformeWhatsapp> {
   const admin = createAdminClient();
-  const informe: InformeWhatsapp = { ensayo, estado: "ok", resumen: "", enviados: [], fallidos: [], bajas: 0, noEntregados: 0, videos: 0, plantillas: {} };
+  const informe: InformeWhatsapp = { ensayo, estado: "ok", resumen: "", enviados: [], fallidos: [], bajas: 0, noEntregados: 0, videos: 0, despedidas: 0, plantillas: {}, verificaciones: [] };
   const terminar = (estado: InformeWhatsapp["estado"], resumen: string) => Object.assign(informe, { estado, resumen });
 
   const { data: empresa, error: empresaError } = await admin.from("organizations").select("id").eq("slug", EMPRESA).single();
@@ -121,7 +133,10 @@ export async function escribirAProspectos({ ensayo = false, ahora = new Date() }
 
   // A la veterinaria que respondió el saludo le llega el video, aunque el cupo del día esté lleno:
   // contesta a una conversación que ella abrió, dentro de las 24 horas.
-  if (encendido && !ensayo) informe.videos = await mandarVideoAVeterinarias(admin, org, canal, ahora);
+  if (encendido && !ensayo) {
+    informe.despedidas = await despedirse(admin, org, canal, ahora);
+    informe.videos = await mandarVideoAVeterinarias(admin, org, canal, ahora);
+  }
 
   if (!ensayo && !enHorario(ahora)) return terminar("fuera_de_horario", "Fuera de horario (lunes a viernes, 10:00 a 19:00).");
 
@@ -132,6 +147,7 @@ export async function escribirAProspectos({ ensayo = false, ahora = new Date() }
     .eq("organization_id", org)
     .eq("automatico", true)
     .not("texto", "like", "🎬%")
+    .not("texto", "like", "🙏%")
     .gte("occurred_at", inicioHoy.toISOString());
   if (hoyError) throw new Error(`No se pudo contar lo enviado hoy: ${hoyError.message}`);
   const quedan = porDia - (hoy ?? 0);
@@ -155,11 +171,20 @@ export async function escribirAProspectos({ ensayo = false, ahora = new Date() }
 
   const { data: filas, error: bandejaError } = await admin.rpc("prospeccion_de_empresa", { p_org: org, p_dias: 14 });
   if (bandejaError) throw new Error(`No se pudo leer la bandeja: ${bandejaError.message}`);
-  const envios = elegirEnvios((filas ?? []) as FilaDeBandeja[], { ahora, cupo: ensayo ? quedan : Math.min(quedan, REGLAS.porCorrida) });
+  const bandeja = (filas ?? []) as FilaDeBandeja[];
+  const cupo = ensayo ? quedan : Math.min(quedan, REGLAS.porCorrida);
+  // Los candidatos al primer mensaje, en el orden en que saldrían, pasan por la verificación en la web.
+  const candidatos = elegirEnvios(bandeja, { ahora, cupo: 40 })
+    .filter((e) => e.clave === "saludo")
+    .map((e) => ({ leadId: e.leadId, empresa: e.empresa, celular: e.celular }));
+  const verificacion = await verificarCandidatos(admin, org, candidatos, { cupo, ensayo, ahora });
+  informe.verificaciones = verificacion.informe;
+  const envios = elegirEnvios(bandeja, { ahora, cupo, aprobados: verificacion.aprobados });
 
   if (ensayo) {
     informe.enviados = envios.map((e) => ({ empresa: e.empresa, paso: e.clave, texto: e.texto }));
-    return terminar("ok", `Ensayo: hoy le escribiría a ${envios.length} (quedan ${quedan} de ${porDia}).`);
+    const verificados = verificacion.informe.filter((v) => v.nueva).length;
+    return terminar("ok", `Ensayo: hoy le escribiría a ${envios.length} (quedan ${quedan} de ${porDia})${verificados ? ` · ${verificados} verificados recién` : ""}.`);
   }
 
   const listos = envios.filter((e) => aprobadas.has(PLANTILLAS_DE_PROSPECCION[e.clave].nombre));
@@ -208,10 +233,83 @@ export async function escribirAProspectos({ ensayo = false, ahora = new Date() }
     informe.bajas ? `${informe.bajas} pidieron la baja` : null,
     informe.noEntregados ? `${informe.noEntregados} no entregados volvieron a la bandeja` : null,
     informe.videos ? `${informe.videos} videos a veterinarias que respondieron` : null,
+    informe.despedidas ? `${informe.despedidas} despedidas a quienes dijeron que no` : null,
+    informe.verificaciones.some((v) => v.nueva && v.estado !== "aprobado")
+      ? `${informe.verificaciones.filter((v) => v.nueva && v.estado !== "aprobado").length} no pasaron la verificación`
+      : null,
   ]
     .filter(Boolean)
     .join(" · ");
   return terminar("ok", resumen);
+}
+
+/**
+ * Quien contestó que no recibe una despedida, una sola vez y dentro de las 24
+ * horas en que WhatsApp deja responder: «no, gracias» o el botón cierran para
+ * siempre (cerrarBajas ya lo saca de la bandeja); un «por ahora no» cierra por
+ * 30 días con la nota. Las bienvenidas automáticas de su WhatsApp no cuentan.
+ */
+async function despedirse(admin: Admin, org: string, canal: Canal, ahora: Date): Promise<number> {
+  const desde = new Date(ahora.getTime() - 23 * 60 * 60 * 1000).toISOString();
+  const { data: respuestas, error } = await admin
+    .from("prospeccion_whatsapp")
+    .select("lead_id, texto, occurred_at")
+    .eq("organization_id", org)
+    .eq("direction", "inbound")
+    .gte("occurred_at", desde)
+    .order("occurred_at", { ascending: false })
+    .limit(200);
+  if (error || !respuestas?.length) return 0;
+
+  const ultimaRespuesta = new Map<string, { texto: string | null; at: string }>();
+  for (const fila of respuestas) {
+    if (!ultimaRespuesta.has(fila.lead_id as string)) ultimaRespuesta.set(fila.lead_id as string, { texto: fila.texto as string | null, at: fila.occurred_at as string });
+  }
+  const leadIds = [...ultimaRespuesta.keys()];
+  const [{ data: salientes }, { data: leads }] = await Promise.all([
+    admin.from("prospeccion_whatsapp").select("lead_id, texto, occurred_at").eq("organization_id", org).eq("automatico", true).in("lead_id", leadIds),
+    admin.from("leads").select("id, phone").eq("organization_id", org).in("id", leadIds),
+  ]);
+  const esSaludo = (texto: unknown) => !/^[🎬🙏]/u.test(String(texto ?? ""));
+  const yaDespedido = new Set((salientes ?? []).filter((s) => String(s.texto ?? "").startsWith("🙏")).map((s) => s.lead_id as string));
+  const recibioSaludo = new Set((salientes ?? []).filter((s) => esSaludo(s.texto)).map((s) => s.lead_id as string));
+
+  let enviadas = 0;
+  for (const lead of leads ?? []) {
+    const id = lead.id as string;
+    const celular = celularChileno(lead.phone as string | null);
+    const respuesta = ultimaRespuesta.get(id);
+    if (!celular || !respuesta || yaDespedido.has(id) || !recibioSaludo.has(id)) continue;
+    const nuestro = (salientes ?? [])
+      .filter((s) => s.lead_id === id && esSaludo(s.texto) && String(s.occurred_at) <= respuesta.at)
+      .map((s) => new Date(String(s.occurred_at)).getTime())
+      .sort((a, b) => b - a)[0];
+    const segundos = nuestro ? (new Date(respuesta.at).getTime() - nuestro) / 1000 : null;
+    if (esRespuestaAutomatica(respuesta.texto, segundos)) continue;
+    const baja = esBaja(respuesta.texto);
+    if (!baja && !esNoSuave(respuesta.texto)) continue;
+    const texto = baja ? DESPEDIDAS.baja : DESPEDIDAS.suave;
+    try {
+      const { providerMessageId } = await sendWhatsAppText({
+        provider: canal.provider,
+        channelId: canal.id,
+        phoneNumberId: canal.phone_number_id ?? "",
+        from: canal.display_phone_number ?? "",
+        to: celular,
+        body: texto,
+        clientReference: randomUUID(),
+      });
+      await admin.from("prospeccion_whatsapp").insert({ organization_id: org, lead_id: id, direction: "outbound", wamid: providerMessageId, texto: `🙏 ${texto}`, automatico: true, estado: "accepted" });
+      enviadas += 1;
+      if (!baja) {
+        const { error: cierreError } = await admin.rpc("cerrar_prospecto_desde_whatsapp", { p_org: org, p_lead: id, p_resultado: "posponer", p_nota: NOTAS.noSuave, p_dias: DIAS_TRAS_UN_NO_SUAVE });
+        if (cierreError) console.error("[whatsapp-automatico] no suave sin anotar", id, cierreError.message);
+      }
+    } catch (errorDeEnvio) {
+      console.error("[whatsapp-automatico] despedida sin enviar", id, errorDeEnvio instanceof Error ? errorDeEnvio.message : errorDeEnvio);
+    }
+  }
+  return enviadas;
 }
 
 /**
@@ -242,7 +340,7 @@ async function mandarVideoAVeterinarias(admin: Admin, org: string, canal: Canal,
     admin.from("leads").select("id, full_name, phone, extra, campaigns(name)").eq("organization_id", org).in("id", leadIds),
   ]);
   const yaTieneVideo = new Set((salientes ?? []).filter((s) => String(s.texto ?? "").startsWith("🎬")).map((s) => s.lead_id as string));
-  const recibioSaludo = new Set((salientes ?? []).filter((s) => !String(s.texto ?? "").startsWith("🎬")).map((s) => s.lead_id as string));
+  const recibioSaludo = new Set((salientes ?? []).filter((s) => !/^[🎬🙏]/u.test(String(s.texto ?? ""))).map((s) => s.lead_id as string));
 
   let enviados = 0;
   for (const lead of leads ?? []) {
@@ -254,7 +352,7 @@ async function mandarVideoAVeterinarias(admin: Admin, org: string, canal: Canal,
     if (!esVeterinaria({ campana: campana?.name ?? null, empresa })) continue;
     const respuesta = ultimaRespuesta.get(id);
     const nuestro = (salientes ?? [])
-      .filter((s) => s.lead_id === id && !String(s.texto ?? "").startsWith("🎬") && respuesta && String(s.occurred_at) <= respuesta.at)
+      .filter((s) => s.lead_id === id && !/^[🎬🙏]/u.test(String(s.texto ?? "")) && respuesta && String(s.occurred_at) <= respuesta.at)
       .map((s) => new Date(String(s.occurred_at)).getTime())
       .sort((a, b) => b - a)[0];
     const segundos = respuesta && nuestro ? (new Date(respuesta.at).getTime() - nuestro) / 1000 : null;
