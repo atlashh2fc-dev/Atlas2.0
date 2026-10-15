@@ -33,7 +33,10 @@ type Admin = ReturnType<typeof createAdminClient>;
 
 const NAVEGADOR = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36";
 const PAUSA_ENTRE_BUSQUEDAS_MS = 1200;
-const TIEMPO_MAXIMO_MS = 9000;
+/** Por descarga: un buscador que no contesta en esto no va a contestar. */
+const TIEMPO_MAXIMO_MS = 6000;
+/** Para toda la verificación de una corrida: el cron tiene 60 segundos y además tiene que escribir. */
+export const PLAZO_DE_VERIFICACION_MS = 28_000;
 
 const esperar = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -133,11 +136,12 @@ export async function verificarCandidatos(
   admin: Admin,
   org: string,
   candidatos: { leadId: string; empresa: string | null; celular: string }[],
-  { cupo, ensayo, ahora = new Date() }: { cupo: number; ensayo: boolean; ahora?: Date },
+  { cupo, ensayo, ahora = new Date(), plazoMs = PLAZO_DE_VERIFICACION_MS }: { cupo: number; ensayo: boolean; ahora?: Date; plazoMs?: number },
 ): Promise<{ aprobados: Map<string, string>; informe: ResultadoDeVerificacion[] }> {
   const aprobados = new Map<string, string>();
   const informe: ResultadoDeVerificacion[] = [];
   if (candidatos.length === 0 || cupo <= 0) return { aprobados, informe };
+  const limite = Date.now() + plazoMs;
 
   const ids = candidatos.slice(0, 40).map((c) => c.leadId);
   const { data: leads, error } = await admin.from("leads").select("id, email, phone, extra, campaign_id").eq("organization_id", org).in("id", ids);
@@ -160,7 +164,8 @@ export async function verificarCandidatos(
       if (guardada.estado === "aprobado") aprobados.set(candidato.leadId, guardada.celular_corregido ?? candidato.celular);
       continue;
     }
-    if (nuevas >= VERIFICACIONES_POR_CORRIDA) continue;
+    // Sin tiempo para otra búsqueda, se deja para la próxima corrida (sigue sin escribirse a ciegas).
+    if (nuevas >= VERIFICACIONES_POR_CORRIDA || Date.now() > limite - 2 * TIEMPO_MAXIMO_MS) continue;
     nuevas += 1;
     if (nuevas > 1 && !hayGooglePlaces()) await esperar(PAUSA_ENTRE_BUSQUEDAS_MS);
 

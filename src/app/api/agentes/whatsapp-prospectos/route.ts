@@ -10,7 +10,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * hábil; con `?ensayo=1` no escribe nada y devuelve a quién le escribiría.
  */
 export const runtime = "nodejs";
-export const maxDuration = 60;
+// La verificación en la web (hasta 4 búsquedas por corrida, con plazo propio) necesita margen.
+export const maxDuration = 120;
 
 export async function GET(request: NextRequest) {
   if (!cronAutorizado(request)) {
