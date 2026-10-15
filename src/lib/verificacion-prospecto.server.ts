@@ -140,9 +140,13 @@ export async function verificarCandidatos(
   if (candidatos.length === 0 || cupo <= 0) return { aprobados, informe };
 
   const ids = candidatos.slice(0, 40).map((c) => c.leadId);
-  const { data: leads, error } = await admin.from("leads").select("id, email, phone, extra, campaigns(name)").eq("organization_id", org).in("id", ids);
+  const { data: leads, error } = await admin.from("leads").select("id, email, phone, extra, campaign_id").eq("organization_id", org).in("id", ids);
   if (error) throw new Error(`No se pudieron leer los prospectos a verificar: ${error.message}`);
   const porId = new Map((leads ?? []).map((l) => [l.id as string, l]));
+  // leads y campaigns se relacionan por más de una clave, así que el nombre de la campaña se lee aparte.
+  const idsDeCampana = [...new Set((leads ?? []).map((l) => l.campaign_id as string | null).filter((id): id is string => Boolean(id)))];
+  const { data: campanas } = idsDeCampana.length ? await admin.from("campaigns").select("id, name").in("id", idsDeCampana) : { data: [] };
+  const nombreDeCampana = new Map((campanas ?? []).map((c) => [c.id as string, (c.name as string | null) ?? null]));
 
   let nuevas = 0;
   for (const candidato of candidatos) {
@@ -160,11 +164,11 @@ export async function verificarCandidatos(
     nuevas += 1;
     if (nuevas > 1 && !hayGooglePlaces()) await esperar(PAUSA_ENTRE_BUSQUEDAS_MS);
 
-    const campana = (Array.isArray(lead.campaigns) ? lead.campaigns[0] : lead.campaigns) as { name?: string } | null;
+    const campana = nombreDeCampana.get(lead.campaign_id as string) ?? null;
     let resultado: Verificacion;
     try {
       resultado = await verificarProspecto(
-        { leadId: candidato.leadId, empresa: candidato.empresa, email: (lead.email as string | null) ?? null, celular: (lead.phone as string | null) ?? candidato.celular, campana: campana?.name ?? null },
+        { leadId: candidato.leadId, empresa: candidato.empresa, email: (lead.email as string | null) ?? null, celular: (lead.phone as string | null) ?? candidato.celular, campana },
         ahora,
       );
     } catch (errorDeBusqueda) {

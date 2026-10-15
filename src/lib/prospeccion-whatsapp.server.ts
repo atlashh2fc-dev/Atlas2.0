@@ -160,6 +160,7 @@ export async function escribirAProspectos({ ensayo = false, ahora = new Date() }
       .eq("organization_id", org)
       .eq("automatico", true)
       .not("texto", "like", "🎬%")
+      .not("texto", "like", "🙏%")
       .order("occurred_at", { ascending: false })
       .limit(1)
       .maybeSingle();
