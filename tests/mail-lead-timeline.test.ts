@@ -6,15 +6,20 @@ const timeline = readFileSync(
   new URL("../src/components/lead-timeline.tsx", import.meta.url),
   "utf8",
 );
+const activity = readFileSync(
+  new URL("../src/lib/lead-activity.ts", import.meta.url),
+  "utf8",
+);
 const leadDetail = readFileSync(
   new URL("../src/app/dashboard/leads/[id]/page.tsx", import.meta.url),
   "utf8",
 );
 
 test("correo es un canal visible y no una integración genérica", () => {
-  assert.match(timeline, /source: "call" \| "email"/);
+  assert.match(activity, /ActivitySource = "call" \| "email"/);
   assert.match(timeline, /\{ id: "email", label: "Correo" \}/);
-  assert.match(timeline, /entry\.source === "email"/);
+  assert.match(timeline, /email: \{ icon: Mail, label: "Correo" \}/);
+  assert.match(timeline, /entry\.source === filter/);
   assert.match(leadDetail, /event\.event_type === "engagement\.event\.v1" \? "email" : "integration"/);
 });
 

@@ -1,29 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CalendarClock, History, Mail, MessageCircle, MessageSquare, PhoneCall, RefreshCw } from "lucide-react";
 import { Avatar, EmptyState } from "@/components/ui";
-import {
-  Timeline,
-  TimelineItem,
-  TimelineNote,
-  dateTimeLabel,
-  dayGroupKey,
-  dayGroupLabel,
-  sentenceCase,
-  type ChipTone,
-} from "@/components/record-kit";
+import { dateTimeLabel, dayGroupKey, dayGroupLabel, sentenceCase } from "@/components/record-kit";
+import { prepareActivity, type ActivityEntry, type ActivitySource } from "@/lib/lead-activity";
 import { cn } from "@/lib/utils";
 
-export type TimelineEntry = {
-  key: string;
-  source: "call" | "email" | "interaction" | "integration" | "whatsapp";
-  date: string | null;
-  title: string;
-  notes: string | null;
-  agenda: string | null;
-  agent: string;
-};
+export type TimelineEntry = ActivityEntry;
 
 const FILTERS = [
   { id: "todo", label: "Todo" },
@@ -34,38 +18,120 @@ const FILTERS = [
   { id: "integration", label: "Integraciones" },
 ] as const;
 
-/** Icono y color por tipo de entrada, con el mismo criterio de canal que el menú. */
-const SOURCE_CHIP: Record<TimelineEntry["source"], { icon: typeof PhoneCall; tone: ChipTone; label: string }> = {
-  call: { icon: PhoneCall, tone: "primary", label: "Llamada" },
-  email: { icon: Mail, tone: "teal", label: "Correo" },
-  whatsapp: { icon: MessageCircle, tone: "green", label: "WhatsApp" },
-  integration: { icon: RefreshCw, tone: "slate", label: "Integración" },
-  interaction: { icon: MessageSquare, tone: "blue", label: "Gestión" },
+const CHANNEL: Record<ActivitySource, { icon: typeof PhoneCall; label: string }> = {
+  call: { icon: PhoneCall, label: "Llamada" },
+  interaction: { icon: MessageSquare, label: "Gestión" },
+  email: { icon: Mail, label: "Correo" },
+  whatsapp: { icon: MessageCircle, label: "WhatsApp" },
+  integration: { icon: RefreshCw, label: "Sistema" },
 };
 
+const chileTime = new Intl.DateTimeFormat("es-CL", {
+  timeZone: "America/Santiago",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+function timeOf(value: string | null): string {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : chileTime.format(date);
+}
+
+/** Un mensaje del canal es el texto mismo; una gestión o un correo llevan su título. */
+function isPlainMessage(entry: ActivityEntry): boolean {
+  return entry.source === "whatsapp" && /^WhatsApp (recibido|enviado)$/.test(entry.title);
+}
+
+function Bubble({ entry, first }: { entry: ActivityEntry; first: boolean }) {
+  const mine = entry.side === "equipo";
+  const channel = CHANNEL[entry.source];
+  const Icon = channel.icon;
+  const plain = isPlainMessage(entry);
+
+  return (
+    <div className={cn("flex items-end gap-2", mine ? "flex-row-reverse" : "flex-row")}>
+      {/* El avatar va una vez por tanda: la misma persona hablando seguido no se repite. */}
+      <span className="w-7 shrink-0" aria-hidden={!first}>
+        {first && <Avatar name={entry.agent} size="xs" />}
+      </span>
+      <div className={cn("flex min-w-0 max-w-[85%] flex-col sm:max-w-[75%]", mine ? "items-end" : "items-start")}>
+        {first && (
+          <p className="mb-1 px-1 text-[11px] text-muted-foreground">
+            <span className="font-medium text-foreground/80">{entry.agent}</span> · {channel.label}
+          </p>
+        )}
+        <div
+          className={cn(
+            "rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed text-foreground",
+            mine ? "rounded-br-md bg-primary/[0.13]" : "rounded-bl-md border border-border bg-surface shadow-sm"
+          )}
+        >
+          {!plain && (
+            <p className="flex items-center gap-1.5 font-semibold">
+              <Icon size={13} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+              {sentenceCase(entry.title)}
+            </p>
+          )}
+          {entry.notes && (
+            <p className={cn("whitespace-pre-wrap break-words", !plain && "mt-0.5 text-muted-foreground")}>{entry.notes}</p>
+          )}
+          {entry.agenda && (
+            <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-md bg-surface/70 px-2 py-0.5 text-xs font-medium text-foreground">
+              <CalendarClock size={12} className="text-warning" aria-hidden="true" />
+              <span suppressHydrationWarning>Agendó para el {dateTimeLabel(entry.agenda)}</span>
+            </p>
+          )}
+          <time
+            dateTime={entry.date ?? undefined}
+            suppressHydrationWarning
+            className="mt-0.5 block text-right text-[11px] tabular-nums text-muted-foreground"
+          >
+            {timeOf(entry.date)}
+          </time>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Lo que pasó solo (un correo abierto, una sincronización): al centro, chico, sin burbuja. */
+function SystemNote({ entry }: { entry: ActivityEntry }) {
+  const Icon = CHANNEL[entry.source].icon;
+  return (
+    <div className="flex justify-center py-0.5">
+      <p className="inline-flex max-w-[90%] items-start gap-1.5 rounded-xl bg-surface-muted px-3 py-1.5 text-center text-[11px] leading-snug text-muted-foreground">
+        <Icon size={12} className="mt-px shrink-0" aria-hidden="true" />
+        <span>
+          <span className="font-medium text-foreground/80">{entry.agent}</span>: {sentenceCase(entry.title)}
+          {entry.notes ? ` · ${entry.notes}` : ""}
+          <span suppressHydrationWarning className="tabular-nums"> · {timeOf(entry.date)}</span>
+        </span>
+      </p>
+    </div>
+  );
+}
+
 /**
- * Línea de tiempo unificada del registro: llamadas, gestiones y canales en un solo hilo
- * ordenado, con filtro por tipo (docs/auditoria-vistas-workplace.md §4.3). Se agrupa por
- * día y cada hito lleva su ícono de canal, el autor con avatar y la fecha relativa.
+ * Actividad del registro como una conversación: el cliente a la izquierda, el
+ * equipo a la derecha y lo automático al centro, igual que la vista de chat.
+ * Se lee de arriba hacia abajo y abre en lo más reciente.
  */
 export function LeadTimeline({ entries }: { entries: TimelineEntry[] }) {
   const [filter, setFilter] = useState<(typeof FILTERS)[number]["id"]>("todo");
+  const scroller = useRef<HTMLDivElement>(null);
 
-  const counts = useMemo(
-    () => ({
-      todo: entries.length,
-      call: entries.filter((entry) => entry.source === "call").length,
-      interaction: entries.filter((entry) => entry.source === "interaction").length,
-      email: entries.filter((entry) => entry.source === "email").length,
-      whatsapp: entries.filter((entry) => entry.source === "whatsapp").length,
-      integration: entries.filter((entry) => entry.source === "integration").length,
-    }),
-    [entries]
-  );
+  const prepared = useMemo(() => prepareActivity(entries), [entries]);
 
-  const visible = filter === "todo" ? entries : entries.filter((entry) => entry.source === filter);
+  const counts = useMemo(() => {
+    const base = { todo: prepared.length, call: 0, interaction: 0, email: 0, whatsapp: 0, integration: 0 };
+    for (const entry of prepared) base[entry.source] += 1;
+    return base;
+  }, [prepared]);
 
-  // Un día por bloque: lo de hoy, lo de ayer y lo anterior se leen de un vistazo.
+  const visible = filter === "todo" ? prepared : prepared.filter((entry) => entry.source === filter);
+
   const days = useMemo(() => {
     const groups: { key: string; label: string; items: TimelineEntry[] }[] = [];
     for (const entry of visible) {
@@ -77,15 +143,25 @@ export function LeadTimeline({ entries }: { entries: TimelineEntry[] }) {
     return groups;
   }, [visible]);
 
-  // Solo los tipos que existen en este registro: una pestaña en cero es ruido.
+  // Como en un chat, se abre en lo último que pasó.
+  useEffect(() => {
+    const element = scroller.current;
+    if (element) element.scrollTop = element.scrollHeight;
+  }, [filter, prepared]);
+
   const tabs = FILTERS.filter((item) => item.id === "todo" || counts[item.id] > 0);
 
   return (
-    <section className="atlas-panel overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
+    <section className="atlas-panel min-w-0 max-w-full overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
       <div className="flex flex-wrap items-end justify-between gap-x-4 border-b border-border px-5 pt-3">
-        <h2 className="pb-3 text-[15px] font-semibold tracking-tight text-foreground">Actividad</h2>
-        {entries.length > 0 && (
-          <div role="tablist" aria-label="Filtrar actividad" className="-mb-px flex min-w-0 items-stretch gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="pb-3">
+          <h2 className="text-[15px] font-semibold tracking-tight text-foreground">Actividad</h2>
+          {prepared.length > 0 && (
+            <p className="mt-0.5 text-xs text-muted-foreground">Cliente a la izquierda · equipo a la derecha</p>
+          )}
+        </div>
+        {prepared.length > 0 && (
+          <div role="tablist" aria-label="Filtrar actividad" className="-mb-px flex min-w-0 max-w-full items-stretch gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {tabs.map((item) => {
               const active = item.id === filter;
               return (
@@ -123,49 +199,37 @@ export function LeadTimeline({ entries }: { entries: TimelineEntry[] }) {
       {visible.length === 0 ? (
         <EmptyState
           icon={History}
-          title={entries.length === 0 ? "Sin actividad todavía" : "No hay actividad de este tipo"}
+          title={prepared.length === 0 ? "Sin actividad todavía" : "No hay actividad de este tipo"}
           description={
-            entries.length === 0
-              ? "Al cerrar la primera gestión aparecerá acá, con quién la hizo y qué quedó agendado."
+            prepared.length === 0
+              ? "Al cerrar la primera gestión o llegar el primer mensaje aparecerá acá."
               : undefined
           }
           className="py-10"
         />
       ) : (
-        <div className="space-y-6 px-5 py-5">
+        <div
+          ref={scroller}
+          className="max-h-[680px] space-y-5 overflow-y-auto bg-background px-3 py-5 sm:px-5"
+          aria-label="Historial del registro"
+        >
           {days.map((day) => (
-            <div key={day.key}>
-              <h3 suppressHydrationWarning className="mb-3 text-xs font-medium text-muted-foreground">{day.label}</h3>
-              <Timeline>
-                {day.items.map((entry, index) => {
-                  const chip = SOURCE_CHIP[entry.source];
-                  // Las integraciones no son una persona: su avatar es cuadrado.
-                  const system = entry.source === "integration";
-                  return (
-                    <TimelineItem
-                      key={entry.key}
-                      icon={chip.icon}
-                      tone={chip.tone}
-                      title={sentenceCase(entry.title)}
-                      date={entry.date}
-                      author={entry.agent}
-                      authorAvatar={<Avatar name={entry.agent} size="xs" shape={system ? "square" : "circle"} />}
-                      meta={chip.label}
-                      last={index === day.items.length - 1}
-                    >
-                      {entry.notes && <TimelineNote>{entry.notes}</TimelineNote>}
-                      {entry.agenda && (
-                        <p className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground">
-                          <span className="icon-chip size-5 rounded" data-tone="amber" aria-hidden="true">
-                            <CalendarClock size={11} />
-                          </span>
-                          Agendó para el {dateTimeLabel(entry.agenda)}
-                        </p>
-                      )}
-                    </TimelineItem>
-                  );
-                })}
-              </Timeline>
+            <div key={day.key} className="space-y-2">
+              <div className="flex items-center gap-3 py-1" role="separator" aria-label={day.label}>
+                <span className="h-px flex-1 bg-border" aria-hidden="true" />
+                <span suppressHydrationWarning className="text-[11px] font-medium text-muted-foreground">{day.label}</span>
+                <span className="h-px flex-1 bg-border" aria-hidden="true" />
+              </div>
+              {day.items.map((entry, index) => {
+                if (entry.side === "sistema") return <SystemNote key={entry.key} entry={entry} />;
+                const previous = day.items[index - 1];
+                const first = !previous || previous.side !== entry.side || previous.agent !== entry.agent;
+                return (
+                  <div key={entry.key} className={first && index > 0 ? "pt-2" : undefined}>
+                    <Bubble entry={entry} first={first} />
+                  </div>
+                );
+              })}
             </div>
           ))}
         </div>

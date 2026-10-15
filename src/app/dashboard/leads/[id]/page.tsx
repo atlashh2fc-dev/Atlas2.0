@@ -118,6 +118,21 @@ type LeadContact = {
   source: string;
 };
 
+/** Un adjunto sin texto se nombra en español, no con el tipo crudo de Meta. */
+const WHATSAPP_MEDIA_LABEL: Record<string, string> = {
+  image: "Imagen",
+  audio: "Audio",
+  video: "Video",
+  document: "Documento",
+  sticker: "Sticker",
+  location: "Ubicación",
+  contacts: "Contacto compartido",
+  template: "Plantilla",
+  interactive: "Respuesta de botón",
+  button: "Respuesta de botón",
+  reaction: "Reacción",
+};
+
 type LeadTimelineItem = {
   source: "call" | "interaction";
   id: string;
@@ -462,6 +477,7 @@ export default async function LeadDetailPage({
     ...(record.timeline ?? []).map((item): TimelineEntry => ({
     key: `${item.source}-${item.id}`,
     source: item.source,
+    side: "equipo",
     date: item.occurred_at,
     title: getReasonConfig(item.title)?.label ?? item.title ?? "Gestión",
     notes: item.notes,
@@ -485,6 +501,8 @@ export default async function LeadDetailPage({
       return {
         key: `integration-${event.id}`,
         source: event.event_type === "engagement.event.v1" ? "email" : "integration",
+        // Aperturas, clics y sincronizaciones pasan solas: van al centro, no son una conversación.
+        side: "sistema",
         date: event.occurred_at ?? event.created_at,
         title: externalEventTitle(event),
         notes: notes || null,
@@ -498,9 +516,10 @@ export default async function LeadDetailPage({
       return {
         key: `whatsapp-${message.id}`,
         source: "whatsapp",
+        side: inbound ? "cliente" : "equipo",
         date: message.provider_timestamp ?? message.created_at,
         title: inbound ? "WhatsApp recibido" : "WhatsApp enviado",
-        notes: message.text_body || `[${message.message_type}]`,
+        notes: message.text_body || WHATSAPP_MEDIA_LABEL[message.message_type] || "Mensaje sin texto",
         agenda: null,
         agent: inbound ? lead.full_name : sender?.full_name ?? "Equipo Atlas",
       };
@@ -508,6 +527,7 @@ export default async function LeadDetailPage({
     ...correosRecibidos.map((correo): TimelineEntry => ({
       key: `correo-recibido-${correo.id}`,
       source: "email",
+      side: "cliente",
       date: correo.received_at,
       title: "El cliente respondió por correo",
       notes: correo.subject,
@@ -517,6 +537,7 @@ export default async function LeadDetailPage({
     ...correosEnviados.map((correo): TimelineEntry => ({
       key: `correo-enviado-${correo.id}`,
       source: "email",
+      side: "equipo",
       date: correo.created_at,
       title: correo.estado === "fallido" ? "Respuesta por correo: no salió" : "Respuesta enviada por correo",
       notes: `Para ${correo.destinatario}`,
@@ -534,6 +555,7 @@ export default async function LeadDetailPage({
       return {
         key: `cotizacion-${quote.id}`,
         source: quote.canal === "correo" ? "email" : "whatsapp",
+        side: "equipo",
         date: quote.created_at,
         title: failed
           ? "Propuesta Equifax: el correo no salió"
