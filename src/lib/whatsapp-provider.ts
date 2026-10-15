@@ -49,7 +49,7 @@ type SendMediaInput = ConProveedor & {
   phoneNumberId: string;
   from: string;
   to: string;
-  messageType: "image" | "audio";
+  messageType: "image" | "audio" | "video";
   mediaUrl: string;
   caption?: string | null;
   clientReference: string;
@@ -233,7 +233,8 @@ export async function sendWhatsAppMedia(input: SendMediaInput): Promise<SendText
     return { provider: "meta", ...enviado };
   }
   const provider = whatsappProvider(input.provider);
-  const media = input.messageType === "image"
+  // WhatsApp acepta pie en imágenes y videos; los audios van sin texto.
+  const media = input.messageType !== "audio"
     ? { link: input.mediaUrl, ...(input.caption?.trim() ? { caption: input.caption.trim() } : {}) }
     : { link: input.mediaUrl };
 

@@ -17,7 +17,9 @@ import {
   esBaja,
   numeroSinWhatsapp,
   pideFrenar,
+  quiereVerElVideo,
   temaParaWhatsapp,
+  TEMA_VETERINARIAS,
   textoDePlantilla,
   type FilaDeBandeja,
 } from "../src/lib/prospeccion-whatsapp.ts";
@@ -166,4 +168,30 @@ test("el agente tiene correa: apagado por defecto, tope, pausa sola y ensayo que
   assert.match(cron.schedule, /1-5$/, "solo días hábiles");
   // Sin esto el middleware manda el cron al login y el agente nunca corre.
   assert.match(leer("src/lib/supabase/middleware.ts"), /"\/api\/agentes\/whatsapp-prospectos"/);
+});
+
+test("las veterinarias van primero y su saludo retoma la ficha 3D", () => {
+  const pyme = fila({ prioridad: 1, telefono: "911111111" });
+  const vet = fila({ prioridad: 4, telefono: "922222222", empresa: "Clínica Veterinaria Los Alerces", campana: "Altius · Atlas CRM Vet · Octubre 2026" });
+  const [primero, segundo] = elegirEnvios([pyme, vet], { ahora: AHORA, cupo: 5 });
+  assert.equal(primero.leadId, vet.lead_id, "aunque la pyme hizo clic, la veterinaria va primero");
+  assert.equal(segundo.leadId, pyme.lead_id);
+  assert.equal(primero.parametros[0], TEMA_VETERINARIAS);
+  assert.match(primero.texto, /te mandé un correo sobre la ficha 3D donde tocas la zona del cuerpo/);
+});
+
+test("el video va solo si la respuesta no es un no", () => {
+  assert.equal(quiereVerElVideo("Sí, cuéntame"), true);
+  assert.equal(quiereVerElVideo("¿Cuánto cuesta?"), true);
+  assert.equal(quiereVerElVideo("No, gracias"), false);
+  assert.equal(quiereVerElVideo("no por ahora"), false);
+  assert.equal(quiereVerElVideo("No me interesa"), false);
+  assert.equal(quiereVerElVideo(""), false);
+});
+
+test("el video no cuenta en el tope de saludos del día y no se repite", () => {
+  const corrida = leer("src/lib/prospeccion-whatsapp.server.ts");
+  assert.match(corrida, /\.not\("texto", "like", "🎬%"\)/);
+  assert.match(corrida, /yaTieneVideo\.has\(id\)/);
+  assert.match(corrida, /23 \* 60 \* 60 \* 1000/, "dentro de las 24 horas que da WhatsApp, con margen");
 });

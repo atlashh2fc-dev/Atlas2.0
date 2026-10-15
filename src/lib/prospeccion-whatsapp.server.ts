@@ -9,18 +9,22 @@ import {
   NOTAS,
   PLANTILLAS_DE_PROSPECCION,
   REGLAS,
+  VIDEO_VETERINARIAS,
   definicionParaMeta,
   elegirEnvios,
   enHorario,
   esBaja,
+  esVeterinaria,
   numeroSinWhatsapp,
+  quiereVerElVideo,
   pideFrenar,
   type ClavePlantillaProspeccion,
   type FilaDeBandeja,
 } from "@/lib/prospeccion-whatsapp";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { accesoDeMeta } from "@/lib/whatsapp-credenciales";
-import { isWhatsAppProviderConfigured, sendWhatsAppTemplate, whatsappProvider } from "@/lib/whatsapp-provider";
+import { celularChileno } from "@/lib/prospeccion";
+import { isWhatsAppProviderConfigured, sendWhatsAppMedia, sendWhatsAppTemplate, whatsappProvider } from "@/lib/whatsapp-provider";
 
 /**
  * La corrida del WhatsApp automático (reglas en prospeccion-whatsapp.ts).
@@ -53,6 +57,7 @@ export type InformeWhatsapp = {
   fallidos: { empresa: string | null; error: string }[];
   bajas: number;
   noEntregados: number;
+  videos: number;
   plantillas: Partial<Record<ClavePlantillaProspeccion, EstadoPlantilla>>;
 };
 
@@ -68,7 +73,7 @@ type Canal = {
 
 export async function escribirAProspectos({ ensayo = false, ahora = new Date() }: { ensayo?: boolean; ahora?: Date } = {}): Promise<InformeWhatsapp> {
   const admin = createAdminClient();
-  const informe: InformeWhatsapp = { ensayo, estado: "ok", resumen: "", enviados: [], fallidos: [], bajas: 0, noEntregados: 0, plantillas: {} };
+  const informe: InformeWhatsapp = { ensayo, estado: "ok", resumen: "", enviados: [], fallidos: [], bajas: 0, noEntregados: 0, videos: 0, plantillas: {} };
   const terminar = (estado: InformeWhatsapp["estado"], resumen: string) => Object.assign(informe, { estado, resumen });
 
   const { data: empresa, error: empresaError } = await admin.from("organizations").select("id").eq("slug", EMPRESA).single();
@@ -113,6 +118,10 @@ export async function escribirAProspectos({ ensayo = false, ahora = new Date() }
     }
   }
 
+  // A la veterinaria que respondió el saludo le llega el video, aunque el cupo del día esté lleno:
+  // contesta a una conversación que ella abrió, dentro de las 24 horas.
+  if (encendido && !ensayo) informe.videos = await mandarVideoAVeterinarias(admin, org, canal, ahora);
+
   if (!ensayo && !enHorario(ahora)) return terminar("fuera_de_horario", "Fuera de horario (lunes a viernes, 10:00 a 19:00).");
 
   const inicioHoy = instanteEnChile(fechaEnChile(ahora), "00:00");
@@ -121,6 +130,7 @@ export async function escribirAProspectos({ ensayo = false, ahora = new Date() }
     .select("id", { count: "exact", head: true })
     .eq("organization_id", org)
     .eq("automatico", true)
+    .not("texto", "like", "🎬%")
     .gte("occurred_at", inicioHoy.toISOString());
   if (hoyError) throw new Error(`No se pudo contar lo enviado hoy: ${hoyError.message}`);
   const quedan = porDia - (hoy ?? 0);
@@ -180,10 +190,79 @@ export async function escribirAProspectos({ ensayo = false, ahora = new Date() }
     informe.fallidos.length ? `${informe.fallidos.length} con error` : null,
     informe.bajas ? `${informe.bajas} pidieron la baja` : null,
     informe.noEntregados ? `${informe.noEntregados} no entregados volvieron a la bandeja` : null,
+    informe.videos ? `${informe.videos} videos a veterinarias que respondieron` : null,
   ]
     .filter(Boolean)
     .join(" · ");
   return terminar("ok", resumen);
+}
+
+/**
+ * La veterinaria que contestó el saludo automático recibe el video, una sola vez,
+ * si su respuesta no es un «no» y está dentro de las 24 horas que WhatsApp da
+ * para responder (se usa 23, por margen). Queda anotado en prospeccion_whatsapp
+ * para no repetirlo; la conversación sigue en el teléfono.
+ */
+async function mandarVideoAVeterinarias(admin: Admin, org: string, canal: Canal, ahora: Date): Promise<number> {
+  const desde = new Date(ahora.getTime() - 23 * 60 * 60 * 1000).toISOString();
+  const { data: respuestas, error } = await admin
+    .from("prospeccion_whatsapp")
+    .select("lead_id, texto, occurred_at")
+    .eq("organization_id", org)
+    .eq("direction", "inbound")
+    .gte("occurred_at", desde)
+    .order("occurred_at", { ascending: false })
+    .limit(200);
+  if (error || !respuestas?.length) return 0;
+
+  const ultimaRespuesta = new Map<string, string | null>();
+  for (const fila of respuestas) {
+    if (!ultimaRespuesta.has(fila.lead_id as string)) ultimaRespuesta.set(fila.lead_id as string, fila.texto as string | null);
+  }
+  const leadIds = [...ultimaRespuesta.keys()];
+  const [{ data: salientes }, { data: leads }] = await Promise.all([
+    admin.from("prospeccion_whatsapp").select("lead_id, texto").eq("organization_id", org).eq("automatico", true).in("lead_id", leadIds),
+    admin.from("leads").select("id, full_name, phone, extra, campaigns(name)").eq("organization_id", org).in("id", leadIds),
+  ]);
+  const yaTieneVideo = new Set((salientes ?? []).filter((s) => String(s.texto ?? "").startsWith("🎬")).map((s) => s.lead_id as string));
+  const recibioSaludo = new Set((salientes ?? []).filter((s) => !String(s.texto ?? "").startsWith("🎬")).map((s) => s.lead_id as string));
+
+  let enviados = 0;
+  for (const lead of leads ?? []) {
+    const id = lead.id as string;
+    const campana = (Array.isArray(lead.campaigns) ? lead.campaigns[0] : lead.campaigns) as { name?: string } | null;
+    const empresa = String((lead.extra as Record<string, unknown> | null)?.company_name ?? lead.full_name ?? "");
+    const celular = celularChileno(lead.phone as string | null);
+    if (!celular || yaTieneVideo.has(id) || !recibioSaludo.has(id)) continue;
+    if (!esVeterinaria({ campana: campana?.name ?? null, empresa })) continue;
+    if (!quiereVerElVideo(ultimaRespuesta.get(id))) continue;
+    try {
+      const { providerMessageId } = await sendWhatsAppMedia({
+        provider: canal.provider,
+        channelId: canal.id,
+        phoneNumberId: canal.phone_number_id ?? "",
+        from: canal.display_phone_number ?? "",
+        to: celular,
+        messageType: "video",
+        mediaUrl: VIDEO_VETERINARIAS.url,
+        caption: VIDEO_VETERINARIAS.pie,
+        clientReference: randomUUID(),
+      });
+      await admin.from("prospeccion_whatsapp").insert({
+        organization_id: org,
+        lead_id: id,
+        direction: "outbound",
+        wamid: providerMessageId,
+        texto: `🎬 ${VIDEO_VETERINARIAS.nombre}: ${VIDEO_VETERINARIAS.pie}`,
+        automatico: true,
+        estado: "accepted",
+      });
+      enviados += 1;
+    } catch (errorDeEnvio) {
+      console.error("[whatsapp-automatico] video sin enviar", id, errorDeEnvio instanceof Error ? errorDeEnvio.message : errorDeEnvio);
+    }
+  }
+  return enviados;
 }
 
 async function pausar(admin: Admin, org: string, motivo: string) {

@@ -167,7 +167,7 @@ export default async function ProspeccionPage({ searchParams }: { searchParams: 
       ? supabase.from("whatsapp_channels").select("status, plantillas_aprobadas").eq("organization_id", orgId).eq("canal", "whatsapp").order("created_at").limit(1).maybeSingle()
       : Promise.resolve({ data: null }),
     orgId
-      ? supabase.from("prospeccion_whatsapp").select("id", { count: "exact", head: true }).eq("organization_id", orgId).eq("automatico", true).gte("occurred_at", inicioHoy.toISOString())
+      ? supabase.from("prospeccion_whatsapp").select("id", { count: "exact", head: true }).eq("organization_id", orgId).eq("automatico", true).not("texto", "like", "🎬%").gte("occurred_at", inicioHoy.toISOString())
       : Promise.resolve({ count: 0 }),
   ]);
   if (error) console.error("[prospeccion] bandeja:", error.message);

@@ -86,12 +86,40 @@ const TEMAS_CONCRETOS: { patron: RegExp; tema: string }[] = [
 ];
 const TEMAS_GENERICOS: { patron: RegExp; tema: string }[] = [{ patron: /sitio web/i, tema: "tu sitio web" }];
 
+/** El correo que más abrieron las veterinarias (25 de 27 al 15-10): la ficha 3D de Atlas Vet. */
+export const TEMA_VETERINARIAS = "la ficha 3D donde tocas la zona del cuerpo y queda en la historia del paciente";
+
+/** Clínica veterinaria, por la campaña que la trajo o por su nombre. */
+export function esVeterinaria(fila: { campana?: string | null; empresa?: string | null }): boolean {
+  return /veterin|\bvet\b|mascota/i.test(`${fila.campana ?? ""} ${fila.empresa ?? ""}`);
+}
+
+/**
+ * El video que va cuando una veterinaria responde el saludo (Hugo, 15-10: «cuando
+ * respondan»). Dentro de las 24 horas desde su respuesta WhatsApp deja enviar
+ * cualquier mensaje, así que no necesita otra plantilla de Meta. Mientras no
+ * esté construido el border collie, va La báscula (gata 3D, sin el cierre de
+ * los grupos), servida desde public/marketing/altius.
+ */
+export const VIDEO_VETERINARIAS = {
+  nombre: "La báscula",
+  url: "https://atlascrm.geimser.cl/marketing/altius/whatsapp-vet-bascula.mp4",
+  pie: "Mejor que contarte, mira estos 9 segundos 🐾",
+} as const;
+
+/** ¿Su respuesta deja espacio para mandarle el video? No si pide la baja ni si parte con un «no». */
+export function quiereVerElVideo(texto: string | null | undefined): boolean {
+  const limpio = sinTildes((texto ?? "").toLowerCase()).trim();
+  return Boolean(limpio) && !esBaja(texto) && !/^no\b/.test(limpio);
+}
+
 /**
  * El tema del saludo: el del último correo que leyó y, si ninguno se
  * reconoce, el del último que se le mandó. Sin tema, «una idea para» su
  * empresa: nunca se inventa de qué trataba el correo.
  */
-export function temaParaWhatsapp(correos: CorreoEnviado[] | null | undefined, empresa: string | null): string {
+export function temaParaWhatsapp(correos: CorreoEnviado[] | null | undefined, empresa: string | null, campana: string | null = null): string {
+  if (esVeterinaria({ campana })) return TEMA_VETERINARIAS;
   const recientes = [...(correos ?? [])].reverse();
   for (const temas of [TEMAS_CONCRETOS, TEMAS_GENERICOS]) {
     for (const lista of [recientes.filter((c) => c.abierto_at), recientes]) {
@@ -183,7 +211,7 @@ export function esBaja(texto: string | null | undefined): boolean {
 export type FilaDeBandeja = Pick<
   Prospecto,
   "lead_id" | "empresa" | "telefono" | "respondio" | "ultima_senal_at" | "ultimo_resultado" | "ultimo_toque_at" | "toques" | "estado" | "prioridad" | "no_contactar" | "correos"
->;
+> & { campana?: string | null };
 
 export type Envio = {
   leadId: string;
@@ -216,18 +244,23 @@ export function pasoQueToca(fila: FilaDeBandeja, ahora: Date): ClavePlantillaPro
   return null;
 }
 
-/** A quién escribirle en esta corrida, en el orden de la bandeja (los más interesados primero). */
+/**
+ * A quién escribirle en esta corrida: primero las veterinarias (Hugo, 15-10: «los
+ * primeros mensajes a veterinarias, me urge») y, dentro de cada grupo, en el
+ * orden de la bandeja (los más interesados primero).
+ */
 export function elegirEnvios(filas: FilaDeBandeja[], { ahora, cupo }: { ahora: Date; cupo: number }): Envio[] {
   const envios: Envio[] = [];
   const celulares = new Set<string>();
-  for (const fila of [...filas].sort((a, b) => a.prioridad - b.prioridad)) {
+  const orden = (fila: FilaDeBandeja) => (esVeterinaria(fila) ? 0 : 1);
+  for (const fila of [...filas].sort((a, b) => orden(a) - orden(b) || a.prioridad - b.prioridad)) {
     if (envios.length >= cupo) break;
     const celular = celularChileno(fila.telefono);
     if (!celular || celulares.has(celular)) continue;
     const clave = pasoQueToca(fila, ahora);
     if (!clave) continue;
     celulares.add(celular);
-    const parametros = clave === "saludo" ? [temaParaWhatsapp(fila.correos, fila.empresa)] : [nombreComoSeDice(fila.empresa) ?? "tu empresa"];
+    const parametros = clave === "saludo" ? [temaParaWhatsapp(fila.correos, fila.empresa, fila.campana ?? null)] : [nombreComoSeDice(fila.empresa) ?? "tu empresa"];
     envios.push({
       leadId: fila.lead_id,
       empresa: fila.empresa,
