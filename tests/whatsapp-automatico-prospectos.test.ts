@@ -195,3 +195,7 @@ test("el video no cuenta en el tope de saludos del día y no se repite", () => {
   assert.match(corrida, /yaTieneVideo\.has\(id\)/);
   assert.match(corrida, /23 \* 60 \* 60 \* 1000/, "dentro de las 24 horas que da WhatsApp, con margen");
 });
+
+test("el video de veterinarias se puede descargar sin sesión (Meta lo baja desde la URL)", () => {
+  assert.match(leer("src/proxy.ts"), /webp\|mp4\)\$/);
+});
