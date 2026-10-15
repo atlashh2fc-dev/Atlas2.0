@@ -341,11 +341,17 @@ export default async function WhatsAppInboxPage({
   // except the platform owner, who reads without being able to reply.
   if (!(await puedeLeerConversaciones(profile.role))) redirect("/dashboard/operacion");
   const params = await searchParams;
+  // El ejecutivo parte en sus abiertas: es su cola de trabajo. Quien supervisa
+  // parte en todas, porque el bot cierra solo cada chat 30 min después de que
+  // el contacto deja de responder; con «Abiertas» la Secretaria Virtual parecía
+  // muda aunque los mensajes nuevos sí entraban (15-10-2026).
   const status = (["open", "pending", "closed", "all"] as const).includes(
     params.status as ConversationStatus | "all",
   )
     ? (params.status as ConversationStatus | "all")
-    : "open";
+    : permissions.canAttendCustomers
+      ? "open"
+      : "all";
   const campaignFilter =
     params.campaign && UUID.test(params.campaign) ? params.campaign : null;
   const queueFilter =
@@ -515,9 +521,8 @@ export default async function WhatsAppInboxPage({
 
   return (
     <div className="space-y-4">
-      {permissions.canAttendCustomers && (
-        <WhatsAppAutoRefresh conversationId={selectedId} />
-      )}
+      {/* Solo vuelve a leer la página: supervisar sigue sin marcar nada como leído. */}
+      <WhatsAppAutoRefresh conversationId={selectedId} />
       <p className="text-[13px] text-muted-foreground">
         {permissions.canAttendCustomers
           ? "Atiende únicamente las conversaciones asignadas a ti. Cada gestión conserva campaña, registro e historial."
