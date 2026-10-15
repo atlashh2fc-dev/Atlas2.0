@@ -23,6 +23,7 @@ import {
   quiereVerElVideo,
   pideFrenar,
   type ClavePlantillaProspeccion,
+  type Envio,
   type FilaDeBandeja,
 } from "@/lib/prospeccion-whatsapp";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -180,7 +181,7 @@ export async function escribirAProspectos({ ensayo = false, ahora = new Date() }
     .map((e) => ({ leadId: e.leadId, empresa: e.empresa, celular: e.celular }));
   const verificacion = await verificarCandidatos(admin, org, candidatos, { cupo, ensayo, ahora });
   informe.verificaciones = verificacion.informe;
-  const envios = elegirEnvios(bandeja, { ahora, cupo, aprobados: verificacion.aprobados });
+  const envios = await soloTrasSaludoAutomatico(admin, org, elegirEnvios(bandeja, { ahora, cupo, aprobados: verificacion.aprobados }));
 
   if (ensayo) {
     informe.enviados = envios.map((e) => ({ empresa: e.empresa, paso: e.clave, texto: e.texto }));
@@ -242,6 +243,27 @@ export async function escribirAProspectos({ ensayo = false, ahora = new Date() }
     .filter(Boolean)
     .join(" · ");
   return terminar("ok", resumen);
+}
+
+/**
+ * «Último mensaje, prometido» solo tiene sentido después del saludo que mandó
+ * Atlas. Un WhatsApp escrito a mano (resultado «whatsapp» en la bandeja) no
+ * cuenta: el 15-10 el agente les mandó el último mensaje a dos pymes a las que
+ * Hugo había escrito él en septiembre.
+ */
+async function soloTrasSaludoAutomatico(admin: Admin, org: string, envios: Envio[]): Promise<Envio[]> {
+  const ultimos = envios.filter((e) => e.clave === "ultimo");
+  if (ultimos.length === 0) return envios;
+  const { data, error } = await admin
+    .from("prospeccion_whatsapp")
+    .select("lead_id, texto")
+    .eq("organization_id", org)
+    .eq("automatico", true)
+    .eq("direction", "outbound")
+    .in("lead_id", ultimos.map((e) => e.leadId));
+  if (error) throw new Error(`No se pudo saber a quién saludó Atlas: ${error.message}`);
+  const saludados = new Set((data ?? []).filter((f) => !/^[🎬🙏]/u.test(String(f.texto ?? ""))).map((f) => f.lead_id as string));
+  return envios.filter((e) => e.clave !== "ultimo" || saludados.has(e.leadId));
 }
 
 /**
