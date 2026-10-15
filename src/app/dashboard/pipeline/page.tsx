@@ -137,7 +137,8 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
     // y la última respuesta de la IA, para saber si fue ella la que habló.
     supabase
       .from("whatsapp_conversations")
-      .select("lead_id, canal, whatsapp_messages(id, direction, text_body, message_type, created_at), whatsapp_ai_runs(outbound_message_id)")
+      // Relación con nombre: la memoria de la IA abrió otro camino a los mensajes (PGRST201).
+      .select("lead_id, canal, whatsapp_messages!whatsapp_messages_conversation_id_fkey(id, direction, text_body, message_type, created_at), whatsapp_ai_runs(outbound_message_id)")
       .order("last_message_at", { ascending: false })
       .order("created_at", { referencedTable: "whatsapp_messages", ascending: false })
       .limit(1, { referencedTable: "whatsapp_messages" })

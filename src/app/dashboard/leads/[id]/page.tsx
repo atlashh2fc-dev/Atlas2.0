@@ -283,7 +283,7 @@ export default async function LeadDetailPage({
   const [
     { data: externalRefsData },
     { data: externalEventsData },
-    { data: whatsAppMessagesData },
+    { data: whatsAppMessagesData, error: whatsAppMessagesError },
     { data: mailMessagesData },
     { data: mailReplyCommandsData },
     { data: quotesData },
@@ -305,10 +305,13 @@ export default async function LeadDetailPage({
       .limit(30),
     leeConversaciones ? supabase
       .from("whatsapp_messages")
-      .select("id, direction, text_body, message_type, provider_timestamp, created_at, profiles(full_name), whatsapp_conversations!inner(lead_id)")
+      // La relación va con nombre: `whatsapp_conversation_memory_sources` abrió
+      // un segundo camino entre mensajes y conversaciones, la API respondía
+      // PGRST201 y la ficha quedaba sin WhatsApp para todos sin avisar.
+      .select("id, direction, text_body, message_type, provider_timestamp, created_at, profiles(full_name), whatsapp_conversations!whatsapp_messages_conversation_id_fkey!inner(lead_id)")
       .eq("whatsapp_conversations.lead_id", id)
       .order("provider_timestamp", { ascending: false, nullsFirst: false })
-      .limit(30) : Promise.resolve({ data: [] }),
+      .limit(30) : Promise.resolve({ data: [], error: null }),
     leeConversaciones ? supabase
       .from("lead_mail_messages")
       .select("id, direction, from_email, to_email, subject, body_text, occurred_at, external_message_id")
@@ -362,6 +365,9 @@ export default async function LeadDetailPage({
   } | null;
   const externalRefs = (externalRefsData ?? []) as ExternalReference[];
   const externalEvents = (externalEventsData ?? []) as ExternalEvent[];
+  if (whatsAppMessagesError) {
+    console.error("[ficha] no se pudieron leer los WhatsApp del registro", { leadId: id, error: whatsAppMessagesError });
+  }
   const whatsAppMessages = (whatsAppMessagesData ?? []) as WhatsAppTimelineMessage[];
   const mailMessages = (mailMessagesData ?? []) as LeadMailMessage[];
   const mailReplyCommands = (mailReplyCommandsData ?? []) as LeadMailReplyCommand[];
