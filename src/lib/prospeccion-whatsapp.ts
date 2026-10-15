@@ -154,8 +154,23 @@ export const DIAS_TRAS_UN_NO_SUAVE = 30;
  * reconoce, el del último que se le mandó. Sin tema, «una idea para» su
  * empresa: nunca se inventa de qué trataba el correo.
  */
+/**
+ * El tema por campaña de cada rubro: lo que de verdad decía el correo principal
+ * (asuntos medidos el 15-10 en Atlas Lead). Va antes que los asuntos sueltos,
+ * porque «una pregunta rápida» se usa en todas las campañas y apuntaba a Pulso:
+ * a una clínica dental le habría hablado de «tus clientes a las 11 de la noche».
+ */
+const TEMAS_POR_CAMPANA: { patron: RegExp; tema: string }[] = [
+  { patron: /\bvet\b|veterin/i, tema: TEMA_VETERINARIAS },
+  // «Marca la pieza en 3D y arma un solo presupuesto» · «Último correo sobre el odontograma 3D».
+  { patron: /dental|odonto/i, tema: "el odontograma 3D donde marcas la pieza y armas un solo presupuesto" },
+  // «la IA simula el corte» · «Último correo sobre el Estudio de Look».
+  { patron: /barber|peluquer/i, tema: "la IA que le muestra a tu cliente cómo le quedaría el corte antes de hacerlo" },
+];
+
 export function temaParaWhatsapp(correos: CorreoEnviado[] | null | undefined, empresa: string | null, campana: string | null = null): string {
-  if (esVeterinaria({ campana })) return TEMA_VETERINARIAS;
+  const porCampana = TEMAS_POR_CAMPANA.find(({ patron }) => patron.test(campana ?? ""));
+  if (porCampana) return porCampana.tema;
   const recientes = [...(correos ?? [])].reverse();
   for (const temas of [TEMAS_CONCRETOS, TEMAS_GENERICOS]) {
     for (const lista of [recientes.filter((c) => c.abierto_at), recientes]) {

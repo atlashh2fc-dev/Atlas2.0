@@ -255,3 +255,12 @@ test("el saludo solo sale a quien pasó la verificación, y con el celular corre
   const ultimo = fila({ toques: 1, ultimo_resultado: "whatsapp", estado: "seguimiento", ultimo_toque_at: hace(4 * 24) });
   assert.equal(elegirEnvios([ultimo], { ahora: AHORA, cupo: 5, aprobados: new Map() })[0]?.clave, "ultimo");
 });
+
+test("el tema sale de la campaña del rubro, no de un asunto suelto", () => {
+  const generico = [correo("Imax Estoril: una pregunta rápida", true)];
+  assert.match(temaParaWhatsapp(generico, "Imax Estoril", "Altius · Atlas CRM Dental · Octubre 2026"), /odontograma 3D/);
+  assert.match(temaParaWhatsapp(generico, "Lf Barbershop", "Altius · Atlas CRM Barber · Octubre 2026"), /cómo le quedaría el corte/);
+  assert.equal(temaParaWhatsapp(generico, "Koda Pet", "Altius · Atlas CRM Vet · Octubre 2026"), TEMA_VETERINARIAS);
+  // Pymes (Pulso / Web + IA) sigue leyendo el asunto.
+  assert.match(temaParaWhatsapp(generico, "Aliwen Spa", "Altius Web + IA · Septiembre 2026"), /11 de la noche/);
+});
