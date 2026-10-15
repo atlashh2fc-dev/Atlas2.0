@@ -347,15 +347,20 @@ export type DuePersonalCallback = {
 /**
  * Compromisos agendados que ya vencieron y cuyo ejecutivo está conectado y
  * libre. El intento nace reservado a esa persona: ningún otro puede tomarlo.
+ *
+ * Con agentId, solo la agenda de ese ejecutivo, aunque Asterisk todavía lo
+ * tenga pausado: es la consulta de antes de devolverlo a la cola.
  */
 export async function claimDuePersonalCallbacks(
   campaignId: string,
-  limit: number
+  limit: number,
+  agentId?: string
 ): Promise<DuePersonalCallback[]> {
   if (limit <= 0) return [];
   const { data, error } = await supabase.rpc("claim_due_personal_callbacks", {
     p_campaign_id: campaignId,
     p_limit: limit,
+    ...(agentId ? { p_agent_id: agentId } : {}),
   });
   if (error) throw new Error(`claim_due_personal_callbacks: ${error.message}`);
   return (data ?? []) as DuePersonalCallback[];
@@ -660,6 +665,7 @@ export async function expireStaleAgentHeartbeats(): Promise<string[]> {
 }
 
 export type AgentPauseState = {
+  profileId: string;
   extension: string;
   paused: boolean;
   reasonLabel: string | null;
@@ -793,6 +799,7 @@ export async function getAgentPauseStates(): Promise<AgentPauseState[]> {
   return creds.map((c) => {
     const reason = statusByProfile.get(c.profile_id) ?? null;
     return {
+      profileId: c.profile_id,
       extension: c.extension,
       ...desiredPauseState({
         inWrapUp: wrapUpProfiles.has(c.profile_id),

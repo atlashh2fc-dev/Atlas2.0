@@ -4,6 +4,7 @@ import { supabase, getAgentSessionStatuses, getBusyAgentIds, getStatusReason, is
 import { getExtensionForProfileId } from "./agentDirectory";
 import { holdAgentWhileBusy, pauseAgentForAux, resumeAgentAfterWrapUp } from "./agentPause";
 import { requestPacingWake } from "./pacingWake";
+import { deliverDueAgendaBeforeQueue } from "./personalCallbackDelivery";
 
 /** Cuántas veces y cada cuánto se confirma que la sesión ya quedó 'available'. */
 const SESSION_CONFIRM_ATTEMPTS = 6;
@@ -51,6 +52,10 @@ export async function releaseAgentNow(ami: AmiClient, profileId: string): Promis
     // a mano): sigue fuera de la cola hasta que el sync lo vea libre.
     return;
   }
+
+  // Su agenda vencida antes que el cliente del pool que espera en la cola:
+  // despausado, Asterisk se lo pasaba en el mismo segundo.
+  if (await deliverDueAgendaBeforeQueue(ami, profileId)) return;
 
   if (!(await resumeAgentAfterWrapUp(ami, extension))) return;
   logger.info({ profileId, extension, campaignId: availableCampaignId }, "Ejecutivo liberado por evento; se despierta el pacing");

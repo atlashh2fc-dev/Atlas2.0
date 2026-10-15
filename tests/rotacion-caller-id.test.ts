@@ -16,6 +16,8 @@ const soloCodigo = (sql: string) => sql.replace(/--[^\n]*/g, "");
 
 const MIGRACION = soloCodigo(leer("supabase/migrations/20260926160000_rotacion_de_caller_id.sql"));
 const LOOP = leer("dialer-engine/src/dialer/campaignLoop.ts");
+// Las agendas se originan aquí, desde el ciclo y antes de devolver a alguien a la cola.
+const AGENDAS = leer("dialer-engine/src/dialer/personalCallbackDelivery.ts");
 const CLIENTE = leer("dialer-engine/src/supabaseClient.ts");
 const ACCION = leer("src/app/actions/dialer-config.ts");
 const PANTALLA = leer("src/app/dashboard/admin/campanas/[id]/discado/page.tsx");
@@ -73,8 +75,9 @@ test("la migración corre en la prueba SQL del discador", () => {
 test("el motor elige el número por lead y lo registra sin frenar el discado", () => {
   assert.match(LOOP, /caller_ids: string\[\] \| null/);
   assert.match(LOOP, /callerId: assignments\[index\]\.callerId/);
-  assert.match(LOOP, /callerId: callbackCallerIds\[index\]\.callerId/);
+  assert.match(AGENDAS, /callerId: callbackCallerIds\[index\]\.callerId/);
   assert.doesNotMatch(LOOP, /callerId: cfg\.caller_id/);
+  assert.doesNotMatch(AGENDAS, /callerId: cfg\.caller_id/);
   assert.match(CLIENTE, /supabase\.rpc\("record_dial_attempt_caller_ids"/);
   // Con un solo número el motor presenta exactamente lo de siempre.
   const pool = callerIdPool({ caller_id: "56965906926", caller_ids: null });

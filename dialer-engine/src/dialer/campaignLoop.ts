@@ -2,11 +2,10 @@ import type AmiClient from "asterisk-manager";
 import { logger } from "../logger";
 import { computeDialCapacity, computeEffectiveRatio } from "./pacing";
 import { originateCall } from "../ami/originate";
-import { originatePersonalCallback } from "../ami/originatePersonalCallback";
-import { forgetPersonalCallback, trackPersonalCallback } from "../ami/personalCallbacks";
 import { ensureQueue, syncQueueMembers } from "../asterisk/configSync";
-import { holdAgentWhileBusy, syncAgentPauseStates } from "./agentPause";
+import { syncAgentPauseStates } from "./agentPause";
 import { callerIdPool, pickCallerId } from "./callerId";
+import { deliverPersonalCallbacks, recordCallerIds, rememberCallbackCampaigns } from "./personalCallbackDelivery";
 import {
   claimDuePersonalCallbacks,
   claimNextDialTargets,
@@ -18,7 +17,6 @@ import {
   getCampaignAgentExtensions,
   getRecentAbandonmentRate,
   getRecentContactRate,
-  recordDialAttemptCallerIds,
   registerDialEvent,
 } from "../supabaseClient";
 
@@ -83,24 +81,6 @@ export type CampaignTickOptions = {
 let lastFullTickConfigs: CampaignConfig[] = [];
 const lastFullTickReadyCampaignIds = new Set<string>();
 
-/**
- * Anota el número mostrado en cada intento sin frenar el discado: corre en
- * paralelo con los Originate y, si falla (o la migración aún no está), la
- * llamada sale igual y solo se pierde el dato para el informe por número.
- */
-function recordCallerIds(
-  campaignId: string,
-  assignments: Array<{ dialAttemptId: string; callerId: string | null }>
-): Promise<void> {
-  const items = assignments.flatMap(({ dialAttemptId, callerId }) =>
-    callerId ? [{ dialAttemptId, callerId }] : []
-  );
-  return recordDialAttemptCallerIds(items).then(
-    () => undefined,
-    (err) => logger.error({ err, campaignId, attempts: items.length }, "No se pudo registrar el número mostrado")
-  );
-}
-
 export async function runCampaignTick(
   ami: AmiClient,
   campaignIds: string[],
@@ -119,6 +99,7 @@ export async function runCampaignTick(
   } else {
     try {
       configs = (await getActiveCampaignConfigs(campaignIds)) as CampaignConfig[];
+      rememberCallbackCampaigns(configs);
     } catch (err) {
       logger.error({ err }, "No se pudo leer dialer_campaign_configs");
       return {
@@ -202,58 +183,13 @@ export async function runCampaignTick(
       // claim_due_personal_callbacks entrega una sola agenda por ejecutivo y
       // solo si está libre; la capacidad del pool se mide DESPUÉS, para que el
       // ejecutivo que recibe su agenda no cuente también como disponible.
-      // En un ciclo rápido se omiten: son por hora, no por evento.
+      // En un ciclo rápido se omiten: son por hora, no por evento. El
+      // ejecutivo que vuelve a la cola recibe la suya antes de despausarse
+      // (deliverDueAgendaBeforeQueue), sin esperar este ciclo.
       if (!pacingOnly && cfg.personal_callback_enabled !== false) {
         try {
           const callbacks = await claimDuePersonalCallbacks(cfg.campaign_id, MAX_CALLBACKS_PER_TICK);
-          // Misma regla que el pool: el cliente que pidió la llamada la
-          // recibe desde el número con que se le venía llamando.
-          const callbackPool = callerIdPool(cfg);
-          const callbackCallerIds = callbacks.map((callback) => ({
-            dialAttemptId: callback.dial_attempt_id,
-            callerId: pickCallerId(callbackPool, callback.lead_id),
-          }));
-          const callbackCallerIdsRecorded = recordCallerIds(cfg.campaign_id, callbackCallerIds);
-          for (const [index, callback] of callbacks.entries()) {
-            // Antes del Originate: los eventos AMI de esta llamada necesitan
-            // saber que es una agenda para registrar la conexión al contestar.
-            trackPersonalCallback(callback.dial_attempt_id, {
-              agentId: callback.agent_id,
-              extension: callback.agent_extension,
-              campaignId: cfg.campaign_id,
-            });
-            // Fuera de la cola antes de que le suene su agenda: si no, el
-            // cliente que el predictivo marcó para otro le entraba encima.
-            await holdAgentWhileBusy(ami, callback.agent_extension).catch((err) =>
-              logger.warn(
-                { err, extension: callback.agent_extension },
-                "No se pudo pausar al ejecutivo antes de su agenda; el sync periódico lo cubre"
-              )
-            );
-            try {
-              await originatePersonalCallback({
-                ami,
-                target: callback,
-                callerId: callbackCallerIds[index].callerId,
-                trunkContext: cfg.trunk_context,
-              });
-            } catch (err) {
-              forgetPersonalCallback(callback.dial_attempt_id);
-              logger.error({ err, callback }, "No se pudo entregar un compromiso agendado");
-              await registerDialEvent({
-                dialAttemptId: callback.dial_attempt_id,
-                eventType: "failed",
-                payload: { stage: "ami_action", kind: "personal_callback" },
-                hangupCause: "AMI_ACTION_REJECTED",
-              }).catch((registerErr) =>
-                logger.error(
-                  { err: registerErr, callback },
-                  "No se pudo terminalizar el compromiso rechazado por AMI"
-                )
-              );
-            }
-          }
-          await callbackCallerIdsRecorded;
+          await deliverPersonalCallbacks(ami, cfg, callbacks);
 
           const released = await expirePersonalCallbacks(cfg.campaign_id);
           if (released > 0) {

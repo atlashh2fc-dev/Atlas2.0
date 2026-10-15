@@ -7,7 +7,8 @@ import { runCampaignTick } from "./dialer/campaignLoop";
 import { runAiVoiceCampaignTick } from "./dialer/aiVoiceCampaignLoop";
 import { refreshAgentDirectory, getActiveCredentials } from "./dialer/agentDirectory";
 import { ensureAgentEndpoints, ensureAmdContext } from "./asterisk/configSync";
-import { syncAgentPauseStates } from "./dialer/agentPause";
+import { setResumeGuard, syncAgentPauseStates } from "./dialer/agentPause";
+import { deliverDueAgendaBeforeQueue } from "./dialer/personalCallbackDelivery";
 import { subscribeAgentAuxPauses, subscribeAgentHolds, subscribeAgentReleases } from "./dialer/agentRelease";
 import { setPacingWakeHandler, type PacingWakeReason } from "./dialer/pacingWake";
 import { checkAgentHeartbeats } from "./dialer/agentHeartbeat";
@@ -147,6 +148,8 @@ async function main() {
   // Estado del agente (AUX o cierre/tipificación): se sincroniza a QueuePause
   // antes de iniciar el pacing y luego continuamente. Así un reinicio del
   // motor no abre una ventana donde un agente en wrap_up reciba otra llamada.
+  // Quien vuelve a la cola recibe antes su agenda vencida (ver agendaBeforeQueue.ts).
+  setResumeGuard((profileId) => deliverDueAgendaBeforeQueue(ami, profileId));
   await syncAgentPauseStates(ami, { force: true })
     .then(() => health.success("agentPauseSync"))
     .catch((err) => {

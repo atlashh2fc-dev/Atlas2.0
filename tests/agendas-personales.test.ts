@@ -24,15 +24,19 @@ const claim = latestDefinition("claim_due_personal_callbacks");
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
 test("la entrega de agendas vive en la migración que la corrige", () => {
-  // 20260925090000 la redefine para respetar el AUX sin soltar estas reglas.
-  assert.equal(claim.name, "20260925090000_agenda_personal_respeta_aux.sql");
+  // 20260925090000 la redefinió para respetar el AUX y 20261015220000 para
+  // entregar la agenda antes de devolver al ejecutivo a la cola, sin soltar
+  // ninguna de estas reglas.
+  assert.equal(claim.name, "20261015220000_agenda_vencida_antes_que_la_cola.sql");
   const migration = migrations.find((m) => m.name === claim.name)!.sql;
   // Sigue siendo exclusiva del motor.
   assert.match(claim.body, /auth\.uid\(\)[\s\S]*solo puede ser llamada por el motor/);
   assert.match(
     migration,
-    /revoke execute on function public\.claim_due_personal_callbacks\(uuid, integer\) from public, anon, authenticated;/
+    /revoke execute on function public\.claim_due_personal_callbacks\(uuid, integer, uuid\) from public, anon, authenticated;/
   );
+  // Sin la firma vieja: la llamada (p_campaign_id, p_limit) no puede quedar ambigua.
+  assert.match(migration, /drop function if exists public\.claim_due_personal_callbacks\(uuid, integer\);/);
 });
 
 test("una sola agenda en vuelo por ejecutivo, las demás esperan en orden", () => {
@@ -101,12 +105,15 @@ test("el motor registra la conexión de la agenda cuando el cliente contesta", (
 });
 
 test("el motor sabe qué intentos son agendas antes de originarlas", () => {
-  const loop = read("dialer-engine/src/dialer/campaignLoop.ts");
-  const track = loop.indexOf("trackPersonalCallback(");
-  const originate = loop.indexOf("await originatePersonalCallback(");
-  assert.ok(track >= 0 && originate > track);
+  const delivery = read("dialer-engine/src/dialer/personalCallbackDelivery.ts");
+  const track = delivery.indexOf("trackPersonalCallback(");
+  const hold = delivery.indexOf("await holdAgentWhileBusy(");
+  const originate = delivery.indexOf("await originatePersonalCallback(");
+  assert.ok(track >= 0 && hold > track && originate > hold);
   // La capacidad del pool se mide después de entregar agendas.
-  assert.ok(loop.indexOf("countAvailableAgents(cfg.campaign_id)") > originate);
+  const loop = read("dialer-engine/src/dialer/campaignLoop.ts");
+  const deliver = loop.indexOf("await deliverPersonalCallbacks(ami, cfg, callbacks)");
+  assert.ok(deliver >= 0 && loop.indexOf("countAvailableAgents(cfg.campaign_id)") > deliver);
   const client = read("dialer-engine/src/supabaseClient.ts");
   assert.match(client, /\.eq\("attempt_kind", "personal_callback"\)[\s\S]*busyAgents/);
 });
@@ -120,4 +127,37 @@ test("la ficha deja llamar la agenda propia aunque no esté asignada", () => {
   const detail = read("src/app/dashboard/leads/[id]/page.tsx");
   assert.match(detail, /\(lead\.managed_by \?\? lead\.assigned_to\) === profile\.id/);
   assert.match(detail, /source=\{ownsAgenda \? "agenda" : "assigned_lead"\}/);
+});
+
+// 15-10-2026: 41 de 140 agendas salieron con más de 10 minutos de atraso. Al
+// volver de un AUX o al terminar de tipificar, Asterisk despausaba al
+// ejecutivo y le pasaba el cliente del pool que esperaba en la cola antes de
+// que el motor pidiera su agenda (13 veces ese día).
+test("la agenda vencida se pide antes de devolver al ejecutivo a la cola", () => {
+  // Solo con p_agent_id se acepta la sesión todavía pausada en Asterisk.
+  assert.match(claim.body, /p_agent_id uuid default null/);
+  assert.match(claim.body, /s\.status = 'available' or \(p_agent_id is not null and s\.status = 'paused'\)/);
+  assert.match(claim.body, /p_agent_id is null or coalesce\(l\.managed_by, l\.assigned_to\) = p_agent_id/);
+  // Pausado en Asterisk solo vale si el CRM lo muestra trabajando, no en AUX.
+  assert.match(
+    claim.body,
+    /continue when v_candidate\.session_status = 'paused' and not exists \([\s\S]*not reason\.is_pause[\s\S]*reason\.code <> 'desconectado'/
+  );
+
+  // Fin de tipificación: la agenda antes de despausar.
+  const release = read("dialer-engine/src/dialer/agentRelease.ts");
+  const agenda = release.indexOf("await deliverDueAgendaBeforeQueue(ami, profileId)");
+  assert.ok(agenda >= 0 && agenda < release.indexOf("await resumeAgentAfterWrapUp(ami, extension)"));
+
+  // Vuelta de un AUX (y respaldo del evento): el sync pregunta antes de despausar.
+  const pause = read("dialer-engine/src/dialer/agentPause.ts");
+  const sync = pause.slice(pause.indexOf("export async function syncAgentPauseStates"));
+  const guard = sync.indexOf("keepOutForAgenda(state.profileId, state.extension)");
+  assert.ok(guard >= 0 && guard < sync.indexOf('Action: "QueuePause"'));
+  assert.match(read("dialer-engine/src/server.ts"), /setResumeGuard\(\(profileId\) => deliverDueAgendaBeforeQueue\(ami, profileId\)\)/);
+
+  // El motor pide la agenda de ese ejecutivo y nada más.
+  const delivery = read("dialer-engine/src/dialer/personalCallbackDelivery.ts");
+  assert.match(delivery, /claimDuePersonalCallbacks\(campaignId, 1, profileId\)/);
+  assert.match(read("dialer-engine/src/supabaseClient.ts"), /p_agent_id: agentId/);
 });

@@ -25,6 +25,30 @@ const busyHoldExtensions = new Set<string>();
 /** Pausas recién dadas por evento: el sync no las levanta antes de tiempo. */
 const busyHoldUntil = new Map<string, number>();
 
+/**
+ * Se consulta antes de devolver a la cola a un ejecutivo que estaba pausado
+ * (fin de tipificación o vuelta de un AUX). true = no despausarlo: le salió su
+ * agenda vencida. server.ts lo registra; sin registro, se despausa siempre.
+ * Va por registro y no por import para no cruzar este módulo con la entrega
+ * de agendas, que usa holdAgentWhileBusy.
+ */
+type ResumeGuard = (profileId: string, extension: string) => Promise<boolean>;
+let resumeGuard: ResumeGuard | null = null;
+
+export function setResumeGuard(next: ResumeGuard | null): void {
+  resumeGuard = next;
+}
+
+async function keepOutForAgenda(profileId: string, extension: string): Promise<boolean> {
+  if (!resumeGuard) return false;
+  try {
+    return await resumeGuard(profileId, extension);
+  } catch (err) {
+    logger.warn({ err, extension }, "No se pudo revisar la agenda antes de despausar; vuelve a la cola");
+    return false;
+  }
+}
+
 function heldByRecentEvent(extension: string, now = Date.now()): boolean {
   const until = busyHoldUntil.get(extension);
   if (until === undefined) return false;
@@ -154,6 +178,10 @@ export async function syncAgentPauseStates(
 
     // Solo cambió el motivo entre dos pausas: Asterisk ya lo tiene pausado.
     if (!options.force && previous === state.paused) continue;
+
+    // Vuelve a la cola: primero su agenda vencida, si tiene. Le suena directo
+    // a su anexo y la entrega lo deja pausado por ocupación.
+    if (!state.paused && previous !== false && (await keepOutForAgenda(state.profileId, state.extension))) continue;
 
     try {
       await amiAction(ami, {
