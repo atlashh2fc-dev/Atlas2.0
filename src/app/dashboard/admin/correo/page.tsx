@@ -7,6 +7,7 @@ import { guardarBuzon, guardarBuzonDeEnvio } from "@/app/actions/buzon";
 import { CampanasDelBuzon, type OpcionCampana } from "@/components/campanas-del-buzon";
 import { ActionForm, ActionSubmit, Avatar, Badge, Callout, Field, Input, PageHeader, SectionCard, buttonClasses } from "@/components/ui";
 import { ZONA_CLINICA } from "@/lib/citas";
+import { servidorDeCorreo } from "@/lib/correo/servidor.server";
 import { contextoDeMiEmpresa } from "@/lib/modules.server";
 import { createClient } from "@/lib/supabase/server";
 
@@ -43,11 +44,14 @@ function causaDeLectura(error: string, address: string): string {
 
 const cuando = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CLINICA, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 
-export default async function CorreoPage() {
+export default async function CorreoPage({ searchParams }: { searchParams: Promise<{ conectar?: string }> }) {
   await connection();
   const { empresa, edicion } = await contextoDeMiEmpresa();
   // El contact center tiene un buzón por cuenta, elegido por campaña.
-  if (edicion === "center") return <BuzonesDeEnvio empresa={empresa} />;
+  if (edicion === "center") {
+    const { conectar } = await searchParams;
+    return <BuzonesDeEnvio empresa={empresa} conectar={conectar?.trim().toLowerCase() || null} />;
+  }
   const clinica = true;
   const supabase = await createClient();
   const { data: buzon } = await supabase
@@ -152,7 +156,7 @@ type BuzonDeEnvio = {
  * respuestas salen de ahí con el nombre del ejecutivo, y lo que llega se liga
  * a registros de esas campañas y se asigna a su dueño.
  */
-async function BuzonesDeEnvio({ empresa }: { empresa: string | null }) {
+async function BuzonesDeEnvio({ empresa, conectar }: { empresa: string | null; conectar: string | null }) {
   const supabase = await createClient();
   const [{ data: buzonesData }, { data: campanasData }, { data: enlacesData }] = await Promise.all([
     supabase
@@ -168,6 +172,25 @@ async function BuzonesDeEnvio({ empresa }: { empresa: string | null }) {
   const campanas = (campanasData ?? []) as { id: string; name: string }[];
   const enlaces = (enlacesData ?? []) as { campaign_id: string; mailbox_id: string }[];
   const direccion = new Map(buzones.map((buzon) => [buzon.id, buzon.address]));
+
+  // Viene de la alerta «nadie lee esta casilla»: el formulario llega abierto,
+  // con la dirección y el servidor ya puestos; solo falta la clave.
+  const porConectar = conectar && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(conectar) && !buzones.some((buzon) => buzon.address.toLowerCase() === conectar) ? conectar : null;
+  const servidor = porConectar ? await servidorDeCorreo(porConectar) : null;
+  const sugerido: Sugerido | null = porConectar
+    ? { address: porConectar, usuario: porConectar, label: `Respuestas ${porConectar}`, ...(servidor ?? {}) }
+    : null;
+  const avisoConectar = sugerido && (
+    <Callout tone="info">
+      <p className="font-medium">Para leer {sugerido.address} solo falta su clave</p>
+      <p>
+        {servidor
+          ? `Detectamos el servidor (${servidor.proveedor === "google" ? "Google Workspace: usa una contraseña de aplicación" : servidor.proveedor === "microsoft" ? "Microsoft 365: usa una contraseña de aplicación" : servidor.imap_host}). `
+          : "No pudimos detectar el servidor: escríbelo como te lo entrega tu proveedor. "}
+        Escribe la clave de la casilla y conéctala. No marques campañas si solo quieres leer las respuestas: las de Campañas de correo se asocian solas.
+      </p>
+    </Callout>
+  );
 
   const opcionesPara = (mailboxId: string | null): OpcionCampana[] =>
     campanas.map((campana) => {
@@ -229,17 +252,19 @@ async function BuzonesDeEnvio({ empresa }: { empresa: string | null }) {
         );
       })}
 
+      {avisoConectar}
+
       {buzones.length === 0 ? (
         <SectionCard icon={Mail} tone="teal" title="Conectar un buzón" description="Los datos que te entrega tu proveedor de correo (en cPanel: Cuentas de correo › Connect Devices). Si el servidor IMAP y el SMTP son el mismo, repítelo.">
-          <FormularioBuzon buzon={null} opciones={opcionesPara(null)} marcadas={[]} empresa={empresa} />
+          <FormularioBuzon buzon={null} sugerido={sugerido} opciones={opcionesPara(null)} marcadas={[]} empresa={empresa} />
         </SectionCard>
       ) : (
-        <details className="group rounded-xl border border-dashed border-border-strong bg-surface">
+        <details id="conectar" open={Boolean(sugerido)} className="group rounded-xl border border-dashed border-border-strong bg-surface">
           <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium text-primary">
-            <Mail size={15} aria-hidden="true" /> Conectar otro buzón para otra cuenta
+            <Mail size={15} aria-hidden="true" /> {sugerido ? `Conectar ${sugerido.address}` : "Conectar otro buzón para otra cuenta"}
           </summary>
           <div>
-            <FormularioBuzon buzon={null} opciones={opcionesPara(null)} marcadas={[]} empresa={empresa} />
+            <FormularioBuzon buzon={null} sugerido={sugerido} opciones={opcionesPara(null)} marcadas={[]} empresa={empresa} />
           </div>
         </details>
       )}
@@ -264,43 +289,58 @@ function Grupo({ titulo, descripcion, children }: { titulo: string; descripcion:
   );
 }
 
-function FormularioBuzon({ buzon, opciones, marcadas, empresa }: { buzon: BuzonDeEnvio | null; opciones: OpcionCampana[]; marcadas: string[]; empresa: string | null }) {
+type Sugerido = { address: string; usuario: string; label: string; imap_host?: string; imap_port?: number; smtp_host?: string; smtp_port?: number };
+
+function FormularioBuzon({
+  buzon,
+  sugerido = null,
+  opciones,
+  marcadas,
+  empresa,
+}: {
+  buzon: BuzonDeEnvio | null;
+  sugerido?: Sugerido | null;
+  opciones: OpcionCampana[];
+  marcadas: string[];
+  empresa: string | null;
+}) {
+  const valor = buzon ?? sugerido;
   return (
     <ActionForm action={guardarBuzonDeEnvio} success={buzon ? "Buzón guardado" : "Buzón conectado"} className="divide-y divide-border border-t border-border">
       {buzon && <input type="hidden" name="id" value={buzon.id} />}
       <Grupo titulo="Remitente" descripcion="Cómo ven los clientes los correos que salen de este buzón.">
         <Field label="Dirección">
-          <Input name="address" type="email" required defaultValue={buzon?.address ?? ""} placeholder="ventas@empresa.cl" />
+          <Input name="address" type="email" required defaultValue={valor?.address ?? ""} placeholder="ventas@empresa.cl" />
         </Field>
         <Field label="Nombre para mostrar">
           <Input name="remitente" defaultValue={buzon?.remitente ?? ""} placeholder={empresa ?? "Empresa"} />
         </Field>
         <Field label="Etiqueta interna">
-          <Input name="label" defaultValue={buzon?.label ?? ""} placeholder="Buzón Equifax" />
+          <Input name="label" defaultValue={valor?.label ?? ""} placeholder="Buzón Equifax" />
         </Field>
       </Grupo>
       <Grupo titulo="Servidores" descripcion="Lo entrega tu proveedor de correo. Atlas lee por IMAP cada diez minutos y envía por SMTP; si son el mismo servidor, repítelo.">
         <div className="grid grid-cols-[minmax(0,1fr)_6rem] gap-3 sm:col-span-2">
           <Field label="Servidor IMAP (lectura)">
-            <Input name="imap_host" required defaultValue={buzon?.imap_host ?? ""} placeholder="mail.empresa.cl" />
+            <Input name="imap_host" required defaultValue={valor?.imap_host ?? ""} placeholder="mail.empresa.cl" />
           </Field>
           <Field label="Puerto">
-            <Input name="imap_port" inputMode="numeric" defaultValue={buzon?.imap_port ?? 993} />
+            <Input name="imap_port" inputMode="numeric" defaultValue={valor?.imap_port ?? 993} />
           </Field>
           <Field label="Servidor SMTP (envío)">
-            <Input name="smtp_host" required defaultValue={buzon?.smtp_host ?? ""} placeholder="mail.empresa.cl" />
+            <Input name="smtp_host" required defaultValue={valor?.smtp_host ?? ""} placeholder="mail.empresa.cl" />
           </Field>
           <Field label="Puerto">
-            <Input name="smtp_port" inputMode="numeric" defaultValue={buzon?.smtp_port ?? 465} />
+            <Input name="smtp_port" inputMode="numeric" defaultValue={valor?.smtp_port ?? 465} />
           </Field>
         </div>
       </Grupo>
       <Grupo titulo="Acceso" descripcion="La clave se guarda cifrada y no se vuelve a mostrar. Gmail y Outlook piden una contraseña de aplicación.">
         <Field label="Usuario">
-          <Input name="usuario" defaultValue={buzon?.usuario ?? ""} placeholder="La dirección completa" />
+          <Input name="usuario" defaultValue={valor?.usuario ?? ""} placeholder="La dirección completa" />
         </Field>
         <Field label={buzon?.clave_secreto ? "Clave (deja vacío para mantenerla)" : "Clave"}>
-          <Input name="clave" type="password" autoComplete="new-password" required={!buzon} placeholder="••••••••" />
+          <Input name="clave" type="password" autoComplete="new-password" required={!buzon} autoFocus={Boolean(sugerido)} placeholder="••••••••" />
         </Field>
       </Grupo>
       <Grupo titulo="Campañas" descripcion="Sus propuestas y respuestas salen por este buzón, y lo que llega se asigna a quien tiene el registro.">

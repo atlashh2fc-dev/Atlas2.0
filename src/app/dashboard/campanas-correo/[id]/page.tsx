@@ -177,11 +177,11 @@ export default async function CampanaCorreoPage({ params, searchParams }: { para
       {sinLector && !["cancelada", "terminada"].includes(campana.estado) && (
         <Callout tone="danger">
           Nadie lee <strong>{sinLector}</strong>, la casilla a la que responden los clientes de esta campaña: sus respuestas no llegarán al CRM ni detendrán la
-          secuencia. Conéctala en{" "}
-          <Link href="/dashboard/admin/correo" className="font-medium underline">
-            Administración → Correo
-          </Link>{" "}
-          o reenvíala a una casilla que el CRM ya lea.
+          secuencia. Para leerla solo falta su clave:{" "}
+          <Link href={`/dashboard/admin/correo?conectar=${encodeURIComponent(sinLector)}#conectar`} className="font-medium underline">
+            conectar {sinLector}
+          </Link>
+          .
         </Callout>
       )}
 

@@ -130,12 +130,17 @@ export default async function CampanasCorreoPage({ searchParams }: { searchParam
       {!lista.ok && <Callout tone="danger">No se pudieron leer las campañas: {lista.error}. Vuelve a cargar para reintentar.</Callout>}
       {sinLector.length > 0 && (
         <Callout tone="danger">
-          {sinLector.length === 1 ? "Una casilla de respuestas no la lee nadie" : `${sinLector.length} casillas de respuestas no las lee nadie`}:{" "}
-          {sinLector.map((casilla) => casilla.direccion).join(", ")}. Si esas campañas envían, las respuestas de los clientes se pierden. Conéctalas en{" "}
-          <Link href="/dashboard/admin/correo" className="font-medium underline">
-            Administración → Correo
-          </Link>{" "}
-          o reenvíalas a una casilla que el CRM ya lea.
+          {sinLector.length === 1 ? "Una casilla de respuestas no la lee nadie" : `${sinLector.length} casillas de respuestas no las lee nadie`}: las respuestas de los
+          clientes de sus campañas en curso se pierden. Para leerla solo falta su clave:{" "}
+          {sinLector.map((casilla, indice) => (
+            <span key={casilla.direccion}>
+              {indice > 0 && ", "}
+              <Link href={`/dashboard/admin/correo?conectar=${encodeURIComponent(casilla.direccion)}#conectar`} className="font-medium underline">
+                conectar {casilla.direccion}
+              </Link>
+            </span>
+          ))}
+          .
         </Callout>
       )}
       {sinRemitentes && (
@@ -261,7 +266,14 @@ export default async function CampanasCorreoPage({ searchParams }: { searchParam
                       {casilla.campanas_activas ? `${casilla.campanas_activas} activas de ${casilla.campanas}` : `${casilla.campanas}, ninguna activa`}
                     </td>
                     <td className="px-3 py-3">
-                      <Badge tone={casilla.cobertura.tone}>{casilla.cobertura.texto}</Badge>
+                      <span className="flex flex-wrap items-center gap-2">
+                        <Badge tone={casilla.cobertura.tone}>{casilla.cobertura.texto}</Badge>
+                        {casilla.cobertura.estado === "nadie" && perfil.role === "admin" && (
+                          <Link href={`/dashboard/admin/correo?conectar=${encodeURIComponent(casilla.direccion)}#conectar`} className="text-xs font-medium text-primary hover:underline">
+                            Conectar
+                          </Link>
+                        )}
+                      </span>
                     </td>
                     <td className="px-3 py-3 text-xs text-muted-foreground">
                       {casilla.subdirecciones === "verificada" ? "Activa" : casilla.subdirecciones === "comprobando" ? "Comprobando" : "Se comprueba al conectarla"}
