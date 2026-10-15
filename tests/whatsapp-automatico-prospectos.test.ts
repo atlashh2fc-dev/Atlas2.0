@@ -17,6 +17,7 @@ import {
   esBaja,
   numeroSinWhatsapp,
   pideFrenar,
+  esRespuestaAutomatica,
   quiereVerElVideo,
   temaParaWhatsapp,
   TEMA_VETERINARIAS,
@@ -198,4 +199,19 @@ test("el video no cuenta en el tope de saludos del día y no se repite", () => {
 
 test("el video de veterinarias se puede descargar sin sesión (Meta lo baja desde la URL)", () => {
   assert.match(leer("src/proxy.ts"), /webp\|mp4\)\$/);
+});
+
+test("la bienvenida automática de la clínica no cuenta como respuesta para el video", () => {
+  // Las dos del 15-10, a los 20 segundos del saludo.
+  assert.equal(esRespuestaAutomatica("Bienvenid@ a Veterinaria San Ignacio Arica 🐈🐕 estamos abiertos", 20), true);
+  assert.equal(esRespuestaAutomatica("Gracias por comunicarte, soy María Isabel", 600), true);
+  assert.equal(esRespuestaAutomatica("Hola, sí, cuéntame", 40), true, "a los 40 segundos casi seguro es automática");
+  assert.equal(esRespuestaAutomatica("Hola, sí, cuéntame", 1800), false);
+  assert.equal(esRespuestaAutomatica("¿Cuánto cuesta?", null), false);
+});
+
+test("las tandas se espacian aunque el cron se dispare varias veces seguidas", () => {
+  const corrida = leer("src/lib/prospeccion-whatsapp.server.ts");
+  assert.match(corrida, /minutos < REGLAS\.minutosEntreTandas/);
+  assert.match(corrida, /esRespuestaAutomatica\(respuesta\.texto, segundos\)/);
 });

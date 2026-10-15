@@ -107,6 +107,17 @@ export const VIDEO_VETERINARIAS = {
   pie: "Mejor que contarte, mira estos 9 segundos 🐾",
 } as const;
 
+/**
+ * ¿Es la respuesta automática de su WhatsApp Business («Bienvenid@…», «Gracias por
+ * comunicarte…») y no una persona? El 15-10 dos clínicas contestaron así a los 20
+ * segundos. Llega casi al instante o con frases de bienvenida y horario.
+ */
+export function esRespuestaAutomatica(texto: string | null | undefined, segundosDesdeNuestroMensaje: number | null): boolean {
+  if (segundosDesdeNuestroMensaje !== null && segundosDesdeNuestroMensaje >= 0 && segundosDesdeNuestroMensaje < 90) return true;
+  const limpio = sinTildes((texto ?? "").toLowerCase());
+  return /bienvenid|gracias por (comunicarte|escribir|contactar|tu mensaje|preferir)|horario de atencion|te responderemos|en breve te|mensaje automatico|no estamos disponibles|fuera de (nuestro )?horario|nuestro horario|estamos abiertos/.test(limpio);
+}
+
 /** ¿Su respuesta deja espacio para mandarle el video? No si pide la baja ni si parte con un «no». */
 export function quiereVerElVideo(texto: string | null | undefined): boolean {
   const limpio = sinTildes((texto ?? "").toLowerCase()).trim();
@@ -136,6 +147,8 @@ export const REGLAS = {
   porDiaPorDefecto: 15,
   /** Pocos por corrida: los mensajes salen repartidos en el día, no en ráfaga. */
   porCorrida: 3,
+  /** Entre una tanda y la siguiente: si el cron se dispara varias veces seguidas, no salen todas de golpe. */
+  minutosEntreTandas: 15,
   esperaDesdeLaSenalMs: 60 * 60 * 1000,
   diasHastaElSeguimiento: 3,
   /**

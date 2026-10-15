@@ -14,6 +14,7 @@ import {
   elegirEnvios,
   enHorario,
   esBaja,
+  esRespuestaAutomatica,
   esVeterinaria,
   numeroSinWhatsapp,
   quiereVerElVideo,
@@ -136,6 +137,22 @@ export async function escribirAProspectos({ ensayo = false, ahora = new Date() }
   const quedan = porDia - (hoy ?? 0);
   if (quedan <= 0) return terminar("tope", `Llegó al tope del día (${porDia}).`);
 
+  if (!ensayo) {
+    const { data: ultimo } = await admin
+      .from("prospeccion_whatsapp")
+      .select("occurred_at")
+      .eq("organization_id", org)
+      .eq("automatico", true)
+      .not("texto", "like", "🎬%")
+      .order("occurred_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const minutos = ultimo ? (ahora.getTime() - new Date(ultimo.occurred_at as string).getTime()) / 60000 : Infinity;
+    if (minutos < REGLAS.minutosEntreTandas) {
+      return terminar("ok", `La tanda anterior salió hace ${Math.round(minutos)} min; la próxima, en la siguiente vuelta.`);
+    }
+  }
+
   const { data: filas, error: bandejaError } = await admin.rpc("prospeccion_de_empresa", { p_org: org, p_dias: 14 });
   if (bandejaError) throw new Error(`No se pudo leer la bandeja: ${bandejaError.message}`);
   const envios = elegirEnvios((filas ?? []) as FilaDeBandeja[], { ahora, cupo: ensayo ? quedan : Math.min(quedan, REGLAS.porCorrida) });
@@ -215,13 +232,13 @@ async function mandarVideoAVeterinarias(admin: Admin, org: string, canal: Canal,
     .limit(200);
   if (error || !respuestas?.length) return 0;
 
-  const ultimaRespuesta = new Map<string, string | null>();
+  const ultimaRespuesta = new Map<string, { texto: string | null; at: string }>();
   for (const fila of respuestas) {
-    if (!ultimaRespuesta.has(fila.lead_id as string)) ultimaRespuesta.set(fila.lead_id as string, fila.texto as string | null);
+    if (!ultimaRespuesta.has(fila.lead_id as string)) ultimaRespuesta.set(fila.lead_id as string, { texto: fila.texto as string | null, at: fila.occurred_at as string });
   }
   const leadIds = [...ultimaRespuesta.keys()];
   const [{ data: salientes }, { data: leads }] = await Promise.all([
-    admin.from("prospeccion_whatsapp").select("lead_id, texto").eq("organization_id", org).eq("automatico", true).in("lead_id", leadIds),
+    admin.from("prospeccion_whatsapp").select("lead_id, texto, occurred_at").eq("organization_id", org).eq("automatico", true).in("lead_id", leadIds),
     admin.from("leads").select("id, full_name, phone, extra, campaigns(name)").eq("organization_id", org).in("id", leadIds),
   ]);
   const yaTieneVideo = new Set((salientes ?? []).filter((s) => String(s.texto ?? "").startsWith("🎬")).map((s) => s.lead_id as string));
@@ -235,7 +252,14 @@ async function mandarVideoAVeterinarias(admin: Admin, org: string, canal: Canal,
     const celular = celularChileno(lead.phone as string | null);
     if (!celular || yaTieneVideo.has(id) || !recibioSaludo.has(id)) continue;
     if (!esVeterinaria({ campana: campana?.name ?? null, empresa })) continue;
-    if (!quiereVerElVideo(ultimaRespuesta.get(id))) continue;
+    const respuesta = ultimaRespuesta.get(id);
+    const nuestro = (salientes ?? [])
+      .filter((s) => s.lead_id === id && !String(s.texto ?? "").startsWith("🎬") && respuesta && String(s.occurred_at) <= respuesta.at)
+      .map((s) => new Date(String(s.occurred_at)).getTime())
+      .sort((a, b) => b - a)[0];
+    const segundos = respuesta && nuestro ? (new Date(respuesta.at).getTime() - nuestro) / 1000 : null;
+    // La bienvenida automática de su WhatsApp no es una respuesta: el video espera a una persona.
+    if (!respuesta || esRespuestaAutomatica(respuesta.texto, segundos) || !quiereVerElVideo(respuesta.texto)) continue;
     try {
       const { providerMessageId } = await sendWhatsAppMedia({
         provider: canal.provider,
