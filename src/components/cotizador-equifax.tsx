@@ -588,14 +588,17 @@ function PrecioLinea({ cotizada, valorUf }: { cotizada: LineaCotizada; valorUf: 
   );
 }
 
-function FirmaComercial({
+/** La firma comercial del perfil; la usan el cotizador Equifax y el de Secretaria Virtual. */
+export function FirmaComercial({
   contexto,
   abierta,
   onGuardada,
+  empresa = "Equifax Chile",
 }: {
-  contexto: ContextoCotizador;
+  contexto: Pick<ContextoCotizador, "firma">;
   abierta: boolean;
   onGuardada: (firma: ContextoCotizador["firma"]) => void;
+  empresa?: string;
 }) {
   const [editando, setEditando] = useState(abierta);
   const [cargo, setCargo] = useState(contexto.firma.cargo ?? "Ejecutivo Comercial");
@@ -630,7 +633,7 @@ function FirmaComercial({
       </div>
       {!editando ? (
         <p className="text-sm text-muted-foreground">
-          {firma.nombre} · {firma.cargo} · Equifax Chile
+          {firma.nombre} · {firma.cargo} · {empresa}
           {firma.whatsapp ? ` · ${firma.whatsapp}` : ""}
           {firma.correo ? ` · ${firma.correo}` : ""}
         </p>

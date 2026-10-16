@@ -309,6 +309,7 @@ async function BandejaDelEjecutivo({ profileId, params }: { profileId: string; p
                 appointmentScheduleUrl={tipificacion.appointmentScheduleUrl}
                 agendaPolicy={tipificacion.agendaPolicy}
                 quoteClient={tipificacion.quoteClient}
+                cotizador={tipificacion.cotizador}
               />
             </div>
           </div>

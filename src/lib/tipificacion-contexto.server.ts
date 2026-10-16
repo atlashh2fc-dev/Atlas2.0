@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { buildCallReasonCatalogFromWorkflow } from "@/lib/call-typification";
 import { fetchCampaignAgendaPolicy } from "@/lib/campaign-agenda-policy";
+import { fetchCampaignCotizador } from "@/lib/campaign-cotizador";
 import { getCampaignAppointmentScheduleUrl } from "@/lib/campaign-appointment-schedules";
 import { leadContactPerson } from "@/lib/lead-extra";
 import type { Campaign, Lead, WorkflowStep, WorkflowStepBranch } from "@/lib/types";
@@ -20,7 +21,7 @@ export async function contextoDeTipificacion(supabase: SupabaseClient, leadId: s
   const campaign = record.campaign;
   const workflowId = lead.workflow_id ?? campaign?.workflow_id ?? null;
 
-  const [[{ data: pasos }, { data: ramas }], agendaPolicy] = await Promise.all([
+  const [[{ data: pasos }, { data: ramas }], agendaPolicy, cotizador] = await Promise.all([
     workflowId
       ? Promise.all([
           supabase.from("workflow_steps").select("*").eq("workflow_id", workflowId).order("step_order", { ascending: true }),
@@ -28,6 +29,7 @@ export async function contextoDeTipificacion(supabase: SupabaseClient, leadId: s
         ])
       : Promise.resolve([{ data: null }, { data: null }] as const),
     fetchCampaignAgendaPolicy(supabase, lead.campaign_id ?? campaign?.id ?? null),
+    fetchCampaignCotizador(supabase, lead.campaign_id ?? campaign?.id ?? null),
   ]);
 
   const reasonCatalog = buildCallReasonCatalogFromWorkflow((pasos ?? []) as WorkflowStep[], (ramas ?? []) as WorkflowStepBranch[]);
@@ -37,6 +39,7 @@ export async function contextoDeTipificacion(supabase: SupabaseClient, leadId: s
     equifaxCommercialFieldsEnabled: reasonCatalog.some((reason) => reason.requiresEquifaxData === true),
     appointmentScheduleUrl: getCampaignAppointmentScheduleUrl(campaign?.name),
     agendaPolicy,
+    cotizador,
     quoteClient: {
       empresa: lead.full_name,
       rut: lead.rut,

@@ -34,6 +34,7 @@ import {
 import { decideShortCallClosure, shortCallNotice } from "@/lib/short-call-closure";
 import { AppointmentScheduleEmbed } from "@/components/appointment-schedule-embed";
 import { CotizadorEquifax, type ResultadoCotizacion } from "@/components/cotizador-equifax";
+import { CotizadorSecretariaVirtual, type ResultadoCotizacionSv } from "@/components/cotizador-sv";
 
 // Este componente se ejecuta tal cual en tests/call-typification-form.test.ts,
 // donde los alias de ruta no resuelven y la UI compartida no se carga. Por eso
@@ -130,6 +131,7 @@ export function CallTypificationForm({
   revision: revisionProp = false,
   supervision = null,
   quoteClient = null,
+  cotizador = null,
 }: {
   lead: Lead;
   call: Call;
@@ -171,6 +173,8 @@ export function CallTypificationForm({
     correo: string | null;
     telefono: string | null;
   } | null;
+  /** Cotizador propio de la campaña (Secretaria Virtual); Equifax va por sus campos comerciales. */
+  cotizador?: "secretaria_virtual" | null;
 }) {
   const revision = revisionProp || supervision !== null;
   const adding = supervision !== null && supervision.callId === null;
@@ -392,6 +396,21 @@ export function CallTypificationForm({
     // Lo natural después de enviar es tipificar la cotización; si ya eligió
     // otro motivo (una venta, por ejemplo), se respeta.
     const quoteReason = catalog.find((option) => option.value === "COTIZACION ENVIADA");
+    if (!reason && quoteReason) {
+      handleReasonSelect(quoteReason);
+      setReasonPath([quoteReason.stateLabel, ...(quoteReason.groupPath ?? [])]);
+    }
+  }
+
+  function applySvQuote(result: ResultadoCotizacionSv) {
+    setNotes((prev) =>
+      prev.trim()
+        ? prev
+        : `Propuesta N.º ${result.folio} ${result.canal === "correo" ? "enviada por correo a" : "enviada por WhatsApp a"} ${result.destinatario}: ${result.resumen}.`
+    );
+    // Como en Equifax: si ya eligió otro motivo (contrata, por ejemplo), se respeta.
+    const sinTildes = (texto: string) => texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
+    const quoteReason = catalog.find((option) => sinTildes(option.value) === "COTIZACION ENVIADA");
     if (!reason && quoteReason) {
       handleReasonSelect(quoteReason);
       setReasonPath([quoteReason.stateLabel, ...(quoteReason.groupPath ?? [])]);
@@ -857,6 +876,9 @@ export function CallTypificationForm({
       )}
       {quoteClient && equifaxCommercialFieldsEnabled && !revision && (
         <CotizadorEquifax leadId={lead.id} callId={call.id} cliente={quoteClient} onEnviada={applyQuote} />
+      )}
+      {quoteClient && cotizador === "secretaria_virtual" && !revision && (
+        <CotizadorSecretariaVirtual leadId={lead.id} callId={call.id} cliente={quoteClient} onEnviada={applySvQuote} />
       )}
       {armed && shortClosure && (
         <div

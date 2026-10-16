@@ -31,6 +31,8 @@ import { OfflineManagementButton } from "@/components/offline-management-button"
 import { ScreenPopTiming } from "@/components/screen-pop-timing";
 import { CallTypificationForm } from "@/components/call-typification-form";
 import { CotizadorEquifax } from "@/components/cotizador-equifax";
+import { CotizadorSecretariaVirtual } from "@/components/cotizador-sv";
+import { fetchCampaignCotizador } from "@/lib/campaign-cotizador";
 import { CorreoRegistroPanel, type CorreoEnviado, type CorreoRecibido } from "@/components/correo-registro-panel";
 import { CallTimer } from "@/components/call-timer";
 import { LeadTimeline, type TimelineEntry } from "@/components/lead-timeline";
@@ -88,6 +90,19 @@ function sameChileDay(a: Date, b: Date) {
 
 /** Clase de la columna lateral: un panel, grupos separados por una línea. */
 const SIDE_PANEL = "atlas-panel divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface shadow-sm";
+
+type SvQuoteRow = {
+  id: string;
+  folio: string;
+  canal: "correo" | "whatsapp";
+  destinatario: string;
+  uf_mensual: number | string;
+  plazo_meses: number;
+  estado: "enviando" | "enviada" | "fallida" | "whatsapp_abierto";
+  error: string | null;
+  created_at: string;
+  profiles: { full_name: string } | { full_name: string }[] | null;
+};
 
 type EquifaxQuoteRow = {
   id: string;
@@ -293,7 +308,10 @@ export default async function LeadDetailPage({
   const equifaxCommercialFieldsEnabled = reasonCatalog.some(
     (reason) => reason.requiresEquifaxData === true
   );
-  const agendaPolicy = await fetchCampaignAgendaPolicy(supabase, lead.campaign_id ?? campaign?.id ?? null);
+  const [agendaPolicy, cotizador] = await Promise.all([
+    fetchCampaignAgendaPolicy(supabase, lead.campaign_id ?? campaign?.id ?? null),
+    fetchCampaignCotizador(supabase, lead.campaign_id ?? campaign?.id ?? null),
+  ]);
 
   const [
     { data: externalRefsData },
@@ -305,6 +323,7 @@ export default async function LeadDetailPage({
     { data: saleValidationData },
     { data: correosRecibidosData },
     { data: correosEnviadosData },
+    { data: svQuotesData },
   ] = await Promise.all([
     supabase
       .from("lead_external_refs")
@@ -369,6 +388,12 @@ export default async function LeadDetailPage({
       .eq("lead_id", id)
       .order("created_at", { ascending: true })
       .limit(30),
+    cotizador === "secretaria_virtual" ? supabase
+      .from("cotizaciones_sv")
+      .select("id, folio, canal, destinatario, uf_mensual, plazo_meses, estado, error, created_at, profiles!cotizaciones_sv_agent_id_fkey(full_name)")
+      .eq("lead_id", id)
+      .order("created_at", { ascending: false })
+      .limit(20) : Promise.resolve({ data: [] }),
   ]);
   const correosRecibidos = (correosRecibidosData ?? []) as unknown as CorreoRecibido[];
   const correosEnviados = (correosEnviadosData ?? []) as unknown as CorreoEnviado[];
@@ -569,11 +594,30 @@ export default async function LeadDetailPage({
         agent: relationOne(quote.profiles)?.full_name ?? "Ejecutivo",
       };
     }),
+    ...((svQuotesData ?? []) as SvQuoteRow[]).map((quote): TimelineEntry => {
+      const failed = quote.estado === "fallida";
+      return {
+        key: `cotizacion-sv-${quote.id}`,
+        source: quote.canal === "correo" ? "email" : "whatsapp",
+        side: "equipo",
+        date: quote.created_at,
+        title: failed
+          ? `Propuesta N.º ${quote.folio}: el correo no salió`
+          : `Propuesta N.º ${quote.folio} ${quote.canal === "correo" ? "enviada por correo" : "por WhatsApp"}`,
+        notes: [
+          `Plan Base ${formatUfAmount(Number(quote.uf_mensual))} UF + IVA mensual · ${quote.plazo_meses} meses`,
+          `Para ${quote.destinatario}`,
+          failed && quote.error ? quote.error : null,
+        ].filter(Boolean).join(" · "),
+        agenda: null,
+        agent: relationOne(quote.profiles)?.full_name ?? "Ejecutivo",
+      };
+    }),
   ].sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime());
 
   // Mismo criterio que registrar_cotizacion_equifax: el ejecutivo cotiza lo
   // que está a su nombre; supervisión y administración, cualquier registro.
-  const canQuoteWithoutManagement = equifaxCommercialFieldsEnabled
+  const canQuoteWithoutManagement = (equifaxCommercialFieldsEnabled || cotizador === "secretaria_virtual")
     && profile.active
     && (profile.role !== "agente" || lead.assigned_to === profile.id || lead.managed_by === profile.id);
 
@@ -1114,6 +1158,7 @@ export default async function LeadDetailPage({
               equifaxCommercialFieldsEnabled={equifaxCommercialFieldsEnabled}
               appointmentScheduleUrl={appointmentScheduleUrl}
               agendaPolicy={agendaPolicy}
+              cotizador={cotizador}
               quoteClient={{
                 empresa: lead.full_name,
                 rut: lead.rut,
@@ -1156,7 +1201,20 @@ export default async function LeadDetailPage({
         <div className="min-w-0 space-y-5">
           {/* Sin gestión abierta también se cotiza: la propuesta queda en el
               registro. Durante la gestión va dentro de la tipificación. */}
-          {!call && canQuoteWithoutManagement && (
+          {!call && canQuoteWithoutManagement && cotizador === "secretaria_virtual" && (
+            <CotizadorSecretariaVirtual
+              leadId={lead.id}
+              callId={null}
+              cliente={{
+                empresa: lead.full_name,
+                rut: lead.rut,
+                contacto: contactPerson,
+                correo: lead.email,
+                telefono: lead.phone,
+              }}
+            />
+          )}
+          {!call && canQuoteWithoutManagement && equifaxCommercialFieldsEnabled && (
             <CotizadorEquifax
               leadId={lead.id}
               callId={null}
