@@ -15,6 +15,7 @@ import {
   parsearBing,
   parsearDuckDuckGo,
   pistaDelCorreo,
+  puedeRecibirSaludo,
   resultadosDesdeGooglePlaces,
   rubroDeLaCampana,
   telefonosChilenos,
@@ -165,6 +166,15 @@ test("lo que no aparece en la web queda pendiente para una persona, y se reinten
   assert.equal(verificacionVigente(v, new Date(AHORA.getTime() + 8 * 24 * 60 * 60 * 1000)), false);
   assert.equal(verificacionVigente({ ...v, estado: "rechazado" }, new Date(AHORA.getTime() + 90 * 24 * 60 * 60 * 1000)), true);
   assert.equal(verificacionVigente(undefined, AHORA), false);
+});
+
+test("lo que la búsqueda automática no encontró recibe el saludo igual; lo descartado o en duda por una persona, no", () => {
+  const noEncontrado = veredicto({ empresa: "Servicios Médicos Veterinarios Alfaro Limitada", email: "alirolfr@gmail.com", celular: "+56945915470", rubro: "veterinaria", resultados: [], ahora: AHORA, fuente: "bing" });
+  assert.equal(noEncontrado.estado, "pendiente");
+  assert.equal(puedeRecibirSaludo(noEncontrado), true);
+  assert.equal(puedeRecibirSaludo({ estado: "aprobado", fuente: "google-places" }), true);
+  assert.equal(puedeRecibirSaludo({ estado: "rechazado", fuente: "bing" }), false);
+  assert.equal(puedeRecibirSaludo({ estado: "pendiente", fuente: "revisión manual en Google (Claude, 15-10-2026)" }), false);
 });
 
 test("la palabra «veterinaria» en la razón social no convierte a una consultora en clínica", () => {

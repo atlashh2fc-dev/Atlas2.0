@@ -15,8 +15,8 @@
  * Dónde se busca (verificacion-prospecto.server.ts): en Google Places si hay
  * clave (GOOGLE_PLACES_API_KEY: dice el tipo de negocio, el teléfono y las
  * reseñas), y si no, en DuckDuckGo o Bing como un navegador, que encuentran
- * menos y se cansan rápido. Lo que no se encuentra queda pendiente: nunca se
- * escribe a ciegas.
+ * menos y se cansan rápido. Lo que no se encuentra queda pendiente y, desde
+ * el 16-10, igual recibe el saludo (ver puedeRecibirSaludo); lo descartado no.
  *
  * Puro: recibe resultados de búsqueda ya descargados y devuelve un veredicto
  * con su motivo.
@@ -53,6 +53,18 @@ export const VERIFICACIONES_POR_CORRIDA = 4;
 
 /** Un «pendiente» se vuelve a intentar pasados estos días (quizá ya tiene presencia, o la búsqueda falló). */
 export const DIAS_PARA_REINTENTAR_PENDIENTE = 7;
+
+/**
+ * ¿Le puede llegar el saludo? Sí si se aprobó, y también si la búsqueda
+ * automática no lo encontró (Hugo, 16-10: «si no, envía no más»: sin clave de
+ * Google casi nada aparece y salía un WhatsApp al día). No si se descartó
+ * (otro giro, fijo mal convertido, sin forma de celular) ni si una persona lo
+ * revisó y lo dejó en duda.
+ */
+export function puedeRecibirSaludo(verificacion: Pick<Verificacion, "estado" | "fuente">): boolean {
+  if (verificacion.estado === "aprobado") return true;
+  return verificacion.estado === "pendiente" && !/manual/i.test(verificacion.fuente ?? "");
+}
 
 const sinTildes = (texto: string) => texto.normalize("NFD").replace(/[̀-ͯ]/g, "");
 const plano = (texto: string) => sinTildes(texto.toLowerCase());

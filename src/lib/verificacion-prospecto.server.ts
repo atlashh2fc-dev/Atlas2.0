@@ -7,6 +7,7 @@ import {
   parsearBing,
   parsearDuckDuckGo,
   pistaDelCorreo,
+  puedeRecibirSaludo,
   resultadosDesdeGooglePlaces,
   rubroDeLaCampana,
   verificacionVigente,
@@ -26,7 +27,8 @@ import type { createAdminClient } from "@/lib/supabase/admin";
  * CL): devuelve el tipo de negocio, el teléfono y las reseñas, y no se cansa.
  * Sin clave, DuckDuckGo y Bing como un navegador: DuckDuckGo responde 202 sin
  * resultados cuando se le pregunta muy seguido (de ahí la pausa) y Bing
- * encuentra menos; lo que no aparece queda pendiente, no sale.
+ * encuentra menos; lo que no aparece queda pendiente y sale igual (ver
+ * puedeRecibirSaludo).
  */
 
 type Admin = ReturnType<typeof createAdminClient>;
@@ -161,7 +163,7 @@ export async function verificarCandidatos(
     const guardada = extra.verificacion_whatsapp as Partial<Verificacion> | undefined;
 
     if (verificacionVigente(guardada, ahora)) {
-      if (guardada.estado === "aprobado") aprobados.set(candidato.leadId, guardada.celular_corregido ?? candidato.celular);
+      if (puedeRecibirSaludo(guardada)) aprobados.set(candidato.leadId, guardada.celular_corregido ?? candidato.celular);
       continue;
     }
     // Sin tiempo para otra búsqueda, se deja para la próxima corrida (sigue sin escribirse a ciegas).
@@ -192,7 +194,7 @@ export async function verificarCandidatos(
       const { error: errorAlGuardar } = await admin.from("leads").update(cambios).eq("id", candidato.leadId).eq("organization_id", org);
       if (errorAlGuardar) console.error("[verificacion] no se pudo guardar", candidato.leadId, errorAlGuardar.message);
     }
-    if (resultado.estado === "aprobado") aprobados.set(candidato.leadId, resultado.celular_corregido ?? candidato.celular);
+    if (puedeRecibirSaludo(resultado)) aprobados.set(candidato.leadId, resultado.celular_corregido ?? candidato.celular);
   }
   return { aprobados, informe };
 }
